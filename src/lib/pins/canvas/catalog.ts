@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import type { CanvasRecipe } from "./recipe";
 import { specFromRecipe, validateStyle, type StyleSpec } from "./styleSpec";
+import { attachBoldPalettes, PALETTE_REV } from "./paletteLibrary";
+import { CURATED_STYLES } from "./curated";
 
 /**
  * Каталог Canvas-стилей: из 3425 старых шаблонов-«лотерей» собираются кандидаты
@@ -67,6 +69,7 @@ export async function harvestCandidates(): Promise<{ groups: number; created: nu
     }
     spec.sourceIds = list.map((r) => r.id);
     spec.tags = [...new Set([...(spec.tags ?? []), best.libraryId])];
+    spec = attachBoldPalettes(spec, id);
     const counts = new Set<number>();
     for (const r of list) { const n = Number((r.data as { photoCount?: number }).photoCount ?? 1); if ([1, 2, 3, 4, 6].includes(n)) counts.add(n); }
     if (counts.size) spec.counts = [...counts].sort((a, b) => a - b) as StyleSpec["counts"];
@@ -75,6 +78,39 @@ export async function harvestCandidates(): Promise<{ groups: number; created: nu
     created++;
   }
   return { groups: groups.size, created, skipped };
+}
+
+/** Свои стили портала (curated.ts) → строки каталога, если их ещё нет. Idempotent. */
+export async function seedCuratedStyles(): Promise<{ created: number; invalid: string[] }> {
+  let created = 0;
+  const invalid: string[] = [];
+  for (const c of CURATED_STYLES) {
+    const problems = validateStyle(c.spec);
+    if (problems.length) { invalid.push(`${c.id}: ${problems.join("; ")}`); continue; }
+    const exists = await prisma.pinCanvasStyle.findUnique({ where: { id: c.id }, select: { id: true } });
+    if (exists) continue;
+    await prisma.pinCanvasStyle.create({ data: { id: c.id, libraryId: CATALOG_LIB, name: c.spec.name, category: c.category, data: c.spec as unknown as object, isActive: true, isApproved: false, sortOrder: 0 } });
+    created++;
+  }
+  return { created, invalid };
+}
+
+/**
+ * Старым строкам каталога (rev 1, одна бледная палитра) подмешиваются сочные
+ * палитры из библиотеки. Превью таких стилей сбрасывается, чтобы перерисоваться.
+ */
+export async function upgradeCatalogPalettes(): Promise<number> {
+  const rows = await prisma.pinCanvasStyle.findMany({ where: { libraryId: CATALOG_LIB }, select: { id: true, data: true } });
+  let n = 0;
+  for (const r of rows) {
+    const spec = r.data as unknown as StyleSpec;
+    if ((spec.rev ?? 1) >= PALETTE_REV) continue;
+    const next = attachBoldPalettes(spec, r.id);
+    if (validateStyle(next).length) continue;
+    await prisma.pinCanvasStyle.update({ where: { id: r.id }, data: { data: next as unknown as object, previewPath: null } });
+    n++;
+  }
+  return n;
 }
 
 /** Утверждённые стили каталога, доступные сайту (наборы сайта и скрытия). */

@@ -656,8 +656,11 @@ export function drawKitHighlight(
   if (kit.kind === "frame" && geo.single === false) kit = HIGHLIGHT_MAP.get("hl-line-thin")!;
   const { x, baseline, width, size } = geo;
   const top = baseline - size * 0.76, h = size * 0.9;
+  // Полупрозрачные и частичные заливки — «маркер»: рисуются бледно, текст остаётся
+  // своим цветом. Только плотная заливка на всю строку перекрашивает текст.
+  const marker = kit.kind === "fill" && (kit.alpha < 0.8 || kit.variant === "half" || kit.variant === "rough" || kit.variant === "skew");
   ctx.save();
-  ctx.globalAlpha = kit.alpha;
+  ctx.globalAlpha = marker ? Math.min(kit.alpha, 0.42) : kit.alpha;
   ctx.fillStyle = paint.accent;
   ctx.strokeStyle = paint.accent;
   ctx.lineCap = "round";
@@ -809,7 +812,7 @@ export function drawKitHighlight(
   }
   ctx.restore();
   // Плотные заливки требуют контрастного текста — сообщаем движку цвет фона.
-  if (kit.kind === "fill" && kit.alpha >= 0.55) {
+  if (kit.kind === "fill" && !marker) {
     return { over: kit.variant === "chip" ? paint.soft : paint.accent };
   }
   return {};

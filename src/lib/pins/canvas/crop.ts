@@ -57,7 +57,11 @@ const ACCENT_WORDS: Array<[AccentType, RegExp]> = [
   ["decor", /(декор|прикрас|украшен|букет|подарун|подарк|diy|хендмейд)/i],
 ];
 
+/** Ниша сайта из рецепта → профиль акцента. */
+const NICHE_ACCENT: Record<string, AccentType> = { nails: "nails", hair: "hair", outfit: "outfit", decor: "decor", cooking: "food", interior: "interior" };
+
 export function guessAccent(...text: Array<string | undefined>): AccentType {
+  for (const t of text) if (t && NICHE_ACCENT[t]) return NICHE_ACCENT[t];
   const s = text.filter(Boolean).join(" ");
   if (!s.trim()) return "auto";
   for (const [id, re] of ACCENT_WORDS) if (re.test(s)) return id;
@@ -278,6 +282,16 @@ export function drawSmartCover(
 
   let sx = cx - sw / 2;
   let sy = cy - sh / 2;
+  if (!opts.focus) {
+    // Окно обязано целиком накрывать бокс акцента: если оно меньше бокса,
+    // держим верх (лицо и причёска живут вверху), а не центр.
+    const box = accentBox(img, opts.accent);
+    const m = prof.margin;
+    const bx0 = Math.max(0, box.x0 - m) * iw, bx1 = Math.min(1, box.x1 + m) * iw;
+    const by0 = Math.max(0, box.y0 - m * 1.5) * ih, by1 = Math.min(1, box.y1 + m) * ih;
+    if (sh >= by1 - by0) sy = Math.max(by1 - sh, Math.min(by0, sy)); else sy = by0;
+    if (sw >= bx1 - bx0) sx = Math.max(bx1 - sw, Math.min(bx0, sx)); else sx = (bx0 + bx1) / 2 - sw / 2;
+  }
   sx = Math.max(0, Math.min(iw - sw, sx));
   sy = Math.max(0, Math.min(ih - sh, sy));
 

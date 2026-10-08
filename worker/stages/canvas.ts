@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
-import { renderPin } from "@/lib/pins/canvas";
+import { guessAccent, renderPin } from "@/lib/pins/canvas";
 import { toRecipe } from "@/lib/pins/canvas/styleSpec";
 import { approvedStylesForSite } from "@/lib/pins/canvas/catalog";
 import { generateHooks, type CanvasHook } from "@/lib/pins/canvas/hooks";
@@ -80,7 +80,9 @@ export const canvasStage: StageHandler = async (ctx) => {
       const hooks = (page.canvasHooks as unknown as CanvasHook[] | null) ?? [];
       const hook = hooks.length ? hooks[row.sortOrder % hooks.length] : { title: page.keyword };
       const ideaCount = page.sectionImageCount || page.imageCount || 0;
-      const recipe = toRecipe(style.spec, seed, photos.length);
+      // Профиль акцента для умной обрезки: ниша сайта и ключ страницы (ногти, волосы, одежда…).
+      const accent = guessAccent(page.niche || rc.site.niche, page.keyword, page.topic, page.pageTitle || page.h1);
+      const recipe = { ...toRecipe(style.spec, seed, photos.length), accent };
       const r = await renderPin({ recipe, photos, texts: { title: hook.title, kicker: hook.kicker, cta: hook.cta, domain, number: ideaCount >= 3 ? String(ideaCount) : undefined }, seed });
       const item = await prisma.pinRunItem.create({
         data: { runId: rc.run.id, pageId: page.id, siteId: rc.site.id, kind: "pin", engine: "CANVAS", styleId: row.styleId, sourceImageUrl: chosen[0] ?? "", sortOrder: 2000 + row.sortOrder, status: "READY", title: "", styleParams: { hook, photos: chosen, photoCount: photos.length, issues: r.issues } as object },

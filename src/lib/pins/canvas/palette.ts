@@ -142,29 +142,44 @@ export interface PhotoPalette {
 }
 
 /**
- * Палитра из фото: нейтральный фон, средний тон для карточек, один насыщенный
- * акцент (аналогичный ±20-40° или комплементарный ±150-180°).
+ * Палитра из фото. Четыре настроения по seed, чтобы пины не были бледными:
+ *  0 — светлый фон с оттенком фото и сочным акцентом;
+ *  1 — тёмный фон в тоне фото, светлый текст, яркий акцент;
+ *  2 — насыщенный фон цвета фото, белый текст, контрастный акцент;
+ *  3 — средний пастельный фон, тёмный текст, глубокий акцент.
  */
 export function paletteFromPhoto(img: HostImage, seed = 0): PhotoPalette {
   const cols = dominantColors(img);
   const hsls = cols.map((c) => ({ hex: c, ...rgbToHsl(hexToRgb(c)) }));
   const vivid = [...hsls].sort((a, b) => b.s * (1 - Math.abs(b.l - 0.5)) - a.s * (1 - Math.abs(a.l - 0.5)))[0] || hsls[0];
-  const dark = luminance(cols[0]) < 0.35 && seed % 4 === 0;
+  // У серых фото (s ≈ 0) оттенок случайный — берём тёплый нейтральный.
+  const h = vivid.s < 0.08 ? 28 : vivid.h;
+  const s0 = Math.max(0.35, vivid.s);
+  const mood = ((seed >>> 0) % 4);
+  const rot = seed % 3 === 0 ? 170 : seed % 3 === 1 ? 32 : -36;
 
-  const bg = dark
-    ? hsl(vivid.h, Math.min(0.18, vivid.s * 0.4), 0.11)
-    : hsl(vivid.h, Math.min(0.16, vivid.s * 0.35), 0.95);
-  const soft = dark
-    ? hsl(vivid.h, Math.min(0.2, vivid.s * 0.5), 0.2)
-    : hsl(vivid.h, Math.min(0.22, vivid.s * 0.5), 0.88);
-
-  const rot = seed % 3 === 0 ? 168 : seed % 3 === 1 ? 28 : -34;
-  const accent = hsl(
-    vivid.h + rot,
-    Math.max(0.5, Math.min(0.86, vivid.s + 0.22)),
-    dark ? 0.6 : Math.min(0.52, Math.max(0.36, vivid.l)),
-  );
-  const fg = readableOn(bg, dark ? "#f6f1ea" : "#1d1712");
+  let bg: string, soft: string, accent: string, fg: string;
+  if (mood === 1) {
+    bg = hsl(h, Math.min(0.45, s0 * 0.7), 0.12);
+    soft = hsl(h, Math.min(0.4, s0 * 0.6), 0.2);
+    accent = hsl(h + rot, Math.max(0.6, Math.min(0.9, s0 + 0.25)), 0.62);
+    fg = readableOn(bg, "#FBF7F2");
+  } else if (mood === 2) {
+    bg = hsl(h, Math.max(0.5, Math.min(0.8, s0 + 0.2)), 0.36);
+    soft = hsl(h, Math.max(0.45, Math.min(0.75, s0 + 0.15)), 0.44);
+    accent = hsl(h + rot, Math.max(0.6, Math.min(0.9, s0 + 0.3)), 0.72);
+    fg = readableOn(bg, "#FFFFFF");
+  } else if (mood === 3) {
+    bg = hsl(h, Math.min(0.5, s0 * 0.8), 0.82);
+    soft = hsl(h, Math.min(0.45, s0 * 0.7), 0.74);
+    accent = hsl(h + rot, Math.max(0.55, Math.min(0.85, s0 + 0.2)), 0.34);
+    fg = readableOn(bg, "#1C1612");
+  } else {
+    bg = hsl(h, Math.min(0.3, s0 * 0.5), 0.94);
+    soft = hsl(h, Math.min(0.35, s0 * 0.6), 0.86);
+    accent = hsl(h + rot, Math.max(0.6, Math.min(0.9, s0 + 0.25)), 0.42);
+    fg = readableOn(bg, "#1C1612");
+  }
   const onAccent = readableOn(accent, "#ffffff");
   return { bg, fg, accent, onAccent, soft };
 }
