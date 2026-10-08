@@ -26,7 +26,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
   const name = <T extends { id: string }>(list: T[], id: string | null, f: (t: T) => string) => (id ? list.find((x) => x.id === id) : null) ? f(list.find((x) => x.id === id)!) : "—";
 
   const Tab = ({ v, label }: { v: string; label: string }) => (
-    <a href={`/usage?period=${v}`} className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium border ${period === v ? "bg-ink text-white border-ink" : "bg-surface border-line hover:border-ink/40"}`}>{label}</a>
+    <a href={`/usage?period=${v}`} className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium border ${period === v ? "bg-ink text-bg border-ink" : "bg-surface border-line hover:border-ink/40"}`}>{label}</a>
   );
 
   return (

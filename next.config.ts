@@ -11,7 +11,7 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
-  serverExternalPackages: ["@prisma/client", "bcryptjs"],
+  serverExternalPackages: ["@prisma/client", "bcryptjs", "sharp", "@napi-rs/canvas"],
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

@@ -1,7 +1,8 @@
 import { prisma } from "./db";
 import { decryptSecret } from "./crypto";
-import { resolveBinding } from "./resolve";
-import { runProvider, type RunInput } from "./adapters";
+import { resolveBinding, type ResolvedBinding } from "./resolve";
+import type { Capability } from "@prisma/client";
+import { isOpenRouter, runProvider, type RunInput } from "./adapters";
 import { monthStart } from "./utils";
 
 export type RunRequest = {
@@ -9,7 +10,41 @@ export type RunRequest = {
   projectSlug: string;
   slotKey: string;
   payload: Record<string, unknown>;
+  /** Таймаут одного вызова провайдера (по умолчанию 180 с). */
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  /** Привязка записи расхода к команде и объекту (например, прогону). */
+  meta?: { teamId?: string; refId?: string };
+  /** Уже выбранное правило (resolveSlot), чтобы не искать его второй раз. */
+  pre?: ResolvedSlot;
 };
+
+export type ResolvedSlot = {
+  project: { id: string; name: string; slug: string };
+  slot: { id: string; key: string; name: string; capability: Capability };
+  binding: NonNullable<ResolvedBinding["binding"]>;
+  warnings: string[];
+};
+
+export type ResolveSlotResult = { ok: true; value: ResolvedSlot } | { ok: false; status: number; error: string };
+
+/** Находит проект, слот и правило (ключ + модель) для пользователя. Без вызова провайдера. */
+export async function resolveSlot(userId: string, projectSlug: string, slotKey: string): Promise<ResolveSlotResult> {
+  const project = await prisma.project.findUnique({ where: { slug: projectSlug }, include: { slots: true } });
+  if (!project) return { ok: false, status: 404, error: `Проект «${projectSlug}» не найден` };
+  const slot = project.slots.find((s) => s.key === slotKey);
+  if (!slot) return { ok: false, status: 404, error: `Слот «${slotKey}» не найден в проекте «${project.name}»` };
+  const resolved = await resolveBinding(userId, slot.id);
+  if (!resolved.binding) {
+    return { ok: false, status: 409, error: `Для слота «${slot.name}» не настроено ни одного правила (ключ + модель). Откройте страницу проекта и добавьте привязку.` };
+  }
+  return { ok: true, value: { project: { id: project.id, name: project.name, slug: project.slug }, slot, binding: resolved.binding, warnings: resolved.warnings } };
+}
+
+/** Выключает ключ (нет баланса / отклонён провайдером); правила с ним пропускаются при следующем выборе. */
+export async function disableKey(apiKeyId: string, note: string): Promise<void> {
+  await prisma.apiKey.update({ where: { id: apiKeyId }, data: { status: "DISABLED", lastCheckedAt: new Date(), lastCheckOk: false, lastCheckNote: note.slice(0, 500) } });
+}
 
 export type RunResponse = {
   ok: boolean;
@@ -30,22 +65,20 @@ export async function monthSpendForKey(apiKeyId: string): Promise<number> {
 }
 
 export async function runSlot(req: RunRequest): Promise<RunResponse> {
-  const project = await prisma.project.findUnique({ where: { slug: req.projectSlug }, include: { slots: true } });
-  if (!project) return { ok: false, status: 404, error: `Проект «${req.projectSlug}» не найден` };
-  const slot = project.slots.find((s) => s.key === req.slotKey);
-  if (!slot) return { ok: false, status: 404, error: `Слот «${req.slotKey}» не найден в проекте «${project.name}»` };
-
-  const resolved = await resolveBinding(req.userId, slot.id);
-  if (!resolved.binding) {
-    return { ok: false, status: 409, error: `Для слота «${slot.name}» не настроено ни одного правила (ключ + модель). Откройте страницу проекта и добавьте привязку.` };
+  let pre = req.pre;
+  if (!pre) {
+    const r = await resolveSlot(req.userId, req.projectSlug, req.slotKey);
+    if (!r.ok) return { ok: false, status: r.status, error: r.error };
+    pre = r.value;
   }
-  const b = resolved.binding;
+  const { project, slot } = pre;
+  const b = pre.binding;
   if (b.provider.kind === "LLM" && !b.model) {
     return { ok: false, status: 409, error: `В правиле для слота «${slot.name}» не выбрана модель` };
   }
   if (b.apiKey.monthlyLimitUsd != null) {
     // A limit is only enforceable when every call's cost can be computed; refuse rather than silently bypass it.
-    const priced = b.provider.adapter === "DATAFORSEO" || (b.model != null && (b.model.inputPrice != null || b.model.outputPrice != null));
+    const priced = b.provider.adapter === "DATAFORSEO" || isOpenRouter(b.provider) || (b.model != null && (b.model.inputPrice != null || b.model.outputPrice != null || b.model.unitPrice != null));
     if (!priced) {
       const why = slot.capability === "SERP"
         ? "SerpAPI не сообщает стоимость запросов"
@@ -85,13 +118,14 @@ export async function runSlot(req: RunRequest): Promise<RunResponse> {
   }
 
   const started = Date.now();
-  const result = await runProvider(b.provider, secret, input);
+  const result = await runProvider(b.provider, secret, input, { timeoutMs: req.timeoutMs, signal: req.signal });
   const durationMs = Date.now() - started;
-  const costUsd = result.ok
-    ? slot.capability === "SERP"
-      ? null
-      : estimateCost(result.inputTokens, result.outputTokens, b.model?.inputPrice ?? null, b.model?.outputPrice ?? null)
-    : null;
+  let costUsd: number | null = null;
+  if (result.ok && slot.capability !== "SERP") {
+    if (result.exactCostUsd != null) costUsd = result.exactCostUsd;
+    else if (slot.capability === "IMAGE" && b.model?.unitPrice != null) costUsd = result.units * b.model.unitPrice;
+    else costUsd = estimateCost(result.inputTokens, result.outputTokens, b.model?.inputPrice ?? null, b.model?.outputPrice ?? null);
+  }
   const dfsCost = slot.capability === "SEO_DATA" && result.ok ? ((result.data as { cost?: number })?.cost ?? null) : null;
 
   await prisma.usageLog.create({
@@ -110,6 +144,8 @@ export async function runSlot(req: RunRequest): Promise<RunResponse> {
       durationMs,
       ok: result.ok,
       error: result.error != null ? String(result.error).slice(0, 2000) : null,
+      teamId: req.meta?.teamId ?? null,
+      refId: req.meta?.refId ?? null,
     },
   });
 

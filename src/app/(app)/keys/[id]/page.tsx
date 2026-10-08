@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { Alert, Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { deleteKey, testKey, updateKey } from "@/actions/admin";
+import { assignKeyUsage, deleteKey, testKey, updateKey } from "@/actions/admin";
 import { CAPABILITY_LABELS, SCOPE_LABELS, fmtDate, fmtMoney, monthStart } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +25,13 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
   if (!isAdmin && key.ownerId && key.ownerId !== me.id) notFound();
   const canEdit = isAdmin || key.ownerId === me.id;
   const spend = await prisma.usageLog.aggregate({ _sum: { costUsd: true }, _count: true, where: { apiKeyId: id, createdAt: { gte: monthStart() } } });
+  const [projects, teams] = await Promise.all([
+    prisma.project.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }], select: { id: true, name: true, _count: { select: { slots: true } } } }),
+    prisma.team.findMany({ where: isAdmin ? {} : { id: { in: me.leadTeamIds } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
+  const usedProjectIds = new Set(key.bindings.filter((b) => b.slot).map((b) => b.slot!.project.id));
+  const usedTeamIds = new Set(key.bindings.filter((b) => b.teamId).map((b) => b.teamId as string));
+  const canAssign = canEdit && !key.ownerId && (isAdmin || teams.length > 0);
   // The monthly limit only works when every call's cost is known; warn about rules where it is not.
   const limitWarning = key.monthlyLimitUsd == null ? null
     : key.provider.adapter === "SERPAPI" ? "SerpAPI не сообщает стоимость запросов, поэтому вызовы через этот ключ будут отклоняться, пока на нём стоит лимит. Снимите лимит."
@@ -39,6 +46,33 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
           {limitWarning && <Alert tone="warn">{limitWarning}</Alert>}
+          {canAssign && (
+            <Card title="Подключить к сервисам и командам" description="Отметьте, где работает этот ключ. Правила создаются сами, модель берётся из настроек провайдера. Несколько ключей на одном сервисе делят нагрузку.">
+              <ActionForm action={assignKeyUsage} hidden={{ id: key.id }}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <span className="label">Сервисы</span>
+                    <div className="space-y-1.5">
+                      {projects.map((p) => (
+                        <label key={p.id} className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="projectIds" value={p.id} defaultChecked={usedProjectIds.has(p.id)} className="h-4 w-4" /> {p.name} <span className="help">· слотов: {p._count.slots}</span></label>
+                      ))}
+                      {projects.length === 0 && <p className="help">Сервисов пока нет.</p>}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="label">Команды</span>
+                    <div className="space-y-1.5">
+                      {teams.map((t) => (
+                        <label key={t.id} className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="teamIds" value={t.id} defaultChecked={usedTeamIds.has(t.id)} className="h-4 w-4" /> {t.name}</label>
+                      ))}
+                    </div>
+                    <p className="help mt-2">Без команд ключ станет ключом сервиса по умолчанию для всех.</p>
+                  </div>
+                </div>
+                <SubmitButton pendingText="Подключаю…">Сохранить подключения</SubmitButton>
+              </ActionForm>
+            </Card>
+          )}
           <Card title="Где используется" description="Правила, которые ссылаются на этот ключ. Удалить ключ можно только когда список пуст.">
             {key.bindings.length === 0 ? <p className="help">Пока нигде.</p> : (
               <div className="table-wrap">

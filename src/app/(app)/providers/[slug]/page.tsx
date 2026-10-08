@@ -118,6 +118,22 @@ export default async function ProviderPage({ params, searchParams }: { params: P
                 <Field label="Название"><input name="name" className="input" defaultValue={provider.name} /></Field>
                 <Field label="Базовый адрес API"><input name="baseUrl" className="input" defaultValue={provider.baseUrl} /></Field>
                 <Field label="Эндпоинт списка моделей" hint="Пусто — у провайдера нет такого списка."><input name="modelsEndpoint" className="input" defaultValue={provider.modelsEndpoint ?? ""} /></Field>
+                {provider.kind === "LLM" && (
+                  <>
+                    <Field label="Модель по умолчанию для текста" hint="С ней ключ подключается к сервису одной галочкой.">
+                      <select name="defaultChatModel" className="input" defaultValue={provider.defaultChatModel ?? ""}>
+                        <option value="">— не задана —</option>
+                        {provider.models.filter((m) => m.isEnabled && m.capabilities.includes("CHAT")).map((m) => <option key={m.id} value={m.modelId}>{m.name} · {m.modelId}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Модель по умолчанию для картинок">
+                      <select name="defaultImageModel" className="input" defaultValue={provider.defaultImageModel ?? ""}>
+                        <option value="">— не задана —</option>
+                        {provider.models.filter((m) => m.isEnabled && m.capabilities.includes("IMAGE")).map((m) => <option key={m.id} value={m.modelId}>{m.name} · {m.modelId}</option>)}
+                      </select>
+                    </Field>
+                  </>
+                )}
                 <Field label="Документация"><input name="docsUrl" className="input" defaultValue={provider.docsUrl ?? ""} /></Field>
                 <Field label="Состояние">
                   <select name="isActive" className="input" defaultValue={provider.isActive ? "1" : "0"}>

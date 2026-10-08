@@ -1,0 +1,24 @@
+[Unit]
+Description=Zewex Tools pins worker (background jobs, canvas rendering)
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=zewex_tools_usr
+Group=zewex_tools_usr
+WorkingDirectory=/var/www/zewex_tools_usr/data/app
+EnvironmentFile=/var/www/zewex_tools_usr/data/app/.env
+# На сервере нет IPv6, а Node пробует AAAA первым и ждёт таймаут соединения
+Environment=NODE_OPTIONS=--dns-result-order=ipv4first
+Environment=NODE_ENV=production
+Environment=PINS_STORAGE_DIR=/var/www/zewex_tools_usr/data/storage
+ExecStart=/var/www/zewex_tools_usr/data/app/node_modules/.bin/tsx worker/index.ts
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=90
+MemoryMax=3G
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

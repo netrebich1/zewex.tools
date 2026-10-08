@@ -10,6 +10,11 @@ export const dynamic = "force-dynamic";
 export default async function NewKeyPage() {
   const me = await requireUser();
   const providers = await prisma.provider.findMany({ where: { isActive: true }, orderBy: { order: "asc" } });
+  const isAdmin = me.role === "ADMIN";
+  const [projects, teams] = await Promise.all([
+    prisma.project.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
+    prisma.team.findMany({ where: isAdmin ? {} : { id: { in: me.leadTeamIds } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
   return (
     <>
       <PageHeader back={{ href: "/keys", label: "Ключи" }} title="Новый ключ" subtitle="Ключ хранится в зашифрованном виде, в интерфейсе виден только его хвост. После сохранения он сразу проверяется." />
@@ -38,6 +43,22 @@ export default async function NewKeyPage() {
             ) : <input type="hidden" name="personal" value="1" />}
           </div>
           <Field label="Заметка"><input name="notes" className="input" placeholder="Чей аккаунт, где пополнять…" /></Field>
+          {(isAdmin || teams.length > 0) && (
+            <div className="rounded-xl border border-line p-3 sm:p-4">
+              <div className="font-medium mb-1">Где работает этот ключ</div>
+              <p className="help mb-3">Отметьте сервисы и команды. Для личного ключа это не нужно: он работает по вашему личному правилу.</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <span className="label">Сервисы</span>
+                  <div className="space-y-1.5">{projects.map((p) => <label key={p.id} className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="projectIds" value={p.id} className="h-4 w-4" /> {p.name}</label>)}</div>
+                </div>
+                <div>
+                  <span className="label">Команды</span>
+                  <div className="space-y-1.5">{teams.map((t) => <label key={t.id} className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="teamIds" value={t.id} className="h-4 w-4" /> {t.name}</label>)}</div>
+                </div>
+              </div>
+            </div>
+          )}
           <SubmitButton className="btn-brand" pendingText="Сохраняю и проверяю…">Сохранить ключ</SubmitButton>
         </ActionForm>
       </Card>

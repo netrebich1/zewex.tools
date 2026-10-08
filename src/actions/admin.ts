@@ -213,6 +213,74 @@ export async function deleteBinding(_p: FormState, f: FormData): Promise<FormSta
   return { ok: "Правило удалено" };
 }
 
+
+/* ---------- Подключение ключа к сервисам и командам ---------- */
+/**
+ * Правила «от ключа»: отметили сервисы и команды — правила TEAM_PROJECT (или PROJECT без команд,
+ * TEAM без сервисов) создаются сами, модель берётся из настроек провайдера по умолчанию.
+ * Личные правила (USER_PROJECT) и глобальные этим способом не трогаются.
+ */
+export async function syncKeyUsage(keyId: string, projectIds: string[], teamIds: string[], me: { id: string; role: string; leadTeamIds: string[] }): Promise<{ created: number; skipped: string[] }> {
+  const key = await prisma.apiKey.findUniqueOrThrow({ where: { id: keyId }, include: { provider: { include: { models: { where: { isEnabled: true } } } } } });
+  if (key.ownerId) throw new Error("Личный ключ подключается только личным правилом");
+  const manageable = me.role === "ADMIN" ? null : new Set(me.leadTeamIds);
+  if (manageable) {
+    if (!teamIds.length) throw new Error("Лидер команды подключает ключ только к своим командам");
+    for (const t of teamIds) if (!manageable.has(t)) throw new Error("Нет прав на одну из выбранных команд");
+  }
+  const p = key.provider;
+  const modelFor = (cap: Capability): string | null | "none" => {
+    if (p.kind === "DATA") return null;
+    const wanted = cap === "IMAGE" ? p.defaultImageModel : cap === "CHAT" ? p.defaultChatModel : null;
+    if (!wanted) return "none";
+    const m = p.models.find((x) => x.modelId === wanted);
+    return m ? m.id : "none";
+  };
+  const capOk = (cap: Capability) => (cap === "SERP" ? p.adapter === "SERPAPI" : cap === "SEO_DATA" ? p.adapter === "DATAFORSEO" : p.kind === "LLM" && cap !== "EMBEDDING");
+
+  const projects = projectIds.length ? await prisma.project.findMany({ where: { id: { in: projectIds } }, include: { slots: true } }) : [];
+  const skipped: string[] = [];
+  const rows: Array<{ scope: BindingScope; slotId?: string; teamId?: string; capability?: Capability; modelId: string | null }> = [];
+  for (const proj of projects) {
+    for (const slot of proj.slots) {
+      if (!capOk(slot.capability)) continue;
+      const m = modelFor(slot.capability);
+      if (m === "none") { skipped.push(`${proj.name} · ${slot.name}: у провайдера не задана модель по умолчанию`); continue; }
+      if (teamIds.length) for (const teamId of teamIds) rows.push({ scope: "TEAM_PROJECT", slotId: slot.id, teamId, modelId: m });
+      else rows.push({ scope: "PROJECT", slotId: slot.id, modelId: m });
+    }
+  }
+  if (!projects.length && teamIds.length) {
+    for (const cap of ["CHAT", "IMAGE", "SERP", "SEO_DATA"] as Capability[]) {
+      if (!capOk(cap)) continue;
+      const m = modelFor(cap);
+      if (m === "none") continue;
+      for (const teamId of teamIds) rows.push({ scope: "TEAM", teamId, capability: cap, modelId: m });
+    }
+  }
+  await prisma.$transaction(async (tx) => {
+    const where = manageable
+      ? { apiKeyId: keyId, scope: { in: ["TEAM_PROJECT", "TEAM"] as BindingScope[] }, teamId: { in: [...manageable] } }
+      : { apiKeyId: keyId, scope: { in: ["TEAM_PROJECT", "PROJECT", "TEAM"] as BindingScope[] } };
+    await tx.binding.deleteMany({ where });
+    if (rows.length) await tx.binding.createMany({ data: rows.map((r) => ({ ...r, providerId: p.id, apiKeyId: keyId })) });
+  });
+  return { created: rows.length, skipped };
+}
+
+export async function assignKeyUsage(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  const id = str(f, "id");
+  const projectIds = f.getAll("projectIds").map(String);
+  const teamIds = f.getAll("teamIds").map(String);
+  try {
+    const r = await syncKeyUsage(id, projectIds, teamIds, me);
+    revalidatePath(`/keys/${id}`);
+    revalidatePath("/", "layout");
+    return { ok: `Подключено правил: ${r.created}${r.skipped.length ? ". Пропущено: " + r.skipped.join("; ") : ""}` };
+  } catch (e) { return fail(e); }
+}
+
 /* ---------- Keys ---------- */
 export async function createKey(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
@@ -236,7 +304,13 @@ export async function createKey(_p: FormState, f: FormData): Promise<FormState> 
   });
   const check = await checkKey(provider, secret, await probeModelFor(provider.id));
   await prisma.apiKey.update({ where: { id: key.id }, data: { lastCheckedAt: new Date(), lastCheckOk: check.ok, lastCheckNote: check.note } });
+  const projectIds = f.getAll("projectIds").map(String);
+  const teamIds = f.getAll("teamIds").map(String);
+  if (!personal && (projectIds.length || teamIds.length)) {
+    try { await syncKeyUsage(key.id, projectIds, teamIds, me); } catch (e) { return { error: `Ключ сохранён, но не подключён: ${e instanceof Error ? e.message : String(e)}` }; }
+  }
   revalidatePath("/keys");
+  revalidatePath("/", "layout");
   redirect(`/keys/${key.id}`);
 }
 
@@ -297,7 +371,7 @@ export async function updateProvider(_p: FormState, f: FormData): Promise<FormSt
   try {
     await prisma.provider.update({
       where: { id },
-      data: { name: str(f, "name"), baseUrl, modelsEndpoint: str(f, "modelsEndpoint") || null, docsUrl: str(f, "docsUrl") || null, isActive: str(f, "isActive") === "1" },
+      data: { name: str(f, "name"), baseUrl, modelsEndpoint: str(f, "modelsEndpoint") || null, docsUrl: str(f, "docsUrl") || null, isActive: str(f, "isActive") === "1", defaultChatModel: str(f, "defaultChatModel") || null, defaultImageModel: str(f, "defaultImageModel") || null },
     });
   } catch (e) { return fail(e); }
   revalidatePath("/providers");

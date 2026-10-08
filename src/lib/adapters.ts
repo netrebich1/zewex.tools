@@ -10,6 +10,8 @@ export type RunResult = {
   outputTokens: number;
   units: number;
   error?: string;
+  /** Точная стоимость от провайдера (OpenRouter), если он её сообщил. */
+  exactCostUsd?: number;
 };
 
 export type FetchedModel = {
@@ -149,21 +151,53 @@ export type RunInput =
   | { kind: "serp"; params: Record<string, string> }
   | { kind: "seo_data"; endpoint: string; body: unknown };
 
-export async function runProvider(p: ProviderLike, secret: string, input: RunInput): Promise<RunResult> {
+export type RunOptions = { timeoutMs?: number; signal?: AbortSignal };
+
+function combinedSignal(timeoutMs: number, outer?: AbortSignal): AbortSignal {
+  const t = AbortSignal.timeout(timeoutMs);
+  if (!outer) return t;
+  const ac = new AbortController();
+  const fwd = (s: AbortSignal) => () => ac.abort(s.reason);
+  if (outer.aborted) ac.abort(outer.reason);
+  else outer.addEventListener("abort", fwd(outer), { once: true });
+  t.addEventListener("abort", fwd(t), { once: true });
+  return ac.signal;
+}
+
+export function isOpenRouter(p: ProviderLike): boolean {
+  return /openrouter\.ai/i.test(p.baseUrl);
+}
+
+export async function runProvider(p: ProviderLike, secret: string, input: RunInput, opts: RunOptions = {}): Promise<RunResult> {
   const base = { inputTokens: 0, outputTokens: 0, units: 1 };
   try {
     if (input.kind === "chat" || input.kind === "image" || input.kind === "embedding") {
       const path = input.kind === "chat" ? "chat/completions" : input.kind === "image" ? "images/generations" : "embeddings";
+      const body: Record<string, unknown> = { ...input.body, model: input.model };
+      if (input.kind !== "image") body.stream = false;
+      // OpenRouter отдаёт точную стоимость ответа, если попросить usage в теле
+      if (isOpenRouter(p)) body.usage = { include: true };
+      const extraHeaders: Record<string, string> = isOpenRouter(p) ? { "HTTP-Referer": "https://zewex.tools", "X-Title": "Zewex Tools" } : {};
       const res = await fetch(joinUrl(p.baseUrl, path), {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders(p, secret) },
-        body: JSON.stringify({ ...input.body, model: input.model, stream: false }),
-        signal: AbortSignal.timeout(180000),
+        headers: { "Content-Type": "application/json", ...authHeaders(p, secret), ...extraHeaders },
+        body: JSON.stringify(body),
+        signal: combinedSignal(opts.timeoutMs ?? 180000, opts.signal),
       });
       const data = await readJson(res);
       if (!res.ok) return { ...base, ok: false, status: res.status, data, error: errorMessage(data, res.status) };
-      const usage = (data as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage ?? {};
-      return { ok: true, status: res.status, data, inputTokens: usage.prompt_tokens ?? 0, outputTokens: usage.completion_tokens ?? 0, units: 1 };
+      // chat: prompt_tokens/completion_tokens; images API: input_tokens/output_tokens
+      const usage = (data as { usage?: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number; cost?: number } }).usage ?? {};
+      const n = input.kind === "image" ? Math.max(1, Number((input.body as { n?: number }).n ?? 1)) : 1;
+      return {
+        ok: true,
+        status: res.status,
+        data,
+        inputTokens: usage.prompt_tokens ?? usage.input_tokens ?? 0,
+        outputTokens: usage.completion_tokens ?? usage.output_tokens ?? 0,
+        units: n,
+        exactCostUsd: typeof usage.cost === "number" ? usage.cost : undefined,
+      };
     }
     if (input.kind === "serp") {
       const u = new URL(joinUrl(p.baseUrl, "search.json"));
