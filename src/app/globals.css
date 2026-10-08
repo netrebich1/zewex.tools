@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #1a1a1a;
+  --color-ink-2: #403f41;
+  --color-muted: #6b6b70;
+  --color-line: #e6e4df;
+  --color-bg: #f6f5f2;
+  --color-surface: #ffffff;
+  --color-brand: #ffad0e;
+  --color-brand-2: #f9b03c;
+  --color-brand-soft: #fff4dc;
+  --color-ok: #1f9d55;
+  --color-ok-soft: #e4f6ea;
+  --color-warn: #c8780a;
+  --color-warn-soft: #fff1dc;
+  --color-danger: #d23b3b;
+  --color-danger-soft: #fde8e8;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius-xl: 16px;
+  --shadow-card: 0 1px 2px rgba(20, 20, 20, 0.04), 0 4px 16px rgba(20, 20, 20, 0.05);
+}
+
+html { color-scheme: light; }
+body {
+  @apply bg-bg text-ink antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+.card { @apply bg-surface border border-line rounded-2xl shadow-[var(--shadow-card)]; }
+.input {
+  @apply w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] text-ink placeholder:text-muted/70
+    focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand disabled:opacity-60;
+}
+.label { @apply block text-[13px] font-medium text-muted mb-1.5; }
+.btn, .btn-primary, .btn-brand, .btn-ghost, .btn-danger {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[14px] font-semibold transition
+    disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap select-none cursor-pointer;
+}
+.btn-primary { @apply bg-ink text-white hover:bg-ink-2 active:scale-[0.99]; }
+.btn-brand { @apply bg-brand text-ink hover:bg-brand-2 active:scale-[0.99]; }
+.btn-ghost { @apply bg-transparent text-ink hover:bg-ink/5 border border-line; }
+.btn-danger { @apply bg-danger-soft text-danger hover:bg-danger hover:text-white; }
+.btn-sm { @apply px-3 py-1.5 text-[13px] rounded-lg; }
+.badge { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-medium whitespace-nowrap; }
+.table { @apply w-full text-[14px]; }
+.table th { @apply text-left text-[12px] uppercase tracking-wide text-muted font-semibold px-3 py-2 border-b border-line; }
+.table td { @apply px-3 py-2.5 border-b border-line/70 align-middle; }
+.table tr:last-child td { @apply border-b-0; }
+.nav-link { @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium text-ink-2 hover:bg-ink/5 transition; }
+.nav-link.active { @apply bg-ink text-white hover:bg-ink; }
+.h1 { @apply text-[26px] sm:text-[30px] font-bold tracking-tight; }
+.h2 { @apply text-[18px] font-semibold tracking-tight; }
+.help { @apply text-[13px] text-muted; }
+.table-wrap { @apply overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0; }

@@ -1,0 +1,19 @@
+[Unit]
+Description=Zewex Tools portal (Next.js)
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=zewex_tools_usr
+Group=zewex_tools_usr
+WorkingDirectory=/var/www/zewex_tools_usr/data/app
+EnvironmentFile=/var/www/zewex_tools_usr/data/app/.env
+Environment=PORT=3100
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node .next/standalone/server.js
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

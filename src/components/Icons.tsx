@@ -1,0 +1,38 @@
+import type { SVGProps } from "react";
+
+const base = (props: SVGProps<SVGSVGElement>) => ({
+  width: 20,
+  height: 20,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  ...props,
+});
+
+export const Icon = {
+  home: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M3 11.5 12 4l9 7.5" /><path d="M5 10v10h14V10" /></svg>),
+  key: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><circle cx="8" cy="15" r="4" /><path d="M11 12 21 2" /><path d="m17 6 3 3" /><path d="m14 9 2 2" /></svg>),
+  cloud: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M7 18a4 4 0 0 1-.6-7.95A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z" /></svg>),
+  users: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><circle cx="17" cy="9" r="2.5" /><path d="M16 15.5a5 5 0 0 1 5.5 4.5" /></svg>),
+  user: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>),
+  chart: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M22 20H2" /></svg>),
+  grid: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>),
+  pin: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M12 22s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12z" /><circle cx="12" cy="10" r="2.5" /></svg>),
+  dice: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><rect x="3" y="3" width="18" height="18" rx="4" /><circle cx="8" cy="8" r="1.2" fill="currentColor" /><circle cx="16" cy="8" r="1.2" fill="currentColor" /><circle cx="12" cy="12" r="1.2" fill="currentColor" /><circle cx="8" cy="16" r="1.2" fill="currentColor" /><circle cx="16" cy="16" r="1.2" fill="currentColor" /></svg>),
+  search: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>),
+  compass: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2 5-5 2 2-5z" /></svg>),
+  plus: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M12 5v14" /><path d="M5 12h14" /></svg>),
+  check: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="m5 12 4.5 4.5L19 7" /></svg>),
+  x: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M6 6l12 12" /><path d="M18 6 6 18" /></svg>),
+  arrow: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>),
+  logout: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M10 4H5v16h5" /><path d="M14 8l4 4-4 4" /><path d="M18 12H9" /></svg>),
+  refresh: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M20 12a8 8 0 1 1-2.3-5.7" /><path d="M20 4v5h-5" /></svg>),
+  route: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><circle cx="6" cy="19" r="2.5" /><circle cx="18" cy="5" r="2.5" /><path d="M8.5 19H14a4 4 0 0 0 0-8h-4a4 4 0 0 1 0-8h5.5" /></svg>),
+  menu: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></svg>),
+  shield: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M12 3 4 6v6c0 4.5 3.5 8 8 9 4.5-1 8-4.5 8-9V6z" /></svg>),
+  layers: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="m12 3 9 5-9 5-9-5z" /><path d="m3 13 9 5 9-5" /></svg>),
+};
+export type IconName = keyof typeof Icon;

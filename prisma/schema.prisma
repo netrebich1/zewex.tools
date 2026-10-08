@@ -1,0 +1,257 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum TeamRole {
+  LEAD
+  MEMBER
+}
+
+enum ProviderKind {
+  LLM
+  DATA
+}
+
+enum AuthType {
+  BEARER
+  BASIC
+  QUERY
+}
+
+enum Adapter {
+  OPENAI_COMPAT
+  DATAFORSEO
+  SERPAPI
+}
+
+enum Capability {
+  CHAT
+  IMAGE
+  EMBEDDING
+  SERP
+  SEO_DATA
+}
+
+enum KeyStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ModelSource {
+  SYNCED
+  MANUAL
+}
+
+enum BindingScope {
+  USER_PROJECT
+  TEAM_PROJECT
+  PROJECT
+  TEAM
+  GLOBAL
+}
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  name          String
+  passwordHash  String?
+  role          Role         @default(MEMBER)
+  isActive      Boolean      @default(true)
+  inviteToken   String?      @unique
+  inviteExpires DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  sessions      Session[]
+  memberships   TeamMember[]
+  apiKeys       ApiKey[]
+  bindings      Binding[]
+  usage         UsageLog[]
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Team {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  description String?
+  createdAt   DateTime     @default(now())
+  members     TeamMember[]
+  bindings    Binding[]
+}
+
+model TeamMember {
+  teamId    String
+  userId    String
+  role      TeamRole @default(MEMBER)
+  createdAt DateTime @default(now())
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+}
+
+model Section {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  icon      String    @default("grid")
+  order     Int       @default(0)
+  projects  Project[]
+}
+
+model Project {
+  id          String     @id @default(cuid())
+  sectionId   String
+  name        String
+  slug        String     @unique
+  description String?
+  url         String?
+  status      String     @default("PLANNED")
+  order       Int        @default(0)
+  createdAt   DateTime   @default(now())
+  section     Section    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  slots       Slot[]
+  usage       UsageLog[]
+}
+
+model Slot {
+  id          String     @id @default(cuid())
+  projectId   String
+  key         String
+  name        String
+  capability  Capability
+  description String?
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  bindings    Binding[]
+  usage       UsageLog[]
+
+  @@unique([projectId, key])
+}
+
+model Provider {
+  id             String       @id @default(cuid())
+  slug           String       @unique
+  name           String
+  kind           ProviderKind
+  adapter        Adapter
+  authType       AuthType
+  baseUrl        String
+  modelsEndpoint String?
+  docsUrl        String?
+  isActive       Boolean      @default(true)
+  order          Int          @default(0)
+  models         Model[]
+  apiKeys        ApiKey[]
+  bindings       Binding[]
+  usage          UsageLog[]
+}
+
+model Model {
+  id            String      @id @default(cuid())
+  providerId    String
+  modelId       String
+  name          String
+  capabilities  String      @default("CHAT")
+  inputPrice    Float?
+  outputPrice   Float?
+  contextLength Int?
+  isEnabled     Boolean     @default(false)
+  source        ModelSource @default(MANUAL)
+  createdAt     DateTime    @default(now())
+  provider      Provider    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  bindings      Binding[]
+  usage         UsageLog[]
+
+  @@unique([providerId, modelId])
+}
+
+model ApiKey {
+  id              String     @id @default(cuid())
+  providerId      String
+  label           String
+  secretEnc       String     @db.Text
+  secretHint      String
+  ownerId         String?
+  status          KeyStatus  @default(ACTIVE)
+  monthlyLimitUsd Float?
+  notes           String?
+  lastCheckedAt   DateTime?
+  lastCheckOk     Boolean?
+  lastCheckNote   String?
+  createdAt       DateTime   @default(now())
+  provider        Provider   @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  owner           User?      @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  bindings        Binding[]
+  usage           UsageLog[]
+}
+
+model Binding {
+  id         String       @id @default(cuid())
+  scope      BindingScope
+  slotId     String?
+  userId     String?
+  teamId     String?
+  capability Capability?
+  providerId String
+  modelId    String?
+  apiKeyId   String
+  createdAt  DateTime     @default(now())
+  slot       Slot?        @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  user       User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team       Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  provider   Provider     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  model      Model?       @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  apiKey     ApiKey       @relation(fields: [apiKeyId], references: [id], onDelete: Restrict)
+
+  @@index([slotId])
+  @@index([teamId])
+  @@index([userId])
+}
+
+model UsageLog {
+  id           String       @id @default(cuid())
+  userId       String?
+  projectId    String?
+  slotId       String?
+  providerId   String
+  modelId      String?
+  apiKeyId     String?
+  scope        BindingScope?
+  inputTokens  Int          @default(0)
+  outputTokens Int          @default(0)
+  units        Int          @default(1)
+  costUsd      Float?
+  durationMs   Int          @default(0)
+  ok           Boolean      @default(true)
+  error        String?      @db.Text
+  createdAt    DateTime     @default(now())
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  slot         Slot?        @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  provider     Provider     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  model        Model?       @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  apiKey       ApiKey?      @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([apiKeyId, createdAt])
+  @@index([userId, createdAt])
+}

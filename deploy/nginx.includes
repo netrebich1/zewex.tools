@@ -1,0 +1,10 @@
+# zewex.tools -> Next.js on 127.0.0.1:3100 (managed by deploy/deploy.sh)
+location ~ ^/ {
+    proxy_pass http://127.0.0.1:3100;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 300s;
+    proxy_set_header X-Forwarded-Host $host;
+    include /etc/nginx/proxy_params;
+}
