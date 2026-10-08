@@ -17,3 +17,10 @@
 - Логи: `journalctl -u zewex-tools -n 100`. Сервис слушает 127.0.0.1:3100.
 - Секреты только в `.env` на сервере (не в git). Никогда не печатать APP_ENCRYPTION_KEY и пароли в чат.
 - Репозиторий: `git@github.com:netrebich1/zewex.tools.git`, ветка `main`, пуш через deploy key.
+
+## Pinterest Pins (сервис пинов) и воркер
+- Страницы `src/app/(app)/pinterest/pins/*`, действия `src/actions/pins.ts`, библиотеки `src/lib/pins/*` (ai, stages, prompts, plan, texts, wp, schedule, export, canvas). Рецепт сайта и константы — `src/lib/pins/types.ts`.
+- Фоновая работа только в воркере `worker/` (systemd `zewex-worker`, `tsx worker/index.ts`): очередь `PinJob`, этапы `worker/stages/*`, реестр `worker/stages/index.ts` — при правках проверять, что все этапы зарегистрированы.
+- Canvas рендерится на сервере (`@napi-rs/canvas`), шрифты в `storage/pins/fonts` (скрипт `scripts/pins/fetch-fonts.mjs`). Файлы сервиса: `/var/www/zewex_tools_usr/data/storage/pins`, отдаются nginx как `/files/`.
+- Проверка типов воркера: `npx tsc --noEmit -p tsconfig.worker.json`. Без деплоя проверять в копии `/root/zewex-check` на сервере.
+- Ключи ИИ назначаются сервисам/командам на странице ключа; доступы к сайтам — `/access` (`SiteAccess`). На сервере нет IPv6: `NODE_OPTIONS=--dns-result-order=ipv4first` в unit-файлах.
