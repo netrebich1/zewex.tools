@@ -13,21 +13,25 @@ export type ProviderOption = {
 };
 export type Option = { id: string; name: string };
 
-export function BindingForm({ providers, teams, users, slots, isAdmin, meId, fixedScope, fixedSlotId, fixedTeamId, compact }: {
+export function BindingForm({ providers, teams, users, slots, isAdmin, meId, leadTeamIds = [], fixedScope, fixedSlotId, fixedTeamId, compact }: {
   providers: ProviderOption[];
   teams: Option[];
   users: Option[];
   slots: { id: string; name: string; capability: string }[];
   isAdmin: boolean;
   meId: string;
+  /** Teams the current user leads: they may add TEAM / TEAM_PROJECT rules for those teams. */
+  leadTeamIds?: string[];
   fixedScope?: string;
   fixedSlotId?: string;
   fixedTeamId?: string;
   compact?: boolean;
 }) {
-  const scopes = isAdmin ? Object.keys(SCOPE_LABELS) : ["USER_PROJECT"];
+  const scopes = isAdmin ? Object.keys(SCOPE_LABELS) : leadTeamIds.length ? ["USER_PROJECT", "TEAM_PROJECT", "TEAM"] : ["USER_PROJECT"];
+  const teamOptions = isAdmin ? teams : teams.filter((t) => leadTeamIds.includes(t.id));
   const [scope, setScope] = useState(fixedScope ?? (isAdmin ? "PROJECT" : "USER_PROJECT"));
   const [slotId, setSlotId] = useState(fixedSlotId ?? slots[0]?.id ?? "");
+  const [userId, setUserId] = useState(meId);
   const slot = slots.find((s) => s.id === slotId);
   const [capability, setCapability] = useState(slot?.capability ?? "CHAT");
   const needCap = scope === "TEAM" || scope === "GLOBAL";
@@ -43,7 +47,9 @@ export function BindingForm({ providers, teams, users, slots, isAdmin, meId, fix
   const [providerId, setProviderId] = useState(usableProviders[0]?.id ?? "");
   const provider = usableProviders.find((p) => p.id === providerId) ?? usableProviders[0];
   const models = (provider?.models ?? []).filter((m) => m.capabilities.split(",").includes(effectiveCap) || provider?.kind === "DATA");
-  const keys = (provider?.keys ?? []).filter((k) => k.status === "ACTIVE" && (isAdmin || !k.ownerId || k.ownerId === meId));
+  // Shared keys are always available; a personal key only inside its owner's personal rule.
+  const ruleUser = scope === "USER_PROJECT" ? (isAdmin ? userId : meId) : null;
+  const keys = (provider?.keys ?? []).filter((k) => k.status === "ACTIVE" && (!k.ownerId || k.ownerId === ruleUser));
 
   return (
     <ActionForm action={createBinding} className={compact ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-3" : "grid gap-3 sm:grid-cols-2"}>
@@ -73,9 +79,9 @@ export function BindingForm({ providers, teams, users, slots, isAdmin, meId, fix
       )}
       {(scope === "TEAM" || scope === "TEAM_PROJECT") && (
         fixedTeamId ? <input type="hidden" name="teamId" value={fixedTeamId} /> : (
-          <Field label="Команда">
-            <select className="input" name="teamId" defaultValue={teams[0]?.id}>
-              {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          <Field label="Команда" hint={teamOptions.length ? undefined : "Нет команд, которыми вы управляете"}>
+            <select className="input" name="teamId" defaultValue={teamOptions[0]?.id}>
+              {teamOptions.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </Field>
         )
@@ -83,7 +89,7 @@ export function BindingForm({ providers, teams, users, slots, isAdmin, meId, fix
       {scope === "USER_PROJECT" && (
         isAdmin ? (
           <Field label="Пользователь">
-            <select className="input" name="userId" defaultValue={meId}>
+            <select className="input" name="userId" value={userId} onChange={(e) => setUserId(e.target.value)}>
               {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </Field>
@@ -101,8 +107,8 @@ export function BindingForm({ providers, teams, users, slots, isAdmin, meId, fix
           </select>
         </Field>
       )}
-      <Field label="Ключ" hint={keys.length ? undefined : "Нет активных ключей этого провайдера"}>
-        <select className="input" name="apiKeyId" defaultValue={keys[0]?.id} key={provider?.id}>
+      <Field label="Ключ" hint={keys.length ? undefined : "Нет подходящих активных ключей: личные ключи доступны только в личном правиле владельца"}>
+        <select className="input" name="apiKeyId" defaultValue={keys[0]?.id} key={`${provider?.id}-${scope}-${ruleUser}`}>
           {keys.map((k) => <option key={k.id} value={k.id}>{k.label} · {k.secretHint}{k.ownerId ? " · личный" : ""}</option>)}
         </select>
       </Field>

@@ -20,6 +20,23 @@ function fail(e: unknown): FormState {
   return { error: msg };
 }
 
+/** Provider base URLs must point at a public HTTPS host, never at the server itself or the local network. */
+function validateBaseUrl(raw: string): string | null {
+  let u: URL;
+  try { u = new URL(raw); } catch { return "Некорректный базовый адрес"; }
+  if (u.protocol !== "https:") return "Базовый адрес должен начинаться с https://";
+  const h = u.hostname.toLowerCase();
+  const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(h) || h.includes(":");
+  if (isIp || h === "localhost" || !h.includes(".") || /\.(local|internal|lan|localhost)$/.test(h)) return "Укажите публичный домен провайдера, а не локальный адрес";
+  return null;
+}
+
+/** First enabled model of a provider: used to probe keys of providers that have no /models endpoint. */
+async function probeModelFor(providerId: string): Promise<string | null> {
+  const m = await prisma.model.findFirst({ where: { providerId, isEnabled: true }, orderBy: { createdAt: "asc" } });
+  return m?.modelId ?? null;
+}
+
 async function uniqueSlug(table: "project" | "team" | "section", base: string): Promise<string> {
   let slug = slugify(base);
   for (let i = 2; i < 50; i++) {
@@ -138,13 +155,15 @@ export async function createBinding(_p: FormState, f: FormData): Promise<FormSta
   let userId = str(f, "userId") || null;
 
   if (me.role !== "ADMIN") {
-    if (scope !== "USER_PROJECT") return { error: "Участник может задавать только личные правила" };
-    userId = me.id;
+    const leadsTeam = (scope === "TEAM" || scope === "TEAM_PROJECT") && !!teamId && me.leadTeamIds.includes(teamId);
+    if (scope === "USER_PROJECT") userId = me.id;
+    else if (!leadsTeam) return { error: "Участник задаёт только личные правила, лидер команды — правила своей команды" };
   }
   const key = await prisma.apiKey.findUnique({ where: { id: apiKeyId }, include: { provider: true } });
   if (!key) return { error: "Выберите ключ" };
   if (key.providerId !== providerId) return { error: "Ключ принадлежит другому провайдеру" };
-  if (me.role !== "ADMIN" && key.ownerId && key.ownerId !== me.id) return { error: "Это чужой личный ключ" };
+  // A personal key is usable only in its owner's personal rule; it never becomes a shared default by accident.
+  if (key.ownerId && (scope !== "USER_PROJECT" || userId !== key.ownerId)) return { error: "Личный ключ можно назначить только в личное правило его владельца" };
   const targetCap: Capability | null = capability ?? (slotId ? (await prisma.slot.findUnique({ where: { id: slotId } }))?.capability ?? null : null);
   if (targetCap) {
     const needData = targetCap === "SERP" || targetCap === "SEO_DATA";
@@ -173,9 +192,11 @@ export async function createBinding(_p: FormState, f: FormData): Promise<FormSta
     modelId: key.provider.kind === "LLM" ? modelId : null,
     apiKeyId,
   };
-  // Replace an existing rule with the same scope/target to avoid duplicates
-  await prisma.binding.deleteMany({ where: { scope, slotId: data.slotId, teamId: data.teamId, userId: data.userId, capability: data.capability } });
-  await prisma.binding.create({ data });
+  // Replace an existing rule with the same scope/target atomically, so a failure never leaves the slot without a rule
+  await prisma.$transaction([
+    prisma.binding.deleteMany({ where: { scope, slotId: data.slotId, teamId: data.teamId, userId: data.userId, capability: data.capability } }),
+    prisma.binding.create({ data }),
+  ]);
   revalidatePath("/", "layout");
   return { ok: "Правило сохранено" };
 }
@@ -184,7 +205,9 @@ export async function deleteBinding(_p: FormState, f: FormData): Promise<FormSta
   const me = await requireUser();
   const b = await prisma.binding.findUnique({ where: { id: str(f, "id") } });
   if (!b) return { error: "Правило не найдено" };
-  if (me.role !== "ADMIN" && !(b.scope === "USER_PROJECT" && b.userId === me.id)) return { error: "Нет прав" };
+  const own = b.scope === "USER_PROJECT" && b.userId === me.id;
+  const leads = b.teamId != null && me.leadTeamIds.includes(b.teamId);
+  if (me.role !== "ADMIN" && !own && !leads) return { error: "Нет прав" };
   await prisma.binding.delete({ where: { id: b.id } });
   revalidatePath("/", "layout");
   return { ok: "Правило удалено" };
@@ -211,7 +234,7 @@ export async function createKey(_p: FormState, f: FormData): Promise<FormState> 
       notes: str(f, "notes") || null,
     },
   });
-  const check = await checkKey(provider, secret);
+  const check = await checkKey(provider, secret, await probeModelFor(provider.id));
   await prisma.apiKey.update({ where: { id: key.id }, data: { lastCheckedAt: new Date(), lastCheckOk: check.ok, lastCheckNote: check.note } });
   revalidatePath("/keys");
   redirect(`/keys/${key.id}`);
@@ -246,7 +269,7 @@ export async function testKey(_p: FormState, f: FormData): Promise<FormState> {
   const key = await prisma.apiKey.findUnique({ where: { id }, include: { provider: true } });
   if (!key) return { error: "Ключ не найден" };
   if (me.role !== "ADMIN" && key.ownerId !== me.id) return { error: "Нет прав" };
-  const check = await checkKey(key.provider, decryptSecret(key.secretEnc));
+  const check = await checkKey(key.provider, decryptSecret(key.secretEnc), await probeModelFor(key.providerId));
   await prisma.apiKey.update({ where: { id }, data: { lastCheckedAt: new Date(), lastCheckOk: check.ok, lastCheckNote: check.note } });
   revalidatePath(`/keys/${id}`);
   return check.ok ? { ok: check.note } : { error: check.note };
@@ -268,10 +291,13 @@ export async function deleteKey(_p: FormState, f: FormData): Promise<FormState> 
 export async function updateProvider(_p: FormState, f: FormData): Promise<FormState> {
   await requireAdmin();
   const id = str(f, "id");
+  const baseUrl = str(f, "baseUrl");
+  const bad = validateBaseUrl(baseUrl);
+  if (bad) return { error: bad };
   try {
     await prisma.provider.update({
       where: { id },
-      data: { name: str(f, "name"), baseUrl: str(f, "baseUrl"), modelsEndpoint: str(f, "modelsEndpoint") || null, docsUrl: str(f, "docsUrl") || null, isActive: str(f, "isActive") === "1" },
+      data: { name: str(f, "name"), baseUrl, modelsEndpoint: str(f, "modelsEndpoint") || null, docsUrl: str(f, "docsUrl") || null, isActive: str(f, "isActive") === "1" },
     });
   } catch (e) { return fail(e); }
   revalidatePath("/providers");
@@ -283,6 +309,8 @@ export async function createProvider(_p: FormState, f: FormData): Promise<FormSt
   const name = str(f, "name");
   const baseUrl = str(f, "baseUrl");
   if (!name || !baseUrl) return { error: "Укажите название и базовый адрес" };
+  const bad = validateBaseUrl(baseUrl);
+  if (bad) return { error: bad };
   try {
     const count = await prisma.provider.count();
     await prisma.provider.create({

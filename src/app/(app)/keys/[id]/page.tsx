@@ -25,12 +25,20 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
   if (!isAdmin && key.ownerId && key.ownerId !== me.id) notFound();
   const canEdit = isAdmin || key.ownerId === me.id;
   const spend = await prisma.usageLog.aggregate({ _sum: { costUsd: true }, _count: true, where: { apiKeyId: id, createdAt: { gte: monthStart() } } });
+  // The monthly limit only works when every call's cost is known; warn about rules where it is not.
+  const limitWarning = key.monthlyLimitUsd == null ? null
+    : key.provider.adapter === "SERPAPI" ? "SerpAPI не сообщает стоимость запросов, поэтому вызовы через этот ключ будут отклоняться, пока на нём стоит лимит. Снимите лимит."
+    : (() => {
+        const unpriced = key.bindings.filter((b) => key.provider.kind === "LLM" && (!b.model || (b.model.inputPrice == null && b.model.outputPrice == null))).map((b) => b.model?.modelId ?? "без модели");
+        return unpriced.length ? `У моделей ${Array.from(new Set(unpriced)).join(", ")} не заданы цены: вызовы по этим правилам будут отклоняться, пока на ключе стоит лимит. Укажите цены на странице провайдера.` : null;
+      })();
 
   return (
     <>
       <PageHeader back={{ href: "/keys", label: "Ключи" }} title={key.label} subtitle={`${key.provider.name} · ${key.secretHint}`} />
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
+          {limitWarning && <Alert tone="warn">{limitWarning}</Alert>}
           <Card title="Где используется" description="Правила, которые ссылаются на этот ключ. Удалить ключ можно только когда список пуст.">
             {key.bindings.length === 0 ? <p className="help">Пока нигде.</p> : (
               <div className="table-wrap">

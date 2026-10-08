@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
+
+// Self-hosted at build time: no runtime request to a third-party font CDN.
+const inter = Inter({ subsets: ["latin", "cyrillic"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "Zewex Tools", template: "%s · Zewex Tools" },
@@ -11,11 +15,7 @@ export const viewport: Viewport = { themeColor: "#f6f5f2", width: "device-width"
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru">
-      <head>
-        <link rel="preconnect" href="https://rsms.me/" />
-        <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-      </head>
+    <html lang="ru" className={inter.variable}>
       <body>{children}</body>
     </html>
   );

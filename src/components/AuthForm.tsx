@@ -10,9 +10,11 @@ type Props = {
   action: (prev: FormState, form: FormData) => Promise<FormState>;
   token?: string;
   email?: string;
+  /** Show the "first registration" link on the login page (only while the owner has not registered). */
+  showRegister?: boolean;
 };
 
-export function AuthForm({ mode, action, token, email }: Props) {
+export function AuthForm({ mode, action, token, email, showRegister }: Props) {
   const [state, formAction] = useActionState(action, {});
   const title = mode === "login" ? "Вход" : mode === "register" ? "Первая регистрация" : "Завершите регистрацию";
   return (
@@ -37,7 +39,9 @@ export function AuthForm({ mode, action, token, email }: Props) {
         {mode === "login" ? "Войти" : "Создать аккаунт"}
       </SubmitButton>
       <div className="text-center help">
-        {mode === "login" ? <Link href="/register" className="hover:text-ink">Первая регистрация владельца</Link> : <Link href="/login" className="hover:text-ink">Уже есть аккаунт? Войти</Link>}
+        {mode === "login"
+          ? (showRegister ? <Link href="/register" className="hover:text-ink">Первая регистрация владельца</Link> : <span>Вход только по приглашению администратора</span>)
+          : <Link href="/login" className="hover:text-ink">Уже есть аккаунт? Войти</Link>}
       </div>
     </form>
   );

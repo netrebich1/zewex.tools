@@ -57,9 +57,25 @@ function errorMessage(data: unknown, status: number): string {
   return `HTTP ${status}`;
 }
 
-/** Lightweight connectivity check for a key. */
-export async function checkKey(p: ProviderLike, secret: string): Promise<{ ok: boolean; note: string }> {
+/**
+ * Lightweight connectivity check for a key.
+ * OpenAI-compatible providers with a models endpoint are checked with GET /models.
+ * Providers without one (Perplexity) are checked with a 1-token chat completion on `probeModel`.
+ */
+export async function checkKey(p: ProviderLike, secret: string, probeModel?: string | null): Promise<{ ok: boolean; note: string }> {
   try {
+    if (p.adapter === "OPENAI_COMPAT" && !p.modelsEndpoint) {
+      if (!probeModel) return { ok: false, note: "У провайдера нет списка моделей: включите хотя бы одну модель, чтобы проверить ключ" };
+      const res = await fetch(joinUrl(p.baseUrl, "chat/completions"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders(p, secret) },
+        body: JSON.stringify({ model: probeModel, messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),
+        signal: AbortSignal.timeout(30000),
+      });
+      const data = await readJson(res);
+      if (!res.ok) return { ok: false, note: errorMessage(data, res.status) };
+      return { ok: true, note: `Ключ работает (проверено моделью ${probeModel})` };
+    }
     if (p.adapter === "OPENAI_COMPAT") {
       const res = await fetch(joinUrl(p.baseUrl, p.modelsEndpoint ?? "models"), {
         headers: authHeaders(p, secret),
@@ -95,7 +111,7 @@ export async function checkKey(p: ProviderLike, secret: string): Promise<{ ok: b
 
 /** Pull the model catalog from an OpenAI-compatible provider. */
 export async function fetchModels(p: ProviderLike, secret: string): Promise<FetchedModel[]> {
-  if (p.adapter !== "OPENAI_COMPAT") return [];
+  if (p.adapter !== "OPENAI_COMPAT" || !p.modelsEndpoint) return [];
   const res = await fetch(joinUrl(p.baseUrl, p.modelsEndpoint ?? "models"), {
     headers: authHeaders(p, secret),
     signal: AbortSignal.timeout(30000),

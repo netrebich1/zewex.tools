@@ -44,6 +44,14 @@ export async function runSlot(req: RunRequest): Promise<RunResponse> {
     return { ok: false, status: 409, error: `В правиле для слота «${slot.name}» не выбрана модель` };
   }
   if (b.apiKey.monthlyLimitUsd != null) {
+    // A limit is only enforceable when every call's cost can be computed; refuse rather than silently bypass it.
+    const priced = b.provider.adapter === "DATAFORSEO" || (b.model != null && (b.model.inputPrice != null || b.model.outputPrice != null));
+    if (!priced) {
+      const why = slot.capability === "SERP"
+        ? "SerpAPI не сообщает стоимость запросов"
+        : `у модели ${b.model?.modelId ?? "?"} не заданы цены`;
+      return { ok: false, status: 409, error: `На ключе «${b.apiKey.label}» стоит месячный лимит, но ${why}. Укажите цены модели на странице провайдера или снимите лимит с ключа.` };
+    }
     const spent = await monthSpendForKey(b.apiKey.id);
     if (spent >= b.apiKey.monthlyLimitUsd) {
       return { ok: false, status: 429, error: `Ключ «${b.apiKey.label}» исчерпал месячный лимит $${b.apiKey.monthlyLimitUsd}` };

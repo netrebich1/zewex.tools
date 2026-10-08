@@ -80,7 +80,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
                         <thead><tr><th>Уровень</th><th>Для кого</th><th>Провайдер · модель</th><th>Ключ</th><th></th></tr></thead>
                         <tbody>
                           {[...slot.bindings].sort((a, b) => scopeOrder.indexOf(a.scope) - scopeOrder.indexOf(b.scope)).map((b) => {
-                            const canDelete = isAdmin || (b.scope === "USER_PROJECT" && b.userId === me.id);
+                            const canDelete = isAdmin || (b.scope === "USER_PROJECT" && b.userId === me.id) || (b.teamId != null && me.leadTeamIds.includes(b.teamId));
                             return (
                               <tr key={b.id}>
                                 <td><Badge tone={b.scope === "PROJECT" ? "neutral" : b.scope === "TEAM_PROJECT" ? "brand" : "ink"}>{SCOPE_LABELS[b.scope]}</Badge></td>
@@ -110,7 +110,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
             <details className="mt-4 group">
               <summary className="btn-primary cursor-pointer list-none inline-flex">+ Добавить правило</summary>
               <div className="mt-4 rounded-xl border border-line p-3 sm:p-4">
-                <BindingForm providers={providerOptions} teams={teams.map((t) => ({ id: t.id, name: t.name }))} users={users} slots={slotOptions} isAdmin={isAdmin} meId={me.id} compact />
+                <BindingForm providers={providerOptions} teams={teams.map((t) => ({ id: t.id, name: t.name }))} users={users} slots={slotOptions} isAdmin={isAdmin} meId={me.id} leadTeamIds={me.leadTeamIds} compact />
               </div>
             </details>
           )}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { canManageTeam, requireUser } from "@/lib/auth";
 import { Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -23,6 +23,7 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
   });
   if (!team) notFound();
   const isAdmin = me.role === "ADMIN";
+  const canManage = canManageTeam(me, team.id);
   const [users, providers] = await Promise.all([
     prisma.user.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.provider.findMany({ where: { isActive: true }, orderBy: { order: "asc" }, include: { models: { where: { isEnabled: true }, orderBy: { name: "asc" } }, apiKeys: { where: { status: "ACTIVE" }, orderBy: { label: "asc" } } } }),
@@ -76,19 +77,19 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
                       <td>{b.slot ? <><Link href={`/projects/${b.slot.project.slug}`} className="font-medium hover:underline">{b.slot.project.name}</Link><span className="text-muted"> · {b.slot.name}</span></> : <span>все слоты типа «{CAPABILITY_LABELS[b.capability ?? ""]}»</span>}</td>
                       <td><b>{b.provider.name}</b>{b.model ? <span className="text-muted"> · {b.model.modelId}</span> : null}</td>
                       <td><Link href={`/keys/${b.apiKey.id}`} className="underline decoration-line">{b.apiKey.label}</Link></td>
-                      <td className="text-right">{isAdmin && <ActionForm action={deleteBinding} className="inline" hidden={{ id: b.id }}><SubmitButton className="btn-ghost btn-sm" confirm="Удалить правило?" pendingText="…">✕</SubmitButton></ActionForm>}</td>
+                      <td className="text-right">{canManage && <ActionForm action={deleteBinding} className="inline" hidden={{ id: b.id }}><SubmitButton className="btn-ghost btn-sm" confirm="Удалить правило?" pendingText="…">✕</SubmitButton></ActionForm>}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-          {isAdmin && (
+          {canManage && (
             <details className="mt-4">
               <summary className="btn-primary cursor-pointer list-none inline-flex">+ Правило команды по типу слота</summary>
               <div className="mt-3 rounded-xl border border-line p-3 sm:p-4">
-                <p className="help mb-3">Для правила «команда + конкретный инструмент» откройте страницу инструмента.</p>
-                <BindingForm providers={providerOptions} teams={[{ id: team.id, name: team.name }]} users={users} slots={[]} isAdmin meId={me.id} fixedScope="TEAM" fixedTeamId={team.id} compact />
+                <p className="help mb-3">Для правила «команда + конкретный инструмент» откройте страницу инструмента.{!isAdmin && " Вы лидер этой команды и можете задавать её правила."}</p>
+                <BindingForm providers={providerOptions} teams={[{ id: team.id, name: team.name }]} users={users} slots={[]} isAdmin={isAdmin} meId={me.id} leadTeamIds={me.leadTeamIds} fixedScope="TEAM" fixedTeamId={team.id} compact />
               </div>
             </details>
           )}

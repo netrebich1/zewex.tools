@@ -26,6 +26,8 @@ export function decryptSecret(payload: string): string {
 
 export function secretHint(secret: string): string {
   const s = secret.trim();
+  // "login:password" (DataForSEO): show the login only, never any part of the password
+  if (s.includes(":")) return `${s.slice(0, s.indexOf(":"))}:••••`;
   if (s.length <= 8) return "••••";
   return `${s.slice(0, 4)}…${s.slice(-4)}`;
 }

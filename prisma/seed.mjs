@@ -26,8 +26,9 @@ const sections = [
   { slug: "discovery", name: "Discovery", icon: "compass", order: 4 },
 ];
 
+// Seed only creates what is missing; it never overwrites values the admin may have edited in the UI.
 for (const p of providers) {
-  await prisma.provider.upsert({ where: { slug: p.slug }, update: { name: p.name, baseUrl: p.baseUrl, docsUrl: p.docsUrl, order: p.order }, create: p });
+  await prisma.provider.upsert({ where: { slug: p.slug }, update: {}, create: p });
 }
 for (const [slug, models] of Object.entries(manualModels)) {
   const provider = await prisma.provider.findUnique({ where: { slug } });
@@ -40,7 +41,7 @@ for (const [slug, models] of Object.entries(manualModels)) {
   }
 }
 for (const s of sections) {
-  await prisma.section.upsert({ where: { slug: s.slug }, update: { order: s.order }, create: s });
+  await prisma.section.upsert({ where: { slug: s.slug }, update: {}, create: s });
 }
 console.log("seed done");
 await prisma.$disconnect();

@@ -19,6 +19,8 @@ export async function createSession(userId: string) {
   const id = randomToken(32);
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400 * 1000);
   await prisma.session.create({ data: { id, userId, expiresAt } });
+  // Opportunistic cleanup of expired sessions (cheap, indexed by nothing but small table).
+  await prisma.session.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(() => {});
   const jar = await cookies();
   jar.set(SESSION_COOKIE, id, {
     httpOnly: true,
@@ -26,6 +28,8 @@ export async function createSession(userId: string) {
     secure: process.env.NODE_ENV === "production",
     path: "/",
     expires: expiresAt,
+    // Set SESSION_COOKIE_DOMAIN=.zewex.tools once tools live on subdomains and must call /api/run.
+    ...(process.env.SESSION_COOKIE_DOMAIN ? { domain: process.env.SESSION_COOKIE_DOMAIN } : {}),
   });
 }
 
@@ -42,6 +46,8 @@ export type CurrentUser = {
   name: string;
   role: "ADMIN" | "MEMBER";
   teamIds: string[];
+  /** Teams where the user has the LEAD role: they may manage that team's rules. */
+  leadTeamIds: string[];
 };
 
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
@@ -50,12 +56,21 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   if (!id) return null;
   const session = await prisma.session.findUnique({
     where: { id },
-    include: { user: { include: { memberships: { select: { teamId: true } } } } },
+    include: { user: { include: { memberships: { select: { teamId: true, role: true } } } } },
   });
   if (!session || session.expiresAt < new Date() || !session.user.isActive) return null;
   const u = session.user;
-  return { id: u.id, email: u.email, name: u.name, role: u.role, teamIds: u.memberships.map((m) => m.teamId) };
+  return {
+    id: u.id, email: u.email, name: u.name, role: u.role,
+    teamIds: u.memberships.map((m) => m.teamId),
+    leadTeamIds: u.memberships.filter((m) => m.role === "LEAD").map((m) => m.teamId),
+  };
 });
+
+/** Admins manage every team; a team lead manages only teams they lead. */
+export function canManageTeam(u: CurrentUser, teamId: string): boolean {
+  return u.role === "ADMIN" || u.leadTeamIds.includes(teamId);
+}
 
 export async function requireUser(): Promise<CurrentUser> {
   const u = await getCurrentUser();
@@ -78,4 +93,12 @@ export function allowedRegistrationEmails(): string[] {
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
+}
+
+/** Self-registration stays open only until every allowed owner email has a password. */
+export async function registrationOpen(): Promise<boolean> {
+  const emails = allowedRegistrationEmails();
+  if (!emails.length) return false;
+  const registered = await prisma.user.count({ where: { email: { in: emails }, passwordHash: { not: null } } });
+  return registered < emails.length;
 }
