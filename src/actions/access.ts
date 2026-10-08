@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canManageTeam } from "@/lib/auth";
@@ -29,14 +30,20 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
     ...(appPassword ? { appPasswordEnc: encryptSecret(appPassword) } : {}),
     ...(str(f, "mediaAppPassword") ? { mediaAppPasswordEnc: encryptSecret(str(f, "mediaAppPassword")) } : {}),
   };
+  let createdId = "";
   try {
     if (id) await prisma.siteAccess.update({ where: { id }, data });
     else {
       if (!appPassword) return { error: "Укажите Application Password" };
-      await prisma.siteAccess.create({ data: { ...data, appPasswordEnc: encryptSecret(appPassword) } });
+      const created = await prisma.siteAccess.create({ data: { ...data, appPasswordEnc: encryptSecret(appPassword) } });
+      createdId = created.id;
+      const r = await testConnection({ baseUrl, username, appPassword });
+      await prisma.siteAccess.update({ where: { id: createdId }, data: { lastCheckedAt: new Date(), lastCheckOk: r.ok, lastCheckNote: r.note } });
     }
   } catch (e) { return fail(e); }
-  revalidatePath("/access");
+  revalidatePath("/sites");
+  if (createdId) redirect(`/sites/${createdId}`);
+  revalidatePath(`/sites/${id}`);
   return { ok: "Доступ сохранён" };
 }
 
@@ -47,7 +54,7 @@ export async function testSiteAccess(_p: FormState, f: FormData): Promise<FormSt
   if (!c || (me.role !== "ADMIN" && !me.teamIds.includes(c.teamId))) return { error: "Доступ не найден" };
   const r = await testConnection({ baseUrl: c.baseUrl, username: c.username, appPassword: decryptSecret(c.appPasswordEnc) });
   await prisma.siteAccess.update({ where: { id }, data: { lastCheckedAt: new Date(), lastCheckOk: r.ok, lastCheckNote: r.note } });
-  revalidatePath("/access");
+  revalidatePath(`/sites/${id}`);
   return r.ok ? { ok: r.note } : { error: r.note };
 }
 
@@ -56,9 +63,12 @@ export async function deleteSiteAccess(_p: FormState, f: FormData): Promise<Form
   const id = str(f, "id");
   const c = await prisma.siteAccess.findUnique({ where: { id } });
   if (!c || !canManageTeam(me, c.teamId)) return { error: "Нет прав" };
-  const used = await prisma.pinSite.count({ where: { wpConnectionId: id } });
-  if (used) return { error: `Доступ используют ${used} сайт(ов) в Pinterest Pins. Сначала выберите им другой.` };
-  await prisma.siteAccess.delete({ where: { id } });
-  revalidatePath("/access");
-  return { ok: "Удалено" };
+  const runs = await prisma.pinRun.count({ where: { site: { wpConnectionId: id } } });
+  if (runs) return { error: `У сайта ${runs} прогон(ов) в Pinterest Pins. Уберите сайт в архив вместо удаления.` };
+  await prisma.$transaction([
+    prisma.pinSite.deleteMany({ where: { wpConnectionId: id } }),
+    prisma.siteAccess.delete({ where: { id } }),
+  ]);
+  revalidatePath("/sites");
+  redirect("/sites");
 }

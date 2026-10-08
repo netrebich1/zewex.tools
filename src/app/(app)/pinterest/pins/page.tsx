@@ -39,7 +39,7 @@ export default async function PinsHome() {
 
         <Card title="Сайты" description="Рецепт сайта определяет, сколько и каких пинов делать на каждую ссылку. Настройки — в разделе «Сайты» портала.">
           {sites.length === 0 ? (
-            <Empty title="Сайтов пока нет" hint="Добавьте сайт в разделе «Сайты» портала." />
+            <Empty title="Сайтов пока нет" hint="Добавьте сайт в разделе «Сайты» портала и включите для него Pinterest Pins." />
           ) : (
             <div className="table-wrap">
               <table className="table">

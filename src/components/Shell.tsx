@@ -11,7 +11,6 @@ type NavItem = { href: string; label: string; icon: IconName; admin?: boolean };
 const MENU: NavItem[] = [
   { href: "/keys", label: "Ключи ИИ", icon: "key" },
   { href: "/sites", label: "Сайты", icon: "layers" },
-  { href: "/access", label: "Доступы к сайтам", icon: "shield" },
   { href: "/providers", label: "Провайдеры и модели", icon: "cloud" },
   { href: "/teams", label: "Команды", icon: "users" },
   { href: "/users", label: "Пользователи", icon: "user", admin: true },
@@ -48,7 +47,7 @@ export function Shell({ user, children }: { user: { name: string; email: string;
           <nav className="flex items-center gap-1 ml-2">
             <Link href="/" className={`tab ${isTools ? "active" : ""}`}><Icon.grid width={15} height={15} /> Инструменты</Link>
           </nav>
-          <div className="ml-auto flex items-center gap-2" ref={ref}>
+          <div className="relative ml-auto flex items-center gap-2" ref={ref}>
             <button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 rounded-full border border-line bg-surface pl-1 pr-2.5 py-1 hover:border-line-2 transition" aria-haspopup="menu" aria-expanded={open}>
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-ink text-bg text-[12px] font-bold">{initials(user.name)}</span>
               <span className="hidden sm:block text-[13.5px] font-medium max-w-[140px] truncate">{user.name}</span>

@@ -115,8 +115,10 @@ export async function saveRecipe(_p: FormState, f: FormData): Promise<FormState>
       boards: { multiBoard: f.get("multiBoard") === "on" },
     };
     await prisma.pinSite.update({ where: { id }, data: { recipe: next, name: str(f, "name") || site.name, niche: str(f, "niche"), wpConnectionId: next.publishing.wpConnectionId } });
+    if (next.publishing.wpConnectionId) revalidatePath(`/sites/${next.publishing.wpConnectionId}`);
   } catch (e) { return fail(e); }
   revalidatePath(`/sites/${id}`);
+  revalidatePath("/sites");
   revalidatePath(`/pinterest/pins/sites/${id}`);
   return { ok: "Рецепт сохранён" };
 }
@@ -137,19 +139,25 @@ export async function saveBoards(_p: FormState, f: FormData): Promise<FormState>
   return { ok: "Доски сохранены" };
 }
 
-export async function createSite(_p: FormState, f: FormData): Promise<FormState> {
+/** Включить Pinterest Pins для сайта: создаёт PinSite с рецептом по умолчанию, привязанный к доступу WordPress. */
+export async function enablePinsForSite(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
-  const teamId = str(f, "teamId");
-  const name = str(f, "name");
-  if (!name) return { error: "Укажите название сайта (домен)" };
-  if (!canAccessTeam(me, teamId)) return { error: "Нет доступа к команде" };
-  let siteId = "";
+  const accessId = str(f, "accessId");
   try {
-    const slug = name.toLowerCase().replace(/^https?:\/\//, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || `site-${Date.now()}`;
-    const site = await prisma.pinSite.create({ data: { teamId, name, slug, recipe: mergeRecipe({}), createdById: me.id } });
-    siteId = site.id;
+    const access = await prisma.siteAccess.findUnique({ where: { id: accessId } });
+    if (!access || !canAccessTeam(me, access.teamId)) throw new Error("Сайт не найден");
+    const exists = await prisma.pinSite.findFirst({ where: { wpConnectionId: accessId } });
+    if (exists) throw new Error("Pinterest Pins уже включён");
+    const base = access.name.toLowerCase().replace(/^https?:\/\//, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70) || "site";
+    const taken = await prisma.pinSite.count({ where: { teamId: access.teamId, slug: base } });
+    const slug = taken ? `${base}-${Date.now().toString(36)}` : base;
+    const recipe = mergeRecipe({ publishing: { wpConnectionId: accessId, linkDomain: access.linkDomain ?? "", photoLinkPercent: 40 } });
+    await prisma.pinSite.create({ data: { teamId: access.teamId, name: access.name, slug, recipe, wpConnectionId: accessId, createdById: me.id } });
   } catch (e) { return fail(e); }
-  redirect(`/sites/${siteId}`);
+  revalidatePath(`/sites/${accessId}`);
+  revalidatePath("/sites");
+  revalidatePath("/pinterest/pins");
+  return { ok: "Pinterest Pins включён" };
 }
 
 /** Архив сайта: isActive=false прячет его из сервиса, прогоны и настройки сохраняются. */
@@ -161,6 +169,7 @@ export async function toggleSiteActive(_p: FormState, f: FormData): Promise<Form
     const site = await siteForUser(me, id);
     active = !site.isActive;
     await prisma.pinSite.update({ where: { id }, data: { isActive: active } });
+    if (site.wpConnectionId) revalidatePath(`/sites/${site.wpConnectionId}`);
   } catch (e) { return fail(e); }
   revalidatePath(`/sites/${id}`);
   revalidatePath("/sites");

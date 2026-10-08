@@ -96,7 +96,7 @@ input[type="checkbox"] { accent-color: var(--color-ink); }
 .nav-link.active { @apply bg-ink text-bg hover:bg-ink; }
 .tab { @apply inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13.5px] font-medium border border-transparent text-ink-2 hover:bg-ink/5 transition; }
 .tab.active { @apply bg-ink text-bg; }
-.menu { @apply absolute right-0 mt-2 w-64 bg-surface border border-line rounded-2xl p-1.5 z-50 shadow-[var(--shadow-pop)]; }
+.menu { @apply absolute right-0 top-full mt-2 w-64 bg-surface border border-line rounded-2xl p-1.5 z-50 shadow-[var(--shadow-pop)]; }
 .menu-item { @apply flex items-center gap-2.5 w-full rounded-lg px-3 py-2 text-[14px] text-ink-2 hover:bg-ink/5 hover:text-ink transition text-left; }
 
 /* ───────── Типографика ───────── */
