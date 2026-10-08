@@ -47,7 +47,7 @@ export default async function SitePage({ params }: { params: Promise<{ id: strin
 
   return (
     <>
-      <PageHeader back={{ href: "/sites", label: "Сайты" }} title={title} subtitle={`${team?.name ?? ""}${access ? ` · ${access.baseUrl}` : ` · ${pins!.slug}`}`} actions={pins ? <Link href={`/pinterest/pins/sites/${pins.id}`} className="btn-ghost">Открыть в Pinterest Pins</Link> : null} />
+      <PageHeader back={{ href: "/sites", label: "Сайты" }} title={title} subtitle={`${team?.name ?? ""}${access ? ` · ${access.baseUrl}` : ` · ${pins!.slug}`}`} actions={pins ? <><Link href={`/pinterest/pins/styles?tab=ai&site=${pins.id}`} className="btn-ghost">Стили сайта</Link><Link href={`/pinterest/pins/sites/${pins.id}`} className="btn-ghost">Открыть в Pinterest Pins</Link></> : null} />
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
           {access ? (
@@ -89,6 +89,7 @@ export default async function SitePage({ params }: { params: Promise<{ id: strin
                 </ActionForm>
               )}
               {pins && pins.isActive && <Link href={`/pinterest/pins/runs/new?site=${pins.id}`} className="btn-primary w-full">Новый прогон</Link>}
+              {pins && <Link href={`/pinterest/pins/styles?tab=ai&site=${pins.id}`} className="btn-ghost w-full">Стили: примеры ИИ и Canvas</Link>}
               {pins && <Link href={`/pinterest/pins/sites/${pins.id}`} className="btn-ghost w-full">Запас пинов и прогоны</Link>}
             </div>
           </Card>

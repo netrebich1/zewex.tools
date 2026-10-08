@@ -42,6 +42,7 @@ export function PinsRecipeForm({ site, wps }: Props) {
 
               <fieldset className="rounded-xl border border-line p-3 sm:p-4">
                 <legend className="px-1 font-medium">Наборы стилей</legend>
+                <p className="help mb-3">Наборы собираются из примеров в разделе <Link href={`/pinterest/pins/styles?tab=ai&site=${id}`} className="underline">«Стили» сервиса</Link>: там видно, как выглядит каждый ИИ-стиль и Canvas-шаблон. Здесь отмечаете, какие наборы использовать для этого сайта.</p>
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div><span className="label">ИИ-наборы</span><div className="space-y-1.5 max-h-56 overflow-auto">
                     {site.sets.filter((s) => s.setKind === "ai").map((s) => <label key={s.id} className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="aiSetIds" value={s.id} defaultChecked={r.sets.aiSetIds.includes(s.id)} className="h-4 w-4" /> {s.name} <span className="help">· {(s.styleIds as string[]).length}{s.topic ? ` · ${s.topic}` : ""}</span></label>)}
