@@ -118,10 +118,12 @@ export async function upgradeCatalogSpecs(): Promise<number> {
 export async function approvedStylesForSite(siteId: string, canvasSetIds: string[]): Promise<Array<{ id: string; spec: StyleSpec }>> {
   const [rows, sets, hidden] = await Promise.all([
     prisma.pinCanvasStyle.findMany({ where: { libraryId: CATALOG_LIB, isApproved: true, isActive: true } }),
-    canvasSetIds.length ? prisma.pinSet.findMany({ where: { id: { in: canvasSetIds }, setKind: "canvas" }, select: { styleIds: true } }) : Promise.resolve([]),
+    canvasSetIds.length ? prisma.pinSet.findMany({ where: { id: { in: canvasSetIds }, siteId, setKind: "canvas" }, select: { styleIds: true } }) : Promise.resolve([]),
     prisma.pinStyleExclusion.findMany({ where: { siteId, kind: "canvas", topic: "" }, select: { styleId: true } }),
   ]);
   const allowed = new Set(sets.flatMap((s) => s.styleIds as string[]));
   const hid = new Set(hidden.map((h) => h.styleId));
-  return rows.filter((r) => !hid.has(r.id) && (!allowed.size || allowed.has(r.id))).map((r) => ({ id: r.id, spec: r.data as unknown as StyleSpec }));
+  // Наборы выбраны в рецепте — берём только их (даже если они пусты); не выбраны — все утверждённые.
+  const restrict = canvasSetIds.length > 0;
+  return rows.filter((r) => !hid.has(r.id) && (!restrict || allowed.has(r.id))).map((r) => ({ id: r.id, spec: r.data as unknown as StyleSpec }));
 }

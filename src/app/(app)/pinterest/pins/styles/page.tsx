@@ -5,7 +5,7 @@ import { Card, Empty, PageHeader, type SearchParams, sp } from "@/components/ui"
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { deleteSet } from "@/actions/pins";
-import { listAiStyles, styleCategories } from "@/lib/pins/prompts/aiStyles";
+import { listAiStyles, styleCategories, styleTypes } from "@/lib/pins/prompts/aiStyles";
 import { PINORA_TYPES } from "@/lib/pins/prompts/pinora";
 import { publicUrl } from "@/lib/pins/storage";
 import { AiStylePicker } from "@/components/pins/AiStylePicker";
@@ -59,12 +59,16 @@ async function AiTab({ siteId, teamId }: { siteId: string; teamId: string }) {
     id: s.id,
     name: s.name,
     category: s.category,
-    concept: s.concept.slice(0, 160),
+    type: s.type ?? "",
+    group: s.variantOf ?? s.id,
+    groupName: s.baseName ?? s.name.replace(/\s*\/\d+$/, ""),
+    variantLabel: s.variantLabel ?? "",
+    concept: s.concept.slice(0, 200),
     examples: exampleOf.get(s.id) ?? (s.baseName ? exampleOf.get(s.baseName) : undefined) ?? [],
     hidden: hiddenSet.has(s.id),
     note: notes.find((n) => n.styleId === s.id)?.instruction ?? "",
   }));
-  const cats = styleCategories.map((c) => ({ id: c.id, label: c.label }));
+  const cats = styleCategories.map((c) => ({ id: c.id, label: c.label, note: c.note }));
 
   return (
     <div className="space-y-4">
@@ -79,7 +83,7 @@ async function AiTab({ siteId, teamId }: { siteId: string; teamId: string }) {
           </table></div>
         )}
       </Card>
-      <AiStylePicker siteId={siteId} teamId={teamId} styles={styles} categories={cats} sets={sets.map((s) => ({ id: s.id, name: s.name, topic: s.topic, styleIds: s.styleIds as string[] }))} />
+      <AiStylePicker siteId={siteId} teamId={teamId} styles={styles} categories={cats} types={styleTypes} sets={sets.map((s) => ({ id: s.id, name: s.name, topic: s.topic, styleIds: s.styleIds as string[] }))} />
     </div>
   );
 }

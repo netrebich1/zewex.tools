@@ -15,6 +15,8 @@ export function nextStageAfter(stage: JobStage | string, settings: Record<string
     case "texts": return "upload";
     case "upload": return "schedule";
     case "schedule": return "ready";
+    // Пошаговый режим или «Стоп» на текстах оставляют stage = moderation: дальше идут тексты.
+    case "moderation": return "texts";
     default: return null;
   }
 }

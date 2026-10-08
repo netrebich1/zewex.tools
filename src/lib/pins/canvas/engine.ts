@@ -319,7 +319,7 @@ function drawTextStack(ctx: Ctx2D, scene: SolvedScene, r: CanvasRecipe, lines: T
   const ink = plate === "none" ? "#FFFFFF" : pc.ink;
   const accentInk = plate === "none" ? "#FFFFFF" : pc.inkAccent;
   // Поверхность под текстом: для текста поверх фото — средний цвет кадра с учётом затемнения.
-  const scrim = Math.min(0.78, Math.max(0.34, r.overlay || 0.55));
+  const scrim = Math.min(0.78, Math.max(0.3, r.overlay || 0.55));
   const photoSurface = scene.textOnPhoto && plate === "none"
     ? blendBlack(sampleSurface(ctx, scene.textRect) || "#1A1A1A", scrim)
     : null;

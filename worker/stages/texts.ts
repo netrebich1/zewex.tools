@@ -61,6 +61,7 @@ export const texts: StageHandler = async (ctx) => {
       }
     } catch (e) {
       if (e instanceof AiError && e.cls.kind === "fatal_run") return { fatal: e.cls.message };
+      if (ctx.signal.aborted) throw ctx.signal.reason instanceof Error ? ctx.signal.reason : e;
       for (const it of group) await failItem(it, "texts", e, acc);
     }
     done += group.length;

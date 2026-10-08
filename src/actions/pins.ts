@@ -91,11 +91,17 @@ export async function saveRecipe(_p: FormState, f: FormData): Promise<FormState>
   try {
     const site = await siteForUser(me, id);
     const r = mergeRecipe(site.recipe);
+    // Чужие id не принимаем: доступ WordPress — только своей команды, наборы — только этого сайта.
+    const wpId = str(f, "wpConnectionId");
+    const wpOk = wpId ? await prisma.siteAccess.findFirst({ where: { id: wpId, teamId: site.teamId }, select: { id: true } }) : null;
+    if (wpId && !wpOk) throw new Error("Доступ WordPress не принадлежит команде сайта");
+    const ownSets = new Set((await prisma.pinSet.findMany({ where: { siteId: id }, select: { id: true } })).map((s) => s.id));
+    const onlyOwn = (ids: string[]) => ids.filter((x) => ownSets.has(x));
     const next: Recipe = {
       ...r,
       mix: { ai: num(f, "mixAi", r.mix.ai, 0, 20), photos: num(f, "mixPhotos", r.mix.photos, 0, 20), canvas: num(f, "mixCanvas", r.mix.canvas, 0, 20), pinora: num(f, "mixPinora", r.mix.pinora, 0, 20) },
       photosMode: str(f, "photosMode") === "featured_only" ? "featured_only" : "all",
-      sets: { ...r.sets, aiSetIds: f.getAll("aiSetIds").map(String), canvasSetIds: f.getAll("canvasSetIds").map(String), pinoraTypes: f.getAll("pinoraTypes").map(String) },
+      sets: { ...r.sets, aiSetIds: onlyOwn(f.getAll("aiSetIds").map(String)), canvasSetIds: onlyOwn(f.getAll("canvasSetIds").map(String)), pinoraTypes: f.getAll("pinoraTypes").map(String) },
       text: {
         ...r.text,
         language: str(f, "language") || r.text.language,
@@ -105,7 +111,7 @@ export async function saveRecipe(_p: FormState, f: FormData): Promise<FormState>
         audience: (["women", "men", "mix"] as const).find((a) => a === str(f, "audience")) ?? r.text.audience,
         brandColor: str(f, "brandColor") || undefined,
       },
-      publishing: { wpConnectionId: str(f, "wpConnectionId") || null, linkDomain: str(f, "linkDomain"), photoLinkPercent: num(f, "photoLinkPercent", r.publishing.photoLinkPercent, 0, 100) },
+      publishing: { wpConnectionId: wpOk ? wpId : null, linkDomain: str(f, "linkDomain"), photoLinkPercent: num(f, "photoLinkPercent", r.publishing.photoLinkPercent, 0, 100) },
       schedule: {
         pinsPerDay: num(f, "pinsPerDay", r.schedule.pinsPerDay, 1, 100),
         startFrom: /^\d{4}-\d{2}-\d{2}$/.test(str(f, "startFrom")) ? str(f, "startFrom") : "next_free_day",
@@ -188,8 +194,10 @@ export async function saveAiSet(_p: FormState, f: FormData): Promise<FormState> 
   if (!styleIds.length) return { error: "Отметьте хотя бы один стиль" };
   try {
     await siteForUser(me, siteId);
-    if (id) await prisma.pinSet.update({ where: { id }, data: { name, topic: str(f, "topic"), styleIds, pinCount: styleIds.length } });
-    else await prisma.pinSet.create({ data: { siteId, name, topic: str(f, "topic"), setKind: "ai", styleIds, pinCount: styleIds.length } });
+    if (id) {
+      const r = await prisma.pinSet.updateMany({ where: { id, siteId, setKind: "ai" }, data: { name, topic: str(f, "topic"), styleIds, pinCount: styleIds.length } });
+      if (!r.count) throw new Error("Набор не найден");
+    } else await prisma.pinSet.create({ data: { siteId, name, topic: str(f, "topic"), setKind: "ai", styleIds, pinCount: styleIds.length } });
   } catch (e) { return fail(e); }
   revalidatePath("/pinterest/pins/styles");
   return { ok: "Набор сохранён" };
@@ -287,8 +295,10 @@ export async function saveCanvasSet(_p: FormState, f: FormData): Promise<FormSta
   if (!styleIds.length) return { error: "Отметьте хотя бы один стиль" };
   try {
     await siteForUser(me, siteId);
-    if (id) await prisma.pinSet.update({ where: { id }, data: { name, styleIds, pinCount: styleIds.length } });
-    else await prisma.pinSet.create({ data: { siteId, name, setKind: "canvas", styleIds, pinCount: styleIds.length } });
+    if (id) {
+      const r = await prisma.pinSet.updateMany({ where: { id, siteId, setKind: "canvas" }, data: { name, styleIds, pinCount: styleIds.length } });
+      if (!r.count) throw new Error("Набор не найден");
+    } else await prisma.pinSet.create({ data: { siteId, name, setKind: "canvas", styleIds, pinCount: styleIds.length } });
   } catch (e) { return fail(e); }
   revalidatePath("/pinterest/pins/styles");
   return { ok: "Canvas-набор сохранён" };

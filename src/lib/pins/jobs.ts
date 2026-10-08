@@ -25,12 +25,15 @@ export async function enqueueJob(runId: string, stage: JobStage, options: Record
 export async function requestStop(runId: string): Promise<boolean> {
   const active = await prisma.pinJob.findFirst({ where: { runId, status: { in: ["PENDING", "RUNNING"] } } });
   if (!active) return false;
+  // Статус меняем только если он не успел измениться: иначе завершённая задача стала бы «вечно активной».
   if (active.status === "PENDING") {
-    await prisma.pinJob.update({ where: { id: active.id }, data: { status: "STOPPED", finishedAt: new Date() } });
+    const r = await prisma.pinJob.updateMany({ where: { id: active.id, status: "PENDING" }, data: { status: "STOPPED", finishedAt: new Date() } });
+    if (!r.count) return false;
     await prisma.pinRun.update({ where: { id: runId }, data: { status: "STOPPED" } });
     return true;
   }
-  await prisma.pinJob.update({ where: { id: active.id }, data: { status: "STOPPING" } });
+  const r = await prisma.pinJob.updateMany({ where: { id: active.id, status: "RUNNING" }, data: { status: "STOPPING" } });
+  if (!r.count) return false;
   await prisma.pinRun.update({ where: { id: runId }, data: { stopRequested: true } });
   return true;
 }

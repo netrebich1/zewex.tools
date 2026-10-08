@@ -119,7 +119,15 @@ export async function continueRun(me: CurrentUser, runId: string): Promise<strin
     await prisma.pinRun.update({ where: { id: runId }, data: { moderatedAt: new Date() } });
     stage = "texts";
   } else if (run.stage === "pages") stage = "meta";
-  else {
+  else if (run.stage === "moderation") {
+    // Модерация пройдена (пошаговый режим / «Стоп» на текстах) — продолжаем с текстов.
+    const pending = await pendingModeration(runId);
+    if (pending > 0) {
+      await prisma.pinRun.update({ where: { id: runId }, data: { status: "WAITING_MODERATION" } });
+      throw new Error(`Осталось промодерировать ${pending} пинов`);
+    }
+    stage = "texts";
+  } else {
     const next = nextStageAfter(run.stage as JobStage, run.settings as Record<string, unknown>);
     if (next === "moderation") {
       await prisma.pinRun.update({ where: { id: runId }, data: { stage: "moderation", status: "WAITING_MODERATION" } });

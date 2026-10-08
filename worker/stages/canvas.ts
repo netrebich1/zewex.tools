@@ -22,12 +22,16 @@ export const canvasStage: StageHandler = async (ctx) => {
   const perPage = rc.recipe.mix.canvas;
   if (perPage <= 0) return { summary: "canvas выключен" };
   const styles = await approvedStylesForSite(rc.site.id, rc.recipe.sets.canvasSetIds);
-  if (!styles.length) return { fatal: "Нет утверждённых Canvas-стилей для этого сайта. Откройте Стили → Canvas-стили, утвердите стили каталога и нажмите «Продолжить»." };
+  if (!styles.length) return { fatal: rc.recipe.sets.canvasSetIds.length
+    ? "В выбранных Canvas-наборах сайта нет утверждённых стилей. Откройте Стили → Canvas-стили, утвердите стили и соберите набор, либо снимите наборы в рецепте сайта, затем нажмите «Продолжить»."
+    : "Нет утверждённых Canvas-стилей для этого сайта. Откройте Стили → Canvas-стили, утвердите стили каталога и нажмите «Продолжить»." };
 
   const pages = rc.pages.filter((p) => p.keyword);
   const pool = await prisma.pinRunItem.findMany({ where: { runId: rc.run.id, engine: "PHOTO", status: { in: ["POOL", "READY"] } }, select: { pageId: true, sourceImageUrl: true } });
   const poolByPage = new Map<string, string[]>();
   for (const p of pool) poolByPage.set(p.pageId, [...(poolByPage.get(p.pageId) ?? []), p.sourceImageUrl]);
+  // Обрывки от сбоя (элемент создан, файл не записан) убираем, чтобы страница получила пин заново.
+  await prisma.pinRunItem.deleteMany({ where: { runId: rc.run.id, engine: "CANVAS", imagePath: "", status: { in: ["PENDING", "ERROR"] } } });
   const existing = await prisma.pinRunItem.groupBy({ by: ["pageId"], where: { runId: rc.run.id, engine: "CANVAS", status: { not: "REMOVED" } }, _count: { _all: true } });
   const existingCount = (id: string) => existing.find((e) => e.pageId === id)?._count._all ?? 0;
 
@@ -62,7 +66,12 @@ export const canvasStage: StageHandler = async (ctx) => {
   }
 
   let done = 0, failed = 0;
-  const domain = rc.settings.siteName.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  // Домен на пине: домен для ссылок из рецепта, иначе хост страницы, иначе название сайта.
+  const siteDomain = rc.settings.siteName.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const domainFor = (url?: string | null) => {
+    if (rc.recipe.publishing.linkDomain) return rc.recipe.publishing.linkDomain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    try { return url ? new URL(url).hostname.replace(/^www\./, "") : siteDomain; } catch { return siteDomain; }
+  };
   for (const row of plan) {
     if (ctx.signal.aborted) break;
     const page = rc.pageById.get(row.pageId);
@@ -83,15 +92,15 @@ export const canvasStage: StageHandler = async (ctx) => {
       // Профиль акцента для умной обрезки: ниша сайта и ключ страницы (ногти, волосы, одежда…).
       const accent = guessAccent(page.niche || rc.site.niche, page.keyword, page.topic, page.pageTitle || page.h1);
       const recipe = { ...toRecipe(style.spec, seed, photos.length), accent };
-      const r = await renderPin({ recipe, photos, texts: { title: hook.title, kicker: hook.kicker, cta: hook.cta, domain, number: ideaCount >= 3 ? String(ideaCount) : undefined }, seed });
+      const r = await renderPin({ recipe, photos, texts: { title: hook.title, kicker: hook.kicker, cta: hook.cta, domain: domainFor(page.finalUrl || page.url), number: ideaCount >= 3 ? String(ideaCount) : undefined }, seed });
       const item = await prisma.pinRunItem.create({
-        data: { runId: rc.run.id, pageId: page.id, siteId: rc.site.id, kind: "pin", engine: "CANVAS", styleId: row.styleId, sourceImageUrl: chosen[0] ?? "", sortOrder: 2000 + row.sortOrder, status: "READY", title: "", styleParams: { hook, photos: chosen, photoCount: photos.length, issues: r.issues } as object },
+        data: { runId: rc.run.id, pageId: page.id, siteId: rc.site.id, kind: "pin", engine: "CANVAS", styleId: row.styleId, sourceImageUrl: chosen[0] ?? "", sortOrder: 2000 + row.sortOrder, status: "PENDING", title: "", styleParams: { hook, photos: chosen, photoCount: photos.length, issues: r.issues } as object },
       });
       const rel = itemImageRel(rc.run.id, item.id);
       await writeFileAtomic(rel, r.jpeg);
       const thumbRel = itemThumbRel(rc.run.id, item.id);
       await writeFileAtomic(thumbRel, await makeThumb(r.jpeg));
-      await prisma.pinRunItem.update({ where: { id: item.id }, data: { imagePath: rel, thumbPath: thumbRel, imageW: r.width, imageH: r.height } });
+      await prisma.pinRunItem.update({ where: { id: item.id }, data: { imagePath: rel, thumbPath: thumbRel, imageW: r.width, imageH: r.height, status: "READY" } });
     } catch (e) {
       failed++;
       ctx.log(`canvas pin failed page=${page.id.slice(0, 8)} style=${row.styleId}`, e);

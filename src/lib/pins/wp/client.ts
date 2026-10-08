@@ -161,7 +161,7 @@ async function wpRequest(
   let lastStatus = 0;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (opts.signal?.aborted) throw new Error("Отменено");
+    if (opts.signal?.aborted) throw opts.signal.reason instanceof Error ? opts.signal.reason : new Error("Отменено");
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(new Error("timeout")), timeoutMs);
     const onOuter = () => ac.abort(opts.signal?.reason ?? new Error("aborted"));
@@ -191,7 +191,7 @@ async function wpRequest(
         continue;
       }
     } catch (e) {
-      if (opts.signal?.aborted) throw new Error("Отменено");
+      if (opts.signal?.aborted) throw opts.signal.reason instanceof Error ? opts.signal.reason : new Error("Отменено");
       lastStatus = 0;
       lastError = e instanceof Error ? (e.message === "timeout" ? `нет ответа за ${Math.round(timeoutMs / 1000)} с` : e.message) : String(e);
       if (attempt < maxRetries) {

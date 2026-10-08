@@ -51,6 +51,7 @@ export type SafeFetchResult = { status: number; ok: boolean; headers: Headers; b
 export async function safeFetch(url: string, opts: SafeFetchOptions = {}): Promise<SafeFetchResult> {
   const maxBytes = opts.maxBytes ?? 12 * 1024 * 1024;
   const timeoutMs = opts.timeoutMs ?? 20_000;
+  if (opts.signal?.aborted) throw opts.signal.reason instanceof Error ? opts.signal.reason : new Error("aborted");
   await assertPublicUrl(url);
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(new Error("timeout")), timeoutMs);
