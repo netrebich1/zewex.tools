@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { renderPin } from "@/lib/pins/canvas";
 import { toRecipe, type StyleSpec } from "@/lib/pins/canvas/styleSpec";
-import { CATALOG_LIB, harvestCandidates, seedCuratedStyles, upgradeCatalogPalettes } from "@/lib/pins/canvas/catalog";
+import { CATALOG_LIB, harvestCandidates, seedCuratedStyles, upgradeCatalogSpecs } from "@/lib/pins/canvas/catalog";
 import { testPhotos } from "@/lib/pins/canvas/photos";
 import { previewRel, writeFileAtomic } from "@/lib/pins/storage";
 import { makeThumb } from "@/lib/pins/images";
@@ -18,8 +18,8 @@ export const previews: StageHandler = async (ctx) => {
     ctx.log(`harvest: groups ${h.groups}, created ${h.created}, skipped ${h.skipped}`);
     const c = await seedCuratedStyles();
     ctx.log(`curated: created ${c.created}${c.invalid.length ? `, invalid: ${c.invalid.join(" | ")}` : ""}`);
-    const up = await upgradeCatalogPalettes();
-    ctx.log(`palettes upgraded: ${up}`);
+    const up = await upgradeCatalogSpecs();
+    ctx.log(`specs upgraded: ${up}`);
   }
   const rows = await prisma.pinCanvasStyle.findMany({ where: { libraryId: CATALOG_LIB, isActive: true, ...(opts.force ? {} : { previewPath: null }) }, orderBy: { sortOrder: "asc" } });
   await ctx.tick({ done: 0, total: rows.length, label: "Превью стилей" });

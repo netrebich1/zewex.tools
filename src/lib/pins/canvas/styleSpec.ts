@@ -91,6 +91,13 @@ export interface StyleCta {
   case: "upper" | "title";
 }
 
+/** Альтернативный набор шрифтов стиля (seed выбирает среди основного и альтернатив). */
+export interface StyleFontSet {
+  pair: string;
+  fonts: StyleFonts;
+  roleFonts?: StyleRoleFonts;
+}
+
 export interface StyleGrid {
   gutter: number;
   radius: number;
@@ -111,6 +118,8 @@ export interface StyleSpec {
   fonts: StyleFonts;
   /** Шрифты по ролям; если нет — выводятся из пары (кикер/CTA/подтекст = sans, цифра = display). */
   roleFonts?: StyleRoleFonts;
+  /** Подобранные альтернативные наборы шрифтов (не все подряд, а подходящие стилю). */
+  fontSets?: StyleFontSet[];
   /** 1–4 палитры; seed выбирает одну. */
   palettes: CanvasPalette[];
   /** Источник цвета: фиксированная палитра или палитра + оттенок из фото. */
@@ -343,8 +352,23 @@ export function paletteIndex(spec: StyleSpec, seed: number): number {
   return (h >>> 0) % n;
 }
 
+/** Все наборы шрифтов стиля: основной + альтернативы. */
+export function allFontSets(spec: StyleSpec): StyleFontSet[] {
+  return [{ pair: spec.pair, fonts: spec.fonts, ...(spec.roleFonts ? { roleFonts: spec.roleFonts } : {}) }, ...(spec.fontSets ?? [])];
+}
+
+/** Индекс набора шрифтов по seed (другая соль, чем у палитры, чтобы не коррелировали). */
+export function fontSetIndex(spec: StyleSpec, seed: number): number {
+  const n = 1 + (spec.fontSets?.length ?? 0);
+  if (n <= 1) return 0;
+  let h = ((seed >>> 0) ^ 0x9e3779b9) || 1;
+  h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12;
+  return (h >>> 0) % n;
+}
+
 export function toRecipe(spec: StyleSpec, seed: number, photoCount: number): CanvasRecipe {
   const layout = LAYOUTS[spec.layout] ?? LAYOUTS["lay-bottom-editorial"];
+  const fs = allFontSets(spec)[fontSetIndex(spec, seed)];
   const count = pickCount(spec, photoCount);
   const palette = measurePalette(spec.palettes[paletteIndex(spec, seed)] ?? spec.palettes[0]);
   const grid = nearestGrid(spec.grid?.gutter ?? 16, spec.grid?.radius ?? 12);
@@ -363,10 +387,10 @@ export function toRecipe(spec: StyleSpec, seed: number, photoCount: number): Can
   const scriptKicker = !!spec.kickerScript || subtext === "sub-script";
 
   const roleFonts = {
-    kicker: spec.roleFonts?.kicker ?? spec.fonts.sans,
-    number: spec.roleFonts?.number ?? spec.fonts.display,
-    cta: spec.roleFonts?.cta ?? spec.fonts.sans,
-    subtext: spec.roleFonts?.subtext ?? spec.fonts.sans,
+    kicker: fs.roleFonts?.kicker ?? fs.fonts.sans,
+    number: fs.roleFonts?.number ?? fs.fonts.display,
+    cta: fs.roleFonts?.cta ?? fs.fonts.sans,
+    subtext: fs.roleFonts?.subtext ?? fs.fonts.sans,
   };
 
   const kit: KitSpec = {
@@ -393,8 +417,8 @@ export function toRecipe(spec: StyleSpec, seed: number, photoCount: number): Can
     layout: LEGACY_LAYOUT_FOR_COUNT[count] ?? `v5-grid-${count}`,
     photoCount: count,
     palette,
-    fonts: { display: spec.fonts.display, sans: spec.fonts.sans, body: spec.fonts.body, ...(spec.fonts.script ? { script: spec.fonts.script } : {}) },
-    fontPair: spec.pair,
+    fonts: { display: fs.fonts.display, sans: fs.fonts.sans, body: fs.fonts.body, ...(fs.fonts.script ? { script: fs.fonts.script } : {}) },
+    fontPair: fs.pair,
     titleFont: spec.title.font,
     titleCase: spec.title.case,
     titleWeight: spec.title.weight,
@@ -426,18 +450,18 @@ export function toRecipe(spec: StyleSpec, seed: number, photoCount: number): Can
 /* ---------- validateStyle ---------- */
 
 /** Семейства, которые реально попадут на пин: заголовок + роли. */
-function usedFamilies(spec: StyleSpec): string[] {
-  const title = spec.title.font === "sans" ? spec.fonts.sans : spec.fonts.display;
+function usedFamilies(spec: StyleSpec, fs: StyleFontSet = { pair: spec.pair, fonts: spec.fonts, roleFonts: spec.roleFonts }): string[] {
+  const title = spec.title.font === "sans" ? fs.fonts.sans : fs.fonts.display;
   const roles = [
-    spec.roleFonts?.kicker ?? spec.fonts.sans,
-    spec.roleFonts?.number ?? spec.fonts.display,
-    spec.roleFonts?.cta ?? spec.fonts.sans,
-    spec.roleFonts?.subtext ?? spec.fonts.sans,
+    fs.roleFonts?.kicker ?? fs.fonts.sans,
+    fs.roleFonts?.number ?? fs.fonts.display,
+    fs.roleFonts?.cta ?? fs.fonts.sans,
+    fs.roleFonts?.subtext ?? fs.fonts.sans,
   ];
   const out = new Set<string>([title]);
   if (spec.number) out.add(roles[1]);
   out.add(roles[0]); out.add(roles[2]); out.add(roles[3]);
-  if (spec.kickerScript && spec.fonts.script) out.add(spec.fonts.script);
+  if (spec.kickerScript && fs.fonts.script) out.add(fs.fonts.script);
   return [...out].filter(Boolean);
 }
 
@@ -458,9 +482,13 @@ export function validateStyle(spec: StyleSpec): string[] {
 
   if (!spec.pair) out.push("Не задана пара шрифтов");
   if (!spec.fonts?.display || !spec.fonts?.sans || !spec.fonts?.body) out.push("Пара шрифтов неполная (display/sans/body)");
-  const fams = usedFamilies(spec);
-  if (fams.length > 2) out.push(`Слишком много шрифтов на пине: ${fams.join(", ")} (допустимо 2)`);
-  if (spec.kickerScript && !spec.fonts.script && !spec.subtext) out.push("Рукописный кикер без script-шрифта в паре");
+  for (const fs of allFontSets(spec)) {
+    if (!fs.pair || !fs.fonts?.display || !fs.fonts?.sans || !fs.fonts?.body) { out.push(`Набор шрифтов ${fs.pair || "?"} неполный`); continue; }
+    const fams = usedFamilies(spec, fs);
+    if (fams.length > 2) out.push(`Слишком много шрифтов на пине (${fs.pair}): ${fams.join(", ")} (допустимо 2)`);
+    if (spec.kickerScript && !fs.fonts.script && !spec.subtext) out.push(`Рукописный кикер без script-шрифта в наборе ${fs.pair}`);
+  }
+  if ((spec.fontSets?.length ?? 0) > 4) out.push(`Наборов шрифтов ${spec.fontSets!.length}, допустимо до 4 альтернатив`);
 
   if (!Number.isInteger(spec.title.maxLines) || spec.title.maxLines < 1 || spec.title.maxLines > TITLE_MAX_LINES) {
     out.push(`Заголовок: maxLines ${spec.title.maxLines}, допустимо 1–${TITLE_MAX_LINES}`);

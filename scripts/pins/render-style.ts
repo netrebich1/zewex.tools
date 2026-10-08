@@ -13,6 +13,7 @@ import { toRecipe, type StyleSpec } from "@/lib/pins/canvas/styleSpec";
 import { CATALOG_LIB } from "@/lib/pins/canvas/catalog";
 import { testPhotos } from "@/lib/pins/canvas/photos";
 import { attachBoldPalettes } from "@/lib/pins/canvas/paletteLibrary";
+import { attachFontSets } from "@/lib/pins/canvas/fontSets";
 import { CURATED_STYLES } from "@/lib/pins/canvas/curated";
 
 setDefaultResultOrder("ipv4first");
@@ -32,7 +33,7 @@ async function main() {
   console.log(`styles: ${rows.length}`);
   const photos = await testPhotos();
   for (const row of rows) {
-    const spec = flag("upgrade") ? attachBoldPalettes(row.data as unknown as StyleSpec, row.id) : row.data as unknown as StyleSpec;
+    const spec = flag("upgrade") ? attachFontSets(attachBoldPalettes(row.data as unknown as StyleSpec, row.id), row.id) : row.data as unknown as StyleSpec;
     const safe = row.id.replace(/[^a-z0-9_-]/gi, "_").slice(0, 60);
     for (const count of counts) {
       const n = spec.counts.includes(count as 1) ? count : spec.counts.filter((c) => c <= count).pop() ?? spec.counts[0];
