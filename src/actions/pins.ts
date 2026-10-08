@@ -116,6 +116,7 @@ export async function saveRecipe(_p: FormState, f: FormData): Promise<FormState>
     };
     await prisma.pinSite.update({ where: { id }, data: { recipe: next, name: str(f, "name") || site.name, niche: str(f, "niche"), wpConnectionId: next.publishing.wpConnectionId } });
   } catch (e) { return fail(e); }
+  revalidatePath(`/sites/${id}`);
   revalidatePath(`/pinterest/pins/sites/${id}`);
   return { ok: "Рецепт сохранён" };
 }
@@ -131,6 +132,7 @@ export async function saveBoards(_p: FormState, f: FormData): Promise<FormState>
       if (names.length) await tx.pinBoard.createMany({ data: names.map((name, i) => ({ siteId: id, name, sortOrder: i })) });
     });
   } catch (e) { return fail(e); }
+  revalidatePath(`/sites/${id}`);
   revalidatePath(`/pinterest/pins/sites/${id}`);
   return { ok: "Доски сохранены" };
 }
@@ -147,7 +149,23 @@ export async function createSite(_p: FormState, f: FormData): Promise<FormState>
     const site = await prisma.pinSite.create({ data: { teamId, name, slug, recipe: mergeRecipe({}), createdById: me.id } });
     siteId = site.id;
   } catch (e) { return fail(e); }
-  redirect(`/pinterest/pins/sites/${siteId}`);
+  redirect(`/sites/${siteId}`);
+}
+
+/** Архив сайта: isActive=false прячет его из сервиса, прогоны и настройки сохраняются. */
+export async function toggleSiteActive(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  const id = str(f, "id");
+  let active = false;
+  try {
+    const site = await siteForUser(me, id);
+    active = !site.isActive;
+    await prisma.pinSite.update({ where: { id }, data: { isActive: active } });
+  } catch (e) { return fail(e); }
+  revalidatePath(`/sites/${id}`);
+  revalidatePath("/sites");
+  revalidatePath("/pinterest/pins");
+  return { ok: active ? "Сайт возвращён из архива" : "Сайт убран в архив" };
 }
 
 /* ---------- Стили: наборы ИИ, скрытие стилей ---------- */

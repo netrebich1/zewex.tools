@@ -19,7 +19,7 @@ export default async function PinsHome() {
 
   return (
     <>
-      <PageHeader title="Сегодня" subtitle="Что требует внимания, сайты и последние прогоны." actions={<Link href="/pinterest/pins/runs/new" className="btn-brand">Новый прогон</Link>} />
+      <PageHeader title="Сегодня" subtitle="Что требует внимания, сайты и последние прогоны." actions={<><Link href="/sites" className="btn-ghost">Сайты и настройки</Link><Link href="/pinterest/pins/runs/new" className="btn-brand">Новый прогон</Link></>} />
       <div className="space-y-5">
         {attention.length > 0 && (
           <Card title="Нужно внимание">
@@ -37,9 +37,9 @@ export default async function PinsHome() {
           </Card>
         )}
 
-        <Card title="Сайты" description="Рецепт сайта определяет, сколько и каких пинов делать на каждую ссылку.">
+        <Card title="Сайты" description="Рецепт сайта определяет, сколько и каких пинов делать на каждую ссылку. Настройки — в разделе «Сайты» портала.">
           {sites.length === 0 ? (
-            <Empty title="Сайтов пока нет" hint="Сайты команды появятся после импорта или добавления." />
+            <Empty title="Сайтов пока нет" hint="Добавьте сайт в разделе «Сайты» портала." />
           ) : (
             <div className="table-wrap">
               <table className="table">

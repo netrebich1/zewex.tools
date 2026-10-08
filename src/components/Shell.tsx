@@ -10,6 +10,7 @@ type NavItem = { href: string; label: string; icon: IconName; admin?: boolean };
 /** Меню под аватаркой: всё служебное. Основной экран — инструменты. */
 const MENU: NavItem[] = [
   { href: "/keys", label: "Ключи ИИ", icon: "key" },
+  { href: "/sites", label: "Сайты", icon: "layers" },
   { href: "/access", label: "Доступы к сайтам", icon: "shield" },
   { href: "/providers", label: "Провайдеры и модели", icon: "cloud" },
   { href: "/teams", label: "Команды", icon: "users" },
