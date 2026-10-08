@@ -5,6 +5,8 @@ import { Badge, Card, Empty, PageHeader } from "@/components/ui";
 import { RUN_STATUS_LABELS, runStatusTone } from "@/components/pins/labels";
 import { mergeRecipe } from "@/lib/pins/types";
 import { fmtDate } from "@/lib/utils";
+import { StockCalendar } from "@/components/pins/StockCalendar";
+import { sitesStock } from "@/lib/pins/runs/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +18,13 @@ export default async function PinsHome() {
     prisma.pinRun.findMany({ where: { ...teamFilter, NOT: { name: { startsWith: "__" } } }, orderBy: { updatedAt: "desc" }, take: 20, include: { site: { select: { name: true } } } }),
   ]);
   const attention = runs.filter((r) => r.status === "WAITING_MODERATION" || r.status === "BLOCKED");
+  const stock = await sitesStock(sites.map((s) => s.id), 92);
+  const calendarSites = sites
+    .map((s) => ({ id: s.id, name: s.name, target: mergeRecipe(s.recipe).schedule.pinsPerDay, counts: stock.bySite.get(s.id) ?? [] }))
+    .sort((a, b) => {
+      const run = (c: number[]) => { let n = 0; while (n < c.length && c[n] > 0) n++; return n; };
+      return run(a.counts) - run(b.counts) || a.name.localeCompare(b.name);
+    });
 
   return (
     <>
@@ -37,32 +46,8 @@ export default async function PinsHome() {
           </Card>
         )}
 
-        <Card title="Сайты" description="Рецепт сайта определяет, сколько и каких пинов делать на каждую ссылку. Настройки — в разделе «Сайты» портала.">
-          {sites.length === 0 ? (
-            <Empty title="Сайтов пока нет" hint="Добавьте сайт в разделе «Сайты» портала и включите для него Pinterest Pins." />
-          ) : (
-            <div className="table-wrap">
-              <table className="table">
-                <thead><tr><th>Сайт</th><th>Команда</th><th>Пинов на ссылку</th><th>В день</th><th>Доски</th><th></th></tr></thead>
-                <tbody>
-                  {sites.map((s) => {
-                    const r = mergeRecipe(s.recipe);
-                    const mix = [r.mix.ai && `ИИ ${r.mix.ai}`, r.mix.photos && `фото ${r.mix.photos}`, r.mix.canvas && `canvas ${r.mix.canvas}`, r.mix.pinora && `pinora ${r.mix.pinora}`].filter(Boolean).join(" · ");
-                    return (
-                      <tr key={s.id}>
-                        <td><Link href={`/pinterest/pins/sites/${s.id}`} className="font-semibold underline decoration-line hover:decoration-ink">{s.name}</Link><div className="help">{s.slug}</div></td>
-                        <td>{s.team.name}</td>
-                        <td>{mix || <span className="text-muted">выключено</span>}</td>
-                        <td>{r.schedule.pinsPerDay}</td>
-                        <td>{s._count.boards}</td>
-                        <td className="text-right"><Link href={`/pinterest/pins/runs/new?site=${s.id}`} className="btn-ghost btn-sm">Новый прогон</Link></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <Card title="Запас по датам" description="Строка — сайт, столбцы — дни, цифра — пинов в день. Сайты без запаса сверху. Нажмите на сайт, чтобы открыть его, или «Прогон», чтобы запустить сборку.">
+          <StockCalendar sites={calendarSites} days={stock.days} />
         </Card>
 
         <Card title="Последние прогоны">

@@ -38,3 +38,26 @@ export async function existingLoad(siteId: string, excludeRunId?: string): Promi
   for (const r of rows) if (r.scheduledAt) m.set(dayKey(r.scheduledAt), (m.get(dayKey(r.scheduledAt)) ?? 0) + 1);
   return m;
 }
+
+/** Запас по дням сразу для всех сайтов (сводный календарь): siteId → счётчики на `days` дней от сегодня. */
+export async function sitesStock(siteIds: string[], days = 92): Promise<{ start: string; days: string[]; bySite: Map<string, number[]> }> {
+  const start = new Date();
+  const keys: string[] = [];
+  for (let i = 0; i < days; i++) keys.push(dayKey(new Date(start.getTime() + i * 86400000)));
+  const index = new Map(keys.map((k, i) => [k, i]));
+  const bySite = new Map<string, number[]>(siteIds.map((id) => [id, new Array(days).fill(0)]));
+  if (!siteIds.length) return { start: keys[0], days: keys, bySite };
+  const from = new Date(start.getTime() - 86400000);
+  const to = new Date(start.getTime() + (days + 1) * 86400000);
+  const rows = await prisma.pinRunItem.findMany({
+    where: { siteId: { in: siteIds }, scheduledAt: { gte: from, lte: to }, moderation: { not: "REJECTED" }, status: { notIn: ["POOL", "REMOVED"] } },
+    select: { siteId: true, scheduledAt: true },
+  });
+  for (const r of rows) {
+    if (!r.scheduledAt || !r.siteId) continue;
+    const i = index.get(dayKey(r.scheduledAt));
+    const arr = bySite.get(r.siteId);
+    if (i !== undefined && arr) arr[i]++;
+  }
+  return { start: keys[0], days: keys, bySite };
+}
