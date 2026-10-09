@@ -24,6 +24,8 @@ else
   sudo -u zewex_tools_usr -H npm install --no-audit --no-fund --silent
 fi
 # Schema sync WITHOUT --accept-data-loss: a change that would drop data fails the deploy instead of running.
+# Хранилище файлов сервиса пинов (nginx отдаёт его как /files/)
+install -d -o zewex_tools_usr -g zewex_tools_usr -m 755 /var/www/zewex_tools_usr/data/storage/pins/{runs,photos,examples,previews,fonts}
 sudo -u zewex_tools_usr -H npx prisma db push --skip-generate
 sudo -u zewex_tools_usr -H npx prisma generate >/dev/null
 sudo -u zewex_tools_usr -H node prisma/seed.mjs
@@ -38,13 +40,18 @@ cp -r .next/static $WEBROOT/_next/static
 cp -r public/. $WEBROOT/
 chown -R zewex_tools_usr:zewex_tools_usr $WEBROOT .next
 install -m 644 deploy/zewex-tools.service /etc/systemd/system/zewex-tools.service
+install -m 644 deploy/zewex-worker.service /etc/systemd/system/zewex-worker.service
 install -m 644 deploy/nginx.includes /etc/nginx/fastpanel2-sites/zewex_tools_usr/zewex.tools.includes
 systemctl daemon-reload
 systemctl enable --now zewex-tools >/dev/null
+systemctl enable --now zewex-worker >/dev/null
+# воркер останавливается мягко (SIGTERM, до 90 с): дорабатывает текущие задачи или возвращает их в очередь
+systemctl restart zewex-worker
 systemctl restart zewex-tools
 nginx -t && systemctl reload nginx
 sleep 2
 systemctl is-active zewex-tools
+systemctl is-active zewex-worker
 curl -s -o /dev/null -w "local: %{http_code}\n" http://127.0.0.1:3100/login
 curl -s -o /dev/null -w "http->https: %{http_code} %{redirect_url}\n" http://zewex.tools/login
 REMOTE

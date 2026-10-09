@@ -3,6 +3,14 @@
 if ($scheme = http) {
     return 301 https://$host$request_uri;
 }
+# Файлы сервиса пинов (картинки, превью, примеры). Шрифты наружу не отдаём.
+location ^~ /files/ {
+    alias /var/www/zewex_tools_usr/data/storage/;
+    expires 365d;
+    add_header Cache-Control "public, immutable";
+    add_header X-Robots-Tag "noindex";
+    location ~ /fonts/ { return 404; }
+}
 location ~ ^/ {
     proxy_pass http://127.0.0.1:3100;
     proxy_http_version 1.1;

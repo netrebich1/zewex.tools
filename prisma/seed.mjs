@@ -43,5 +43,44 @@ for (const [slug, models] of Object.entries(manualModels)) {
 for (const s of sections) {
   await prisma.section.upsert({ where: { slug: s.slug }, update: {}, create: s });
 }
+
+// Модели по умолчанию: с ними ключ подключается к сервису одной галочкой, без выбора модели.
+const defaults = {
+  openrouter: { chat: ["google/gemini-2.5-flash", "Gemini 2.5 Flash (OpenRouter)", 0.3, 2.5], image: ["google/gemini-2.5-flash-image", "Gemini 2.5 Flash Image (OpenRouter)", null, null, 0.04] },
+  laozhang: { chat: ["gemini-2.5-flash", "Gemini 2.5 Flash (laozhang)", 0.3, 2.5], image: ["gpt-image-2", "GPT Image 2 (laozhang)", null, null, 0.02] },
+  openai: { chat: ["gpt-4.1-mini", "GPT-4.1 mini", 0.4, 1.6], image: ["gpt-image-2", "GPT Image 2", null, null, 0.02] },
+  perplexity: { chat: ["sonar", "Sonar", 1, 1] },
+};
+for (const [slug, d] of Object.entries(defaults)) {
+  const provider = await prisma.provider.findUnique({ where: { slug } });
+  if (!provider) continue;
+  const patch = {};
+  for (const [cap, [modelId, name, inputPrice, outputPrice, unitPrice]] of Object.entries(d)) {
+    await prisma.model.upsert({
+      where: { providerId_modelId: { providerId: provider.id, modelId } },
+      update: { isEnabled: true },
+      create: { providerId: provider.id, modelId, name, capabilities: cap === "image" ? "IMAGE" : "CHAT", inputPrice, outputPrice, unitPrice: unitPrice ?? null, source: "MANUAL", isEnabled: true },
+    });
+    if (cap === "chat" && !provider.defaultChatModel) patch.defaultChatModel = modelId;
+    if (cap === "image" && !provider.defaultImageModel) patch.defaultImageModel = modelId;
+  }
+  if (Object.keys(patch).length) await prisma.provider.update({ where: { id: provider.id }, data: patch });
+}
+
+// Проект «Pinterest Pins» и его слоты: команды привязывают к ним свои ключи.
+const pinterest = await prisma.section.findUnique({ where: { slug: "pinterest" } });
+const pins = await prisma.project.upsert({
+  where: { slug: "pins" },
+  update: {},
+  create: { sectionId: pinterest.id, slug: "pins", name: "Pinterest Pins", description: "Массовое создание пинов: прогоны, модерация, расписание, выгрузка CSV", url: "/pinterest/pins", status: "MIGRATING", order: 1 },
+});
+const pinSlots = [
+  { key: "text_main", name: "Тексты (основная модель)", capability: "CHAT", description: "Промты ИИ-пинов, Pinora, тексты пинов, хуки Canvas, подбор досок", preferProviders: "openrouter,laozhang,openai" },
+  { key: "text_fast", name: "Тексты (быстрая модель)", capability: "CHAT", description: "Ключевое слово, тема и ниша страницы; дешёвая модель", preferProviders: "openrouter,laozhang,openai" },
+  { key: "image_main", name: "Картинки пинов", capability: "IMAGE", description: "Генерация ИИ-пинов (gpt-image-2 или аналог), 1024×1536", preferProviders: "openai,laozhang,openrouter" },
+];
+for (const sl of pinSlots) {
+  await prisma.slot.upsert({ where: { projectId_key: { projectId: pins.id, key: sl.key } }, update: { preferProviders: sl.preferProviders }, create: { ...sl, projectId: pins.id } });
+}
 console.log("seed done");
 await prisma.$disconnect();

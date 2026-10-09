@@ -8,7 +8,9 @@
     "start": "next start -p 3100",
     "db:push": "prisma db push",
     "db:seed": "node prisma/seed.mjs",
-    "lint": "next lint"
+    "lint": "next lint",
+    "worker": "tsx worker/index.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json"
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",
@@ -16,7 +18,10 @@
     "next": "^15.3.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "zod": "^3.24.0"
+    "zod": "^3.24.0",
+    "sharp": "^0.33.5",
+    "tsx": "^4.19.2",
+    "@napi-rs/canvas": "^0.1.65"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.0",

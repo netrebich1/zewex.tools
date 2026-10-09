@@ -23,8 +23,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   return (
     <>
       <PageHeader
-        title={`Привет, ${me.name.split(" ")[0]}`}
-        subtitle="Инструменты сгруппированы по разделам. Откройте инструмент, чтобы настроить слоты, ключи и модели."
+        title="Инструменты"
+        subtitle="Инструменты сгруппированы по разделам. Ключи подключаются к сервисам на странице «Ключи»."
       />
 
       <div className="grid grid-cols-3 gap-3 mb-6">
@@ -33,8 +33,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           { label: "Правил", value: counts[1], href: "/providers" },
           { label: "Вызовов за 7 дней", value: counts[2], href: "/usage" },
         ].map((s) => (
-          <Link key={s.label} href={s.href} className="card p-3 sm:p-4 hover:border-brand transition">
-            <div className="text-[22px] sm:text-[26px] font-bold tracking-tight">{s.value}</div>
+          <Link key={s.label} href={s.href} className="kpi card-hover">
+            <div className="kpi-value">{s.value}</div>
             <div className="help">{s.label}</div>
           </Link>
         ))}
@@ -47,9 +47,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             const I = Icon[(s.icon as IconName) in Icon ? (s.icon as IconName) : "grid"];
             const active = s.id === current?.id;
             return (
-              <Link key={s.id} href={`/?section=${s.slug}`} className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[14px] font-medium border transition ${active ? "bg-ink text-white border-ink" : "bg-surface border-line text-ink-2 hover:border-ink/40"}`}>
+              <Link key={s.id} href={`/?section=${s.slug}`} className={`tab border-line ${active ? "active" : "bg-surface"}`}>
                 <I width={16} height={16} /> {s.name}
-                <span className={`text-[12px] ${active ? "text-white/70" : "text-muted"}`}>{s.projects.length}</span>
+                <span className={`text-[12px] ${active ? "opacity-70" : "text-muted"}`}>{s.projects.length}</span>
               </Link>
             );
           })}
@@ -63,17 +63,18 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {current.projects.map((p) => (
-            <Link key={p.id} href={`/projects/${p.slug}`} className="card p-4 hover:border-brand transition flex flex-col gap-2">
+            <div key={p.id} className="card card-hover p-4 flex flex-col gap-2 relative">
+              <Link href={p.url || `/projects/${p.slug}`} className="absolute inset-0 rounded-2xl" aria-label={p.name} />
               <div className="flex items-start justify-between gap-2">
                 <h3 className="font-semibold text-[16px] leading-tight">{p.name}</h3>
                 <Badge tone={STATUS_TONE[p.status] ?? "neutral"}>{STATUS_LABELS[p.status] ?? p.status}</Badge>
               </div>
               {p.description && <p className="help line-clamp-2">{p.description}</p>}
               <div className="mt-auto flex items-center justify-between text-[12px] text-muted pt-2">
-                <span>Слотов: {p._count.slots}</span>
+                {isAdmin ? <Link href={`/projects/${p.slug}`} className="relative z-10 hover:text-ink hover:underline">настройки · слотов: {p._count.slots}</Link> : <span>Слотов: {p._count.slots}</span>}
                 {p.url && <span className="text-brand font-medium">Открыть →</span>}
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}

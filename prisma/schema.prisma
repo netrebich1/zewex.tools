@@ -96,6 +96,8 @@ model Team {
   createdAt   DateTime     @default(now())
   members     TeamMember[]
   bindings    Binding[]
+  pinSites    PinSite[]
+  pinRuns     PinRun[]
 }
 
 model TeamMember {
@@ -140,6 +142,8 @@ model Slot {
   name        String
   capability  Capability
   description String?
+  /// Предпочтительные провайдеры через запятую (slug), если у слота несколько ключей разных провайдеров
+  preferProviders String?
   project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   bindings    Binding[]
   usage       UsageLog[]
@@ -159,6 +163,10 @@ model Provider {
   docsUrl        String?
   isActive       Boolean      @default(true)
   order          Int          @default(0)
+  /// Модель по умолчанию для текстовых слотов (modelId как в API провайдера)
+  defaultChatModel  String?
+  /// Модель по умолчанию для слотов картинок
+  defaultImageModel String?
   models         Model[]
   apiKeys        ApiKey[]
   bindings       Binding[]
@@ -173,6 +181,7 @@ model Model {
   capabilities  String      @default("CHAT")
   inputPrice    Float?
   outputPrice   Float?
+  unitPrice     Float?
   contextLength Int?
   isEnabled     Boolean     @default(false)
   source        ModelSource @default(MANUAL)
@@ -243,6 +252,8 @@ model UsageLog {
   durationMs   Int          @default(0)
   ok           Boolean      @default(true)
   error        String?      @db.Text
+  teamId       String?
+  refId        String?
   createdAt    DateTime     @default(now())
   user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -254,4 +265,353 @@ model UsageLog {
   @@index([createdAt])
   @@index([apiKeyId, createdAt])
   @@index([userId, createdAt])
+  @@index([refId])
+  @@index([teamId, createdAt])
+}
+
+// ───────────────────────────── Pinterest Pins ─────────────────────────────
+// Сервис массового создания пинов. Все модели с префиксом Pin. Данные команды
+// изолированы по teamId (портальная Team). Тяжёлую работу выполняет только
+// воркер (worker/), Next.js лишь ставит задачи и читает агрегаты.
+
+enum PinRunStatus {
+  DRAFT
+  QUEUED
+  RUNNING
+  WAITING_MODERATION
+  BLOCKED
+  STOPPED
+  DONE
+  FAILED
+}
+
+enum PinJobStatus {
+  PENDING
+  RUNNING
+  STOPPING
+  DONE
+  ERROR
+  STOPPED
+}
+
+enum PinEngine {
+  OPENAI
+  PINORA
+  CANVAS
+  PHOTO
+}
+
+enum PinItemStatus {
+  PENDING
+  READY
+  ERROR
+  POOL
+  REMOVED
+}
+
+enum PinModeration {
+  NONE
+  APPROVED
+  REJECTED
+}
+
+model PinSite {
+  id             String   @id @default(uuid()) @db.Char(36)
+  teamId         String
+  name           String
+  slug           String
+  niche          String   @default("")
+  recipe         Json
+  legacy         Json?
+  wpConnectionId String?  @db.Char(36)
+  isActive       Boolean  @default(true)
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  team           Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  boards         PinBoard[]
+  sets           PinSet[]
+  runs           PinRun[]
+  exclusions     PinStyleExclusion[]
+
+  @@unique([teamId, slug])
+  @@index([teamId])
+}
+
+model PinBoard {
+  id        String  @id @default(uuid()) @db.Char(36)
+  siteId    String  @db.Char(36)
+  name      String
+  sortOrder Int     @default(0)
+  site      PinSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId])
+}
+
+model PinSet {
+  id        String   @id @default(uuid()) @db.Char(36)
+  siteId    String   @db.Char(36)
+  name      String
+  topic     String   @default("")
+  setKind   String   @default("ai")
+  styleIds  Json
+  pinCount  Int      @default(0)
+  meta      Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  site      PinSite  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId])
+}
+
+model PinCanvasStyle {
+  id          String   @id @db.VarChar(160)
+  libraryId   String   @default("other")
+  name        String
+  category    String   @default("")
+  data        Json
+  isActive    Boolean  @default(true)
+  isApproved  Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  previewPath String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([libraryId, isActive])
+}
+
+model PinPinoraTheme {
+  id           String @id @default(uuid()) @db.Char(36)
+  name         String @unique
+  displayName  String
+  instructions Json
+  learnedRules Json
+  sortOrder    Int    @default(0)
+}
+
+model PinExample {
+  id        String   @id @default(uuid()) @db.Char(36)
+  niche     String
+  styleId   String?
+  topic     String?
+  sourceUrl String   @default("") @db.VarChar(2000)
+  imagePath String   @default("")
+  caption   String?  @db.Text
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([styleId])
+  @@index([niche])
+}
+
+model PinStyleOverride {
+  id          String   @id @default(uuid()) @db.Char(36)
+  teamId      String
+  siteId      String?  @db.Char(36)
+  styleId     String
+  instruction String   @db.Text
+  isActive    Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+
+  @@index([teamId, styleId])
+}
+
+model PinStyleExclusion {
+  id        String  @id @default(uuid()) @db.Char(36)
+  teamId    String
+  siteId    String  @db.Char(36)
+  topic     String  @default("")
+  styleId   String
+  kind      String  @default("ai")
+  styleName String  @default("")
+  site      PinSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, topic, styleId])
+}
+
+/// Доступ к сайту (WordPress и т.п.): общая сущность портала, назначается сервисам и командам
+model SiteAccess {
+  id                  String    @id @default(uuid()) @db.Char(36)
+  teamId              String
+  kind                String    @default("wordpress")
+  name                String
+  baseUrl             String
+  username            String
+  appPasswordEnc      String    @db.Text
+  mediaBaseUrl        String?
+  mediaUsername       String?
+  mediaAppPasswordEnc String?   @db.Text
+  mediaDomain         String?
+  linkDomain          String?
+  /// Сервисы (slug проектов), которым доступен этот сайт; пусто — всем
+  projects            Json?
+  notes               String?
+  lastCheckedAt       DateTime?
+  lastCheckOk         Boolean?
+  lastCheckNote       String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([teamId])
+  @@map("PinWpConnection")
+}
+
+model PinRun {
+  id            String       @id @default(uuid()) @db.Char(36)
+  teamId        String
+  siteId        String?      @db.Char(36)
+  createdById   String?
+  name          String       @default("")
+  autopilot     Boolean      @default(true)
+  stepByStep    Boolean      @default(false)
+  status        PinRunStatus @default(DRAFT)
+  stage         String       @default("pages")
+  settings      Json
+  stopRequested Boolean      @default(false)
+  blockedReason String?      @db.Text
+  moderatedAt   DateTime?
+  costUsd       Float        @default(0)
+  budgetUsd     Float?
+  imagesPurgedAt DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  team          Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  site          PinSite?     @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  pages         PinRunPage[]
+  items         PinRunItem[]
+  jobs          PinJob[]
+
+  @@index([teamId, status])
+  @@index([siteId, createdAt])
+}
+
+model PinRunPage {
+  id                String    @id @default(uuid()) @db.Char(36)
+  runId             String    @db.Char(36)
+  url               String    @db.VarChar(1000)
+  finalUrl          String?   @db.VarChar(1000)
+  pageTitle         String    @default("") @db.Text
+  h1                String    @default("") @db.Text
+  keyword           String    @default("")
+  boards            Json
+  topic             String    @default("")
+  niche             String    @default("")
+  season            String    @default("")
+  seasonWord        String    @default("")
+  imageCount        Int       @default(0)
+  sectionImageCount Int       @default(0)
+  pinQuota          Int?
+  canvasQuota       Int?
+  pinSetId          String?   @db.Char(36)
+  canvasPinSetId    String?   @db.Char(36)
+  canvasHooks       Json?
+  featuredImage     String?   @db.VarChar(1000)
+  status            String    @default("pending")
+  error             String?   @db.Text
+  metaAttempts      Int       @default(0)
+  photosAt          DateTime?
+  plannedAt         DateTime?
+  sortOrder         Int       @default(0)
+  run               PinRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  items             PinRunItem[]
+
+  @@index([runId, sortOrder])
+}
+
+model PinRunItem {
+  id              String        @id @default(uuid()) @db.Char(36)
+  runId           String        @db.Char(36)
+  pageId          String        @db.Char(36)
+  siteId          String?       @db.Char(36)
+  kind            String        @default("pin")
+  engine          PinEngine
+  styleId         String?
+  pinType         String        @default("")
+  styleParams     Json?
+  prompt          String        @default("") @db.Text
+  pinFormat       String        @default("2:3")
+  sourceImageUrl  String        @default("") @db.VarChar(1000)
+  sourceImagePath String        @default("")
+  imagePath       String        @default("")
+  thumbPath       String        @default("")
+  imageW          Int?
+  imageH          Int?
+  wpMediaUrl      String        @default("") @db.VarChar(1000)
+  wpMediaId       String?
+  title           String        @default("") @db.VarChar(255)
+  description     String        @default("") @db.Text
+  altText         String        @default("") @db.VarChar(600)
+  targetLink      String        @default("") @db.VarChar(1000)
+  boardName       String        @default("")
+  scheduledAt     DateTime?
+  scheduleFixed   Boolean       @default(false)
+  status          PinItemStatus @default(PENDING)
+  moderation      PinModeration @default(NONE)
+  rejectReason    String?
+  error           String?       @db.Text
+  errorStage      String?
+  errorKind       String?
+  attempts        Int           @default(0)
+  nextRetryAt     DateTime?
+  sortOrder       Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  run             PinRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  page            PinRunPage    @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([runId, status])
+  @@index([runId, pageId])
+  @@index([runId, engine])
+  @@index([runId, moderation])
+  @@index([siteId, scheduledAt])
+  @@index([runId, sourceImageUrl(length: 191)])
+}
+
+model PinJob {
+  id         String       @id @default(uuid()) @db.Char(36)
+  runId      String       @db.Char(36)
+  teamId     String
+  stage      String
+  status     PinJobStatus @default(PENDING)
+  priority   Int          @default(0)
+  options    Json?
+  done       Int          @default(0)
+  total      Int          @default(0)
+  label      String       @default("")
+  attempts   Int          @default(0)
+  nextRunAt  DateTime?
+  leaseUntil DateTime?
+  workerId   String?
+  error      String?      @db.Text
+  createdAt  DateTime     @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  run        PinRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([status, priority, createdAt])
+  @@index([runId, status])
+  @@index([teamId, status])
+}
+
+model PinExportLog {
+  id         String   @id @default(cuid())
+  teamId     String
+  siteId     String   @db.Char(36)
+  day        String
+  fileName   String
+  rows       Int      @default(0)
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  @@index([teamId, day])
+}
+
+model PinUrlHistory {
+  id        String   @id @default(cuid())
+  siteId    String   @db.Char(36)
+  url       String   @db.VarChar(1000)
+  runId     String?  @db.Char(36)
+  createdAt DateTime @default(now())
+
+  @@index([siteId, url(length: 191)])
 }

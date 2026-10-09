@@ -18,7 +18,9 @@ export function encryptSecret(plain: string): string {
 }
 
 export function decryptSecret(payload: string): string {
+  if (!payload) throw new Error("Пароль приложения не задан: откройте сайт в разделе «Сайты» и введите Application Password");
   const [ivB, tagB, encB] = payload.split(".");
+  if (!ivB || !tagB || !encB) throw new Error("Секрет повреждён: введите его заново");
   const decipher = createDecipheriv("aes-256-gcm", masterKey(), Buffer.from(ivB, "base64"));
   decipher.setAuthTag(Buffer.from(tagB, "base64"));
   return Buffer.concat([decipher.update(Buffer.from(encB, "base64")), decipher.final()]).toString("utf8");

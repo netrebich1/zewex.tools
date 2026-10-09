@@ -40,7 +40,7 @@ export function Badge({ children, tone = "neutral" }: { children: ReactNode; ton
     warn: "bg-warn-soft text-warn",
     danger: "bg-danger-soft text-danger",
     brand: "bg-brand-soft text-warn",
-    ink: "bg-ink text-white",
+    ink: "bg-ink text-bg",
   };
   return <span className={`badge ${tones[tone]}`}>{children}</span>;
 }

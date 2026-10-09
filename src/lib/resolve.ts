@@ -11,7 +11,7 @@ export type ResolveStep = {
 export type ResolvedBinding = {
   binding: (Binding & {
     provider: { id: string; slug: string; name: string; adapter: Adapter; authType: AuthType; baseUrl: string; kind: ProviderKind };
-    model: { id: string; modelId: string; name: string; inputPrice: number | null; outputPrice: number | null } | null;
+    model: { id: string; modelId: string; name: string; inputPrice: number | null; outputPrice: number | null; unitPrice: number | null } | null;
     apiKey: { id: string; label: string; secretHint: string; status: KeyStatus; monthlyLimitUsd: number | null; ownerId: string | null };
   }) | null;
   steps: ResolveStep[];
@@ -21,7 +21,7 @@ export type ResolvedBinding = {
 
 const include = {
   provider: { select: { id: true, slug: true, name: true, adapter: true, authType: true, baseUrl: true, kind: true } },
-  model: { select: { id: true, modelId: true, name: true, inputPrice: true, outputPrice: true } },
+  model: { select: { id: true, modelId: true, name: true, inputPrice: true, outputPrice: true, unitPrice: true } },
   apiKey: { select: { id: true, label: true, secretHint: true, status: true, monthlyLimitUsd: true, ownerId: true } },
 } as const;
 
@@ -32,7 +32,7 @@ const include = {
 export async function resolveBinding(userId: string, slotId: string): Promise<ResolvedBinding> {
   const slot = await prisma.slot.findUniqueOrThrow({
     where: { id: slotId },
-    select: { id: true, key: true, name: true, capability: true, projectId: true },
+    select: { id: true, key: true, name: true, capability: true, projectId: true, preferProviders: true },
   });
   const memberships = await prisma.teamMember.findMany({
     where: { userId },
@@ -53,7 +53,16 @@ export async function resolveBinding(userId: string, slotId: string): Promise<Re
       usable.sort((a, b) => teamIds.indexOf(a.teamId!) - teamIds.indexOf(b.teamId!));
     }
     steps.push({ scope, label, matched: usable.length > 0 });
-    return usable[0] ?? null;
+    if (usable.length <= 1) return usable[0] ?? null;
+    const firstTeam = usable[0].teamId;
+    let sameLevel = scope === "TEAM_PROJECT" || scope === "TEAM" ? usable.filter((b) => b.teamId === firstTeam) : usable;
+    // Разные провайдеры на одном уровне: берём предпочтительного для слота (например, картинки → OpenAI, тексты → OpenRouter)
+    const prefer = (slot.preferProviders ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    const rank = (slug: string) => { const i = prefer.indexOf(slug); return i === -1 ? prefer.length : i; };
+    const best = Math.min(...sameLevel.map((b) => rank(b.provider.slug)));
+    sameLevel = sameLevel.filter((b) => rank(b.provider.slug) === best);
+    // Несколько ключей одного провайдера: нагрузка распределяется случайно между ними
+    return sameLevel[Math.floor(Math.random() * sameLevel.length)] ?? null;
   };
 
   const b1 = await pick("USER_PROJECT", { slotId, userId }, "Личное правило для этого инструмента");

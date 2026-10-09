@@ -1,55 +1,106 @@
 @import "tailwindcss";
 
+/* ───────── Дизайн-токены. Светлая тема по умолчанию, тёмная — по настройке системы. ───────── */
 @theme {
-  --color-ink: #1a1a1a;
-  --color-ink-2: #403f41;
-  --color-muted: #6b6b70;
-  --color-line: #e6e4df;
-  --color-bg: #f6f5f2;
+  --color-ink: #0f1115;
+  --color-ink-2: #3a3d46;
+  --color-muted: #6f7380;
+  --color-line: #e6e7ec;
+  --color-line-2: #d9dbe2;
+  --color-bg: #f5f6f8;
   --color-surface: #ffffff;
+  --color-surface-2: #fafafb;
   --color-brand: #ffad0e;
-  --color-brand-2: #f9b03c;
+  --color-brand-2: #ffbf3f;
   --color-brand-soft: #fff4dc;
-  --color-ok: #1f9d55;
-  --color-ok-soft: #e4f6ea;
-  --color-warn: #c8780a;
-  --color-warn-soft: #fff1dc;
-  --color-danger: #d23b3b;
-  --color-danger-soft: #fde8e8;
+  --color-ok: #15803d;
+  --color-ok-soft: #e7f6ec;
+  --color-warn: #b45309;
+  --color-warn-soft: #fff3df;
+  --color-danger: #d1283a;
+  --color-danger-soft: #fde7ea;
+  --color-info: #2563eb;
+  --color-info-soft: #e8efff;
   --font-sans: var(--font-inter), "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius-lg: 12px;
   --radius-xl: 16px;
-  --shadow-card: 0 1px 2px rgba(20, 20, 20, 0.04), 0 4px 16px rgba(20, 20, 20, 0.05);
+  --radius-2xl: 20px;
+  --shadow-card: 0 1px 1px rgba(15, 17, 21, 0.03), 0 2px 8px rgba(15, 17, 21, 0.04);
+  --shadow-pop: 0 8px 30px rgba(15, 17, 21, 0.12), 0 2px 6px rgba(15, 17, 21, 0.06);
 }
 
-html { color-scheme: light; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-ink: #f2f3f5;
+    --color-ink-2: #c9ccd4;
+    --color-muted: #8b8f9a;
+    --color-line: #262932;
+    --color-line-2: #30343f;
+    --color-bg: #0f1115;
+    --color-surface: #161920;
+    --color-surface-2: #1b1f27;
+    --color-brand-soft: #3a2d0c;
+    --color-ok-soft: #10311d;
+    --color-warn-soft: #3a260c;
+    --color-danger-soft: #3c161b;
+    --color-info-soft: #14223f;
+    --shadow-card: 0 1px 1px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.35);
+    --shadow-pop: 0 8px 30px rgba(0, 0, 0, 0.6);
+  }
+}
+
+html { color-scheme: light dark; scroll-behavior: smooth; }
 body {
   @apply bg-bg text-ink antialiased;
-  font-feature-settings: "cv11", "ss01";
+  font-feature-settings: "cv11", "ss01", "tnum";
+  text-rendering: optimizeLegibility;
 }
+::selection { background: color-mix(in oklab, var(--color-brand) 35%, transparent); }
 
+/* ───────── Поверхности ───────── */
 .card { @apply bg-surface border border-line rounded-2xl shadow-[var(--shadow-card)]; }
+.card-hover { @apply transition hover:border-line-2 hover:shadow-[var(--shadow-pop)] hover:-translate-y-px; }
+.kpi { @apply bg-surface border border-line rounded-2xl shadow-[var(--shadow-card)] p-4 sm:p-5 flex flex-col gap-1; }
+.kpi-value { @apply text-[26px] sm:text-[30px] font-bold tracking-tight leading-none; }
+
+/* ───────── Формы ───────── */
 .input {
-  @apply w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] text-ink placeholder:text-muted/70
-    focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand disabled:opacity-60;
+  @apply w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[14.5px] text-ink placeholder:text-muted/60
+    transition focus:outline-none focus:ring-4 focus:ring-brand/25 focus:border-brand disabled:opacity-60;
 }
-.label { @apply block text-[13px] font-medium text-muted mb-1.5; }
+select.input { @apply pr-9 appearance-none bg-no-repeat; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236f7380' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>"); background-position: right 0.75rem center; }
+.label { @apply block text-[12.5px] font-semibold text-muted mb-1.5 tracking-wide; }
+input[type="checkbox"] { accent-color: var(--color-ink); }
+
+/* ───────── Кнопки ───────── */
 .btn, .btn-primary, .btn-brand, .btn-ghost, .btn-danger {
   @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[14px] font-semibold transition
-    disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap select-none cursor-pointer;
+    disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap select-none cursor-pointer
+    focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/30;
 }
-.btn-primary { @apply bg-ink text-white hover:bg-ink-2 active:scale-[0.99]; }
-.btn-brand { @apply bg-brand text-ink hover:bg-brand-2 active:scale-[0.99]; }
-.btn-ghost { @apply bg-transparent text-ink hover:bg-ink/5 border border-line; }
+.btn-primary { @apply bg-ink text-bg hover:bg-ink-2 active:scale-[0.99] shadow-[0_1px_0_rgba(0,0,0,0.15)]; }
+.btn-brand { @apply bg-brand text-[#1a1200] hover:bg-brand-2 active:scale-[0.99] shadow-[0_1px_0_rgba(0,0,0,0.08)]; }
+.btn-ghost { @apply bg-surface text-ink hover:bg-surface-2 border border-line hover:border-line-2; }
 .btn-danger { @apply bg-danger-soft text-danger hover:bg-danger hover:text-white; }
 .btn-sm { @apply px-3 py-1.5 text-[13px] rounded-lg; }
-.badge { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-medium whitespace-nowrap; }
+
+/* ───────── Бейджи, таблицы, навигация ───────── */
+.badge { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[12px] font-semibold whitespace-nowrap; }
 .table { @apply w-full text-[14px]; }
-.table th { @apply text-left text-[12px] uppercase tracking-wide text-muted font-semibold px-3 py-2 border-b border-line; }
+.table th { @apply text-left text-[11.5px] uppercase tracking-wider text-muted font-semibold px-3 py-2.5 border-b border-line bg-surface-2/60; }
 .table td { @apply px-3 py-2.5 border-b border-line/70 align-middle; }
+.table tbody tr { @apply transition-colors hover:bg-surface-2/70; }
 .table tr:last-child td { @apply border-b-0; }
-.nav-link { @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium text-ink-2 hover:bg-ink/5 transition; }
-.nav-link.active { @apply bg-ink text-white hover:bg-ink; }
-.h1 { @apply text-[26px] sm:text-[30px] font-bold tracking-tight; }
-.h2 { @apply text-[18px] font-semibold tracking-tight; }
-.help { @apply text-[13px] text-muted; }
 .table-wrap { @apply overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0; }
+.nav-link { @apply flex items-center gap-2.5 rounded-xl px-3 py-2 text-[14px] font-medium text-ink-2 hover:bg-ink/5 transition; }
+.nav-link.active { @apply bg-ink text-bg hover:bg-ink; }
+.tab { @apply inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13.5px] font-medium border border-transparent text-ink-2 hover:bg-ink/5 transition; }
+.tab.active { @apply bg-ink text-bg; }
+.menu { @apply absolute right-0 top-full mt-2 w-64 bg-surface border border-line rounded-2xl p-1.5 z-50 shadow-[var(--shadow-pop)]; }
+.menu-item { @apply flex items-center gap-2.5 w-full rounded-lg px-3 py-2 text-[14px] text-ink-2 hover:bg-ink/5 hover:text-ink transition text-left; }
+
+/* ───────── Типографика ───────── */
+.h1 { @apply text-[24px] sm:text-[28px] font-bold tracking-[-0.02em]; }
+.h2 { @apply text-[17px] font-semibold tracking-[-0.01em]; }
+.help { @apply text-[13px] text-muted leading-snug; }
+.mono { @apply font-mono text-[12.5px]; }

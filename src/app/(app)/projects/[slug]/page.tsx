@@ -140,7 +140,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
         )}
 
         <Card title="Как вызывать из инструмента" description="Инструмент на этом же домене вызывает внутренний прокси, ключи наружу не уходят.">
-          <pre className="rounded-xl bg-ink text-white/90 text-[12.5px] p-4 overflow-x-auto">{`POST /api/run
+          <pre className="rounded-xl bg-ink text-bg/90 text-[12.5px] p-4 overflow-x-auto">{`POST /api/run
 { "project": "${project.slug}", "slot": "${project.slots[0]?.key ?? "text_main"}",
   "payload": { "messages": [{ "role": "user", "content": "Привет" }] } }`}</pre>
         </Card>
