@@ -19,7 +19,13 @@ export async function launchRun(_p: FormState, f: FormData): Promise<FormState> 
   const mode = str(f, "moderationMode") as ModerationMode;
   let runId: string;
   try {
-    const r = await createRun(me, { siteId: str(f, "siteId"), urls, name: str(f, "name"), moderationMode: ["required", "auto", "sample"].includes(mode) ? mode : undefined, stepByStep: f.get("stepByStep") === "on" });
+    const siteId = str(f, "siteId");
+    const site = await prisma.pinSite.findUnique({ where: { id: siteId }, select: { recipe: true, teamId: true, isActive: true, sets: { select: { id: true } } } });
+    if (!site || !canAccessTeam(me, site.teamId)) return { error: "Сайт не найден" };
+    if (!site.isActive) return { error: "Сайт в архиве: верните его из архива в разделе «Сайты»" };
+    // Настройки этого прогона: рецепт сайта как основа, поля формы — поверх.
+    const recipe = recipeFromForm(f, site.recipe, { allowedSetIds: new Set(site.sets.map((x) => x.id)) });
+    const r = await createRun(me, { siteId, urls, name: str(f, "name"), recipe, moderationMode: ["required", "auto", "sample"].includes(mode) ? mode : undefined, stepByStep: f.get("stepByStep") === "on" });
     runId = r.runId;
   } catch (e) { return fail(e); }
   redirect(`/pinterest/pins/runs/${runId}`);
@@ -245,6 +251,7 @@ export async function saveStyleNote(_p: FormState, f: FormData): Promise<FormSta
 
 /* ---------- Canvas-каталог ---------- */
 import { enqueueJob } from "@/lib/pins/jobs";
+import { validateStyle, type StyleSpec } from "@/lib/pins/canvas/styleSpec";
 
 /** Служебный прогон команды для задач без прогона (превью каталога). */
 async function systemRun(teamId: string): Promise<string> {
@@ -258,6 +265,7 @@ export async function buildCanvasCatalog(_p: FormState, f: FormData): Promise<Fo
   const me = await requireUser();
   const teamId = str(f, "teamId");
   if (!canAccessTeam(me, teamId)) return { error: "Нет доступа" };
+  if (me.role !== "ADMIN" && !me.leadTeamIds.includes(teamId)) return { error: "Собирать каталог может администратор или лидер команды" };
   try {
     const runId = await systemRun(teamId);
     await enqueueJob(runId, "previews", { harvest: true, force: f.get("force") === "1" });
@@ -272,7 +280,12 @@ export async function decideCanvasStyle(_p: FormState, f: FormData): Promise<For
   const id = str(f, "id");
   const decision = str(f, "decision");
   try {
-    if (decision === "approve") await prisma.pinCanvasStyle.update({ where: { id }, data: { isApproved: true, isActive: true } });
+    if (decision === "approve") {
+      const row = await prisma.pinCanvasStyle.findUnique({ where: { id }, select: { data: true } });
+      const problems = row ? validateStyle(row.data as unknown as StyleSpec) : ["стиль не найден"];
+      if (problems.length) throw new Error(`Стиль нельзя утвердить: ${problems.join("; ")}`);
+      await prisma.pinCanvasStyle.update({ where: { id }, data: { isApproved: true, isActive: true } });
+    }
     else if (decision === "reject") await prisma.pinCanvasStyle.update({ where: { id }, data: { isApproved: false, isActive: false } });
     else await prisma.pinCanvasStyle.update({ where: { id }, data: { isApproved: false, isActive: true } });
   } catch (e) { return fail(e); }

@@ -35,9 +35,11 @@ export async function claimNextJob(workerId: string): Promise<PinJob | null> {
   );
 }
 
-export async function renewLease(jobId: string, patch: { done?: number; total?: number; label?: string } = {}): Promise<{ stopping: boolean }> {
-  const rows = await prisma.$queryRaw<Array<{ status: string }>>`SELECT status FROM PinJob WHERE id = ${jobId}`;
+export async function renewLease(jobId: string, patch: { done?: number; total?: number; label?: string } = {}, workerId?: string): Promise<{ stopping: boolean; lost?: boolean }> {
+  const rows = await prisma.$queryRaw<Array<{ status: string; workerId: string | null }>>`SELECT status, workerId FROM PinJob WHERE id = ${jobId}`;
   const status = rows[0]?.status;
+  // Аренду продлевает только тот воркер, который держит задачу: после истечения lease её мог забрать другой.
+  if (workerId && rows[0] && rows[0].workerId !== workerId) return { stopping: true, lost: true };
   await prisma.$executeRaw`UPDATE PinJob SET leaseUntil = DATE_ADD(NOW(3), INTERVAL ${LEASE_SECONDS} SECOND) WHERE id = ${jobId}`;
   if (Object.keys(patch).length) await prisma.pinJob.update({ where: { id: jobId }, data: patch });
   return { stopping: status === "STOPPING" };
@@ -54,9 +56,15 @@ export async function releaseJob(jobId: string, delayMs = 0) {
 
 /** Задачи, чей воркер умер: lease истёк, статус всё ещё RUNNING. */
 export async function requeueStale(): Promise<number> {
-  const stale = await prisma.pinJob.findMany({ where: { status: { in: ["RUNNING", "STOPPING"] }, leaseUntil: { lt: new Date() } }, select: { id: true, attempts: true, runId: true, stage: true } });
+  const stale = await prisma.pinJob.findMany({ where: { status: { in: ["RUNNING", "STOPPING"] }, leaseUntil: { lt: new Date() } }, select: { id: true, attempts: true, runId: true, stage: true, status: true } });
   let n = 0;
   for (const j of stale) {
+    if (j.status === "STOPPING") {
+      // Пользователь просил остановить, а воркер умер: считаем остановленной, а не перезапускаем.
+      await finishJob(j.id, "STOPPED");
+      await prisma.pinRun.update({ where: { id: j.runId }, data: { status: "STOPPED", stopRequested: false } });
+      continue;
+    }
     if (j.attempts >= MAX_ATTEMPTS) {
       await finishJob(j.id, "ERROR", `Воркер несколько раз прерывался на этапе «${j.stage}»`);
       await prisma.pinRun.update({ where: { id: j.runId }, data: { status: "BLOCKED", blockedReason: `Этап «${j.stage}» прерывался ${j.attempts} раз подряд. Нажмите «Продолжить» после проверки логов.` } });

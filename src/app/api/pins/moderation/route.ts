@@ -14,7 +14,7 @@ export async function GET(req: Request) {
     runId: u.searchParams.get("run") || undefined,
     engine: u.searchParams.get("engine") || undefined,
     cursor: u.searchParams.get("cursor") || undefined,
-    limit: Number(u.searchParams.get("limit") || 60),
+    limit: Math.min(200, Math.max(1, Number(u.searchParams.get("limit")) || 60)),
   });
   return NextResponse.json(r, { headers: { "Cache-Control": "no-store" } });
 }

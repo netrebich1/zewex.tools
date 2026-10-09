@@ -152,10 +152,14 @@ export async function redoMissing(me: CurrentUser, runId: string): Promise<numbe
   const run = await getRunForUser(me, runId);
   if (!run) throw new Error("Прогон не найден");
   if (await activeJob(runId)) throw new JobConflict("Задача уже выполняется");
-  const r = await prisma.pinRunItem.updateMany({ where: { runId, status: "ERROR", imagePath: "", kind: "pin" }, data: { status: "PENDING", attempts: 0, nextRetryAt: null, error: null, errorKind: null, errorStage: null } });
+  const reset = { attempts: 0, nextRetryAt: null, error: null, errorKind: null, errorStage: null };
+  // Пины без картинки — заново в промты/картинки; пины с картинкой, упавшие на текстах/WP/расписании — снова READY.
+  const r = await prisma.pinRunItem.updateMany({ where: { runId, status: "ERROR", imagePath: "", kind: "pin" }, data: { status: "PENDING", ...reset } });
+  const r2 = await prisma.pinRunItem.updateMany({ where: { runId, status: "ERROR", OR: [{ imagePath: { not: "" } }, { kind: "photo" }] }, data: { status: "READY", ...reset } });
   await prisma.pinRun.update({ where: { id: runId }, data: { blockedReason: null } });
-  await enqueueJob(runId, "prompts");
-  return r.count;
+  const late = ["moderation", "texts", "upload", "schedule", "ready"].includes(run.stage);
+  await enqueueJob(runId, late && r.count === 0 ? "texts" : "prompts");
+  return r.count + r2.count;
 }
 
 /** «Пропустить сбойные»: отклонить элементы, у которых так и нет картинки. */

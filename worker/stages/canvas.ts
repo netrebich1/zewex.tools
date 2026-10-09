@@ -62,6 +62,7 @@ export const canvasStage: StageHandler = async (ctx) => {
         p.canvasHooks = h as unknown as typeof p.canvasHooks;
       }
     } catch (e) {
+      if (ctx.signal.aborted) throw ctx.signal.reason instanceof Error ? ctx.signal.reason : e;
       if (e instanceof AiError && e.cls.kind === "fatal_run") return { fatal: e.cls.message };
       ctx.log("hooks failed, fallback to titles", e);
     }
@@ -120,5 +121,6 @@ export const canvasStage: StageHandler = async (ctx) => {
     done++;
     await ctx.tick({ done, total: plan.length, label: `Canvas ${done}/${plan.length}` });
   }
+  if (ctx.signal.aborted) throw ctx.signal.reason instanceof Error ? ctx.signal.reason : new Error("aborted");
   return { summary: `canvas: ${done - failed} готово, ${failed} с ошибкой` };
 };

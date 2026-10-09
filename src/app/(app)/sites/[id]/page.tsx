@@ -28,7 +28,7 @@ export default async function SitePage({ params }: { params: Promise<{ id: strin
   if (!access) {
     // Ссылка по id сайта Pinterest Pins (из сервиса или старых адресов).
     pins = await prisma.pinSite.findUnique({ where: { id }, include: pinsInclude });
-    if (!pins) notFound();
+    if (!pins || !canAccessTeam(me, pins.teamId)) notFound();
     if (pins.wpConnectionId) redirect(`/sites/${pins.wpConnectionId}`);
   }
   const teamId = access?.teamId ?? pins!.teamId;

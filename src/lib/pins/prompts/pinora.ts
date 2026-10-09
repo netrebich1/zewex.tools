@@ -172,6 +172,28 @@ export function compositionText(c: PinoraComposition | null): string {
     .join("\n");
 }
 
+/**
+ * Плейсхолдеры композиции ([YEAR], [COUNT], [TOPIC_COUNT], [SITE_NAME], [CTA_PHRASE]…) заполняются
+ * фактическими значениями; строки, которые ссылаются на выключенный элемент (нет года/числа/имени сайта), убираются,
+ * чтобы модель не получала «год отключён» и тут же «[YEAR] курсивом».
+ */
+export function fillComposition(text: string, v: { year: string; count: number | null; season: string; siteName: string; keyword: string; ctaPhrase: string }): string {
+  if (!text) return "";
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    if ((/\[YEAR\]/.test(line) && !v.year) || (/\[(TOPIC_)?COUNT\]/.test(line) && !v.count) || (/\[SITE_NAME\]/.test(line) && !v.siteName) || (/\[CTA_PHRASE\]/.test(line) && !v.ctaPhrase)) continue;
+    out.push(line
+      .replace(/\[YEAR\]/g, v.year)
+      .replace(/\[(TOPIC_)?COUNT\]/g, v.count ? String(v.count) : "")
+      .replace(/\[SEASON\]/g, v.season)
+      .replace(/\[CTA_PHRASE\]/g, v.ctaPhrase)
+      .replace(/\[SITE_NAME\]/g, v.siteName)
+      .replace(/\[TOPIC_KEYWORD\]/g, v.keyword)
+      .replace(/\[SUBTEXT\]/g, ""));
+  }
+  return out.join("\n");
+}
+
 /** Строки блока композиции, которые описывают ЧТО снимать, а не КАК строить пин. */
 const SUBJECT_LINE_RE = /^\s*(SUBJECT|SUBJECTS|PHOTO SUBJECT|WHAT TO SHOOT|CONTENT)\b/i;
 
@@ -402,6 +424,8 @@ function buildPinStyle(ctx: StyleContext, type: PinoraType): PinStyleSelection {
   const fill = (s: string): string => s
     .replace(/\[YEAR\]/g, ctx.year)
     .replace(/\[COUNT\]/g, ctx.count ? String(ctx.count) : "")
+    .replace(/\[TOPIC_COUNT\]/g, ctx.count ? String(ctx.count) : "")
+    .replace(/\[SUBTEXT\]/g, "")
     .replace(/\[SEASON\]/g, ctx.season)
     .replace(/\[CTA_PHRASE\]/g, ctaPhrase)
     .replace(/\[SITE_NAME\]/g, ctx.siteName)
@@ -551,7 +575,7 @@ export function buildPinoraParams(args: BuildPinoraParamsArgs): PinoraParams {
     year,
     yearEnabled,
     siteName,
-    instructions: compositionStructure(comp, exact),
+    instructions: fillComposition(compositionStructure(comp, exact), { year: yearEnabled ? year : "", count, season, siteName, keyword, ctaPhrase: sel.ctaPhrase }),
     subject: subjectBlock(niche, { keyword, pageTitle: args.pageTitle || "" }),
     styleBlock: sel.styleBlock,
     aspect: PINORA_ASPECT,

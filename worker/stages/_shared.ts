@@ -59,7 +59,7 @@ export type ItemOutcome = { retry: number; fatal?: string };
 export async function failItem(item: Pick<PinRunItem, "id" | "attempts">, stage: string, e: unknown, acc: ItemOutcome): Promise<void> {
   const err = e instanceof Error ? e : new Error(String(e));
   // Остановка пользователем — не ошибка элемента: пробрасываем, задачу закроет runner как STOPPED.
-  if (err.name === "StopRequested") throw err;
+  if (err.name === "StopRequested" || err.name === "AbortError" || /shutting down|остановлен/i.test(err.message)) throw err;
   const httpStatus = typeof (e as { status?: unknown })?.status === "number" ? (e as { status: number }).status : 0;
   const cls = e instanceof AiError
     ? e.cls

@@ -195,7 +195,8 @@ function stackHeight(lines: TextLine[]) {
 }
 
 function luminance(hex: string) {
-  const v = hex.replace("#", "");
+  let v = hex.replace("#", "");
+  if (v.length === 3) v = v.split("").map((c) => c + c).join("");
   if (v.length !== 6) return 0;
   const rgb = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) / 255).map((c) => c <= .03928 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
   return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
@@ -672,7 +673,7 @@ export async function renderCanvasPinDetailed(args: RenderCanvasArgs): Promise<R
     : wanted;
   const solve = (textHeight: number, photos = count) => solveCanvasScene({
     family: r.family, count: photos, imageRatios, textHeight, padding: r.padding, radius: r.radius, gutter: r.gutter,
-    align: "center", accent, seed: args.seed || 1, plate, focusY,
+    align: "center", accent, seed: args.seed || 1, plate, focusY, zone: r.textZone,
   });
   let scene = solve(320);
   let lines = measureTextStack(ctx, r, args.text, scene.textRect.w, scene.textRect.h, args.ideaCount, args.year);

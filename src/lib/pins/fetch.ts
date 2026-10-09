@@ -9,9 +9,20 @@ import { isIP } from "net";
 const UA = "Mozilla/5.0 (compatible; ZewexPins/1.0; +https://zewex.tools)";
 
 function isPrivateIp(ip: string): boolean {
-  if (ip === "::1" || ip.startsWith("fe80:") || ip.startsWith("fc") || ip.startsWith("fd")) return true;
-  const m = ip.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-  if (!m) return ip.startsWith("::ffff:") ? isPrivateIp(ip.slice(7)) : false;
+  const low = ip.toLowerCase();
+  if (low === "::1" || low === "::" || low.startsWith("fe80:") || low.startsWith("fc") || low.startsWith("fd")) return true;
+  const m = low.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (!m) {
+    // IPv4-mapped IPv6: ::ffff:127.0.0.1 или ::ffff:7f00:1
+    const mapped = low.match(/^::ffff:([0-9a-f:.]+)$/);
+    if (!mapped) return false;
+    const rest = mapped[1];
+    if (rest.includes(".")) return isPrivateIp(rest);
+    const hex = rest.split(":");
+    if (hex.length !== 2) return true;
+    const n = (parseInt(hex[0], 16) << 16) | parseInt(hex[1], 16);
+    return isPrivateIp(`${(n >>> 24) & 255}.${(n >>> 16) & 255}.${(n >>> 8) & 255}.${n & 255}`);
+  }
   const [a, b] = [Number(m[1]), Number(m[2])];
   return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224;
 }
@@ -58,14 +69,29 @@ export async function safeFetch(url: string, opts: SafeFetchOptions = {}): Promi
   const onOuter = () => ac.abort(opts.signal?.reason ?? new Error("aborted"));
   opts.signal?.addEventListener("abort", onOuter, { once: true });
   try {
-    const res = await fetch(url, {
-      method: opts.method ?? "GET",
-      redirect: "follow",
-      headers: { "User-Agent": UA, Accept: opts.accept ?? "*/*", ...(opts.headers ?? {}) },
-      signal: ac.signal,
-    });
-    // после редиректов проверяем конечный хост ещё раз
-    if (res.url && res.url !== url) await assertPublicUrl(res.url);
+    // Редиректы проходим вручную: каждый хоп проверяется до запроса (иначе редирект на 127.0.0.1 уже выполнится).
+    let current = url;
+    let res: Response | null = null;
+    for (let hop = 0; hop < 6; hop++) {
+      const r = await fetch(current, {
+        method: opts.method ?? "GET",
+        redirect: "manual",
+        headers: { "User-Agent": UA, Accept: opts.accept ?? "*/*", ...(opts.headers ?? {}) },
+        signal: ac.signal,
+      });
+      const loc = r.headers.get("location");
+      if (r.status >= 300 && r.status < 400 && loc) {
+        try { await r.body?.cancel(); } catch { /* noop */ }
+        const nextUrl = new URL(loc, current).toString();
+        await assertPublicUrl(nextUrl);
+        current = nextUrl;
+        continue;
+      }
+      res = r;
+      break;
+    }
+    if (!res) throw new Error("Слишком много редиректов");
+    Object.defineProperty(res, "url", { value: current });
     const len = Number(res.headers.get("content-length") || 0);
     if (len > maxBytes) throw new Error(`Файл больше лимита ${Math.round(maxBytes / 1048576)} МБ`);
     if (opts.method === "HEAD" || !res.body) {

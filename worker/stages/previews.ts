@@ -48,5 +48,6 @@ export const previews: StageHandler = async (ctx) => {
     done++;
     await ctx.tick({ done, total: rows.length, label: `Превью ${done}/${rows.length}` });
   }
+  if (ctx.signal.aborted) throw ctx.signal.reason instanceof Error ? ctx.signal.reason : new Error("aborted");
   return { summary: `превью: ${done - failed} ок, ${failed} с ошибкой` };
 };

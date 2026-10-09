@@ -52,6 +52,8 @@ export interface SolveInput {
   plate?: PlateKind;
   /** Вертикальный центр главного объекта (0..1) на первом фото — для overlay-семейств. */
   focusY?: number;
+  /** Зона текста из стиля: top | bottom | side | middle | overlay. Если задана — важнее семейства. */
+  zone?: "top" | "bottom" | "overlay" | "middle" | "side";
 }
 
 const rect = (x: number, y: number, w: number, h: number): SceneRect => ({ x, y, w, h });
@@ -202,9 +204,9 @@ export function solveCanvasScene(input: SolveInput): SolvedScene {
     "brush-headline", "blob-sticker", "sticker-card", "torn-paper",
     "ticket-pop", "neon-night", "chrome-gloss",
   ]);
-  const overlay = OVERLAY_FAMILIES.has(input.family);
+  const overlay = input.zone ? input.zone === "overlay" : OVERLAY_FAMILIES.has(input.family);
   const plate: PlateKind = overlay ? (input.plate ?? "none") : "none";
-  const side = input.family === "clean-product" && input.count === 1;
+  const side = input.zone ? input.zone === "side" && input.count <= 2 : input.family === "clean-product" && input.count === 1;
   let textRect: SceneRect;
   let photoArea: SceneRect;
 
@@ -239,7 +241,7 @@ export function solveCanvasScene(input: SolveInput): SolvedScene {
     const TOP_TEXT = new Set<CanvasFamily>([
       "framed-editorial", "soft-lifestyle", "arch-editorial", "swiss-giant", "grid-caption",
     ]);
-    const topText = TOP_TEXT.has(input.family);
+    const topText = input.zone ? input.zone === "top" || input.zone === "middle" : TOP_TEXT.has(input.family);
 
     if (topText) {
       textRect = rect(p, p, PIN_W - p * 2, textH);

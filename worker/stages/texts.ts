@@ -56,7 +56,7 @@ export const texts: StageHandler = async (ctx) => {
           const boardName = it.boardName || ((it.page.boards as string[])[0] ?? "");
           await prisma.pinRunItem.update({ where: { id: it.id }, data: { title: t.title.slice(0, LIMITS.title), description: t.description.slice(0, LIMITS.description), altText: t.altText.slice(0, LIMITS.alt), boardName, ...okPatch } });
         } else {
-          await failItem(it, "texts", new Error("Модель не вернула текст"), acc);
+          await failItem(it, "texts", new AiError({ code: "empty", kind: "transient", message: "Модель не вернула текст для этого пина" }, 502), acc);
         }
       }
     } catch (e) {

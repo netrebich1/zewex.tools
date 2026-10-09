@@ -154,7 +154,8 @@ function energyMap(img: HostImage, prof: AccentProfile = accentProfile("auto")):
       if (v < 0) v = 0;
       if (prof.bias) {
         const ny = y / Math.max(1, h - 1) - 0.5;
-        v *= 1 + prof.bias * -ny * 0.8;
+        // bias < 0 — предпочтение верху кадра (лицо, причёска): верхние строки усиливаем, нижние гасим.
+        v *= 1 + prof.bias * ny * 0.8;
         if (v < 0) v = 0;
       }
       if (y < 2 || y >= h - 2 || x < 2 || x >= w - 2) v *= 0.3;

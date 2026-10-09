@@ -34,9 +34,12 @@ export async function processJob(job: PinJob, shuttingDown: () => boolean): Prom
   let lastPatch: { done?: number; total?: number; label?: string } = {};
   const heartbeat = setInterval(async () => {
     try {
-      const r = await renewLease(job.id, lastPatch);
+      const r = await renewLease(job.id, lastPatch, job.workerId ?? undefined);
       lastPatch = {};
-      if (r.stopping && !stopping) {
+      if (r.lost && !ac.signal.aborted) {
+        log.warn(`job ${job.id} lease lost to another worker; aborting local execution`);
+        ac.abort(new Error("worker shutting down"));
+      } else if (r.stopping && !stopping) {
         stopping = true;
         ac.abort(new StopRequested());
       }
@@ -46,8 +49,9 @@ export async function processJob(job: PinJob, shuttingDown: () => boolean): Prom
     }
   }, 20_000);
 
-  const run = await prisma.pinRun.findUnique({ where: { id: job.runId } });
+  let run: Awaited<ReturnType<typeof prisma.pinRun.findUnique>> = null;
   try {
+    run = await prisma.pinRun.findUnique({ where: { id: job.runId } });
     if (!run) {
       await finishJob(job.id, "ERROR", "Прогон не найден");
       return;
@@ -81,7 +85,7 @@ export async function processJob(job: PinJob, shuttingDown: () => boolean): Prom
           }
         }
       },
-      log: (msg, extra) => log.info(`[${job.stage} ${run.id.slice(0, 8)}] ${msg}`, extra),
+      log: (msg, extra) => log.info(`[${job.stage} ${job.runId.slice(0, 8)}] ${msg}`, extra),
     };
 
     const result = await handler(ctx);

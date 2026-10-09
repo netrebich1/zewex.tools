@@ -17,7 +17,7 @@ export async function GET(req: Request) {
       after: q.get("after") || undefined,
       before: q.get("before") || undefined,
       search: q.get("search") || undefined,
-      limit: Number(q.get("limit") || 100),
+      limit: Number.isFinite(Number(q.get("limit"))) && Number(q.get("limit")) > 0 ? Number(q.get("limit")) : 100,
       postType: q.get("type") === "pages" ? "pages" : "posts",
     });
     return NextResponse.json(r, { headers: { "Cache-Control": "no-store" } });

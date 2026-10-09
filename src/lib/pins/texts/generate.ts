@@ -213,7 +213,7 @@ export async function generatePinTexts(ctx: AiCtx, input: TextInput, opts: TextO
         });
         const rows = rowsFromJson(res.json);
         chunk.forEach((it, k) => {
-          const hit = rows.find((r) => Number(r.i) === k) ?? rows[k];
+          const hit = rows.find((r) => Number(r.i) === k) ?? (rows.length === chunk.length && rows.every((r) => r.i === undefined) ? rows[k] : undefined);
           if (!hit) return;
           const raw = { title: str(hit.title), description: str(hit.description), alt: str(hit.alt ?? hit.altText ?? hit.alt_text) };
           if (!raw.title) return;

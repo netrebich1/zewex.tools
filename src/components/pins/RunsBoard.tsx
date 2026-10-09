@@ -29,8 +29,12 @@ export function RunsBoard({ initial }: { initial: RunOverview[] }) {
     if (r.status === "DONE") return { text: "Готов к выгрузке", href: `/pinterest/pins/export`, tone: "ok" as const };
     return null;
   };
+  // «N мин назад» считается после монтирования, чтобы серверная и клиентская разметка совпадали.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => { setNow(Date.now()); const t = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(t); }, []);
   const ago = (iso: string) => {
-    const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (now === null) return "";
+    const m = Math.round((now - new Date(iso).getTime()) / 60000);
     return m < 1 ? "только что" : m < 60 ? `${m} мин назад` : m < 1440 ? `${Math.round(m / 60)} ч назад` : `${Math.round(m / 1440)} дн назад`;
   };
 

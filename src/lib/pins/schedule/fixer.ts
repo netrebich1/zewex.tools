@@ -63,7 +63,9 @@ export function fixSchedule(rows: readonly FixRow[], mode: FixMode, opts: FixOpt
   if (mode === "clear") {
     for (const x of missed) set(x.id, null);
   } else if (mode === "today") {
-    const todays = dated.filter((x) => x.at.getTime() < start.getTime() || dayKey(x.at, tz) === todayK);
+    // Переставляем только пропущенные слоты (раньше «сейчас + буфер»); будущие сегодняшние не трогаем,
+    // иначе повторное скачивание файла разойдётся с уже загруженным в Pinterest.
+    const todays = dated.filter((x) => x.at.getTime() < start.getTime());
     const from = Math.max(DAY_START_MIN, Math.min(nowMin, endToday));
     spreadEven(todays.length, from, endToday).forEach((m, k) => set(todays[k].id, zonedToUtc(todayK, m, tz)));
   } else {

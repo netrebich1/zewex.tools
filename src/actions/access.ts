@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { canManageTeam } from "@/lib/auth";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { testConnection } from "@/lib/pins/wp/client";
+import { assertPublicUrl } from "@/lib/pins/fetch";
 
 export type FormState = { error?: string; ok?: string };
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -17,11 +18,20 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
   const id = str(f, "id");
   const teamId = str(f, "teamId");
   if (!canManageTeam(me, teamId) && !me.teamIds.includes(teamId)) return { error: "Нет доступа к команде" };
+  // Правка существующей записи: она должна принадлежать команде пользователя (иначе перехват чужого доступа).
+  if (id) {
+    const existing = await prisma.siteAccess.findUnique({ where: { id }, select: { teamId: true } });
+    if (!existing || (me.role !== "ADMIN" && !me.teamIds.includes(existing.teamId))) return { error: "Доступ не найден" };
+  }
   const baseUrl = str(f, "baseUrl").replace(/\/+$/, "");
   const username = str(f, "username");
   const appPassword = str(f, "appPassword");
   if (!baseUrl || !username) return { error: "Укажите адрес сайта и логин" };
   if (!/^https?:\/\//.test(baseUrl)) return { error: "Адрес должен начинаться с http(s)://" };
+  try {
+    await assertPublicUrl(baseUrl);
+    if (str(f, "mediaBaseUrl")) await assertPublicUrl(str(f, "mediaBaseUrl"));
+  } catch (e) { return fail(e); }
   const projects = f.getAll("projects").map(String).filter(Boolean);
   const data = {
     teamId, kind: "wordpress", name: str(f, "name") || baseUrl.replace(/^https?:\/\//, ""), baseUrl, username,

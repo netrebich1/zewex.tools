@@ -222,6 +222,8 @@ export async function generateHooks(
   const incomplete = input.pages.filter((p) => (results.get(p.id)?.length ?? 0) < perPage);
   if (incomplete.length && !signal?.aborted) await runPool(incomplete, 1);
 
+  // Прервано пользователем или перезапуском: не подменять хуки заглушками.
+  if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("aborted");
   // Фолбэк: страницы без хуков получают заголовок/ключ страницы.
   for (const p of input.pages) {
     if (results.get(p.id)?.length) continue;

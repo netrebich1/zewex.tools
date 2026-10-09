@@ -148,6 +148,8 @@ type WpResponse = { status: number; text: string; headers: Headers };
  * Один запрос к REST API с таймаутом и повторами. Повторяем только сетевые ошибки,
  * 429 и 5xx; 4xx отдаём сразу. Отмена через opts.signal повторов не вызывает.
  */
+import { assertPublicUrl } from "../fetch";
+
 async function wpRequest(
   creds: WpCreds,
   path: string,
@@ -155,6 +157,8 @@ async function wpRequest(
   opts: WpRequestOptions = {},
 ): Promise<WpResponse> {
   const url = apiUrl(creds, path);
+  // Адрес сайта задаёт пользователь: не даём клиенту ходить в приватные сети (SSRF).
+  await assertPublicUrl(url);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxRetries = opts.maxRetries ?? DEFAULT_RETRIES;
   let lastError = "";
@@ -186,7 +190,7 @@ async function wpRequest(
       lastStatus = res.status;
       lastError = parseWpError(text).message;
       if (attempt < maxRetries) {
-        const retryAfter = Number(res.headers.get("retry-after")) || 0;
+        const retryAfter = Math.min(60, Number(res.headers.get("retry-after")) || 0);
         await sleep(Math.max(retryAfter * 1000, 2000 * (attempt + 1)));
         continue;
       }
