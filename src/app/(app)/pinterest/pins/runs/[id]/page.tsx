@@ -5,7 +5,10 @@ import { runStatus } from "@/lib/pins/runs/status";
 import { Card, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { continueRunAction, deleteRunAction, redoMissingAction, skipFailedAction, stopRunAction } from "@/actions/pins";
+import { continueRunAction, deleteRunAction, redoMissingAction, skipFailedAction, stopRunAction, updateRunSettings } from "@/actions/pins";
+import { prisma } from "@/lib/db";
+import { RecipeFields } from "@/components/pins/RecipeFields";
+import { recipeFieldsData } from "@/components/sites/PinsRecipeForm";
 import { RunStatus } from "@/components/pins/RunStatus";
 import { mergeRecipe } from "@/lib/pins/types";
 
@@ -20,6 +23,8 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   if (!view) notFound();
   const r = mergeRecipe(run.settings);
   const busy = view.job != null && ["PENDING", "RUNNING", "STOPPING"].includes(view.job.status);
+  const sets = run.siteId ? await prisma.pinSet.findMany({ where: { siteId: run.siteId }, orderBy: { name: "asc" } }) : [];
+  const live = ["QUEUED", "RUNNING"].includes(run.status);
 
   return (
     <>
@@ -44,6 +49,14 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
               <SubmitButton className="btn-danger" confirm="Удалить прогон вместе со всеми пинами и картинками?" pendingText="…">Удалить</SubmitButton>
             </ActionForm>
           </div>
+        </Card>
+        <Card title="Настройки прогона" description={live ? "Прогон выполняется: чтобы изменить настройки, сначала нажмите «Стоп»." : "Свои для этого прогона (рецепт сайта был подставлен при запуске). Изменения применяются к этапам, которые ещё не прошли: например, число пинов в день — к расписанию, наборы стилей — к плану."}>
+          <ActionForm action={updateRunSettings} hidden={{ id }} className="space-y-4">
+            <fieldset disabled={live} className="space-y-4 disabled:opacity-60">
+              <RecipeFields r={r} data={recipeFieldsData(sets)} />
+              <SubmitButton pendingText="Сохраняю…">Сохранить настройки прогона</SubmitButton>
+            </fieldset>
+          </ActionForm>
         </Card>
       </div>
     </>

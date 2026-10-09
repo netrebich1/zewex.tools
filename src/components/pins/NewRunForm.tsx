@@ -5,8 +5,10 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Alert, Field } from "@/components/ui";
 import { launchRun } from "@/actions/pins";
+import { RecipeFields, type RecipeFieldsData } from "@/components/pins/RecipeFields";
+import type { Recipe } from "@/lib/pins/types";
 
-export type NewRunSite = { id: string; name: string; per: number; perDay: number; boards: number; hasWp: boolean; aiSets: number; canvasSets: number; mix: { ai: number; photos: number; canvas: number; pinora: number } };
+export type NewRunSite = { id: string; name: string; per: number; perDay: number; boards: number; hasWp: boolean; aiSets: number; canvasSets: number; mix: { ai: number; photos: number; canvas: number; pinora: number }; recipe: Recipe; fields: RecipeFieldsData };
 type Post = { id: number; url: string; title: string; date: string; used: boolean };
 type Term = { id: number; name: string; count: number };
 
@@ -99,15 +101,7 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
             <p className="help mt-1">После каждого этапа прогон встаёт на паузу. Вы смотрите результат и нажимаете «Продолжить» на странице прогона.</p>
           </label>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Модерация">
-            <select name="moderationMode" className="input" defaultValue="required">
-              <option value="required">Обязательна: пауза, пока все пины не проверены</option>
-              <option value="auto">Автоодобрение: без паузы (пины без картинки отклоняются)</option>
-            </select>
-          </Field>
-          <Field label="Название прогона (необязательно)"><input name="name" className="input" placeholder="Октябрь, декор" /></Field>
-        </div>
+        <Field label="Название прогона (необязательно)"><input name="name" className="input" placeholder="Октябрь, декор" /></Field>
       </section>
 
       <section className="space-y-3">
@@ -163,6 +157,17 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
             {pickedList.map((u) => <input key={u} type="hidden" name="urlList" value={u} />)}
             <input type="hidden" name="urls" value={pickedList.join("\n")} />
           </div>
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <div className="font-medium">4. Настройки прогона</div>
+        <p className="help">Заполнены из рецепта сайта «{site?.name}». Здесь их можно изменить только для этого прогона: сколько пинов каждого вида, наборы стилей, тексты, модерация, расписание. Рецепт сайта не меняется.</p>
+        {site && (
+          <details open className="rounded-xl border border-line p-3 sm:p-4">
+            <summary className="cursor-pointer font-medium text-[14px]">Показать / скрыть настройки</summary>
+            <div className="mt-3" key={site.id}><RecipeFields r={site.recipe} data={site.fields} /></div>
+          </details>
         )}
       </section>
 

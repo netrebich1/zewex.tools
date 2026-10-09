@@ -1,5 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/db";
+import { canAccessTeam } from "@/lib/pins/runs/actions";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createRun, continueRun, deleteRun, parseUrls, redoMissing, skipFailed, stopRun } from "@/lib/pins/runs/actions";
@@ -21,6 +23,22 @@ export async function launchRun(_p: FormState, f: FormData): Promise<FormState> 
     runId = r.runId;
   } catch (e) { return fail(e); }
   redirect(`/pinterest/pins/runs/${runId}`);
+}
+
+/** Правка настроек прогона: только когда он не выполняется; действует на этапы, которые ещё не прошли. */
+export async function updateRunSettings(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  const id = str(f, "id");
+  try {
+    const run = await prisma.pinRun.findUnique({ where: { id }, include: { site: { select: { id: true, teamId: true, sets: { select: { id: true } } } } } });
+    if (!run || !run.site || !canAccessTeam(me, run.site.teamId)) throw new Error("Прогон не найден");
+    if (["QUEUED", "RUNNING"].includes(run.status)) throw new Error("Прогон выполняется: остановите его, затем меняйте настройки");
+    const base = run.settings as Record<string, unknown>;
+    const recipe = recipeFromForm(f, base, { allowedSetIds: new Set(run.site.sets.map((x) => x.id)) });
+    await prisma.pinRun.update({ where: { id }, data: { settings: { ...base, ...recipe } as object } });
+  } catch (e) { return fail(e); }
+  revalidatePath(`/pinterest/pins/runs/${id}`);
+  return { ok: "Настройки прогона сохранены. Они применятся к этапам, которые ещё не прошли." };
 }
 
 export async function continueRunAction(_p: FormState, f: FormData): Promise<FormState> {
@@ -71,9 +89,8 @@ export async function deleteRunAction(_p: FormState, f: FormData): Promise<FormS
 }
 
 /* ---------- Сайт: рецепт, доски ---------- */
-import { prisma } from "@/lib/db";
-import { canAccessTeam } from "@/lib/pins/runs/actions";
-import { mergeRecipe, type Recipe } from "@/lib/pins/types";
+import { mergeRecipe } from "@/lib/pins/types";
+import { recipeFromForm } from "@/lib/pins/recipeForm";
 
 const num = (f: FormData, k: string, def: number, min = 0, max = 1000) => {
   const n = Number(String(f.get(k) ?? "").replace(",", "."));
@@ -97,30 +114,7 @@ export async function saveRecipe(_p: FormState, f: FormData): Promise<FormState>
     const wpOk = wpId ? await prisma.siteAccess.findFirst({ where: { id: wpId, teamId: site.teamId }, select: { id: true } }) : null;
     if (wpId && !wpOk) throw new Error("Доступ WordPress не принадлежит команде сайта");
     const ownSets = new Set((await prisma.pinSet.findMany({ where: { siteId: id }, select: { id: true } })).map((s) => s.id));
-    const onlyOwn = (ids: string[]) => ids.filter((x) => ownSets.has(x));
-    const next: Recipe = {
-      ...r,
-      mix: { ai: num(f, "mixAi", r.mix.ai, 0, 20), photos: num(f, "mixPhotos", r.mix.photos, 0, 20), canvas: num(f, "mixCanvas", r.mix.canvas, 0, 20), pinora: num(f, "mixPinora", r.mix.pinora, 0, 20) },
-      photosMode: str(f, "photosMode") === "featured_only" ? "featured_only" : "all",
-      sets: { ...r.sets, aiSetIds: onlyOwn(f.getAll("aiSetIds").map(String)), canvasSetIds: onlyOwn(f.getAll("canvasSetIds").map(String)), pinoraTypes: f.getAll("pinoraTypes").map(String) },
-      text: {
-        ...r.text,
-        language: str(f, "language") || r.text.language,
-        hashtags: f.get("hashtags") === "on",
-        variety: num(f, "variety", r.text.variety, 0, 100),
-        elements: { season: f.get("elSeason") === "on", year: f.get("elYear") === "on", number: f.get("elNumber") === "on", cta: f.get("elCta") === "on", siteName: f.get("elSiteName") === "on" },
-        audience: (["women", "men", "mix"] as const).find((a) => a === str(f, "audience")) ?? r.text.audience,
-        brandColor: str(f, "brandColor") || undefined,
-      },
-      publishing: { wpConnectionId: wpOk ? wpId : null, linkDomain: str(f, "linkDomain"), photoLinkPercent: num(f, "photoLinkPercent", r.publishing.photoLinkPercent, 0, 100) },
-      schedule: {
-        pinsPerDay: num(f, "pinsPerDay", r.schedule.pinsPerDay, 1, 100),
-        startFrom: /^\d{4}-\d{2}-\d{2}$/.test(str(f, "startFrom")) ? str(f, "startFrom") : "next_free_day",
-        moderationMode: str(f, "moderationMode") === "auto" ? "auto" : "required",
-        samplePercent: r.schedule.samplePercent,
-      },
-      boards: { multiBoard: f.get("multiBoard") === "on" },
-    };
+    const next = recipeFromForm(f, r, { allowedSetIds: ownSets, wpConnectionId: wpOk ? wpId : null });
     await prisma.pinSite.update({ where: { id }, data: { recipe: next, name: str(f, "name") || site.name, niche: str(f, "niche"), wpConnectionId: next.publishing.wpConnectionId } });
     if (next.publishing.wpConnectionId) revalidatePath(`/sites/${next.publishing.wpConnectionId}`);
   } catch (e) { return fail(e); }

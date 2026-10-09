@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { enqueueJob, requestStop, activeJob, JobConflict } from "../jobs";
-import { mergeRecipe, type JobStage, type ModerationMode, type RunSettings } from "../types";
+import { mergeRecipe, type JobStage, type ModerationMode, type Recipe, type RunSettings } from "../types";
 import { hash32 } from "../plan/seed";
 import { removePath, runDir } from "../storage";
 import { nextStageAfter } from "./stages";
@@ -52,6 +52,8 @@ export type CreateRunInput = {
   moderationMode?: ModerationMode;
   stepByStep?: boolean;
   includeUsed?: boolean;
+  /** Настройки этого прогона (по умолчанию — рецепт сайта). */
+  recipe?: Recipe;
 };
 
 /**
@@ -65,7 +67,7 @@ export async function createRun(me: CurrentUser, input: CreateRunInput): Promise
   if (input.urls.length > 500) throw new Error("Не больше 500 ссылок за один прогон");
   const warnings: string[] = [];
 
-  const recipe = mergeRecipe(site.recipe);
+  const recipe = mergeRecipe(input.recipe ?? site.recipe);
   if (input.moderationMode) recipe.schedule.moderationMode = input.moderationMode;
   const enabledKinds = Object.values(recipe.mix).filter((v) => v > 0).length;
   if (!enabledKinds) throw new Error("В рецепте сайта выключены все типы пинов");
