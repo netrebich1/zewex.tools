@@ -45,8 +45,8 @@ export const texts: StageHandler = async (ctx) => {
       const res = await generatePinTexts(rc.ai, {
         items: input,
         language: rc.recipe.text.language,
-        hashtags: rc.recipe.text.hashtags,
-        hashtagShare: rc.recipe.text.hashtags ? rc.recipe.text.variety : 0,
+        hashtags: rc.recipe.text.percents.hashtags > 0,
+        hashtagShare: rc.recipe.text.percents.hashtags,
         audience: rc.recipe.text.audience,
         siteName: rc.settings.siteName,
       }, { signal: ctx.signal });

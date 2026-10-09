@@ -34,9 +34,16 @@ export function recipeFromForm(f: FormData, base: unknown, opts: RecipeFormOptio
     text: {
       ...r.text,
       language: str(f, "language") || r.text.language,
-      hashtags: f.get("hashtags") === "on",
-      variety: num(f, "variety", r.text.variety, 0, 100),
-      elements: { season: f.get("elSeason") === "on", year: f.get("elYear") === "on", number: f.get("elNumber") === "on", cta: f.get("elCta") === "on", siteName: f.get("elSiteName") === "on" },
+      percents: {
+        season: num(f, "pctSeason", r.text.percents.season, 0, 100), year: num(f, "pctYear", r.text.percents.year, 0, 100),
+        number: num(f, "pctNumber", r.text.percents.number, 0, 100), cta: num(f, "pctCta", r.text.percents.cta, 0, 100),
+        siteName: num(f, "pctSiteName", r.text.percents.siteName, 0, 100), hashtags: num(f, "pctHashtags", r.text.percents.hashtags, 0, 100),
+      },
+      numberSource: (["sections", "images", "none"] as const).find((v) => v === str(f, "numberSource")) ?? r.text.numberSource,
+      // устаревшие поля держим согласованными
+      hashtags: num(f, "pctHashtags", r.text.percents.hashtags, 0, 100) > 0,
+      variety: 100,
+      elements: { season: num(f, "pctSeason", r.text.percents.season, 0, 100) > 0, year: num(f, "pctYear", r.text.percents.year, 0, 100) > 0, number: num(f, "pctNumber", r.text.percents.number, 0, 100) > 0, cta: num(f, "pctCta", r.text.percents.cta, 0, 100) > 0, siteName: num(f, "pctSiteName", r.text.percents.siteName, 0, 100) > 0 },
       audience: (["women", "men", "mix"] as const).find((a) => a === str(f, "audience")) ?? r.text.audience,
       brandColor: str(f, "brandColor") || undefined,
     },

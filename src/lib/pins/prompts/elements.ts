@@ -35,14 +35,13 @@ function clampPercent(v: unknown): number {
   return Math.max(0, Math.min(100, n));
 }
 
-/** Элемент включён в рецепте и выпал по хэшу. При variety=100 — всегда, при 0 — никогда. */
+/** Элемент выпадает по своему проценту из рецепта (percents). При 100 — всегда, при 0 — никогда. */
 export function decideElements(itemId: string, recipeText: Recipe["text"]): ElementTags {
-  const variety = clampPercent(recipeText.variety);
-  const on = recipeText.elements;
   const roll = (name: keyof ElementTags): boolean => {
-    if (!on[name]) return false;
-    if (variety >= 100) return true;
-    return hashPercent(itemId, name) < variety;
+    const share = clampPercent(recipeText.percents?.[name]);
+    if (share <= 0) return false;
+    if (share >= 100) return true;
+    return hashPercent(itemId, name) < share;
   };
   return {
     season: roll("season"),

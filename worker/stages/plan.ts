@@ -3,6 +3,7 @@ import { planAiPins } from "@/lib/pins/plan/aiPlan";
 import { planPinoraPins } from "@/lib/pins/plan/pinoraPlan";
 import { buildPinoraParams } from "@/lib/pins/prompts/pinora";
 import { decideElements, currentYear } from "@/lib/pins/prompts/elements";
+import { ideaCountFor } from "@/lib/pins/types";
 import { hash32 } from "@/lib/pins/plan/seed";
 import type { StageHandler } from "./index";
 import { loadRunCtx } from "./_shared";
@@ -51,7 +52,7 @@ export const plan: StageHandler = async (ctx) => {
       const page = rc.pageById.get(r.pageId)!;
       const id = `${rc.run.id}|${r.pageId}|pinora|${r.sortOrder}`;
       const tags = decideElements(id, rc.recipe.text);
-      const params = buildPinoraParams({ type: r.pinType, niche: page.niche || rc.site.niche, seed: hash32(id), tags, keyword: page.keyword, pageTitle: page.pageTitle, siteName: rc.settings.siteName, ideaCount: page.sectionImageCount || page.imageCount || undefined, year: tags.year ? year : undefined, season: tags.season ? page.seasonWord || page.season : undefined });
+      const params = buildPinoraParams({ type: r.pinType, niche: page.niche || rc.site.niche, seed: hash32(id), tags, keyword: page.keyword, pageTitle: page.pageTitle, siteName: rc.settings.siteName, ideaCount: ideaCountFor(page, rc.recipe.text) || undefined, year: tags.year ? year : undefined, season: tags.season ? page.seasonWord || page.season : undefined });
       return { runId: rc.run.id, pageId: r.pageId, siteId: rc.site.id, kind: "pin", engine: "PINORA" as const, pinType: r.pinType, sortOrder: 500 + r.sortOrder, styleParams: params as object };
     }),
   ];

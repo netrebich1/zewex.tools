@@ -27,6 +27,12 @@ export function RecipeFields({ r, data }: { r: Recipe; data: RecipeFieldsData })
       <input name={name} type="number" min={min} max={max} className="input w-20 py-1 text-center" defaultValue={value} />
     </label>
   );
+  const pct = (name: string, label: string, value: number) => (
+    <label className="flex items-center justify-between gap-1 rounded-lg border border-line px-2 py-1">
+      <span className="text-[12px]">{label}</span>
+      <span className="flex items-center gap-0.5"><input name={name} type="number" min={0} max={100} className="input w-14 py-0.5 px-1 text-center text-[12px]" defaultValue={value} /><span className="text-[11px] text-muted">%</span></span>
+    </label>
+  );
   const check = (name: string, label: string, on: boolean) => (
     <label className={chip}><input type="checkbox" name={name} defaultChecked={on} className="h-3.5 w-3.5" /> {label}</label>
   );
@@ -76,17 +82,20 @@ export function RecipeFields({ r, data }: { r: Recipe; data: RecipeFieldsData })
         <div className="grid grid-cols-2 gap-2">
           <Field label="Язык"><select name="language" className="input py-1.5" defaultValue={r.text.language}>{LANGS.map(([c, l]) => <option key={c} value={c}>{l}</option>)}</select></Field>
           <Field label="Аудитория"><select name="audience" className="input py-1.5" defaultValue={r.text.audience}><option value="women">Женщины</option><option value="men">Мужчины</option><option value="mix">Смешанная</option></select></Field>
-          <Field label="Разнообразие элементов, %"><input name="variety" type="number" min={0} max={100} className="input py-1.5" defaultValue={r.text.variety} /></Field>
+          <Field label="Число идей брать" hint="Цифра на пине и в текстах"><select name="numberSource" className="input py-1.5" defaultValue={r.text.numberSource}><option value="sections">По разделам статьи (H2 с фото)</option><option value="images">По всем фото статьи</option><option value="none">Не считать</option></select></Field>
           <Field label="Фирменный цвет"><input name="brandColor" className="input py-1.5" placeholder="#FFC800" defaultValue={r.text.brandColor ?? ""} /></Field>
         </div>
+        <div className="text-[12px] text-muted">Доля пинов с элементом, % (0 — никогда, 100 — всегда). Действует на ИИ-, Pinora- и Canvas-пины.</div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {pct("pctSeason", "сезон", r.text.percents.season)}
+          {pct("pctYear", "год", r.text.percents.year)}
+          {pct("pctNumber", "число идей", r.text.percents.number)}
+          {pct("pctCta", "призыв", r.text.percents.cta)}
+          {pct("pctSiteName", "имя сайта", r.text.percents.siteName)}
+          {pct("pctHashtags", "хэштеги", r.text.percents.hashtags)}
+        </div>
         <div className="flex flex-wrap gap-1.5">
-          {check("elSeason", "сезон", r.text.elements.season)}
-          {check("elYear", "год", r.text.elements.year)}
-          {check("elNumber", "цифра", r.text.elements.number)}
-          {check("elCta", "призыв", r.text.elements.cta)}
-          {check("elSiteName", "имя сайта", r.text.elements.siteName)}
-          {check("hashtags", "хэштеги", r.text.hashtags)}
-          {check("multiBoard", "до 3 досок", r.boards.multiBoard)}
+          {check("multiBoard", "до 3 досок на пин", r.boards.multiBoard)}
         </div>
       </section>
 

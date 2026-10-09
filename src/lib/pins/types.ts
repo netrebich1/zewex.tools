@@ -35,6 +35,9 @@ export const SCHEDULE = { windowDays: 30, perPagePerDay: 2, firstPinWindowDays: 
 
 export type ModerationMode = "required" | "auto" | "sample";
 
+export type ElementPercents = { season: number; year: number; number: number; cta: number; siteName: number; hashtags: number };
+export const ELEMENT_KEYS: ReadonlyArray<keyof ElementPercents> = ["season", "year", "number", "cta", "siteName", "hashtags"];
+
 /** Рецепт сайта: единственный объект настроек, снимок которого хранится в прогоне. */
 export type Recipe = {
   mix: { ai: number; photos: number; canvas: number; pinora: number };
@@ -43,9 +46,14 @@ export type Recipe = {
   sets: { aiSetIds: string[]; canvasSetIds: string[]; canvasStyleIds: string[]; pinoraTypes: string[] };
   text: {
     language: string;
+    /** Устаревшие поля (до percents): hashtags/variety/elements. Сохраняются для совместимости. */
     hashtags: boolean;
     variety: number;
     elements: { season: boolean; year: boolean; number: boolean; cta: boolean; siteName: boolean };
+    /** Доля пинов (0–100), получающих элемент: сезон, год, число идей, призыв, имя сайта, хэштеги. */
+    percents: ElementPercents;
+    /** Откуда берётся «число идей»: по разделам статьи (первое фото в H2), по всем фото, или не считать. */
+    numberSource: "sections" | "images" | "none";
     audience: "women" | "men" | "mix";
     brandColor?: string;
   };
@@ -63,6 +71,8 @@ export const DEFAULT_RECIPE: Recipe = {
     hashtags: true,
     variety: 60,
     elements: { season: true, year: true, number: true, cta: true, siteName: false },
+    percents: { season: 60, year: 60, number: 60, cta: 60, siteName: 0, hashtags: 60 },
+    numberSource: "sections",
     audience: "women",
   },
   publishing: { wpConnectionId: null, linkDomain: "", photoLinkPercent: 40 },
@@ -78,6 +88,35 @@ export type RunSettings = Recipe & {
   launchedAt: string;
 };
 
+const pct = (v: unknown, def: number) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : def; };
+
+/** Старые рецепты (переключатели + variety) переводятся в проценты по элементам. */
+function mergeText(t: Partial<Recipe["text"]> | undefined): Recipe["text"] {
+  const d = DEFAULT_RECIPE.text;
+  const elements = { ...d.elements, ...(t?.elements ?? {}) };
+  const variety = pct(t?.variety, d.variety);
+  const hashtags = t?.hashtags ?? d.hashtags;
+  const legacy: ElementPercents = {
+    season: elements.season ? variety : 0, year: elements.year ? variety : 0, number: elements.number ? variety : 0,
+    cta: elements.cta ? variety : 0, siteName: elements.siteName ? variety : 0, hashtags: hashtags ? variety : 0,
+  };
+  const pp = (t?.percents ?? {}) as Partial<ElementPercents>;
+  const percents: ElementPercents = t?.percents
+    ? { season: pct(pp.season, 0), year: pct(pp.year, 0), number: pct(pp.number, 0), cta: pct(pp.cta, 0), siteName: pct(pp.siteName, 0), hashtags: pct(pp.hashtags, 0) }
+    : legacy;
+  return {
+    ...d, ...(t ?? {}), elements, variety, hashtags, percents,
+    numberSource: t?.numberSource === "images" || t?.numberSource === "none" ? t.numberSource : "sections",
+  };
+}
+
+/** Число идей страницы по настройке рецепта. */
+export function ideaCountFor(page: { sectionImageCount?: number | null; imageCount?: number | null }, text: Pick<Recipe["text"], "numberSource">): number {
+  if (text.numberSource === "none") return 0;
+  const sections = page.sectionImageCount ?? 0, images = page.imageCount ?? 0;
+  return text.numberSource === "images" ? images || sections : sections || images;
+}
+
 export function mergeRecipe(partial: unknown): Recipe {
   const p = (partial && typeof partial === "object" ? partial : {}) as Partial<Recipe>;
   const d = DEFAULT_RECIPE;
@@ -85,7 +124,7 @@ export function mergeRecipe(partial: unknown): Recipe {
     mix: { ...d.mix, ...(p.mix ?? {}) },
     photosMode: p.photosMode ?? d.photosMode,
     sets: { ...d.sets, ...(p.sets ?? {}) },
-    text: { ...d.text, ...(p.text ?? {}), elements: { ...d.text.elements, ...(p.text?.elements ?? {}) } },
+    text: mergeText(p.text),
     publishing: { ...d.publishing, ...(p.publishing ?? {}) },
     schedule: { ...d.schedule, ...(p.schedule ?? {}) },
     boards: { ...d.boards, ...(p.boards ?? {}) },

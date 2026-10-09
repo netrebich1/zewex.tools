@@ -3,6 +3,7 @@ import type { PinRunItem } from "@prisma/client";
 import { generateAiPrompts } from "@/lib/pins/prompts/aiPrompt";
 import { generatePinoraPrompts, type PinoraParams } from "@/lib/pins/prompts/pinora";
 import { decideElements, currentYear } from "@/lib/pins/prompts/elements";
+import { ideaCountFor } from "@/lib/pins/types";
 import { AiError } from "@/lib/pins/ai/errors";
 import type { StageHandler } from "./index";
 import { chunk, failItem, loadRunCtx, notRetryYet, okPatch, runQueue, type ItemOutcome } from "./_shared";
@@ -54,7 +55,7 @@ export const prompts: StageHandler = async (ctx) => {
           audience: rc.recipe.text.audience,
           siteName: rc.settings.siteName,
           brandColor: rc.recipe.text.brandColor,
-          ideaCount: page.sectionImageCount || page.imageCount || undefined,
+          ideaCount: ideaCountFor(page, rc.recipe.text) || undefined,
           season: page.season || undefined,
           seasonWord: page.seasonWord || undefined,
           year,

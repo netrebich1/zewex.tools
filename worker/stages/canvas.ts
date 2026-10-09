@@ -7,6 +7,8 @@ import { generateHooks, type CanvasHook } from "@/lib/pins/canvas/hooks";
 import { cachedPhoto } from "@/lib/pins/canvas/photos";
 import { planCanvasPins } from "@/lib/pins/plan/canvasPlan";
 import { hash32 } from "@/lib/pins/plan/seed";
+import { decideElements, currentYear, seasonForDate, seasonWord } from "@/lib/pins/prompts/elements";
+import { ideaCountFor } from "@/lib/pins/types";
 import { makeThumb } from "@/lib/pins/images";
 import { itemImageRel, itemThumbRel, writeFileAtomic } from "@/lib/pins/storage";
 import { AiError } from "@/lib/pins/ai/errors";
@@ -49,7 +51,7 @@ export const canvasStage: StageHandler = async (ctx) => {
   if (needHooks.length) {
     try {
       const hooks = await generateHooks(rc.ai, {
-        pages: needHooks.map((p) => ({ id: p.id, keyword: p.keyword, title: p.pageTitle || p.h1, topic: p.topic, niche: p.niche || rc.site.niche, season: p.seasonWord || p.season || undefined, ideaCount: p.sectionImageCount || p.imageCount || undefined })),
+        pages: needHooks.map((p) => ({ id: p.id, keyword: p.keyword, title: p.pageTitle || p.h1, topic: p.topic, niche: p.niche || rc.site.niche, season: p.seasonWord || p.season || undefined, ideaCount: ideaCountFor(p, rc.recipe.text) || undefined })),
         language: rc.recipe.text.language,
         audience: rc.recipe.text.audience,
         perPage: Math.max(perPage, 3),
@@ -88,13 +90,23 @@ export const canvasStage: StageHandler = async (ctx) => {
       if (!photos.length) throw new Error("Нет доступных фото статьи");
       const hooks = (page.canvasHooks as unknown as CanvasHook[] | null) ?? [];
       const hook = hooks.length ? hooks[row.sortOrder % hooks.length] : { title: page.keyword };
-      const ideaCount = page.sectionImageCount || page.imageCount || 0;
+      // Элементы пина по процентам рецепта (как у ИИ-пинов): сезон/год — в кикер, число — только
+      // если стиль умеет цифру (обязательная цифра стиля ставится всегда), призыв и имя сайта — по жребию.
+      const tags = decideElements(`${page.id}|${row.styleId}|${row.sortOrder}`, rc.recipe.text);
+      const ideaCount = ideaCountFor(page, rc.recipe.text);
+      const numberRequired = style.spec.number?.mode === "required";
+      const showNumber = ideaCount >= 3 && !!style.spec.number && (numberRequired || tags.number);
+      const lang = rc.recipe.text.language;
+      const seasonTxt = tags.season ? (page.seasonWord || seasonWord((page.season as "fall" | "winter" | "spring" | "summer") || seasonForDate(), lang)) : "";
+      const yearTxt = tags.year ? currentYear() : "";
+      const kickerParts = [seasonTxt, yearTxt].filter(Boolean);
+      const kicker = kickerParts.length ? kickerParts.join(" ") : hook.kicker;
       // Профиль акцента для умной обрезки: ниша сайта и ключ страницы (ногти, волосы, одежда…).
       const accent = guessAccent(page.niche || rc.site.niche, page.keyword, page.topic, page.pageTitle || page.h1);
       const recipe = { ...toRecipe(style.spec, seed, photos.length), accent };
-      const r = await renderPin({ recipe, photos, texts: { title: hook.title, kicker: hook.kicker, cta: hook.cta, domain: domainFor(page.finalUrl || page.url), number: ideaCount >= 3 ? String(ideaCount) : undefined }, seed });
+      const r = await renderPin({ recipe, photos, texts: { title: hook.title, kicker, cta: tags.cta ? hook.cta : undefined, domain: tags.siteName ? domainFor(page.finalUrl || page.url) : undefined, number: showNumber ? String(ideaCount) : undefined }, seed });
       const item = await prisma.pinRunItem.create({
-        data: { runId: rc.run.id, pageId: page.id, siteId: rc.site.id, kind: "pin", engine: "CANVAS", styleId: row.styleId, sourceImageUrl: chosen[0] ?? "", sortOrder: 2000 + row.sortOrder, status: "PENDING", title: "", styleParams: { hook, photos: chosen, photoCount: photos.length, issues: r.issues } as object },
+        data: { runId: rc.run.id, pageId: page.id, siteId: rc.site.id, kind: "pin", engine: "CANVAS", styleId: row.styleId, sourceImageUrl: chosen[0] ?? "", sortOrder: 2000 + row.sortOrder, status: "PENDING", title: "", styleParams: { hook, tags, ideaCount, photos: chosen, photoCount: photos.length, issues: r.issues } as object },
       });
       const rel = itemImageRel(rc.run.id, item.id);
       await writeFileAtomic(rel, r.jpeg);
