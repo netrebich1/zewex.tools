@@ -30,7 +30,7 @@ export function recipeFromForm(f: FormData, base: unknown, opts: RecipeFormOptio
     ...r,
     mix: { ai: num(f, "mixAi", r.mix.ai, 0, 20), photos: num(f, "mixPhotos", r.mix.photos, 0, 20), canvas: num(f, "mixCanvas", r.mix.canvas, 0, 20), pinora: num(f, "mixPinora", r.mix.pinora, 0, 20) },
     photosMode: str(f, "photosMode") === "featured_only" ? "featured_only" : "all",
-    sets: { ...r.sets, aiSetIds: only(f.getAll("aiSetIds").map(String)), canvasSetIds: only(f.getAll("canvasSetIds").map(String)), pinoraTypes: f.getAll("pinoraTypes").map(String) },
+    sets: { ...r.sets, aiSetIds: only(f.getAll("aiSetIds").map(String)), canvasSetIds: only(f.getAll("canvasSetIds").map(String)), canvasStyleIds: f.getAll("canvasStyleIds").map(String), pinoraTypes: f.getAll("pinoraTypes").map(String) },
     text: {
       ...r.text,
       language: str(f, "language") || r.text.language,

@@ -114,8 +114,14 @@ export async function upgradeCatalogSpecs(): Promise<number> {
   return n;
 }
 
+/** Утверждённые стили каталога с превью — для выбора в настройках сайта и прогона. */
+export async function approvedCatalogStyles(): Promise<Array<{ id: string; name: string; previewPath: string | null; tags: string[] }>> {
+  const rows = await prisma.pinCanvasStyle.findMany({ where: { libraryId: CATALOG_LIB, isApproved: true, isActive: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true, previewPath: true, data: true } });
+  return rows.map((r) => ({ id: r.id, name: r.name, previewPath: r.previewPath, tags: ((r.data as { tags?: string[] })?.tags ?? []) }));
+}
+
 /** Утверждённые стили каталога, доступные сайту (наборы сайта и скрытия). */
-export async function approvedStylesForSite(siteId: string, canvasSetIds: string[]): Promise<Array<{ id: string; spec: StyleSpec }>> {
+export async function approvedStylesForSite(siteId: string, canvasSetIds: string[], canvasStyleIds: string[] = []): Promise<Array<{ id: string; spec: StyleSpec }>> {
   const [rows, sets, hidden] = await Promise.all([
     prisma.pinCanvasStyle.findMany({ where: { libraryId: CATALOG_LIB, isApproved: true, isActive: true } }),
     canvasSetIds.length ? prisma.pinSet.findMany({ where: { id: { in: canvasSetIds }, siteId, setKind: "canvas" }, select: { styleIds: true } }) : Promise.resolve([]),
@@ -124,6 +130,9 @@ export async function approvedStylesForSite(siteId: string, canvasSetIds: string
   const allowed = new Set(sets.flatMap((s) => s.styleIds as string[]));
   const hid = new Set(hidden.map((h) => h.styleId));
   // Наборы выбраны в рецепте — берём только их (даже если они пусты); не выбраны — все утверждённые.
-  const restrict = canvasSetIds.length > 0;
-  return rows.filter((r) => !hid.has(r.id) && (!restrict || allowed.has(r.id))).map((r) => ({ id: r.id, spec: r.data as unknown as StyleSpec }));
+  // Стили, выбранные напрямую в настройках прогона/сайта, важнее старых наборов.
+  const direct = new Set(canvasStyleIds);
+  const restrict = direct.size > 0 || canvasSetIds.length > 0;
+  const ok = (id: string) => (direct.size ? direct.has(id) : allowed.has(id));
+  return rows.filter((r) => !hid.has(r.id) && (!restrict || ok(r.id))).map((r) => ({ id: r.id, spec: r.data as unknown as StyleSpec }));
 }

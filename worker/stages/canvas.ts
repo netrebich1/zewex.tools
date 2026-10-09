@@ -21,9 +21,9 @@ export const canvasStage: StageHandler = async (ctx) => {
   const rc = await loadRunCtx(ctx);
   const perPage = rc.recipe.mix.canvas;
   if (perPage <= 0) return { summary: "canvas выключен" };
-  const styles = await approvedStylesForSite(rc.site.id, rc.recipe.sets.canvasSetIds);
-  if (!styles.length) return { fatal: rc.recipe.sets.canvasSetIds.length
-    ? "В выбранных Canvas-наборах сайта нет утверждённых стилей. Откройте Стили → Canvas-стили, утвердите стили и соберите набор, либо снимите наборы в рецепте сайта, затем нажмите «Продолжить»."
+  const styles = await approvedStylesForSite(rc.site.id, rc.recipe.sets.canvasSetIds, rc.recipe.sets.canvasStyleIds ?? []);
+  if (!styles.length) return { fatal: (rc.recipe.sets.canvasStyleIds?.length || rc.recipe.sets.canvasSetIds.length)
+    ? "Выбранные Canvas-стили больше не утверждены или скрыты. Откройте настройки прогона, выберите стили заново и нажмите «Продолжить»."
     : "Нет утверждённых Canvas-стилей для этого сайта. Откройте Стили → Canvas-стили, утвердите стили каталога и нажмите «Продолжить»." };
 
   const pages = rc.pages.filter((p) => p.keyword);

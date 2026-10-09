@@ -39,7 +39,8 @@ export type ModerationMode = "required" | "auto" | "sample";
 export type Recipe = {
   mix: { ai: number; photos: number; canvas: number; pinora: number };
   photosMode: "all" | "featured_only";
-  sets: { aiSetIds: string[]; canvasSetIds: string[]; pinoraTypes: string[] };
+  /** canvasStyleIds — утверждённые Canvas-стили каталога, выбранные напрямую; canvasSetIds — старые наборы (совместимость). */
+  sets: { aiSetIds: string[]; canvasSetIds: string[]; canvasStyleIds: string[]; pinoraTypes: string[] };
   text: {
     language: string;
     hashtags: boolean;
@@ -56,7 +57,7 @@ export type Recipe = {
 export const DEFAULT_RECIPE: Recipe = {
   mix: { ai: 3, photos: 4, canvas: 2, pinora: 0 },
   photosMode: "all",
-  sets: { aiSetIds: [], canvasSetIds: [], pinoraTypes: [] },
+  sets: { aiSetIds: [], canvasSetIds: [], canvasStyleIds: [], pinoraTypes: [] },
   text: {
     language: "en",
     hashtags: true,

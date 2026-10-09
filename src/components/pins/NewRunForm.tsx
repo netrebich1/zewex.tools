@@ -8,7 +8,7 @@ import { launchRun } from "@/actions/pins";
 import { RecipeFields, type RecipeFieldsData } from "@/components/pins/RecipeFields";
 import type { Recipe } from "@/lib/pins/types";
 
-export type NewRunSite = { id: string; name: string; per: number; perDay: number; boards: number; hasWp: boolean; aiSets: number; canvasSets: number; mix: { ai: number; photos: number; canvas: number; pinora: number }; recipe: Recipe; fields: RecipeFieldsData };
+export type NewRunSite = { id: string; name: string; per: number; perDay: number; boards: number; hasWp: boolean; aiSets: number; canvasStyles: number; mix: { ai: number; photos: number; canvas: number; pinora: number }; recipe: Recipe; fields: RecipeFieldsData };
 type Post = { id: number; url: string; title: string; date: string; used: boolean };
 type Term = { id: number; name: string; count: number };
 
@@ -68,7 +68,7 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
   const recipeWarnings: string[] = [];
   if (site) {
     if (site.mix.ai > 0 && !site.aiSets) recipeWarnings.push("В рецепте включены ИИ-пины, но не выбран ни один набор ИИ-стилей: запуск будет отклонён.");
-    if (site.mix.canvas > 0 && !site.canvasSets) recipeWarnings.push("Canvas-пины включены без наборов: будут использованы все утверждённые Canvas-стили.");
+    if (site.mix.canvas > 0 && !site.canvasStyles) recipeWarnings.push("Canvas-пины включены, стили не выбраны: будут использованы все утверждённые Canvas-стили.");
     if (!site.boards) recipeWarnings.push("У сайта нет досок Pinterest: ИИ не сможет назначить доску.");
     if (!site.hasWp) recipeWarnings.push("У сайта нет доступа WordPress: загрузка картинок в медиатеку не пройдёт, импорт статей недоступен.");
   }
@@ -84,7 +84,7 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
           {sites.map((s) => <option key={s.id} value={s.id}>{s.name} — ≈{s.per} пинов на ссылку, {s.perDay}/день, досок: {s.boards}</option>)}
         </select>
         {site && (
-          <p className="help">Рецепт: ИИ {site.mix.ai}, фото {site.mix.photos}, canvas {site.mix.canvas}, pinora {site.mix.pinora} на ссылку · наборов ИИ: {site.aiSets}, Canvas: {site.canvasSets} · <Link href={`/sites/${site.id}`} className="underline">настройки сайта</Link></p>
+          <p className="help">Рецепт: ИИ {site.mix.ai}, фото {site.mix.photos}, canvas {site.mix.canvas}, pinora {site.mix.pinora} на ссылку · наборов ИИ: {site.aiSets}, Canvas-стилей: {site.canvasStyles || "все"} · <Link href={`/sites/${site.id}`} className="underline">настройки сайта</Link></p>
         )}
         {recipeWarnings.map((w) => <Alert key={w} tone="warn">{w}</Alert>)}
       </section>

@@ -25,6 +25,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   const busy = view.job != null && ["PENDING", "RUNNING", "STOPPING"].includes(view.job.status);
   const sets = run.siteId ? await prisma.pinSet.findMany({ where: { siteId: run.siteId }, orderBy: { name: "asc" } }) : [];
   const live = ["QUEUED", "RUNNING"].includes(run.status);
+  const fieldsData = await recipeFieldsData(sets);
 
   return (
     <>
@@ -53,7 +54,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         <Card title="Настройки прогона" description={live ? "Прогон выполняется: чтобы изменить настройки, сначала нажмите «Стоп»." : "Свои для этого прогона (рецепт сайта был подставлен при запуске). Изменения применяются к этапам, которые ещё не прошли: например, число пинов в день — к расписанию, наборы стилей — к плану."}>
           <ActionForm action={updateRunSettings} hidden={{ id }} className="space-y-4">
             <fieldset disabled={live} className="space-y-4 disabled:opacity-60">
-              <RecipeFields r={r} data={recipeFieldsData(sets)} />
+              <RecipeFields r={r} data={fieldsData} />
               <SubmitButton pendingText="Сохраняю…">Сохранить настройки прогона</SubmitButton>
             </fieldset>
           </ActionForm>

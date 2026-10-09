@@ -15,14 +15,14 @@ export default async function NewRunPage({ searchParams }: { searchParams: Promi
     where: { ...(me.role === "ADMIN" ? {} : { teamId: { in: me.teamIds } }), isActive: true }, orderBy: { name: "asc" },
     select: { id: true, name: true, recipe: true, wpConnectionId: true, _count: { select: { boards: true } }, sets: true },
   });
-  const rows = sites.map((s) => {
+  const rows = await Promise.all(sites.map(async (s) => {
     const r = mergeRecipe(s.recipe);
     return {
       id: s.id, name: s.name, per: r.mix.ai + r.mix.photos + r.mix.canvas + r.mix.pinora, perDay: r.schedule.pinsPerDay, boards: s._count.boards,
-      hasWp: !!(r.publishing.wpConnectionId || s.wpConnectionId), aiSets: r.sets.aiSetIds.length, canvasSets: r.sets.canvasSetIds.length, mix: r.mix,
-      recipe: r, fields: recipeFieldsData(s.sets),
+      hasWp: !!(r.publishing.wpConnectionId || s.wpConnectionId), aiSets: r.sets.aiSetIds.length, canvasStyles: (r.sets.canvasStyleIds ?? []).length, mix: r.mix,
+      recipe: r, fields: await recipeFieldsData(s.sets),
     };
-  });
+  }));
 
   return (
     <>
