@@ -23,10 +23,10 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
 
   return (
     <>
-      <PageHeader back={{ href: "/pinterest/pins", label: "Сегодня" }} title={run.name || `Прогон ${id.slice(0, 8)}`} subtitle={`${run.site?.name ?? "—"} · рецепт: ИИ ${r.mix.ai}, фото ${r.mix.photos}, canvas ${r.mix.canvas}, pinora ${r.mix.pinora} на ссылку · ${r.schedule.pinsPerDay}/день · модерация: ${r.schedule.moderationMode === "auto" ? "авто" : "обязательна"}`} />
+      <PageHeader back={{ href: "/pinterest/pins", label: "Сегодня" }} title={run.name || `Прогон ${id.slice(0, 8)}`} subtitle={`${run.site?.name ?? "—"} · рецепт: ИИ ${r.mix.ai}, фото ${r.mix.photos}, canvas ${r.mix.canvas}, pinora ${r.mix.pinora} на ссылку · ${r.schedule.pinsPerDay}/день · модерация: ${r.schedule.moderationMode === "auto" ? "авто" : "обязательна"} · режим: ${run.stepByStep ? "пошаговый" : "автопилот"}`} />
       <div className="space-y-5">
         <RunStatus initial={view} />
-        <Card title="Действия">
+        <Card title="Действия" description={run.stepByStep ? "Пошаговый режим: после каждого этапа прогон встаёт на паузу, «Продолжить» запускает следующий этап." : "Автопилот: этапы идут сами. «Продолжить» нужен после модерации, паузы или исправления проблемы."}>
           <div className="flex flex-wrap gap-2">
             <ActionForm action={continueRunAction} className="inline" hidden={{ id }}>
               <SubmitButton className="btn-primary" pendingText="…">{busy ? "Выполняется…" : "Продолжить"}</SubmitButton>

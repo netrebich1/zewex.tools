@@ -1,23 +1,20 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { Badge, Card, Empty, PageHeader } from "@/components/ui";
-import { RUN_STATUS_LABELS, runStatusTone } from "@/components/pins/labels";
+import { Card, PageHeader } from "@/components/ui";
 import { mergeRecipe } from "@/lib/pins/types";
-import { fmtDate } from "@/lib/utils";
 import { StockCalendar } from "@/components/pins/StockCalendar";
 import { sitesStock } from "@/lib/pins/runs/stats";
+import { RunsBoard } from "@/components/pins/RunsBoard";
+import { runsOverview } from "@/lib/pins/runs/status";
 
 export const dynamic = "force-dynamic";
 
 export default async function PinsHome() {
   const me = await requireUser();
   const teamFilter = me.role === "ADMIN" ? {} : { teamId: { in: me.teamIds } };
-  const [sites, runs] = await Promise.all([
-    prisma.pinSite.findMany({ where: { ...teamFilter, isActive: true }, orderBy: { name: "asc" }, include: { team: { select: { name: true } }, _count: { select: { boards: true, sets: true } } } }),
-    prisma.pinRun.findMany({ where: { ...teamFilter, NOT: { name: { startsWith: "__" } } }, orderBy: { updatedAt: "desc" }, take: 20, include: { site: { select: { name: true } } } }),
-  ]);
-  const attention = runs.filter((r) => r.status === "WAITING_MODERATION" || r.status === "BLOCKED");
+  const sites = await prisma.pinSite.findMany({ where: { ...teamFilter, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, recipe: true } });
+  const overview = await runsOverview(me.role === "ADMIN" ? null : me.teamIds);
   const stock = await sitesStock(sites.map((s) => s.id), 92);
   const calendarSites = sites
     .map((s) => ({ id: s.id, name: s.name, target: mergeRecipe(s.recipe).schedule.pinsPerDay, counts: stock.bySite.get(s.id) ?? [] }))
@@ -28,50 +25,16 @@ export default async function PinsHome() {
 
   return (
     <>
-      <PageHeader title="Сегодня" subtitle="Что требует внимания, сайты и последние прогоны." actions={<><Link href="/sites" className="btn-ghost">Сайты и настройки</Link><Link href="/pinterest/pins/runs/new" className="btn-brand">Новый прогон</Link></>} />
+      <PageHeader title="Сегодня" subtitle="Прогоны в работе и запас пинов по сайтам." actions={<><Link href="/sites" className="btn-ghost">Сайты и настройки</Link><Link href="/pinterest/pins/runs/new" className="btn-brand">Новый прогон</Link></>} />
       <div className="space-y-5">
-        {attention.length > 0 && (
-          <Card title="Нужно внимание">
-            <ul className="divide-y divide-line">
-              {attention.map((r) => (
-                <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">{r.site?.name ?? "—"} · {r.name || r.id.slice(0, 8)}</div>
-                    <div className="help truncate">{r.status === "BLOCKED" ? r.blockedReason : "Прогон ждёт модерации"}</div>
-                  </div>
-                  <Link href={`/pinterest/pins/runs/${r.id}`} className="btn-primary btn-sm">Открыть</Link>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        )}
+        <Card title="Прогоны" description="Что сейчас выполняется, на каком этапе, где нужна модерация или есть ошибка. Обновляется само.">
+          <RunsBoard initial={overview} />
+        </Card>
 
         <Card title="Запас по датам" description="Строка — сайт, столбцы — дни, цифра — пинов в день. Сайты без запаса сверху. Нажмите на сайт, чтобы открыть его, или «Прогон», чтобы запустить сборку.">
           <StockCalendar sites={calendarSites} days={stock.days} />
         </Card>
 
-        <Card title="Последние прогоны">
-          {runs.length === 0 ? (
-            <Empty title="Прогонов ещё не было" action={<Link href="/pinterest/pins/runs/new" className="btn-brand">Запустить первый</Link>} />
-          ) : (
-            <div className="table-wrap">
-              <table className="table">
-                <thead><tr><th>Прогон</th><th>Сайт</th><th>Статус</th><th>Этап</th><th>Обновлён</th></tr></thead>
-                <tbody>
-                  {runs.map((r) => (
-                    <tr key={r.id}>
-                      <td><Link href={`/pinterest/pins/runs/${r.id}`} className="font-medium underline decoration-line hover:decoration-ink">{r.name || r.id.slice(0, 8)}</Link></td>
-                      <td>{r.site?.name ?? "—"}</td>
-                      <td><Badge tone={runStatusTone(r.status)}>{RUN_STATUS_LABELS[r.status]}</Badge></td>
-                      <td className="text-muted">{r.stage}</td>
-                      <td className="text-muted">{fmtDate(r.updatedAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
       </div>
     </>
   );

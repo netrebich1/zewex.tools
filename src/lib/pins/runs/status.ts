@@ -83,3 +83,38 @@ export async function runStatus(runId: string): Promise<RunStatusView | null> {
     stages,
   };
 }
+
+/** Карточка прогона для доски на «Сегодня»: статус, этапы, прогресс задачи, проблемы. */
+export type RunOverview = {
+  id: string; name: string; siteName: string; status: PinRunStatus; stage: string; stepByStep: boolean; blockedReason: string | null;
+  updatedAt: string; createdAt: string; costUsd: number;
+  job: { stage: string; status: string; done: number; total: number; label: string } | null;
+  stages: RunStatusView["stages"];
+  pages: number; pins: number; errors: number; pendingModeration: number;
+  topProblem: string | null;
+};
+
+export async function runsOverview(teamIds: string[] | null, limit = 20): Promise<RunOverview[]> {
+  const runs = await prisma.pinRun.findMany({
+    where: { ...(teamIds ? { teamId: { in: teamIds } } : {}), NOT: { name: { startsWith: "__" } } },
+    orderBy: { updatedAt: "desc" }, take: limit,
+    include: { site: { select: { name: true } } },
+  });
+  const out: RunOverview[] = [];
+  for (const run of runs) {
+    const [view, pendingModeration] = await Promise.all([
+      runStatus(run.id),
+      prisma.pinRunItem.count({ where: { runId: run.id, status: "READY", moderation: "NONE", kind: "pin" } }),
+    ]);
+    if (!view) continue;
+    out.push({
+      id: run.id, name: run.name, siteName: run.site?.name ?? "—", status: run.status, stage: run.stage, stepByStep: run.stepByStep, blockedReason: run.blockedReason,
+      updatedAt: run.updatedAt.toISOString(), createdAt: run.createdAt.toISOString(), costUsd: view.run.costUsd,
+      job: view.job ? { stage: view.job.stage, status: view.job.status, done: view.job.done, total: view.job.total, label: view.job.label } : null,
+      stages: view.stages,
+      pages: view.pages.total, pins: view.total.planned, errors: view.total.errors, pendingModeration,
+      topProblem: view.problems[0]?.message ?? null,
+    });
+  }
+  return out;
+}

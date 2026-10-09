@@ -11,7 +11,8 @@ const fail = (e: unknown): FormState => ({ error: e instanceof Error ? e.message
 
 export async function launchRun(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
-  const { urls, invalid } = parseUrls(str(f, "urls"));
+  const fromList = f.getAll("urlList").map(String).filter(Boolean);
+  const { urls, invalid } = parseUrls(fromList.length ? fromList.join("\n") : str(f, "urls"));
   if (invalid.length) return { error: `Не похоже на ссылки: ${invalid.slice(0, 3).join(", ")}${invalid.length > 3 ? "…" : ""}` };
   const mode = str(f, "moderationMode") as ModerationMode;
   let runId: string;
