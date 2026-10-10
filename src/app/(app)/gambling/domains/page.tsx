@@ -53,6 +53,7 @@ export default async function DomainsHome() {
                   <th>Свободно</th>
                   <th>Выбрано</th>
                   <th>Создан</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -74,6 +75,7 @@ export default async function DomainsHome() {
                       <td className="font-medium">{r.totalAvailable}</td>
                       <td>{r.selected}</td>
                       <td className="help whitespace-nowrap">{fmtDate(r.createdAt)}</td>
+                      <td className="text-right"><Link href={`/gambling/domains/runs/${r.id}`} className="btn-primary btn-sm">Открыть →</Link></td>
                     </tr>
                   );
                 })}

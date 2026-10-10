@@ -69,6 +69,8 @@ model User {
   isActive      Boolean      @default(true)
   inviteToken   String?      @unique
   inviteExpires DateTime?
+  /// Права участника (JSON `Permissions` из src/lib/permissions.ts); null — права по умолчанию. Для ADMIN не учитываются.
+  permissions   Json?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   sessions      Session[]
@@ -77,6 +79,7 @@ model User {
   bindings      Binding[]
   usage         UsageLog[]
   siteViews     SiteAccessViewer[]
+  favorites     FavoriteTool[]
 }
 
 model Session {
@@ -103,6 +106,7 @@ model Team {
   articles    Article[]
   pinRuns     PinRun[]
   siteShares  SiteAccessTeam[]
+  apiKeys     ApiKey[]
 }
 
 model TeamMember {
@@ -138,6 +142,18 @@ model Project {
   section     Section    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   slots       Slot[]
   usage       UsageLog[]
+  favorites   FavoriteTool[]
+}
+
+/// Избранные инструменты пользователя (звёздочка на главной)
+model FavoriteTool {
+  userId    String
+  projectId String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([userId, projectId])
 }
 
 model Slot {
@@ -208,6 +224,8 @@ model ApiKey {
   secretEnc       String     @db.Text
   secretHint      String
   ownerId         String?
+  /// Командный ключ: виден участникам команды и назначается только её правилам. Пусто и без владельца — общий ключ.
+  teamId          String?
   status          KeyStatus  @default(ACTIVE)
   monthlyLimitUsd Float?
   notes           String?
@@ -217,8 +235,11 @@ model ApiKey {
   createdAt       DateTime   @default(now())
   provider        Provider   @relation(fields: [providerId], references: [id], onDelete: Restrict)
   owner           User?      @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  team            Team?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
   bindings        Binding[]
   usage           UsageLog[]
+
+  @@index([teamId])
 }
 
 model Binding {

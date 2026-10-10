@@ -1,21 +1,38 @@
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { Card, Field, PageHeader } from "@/components/ui";
+import { assignScope, canAssignGlobal, canCreateKey, canCreatePersonalKey, canCreateSharedKey, keyTeamScope } from "@/lib/permissions";
+import { Card, Field, PageHeader, sp, type SearchParams } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { createKey } from "@/actions/admin";
 import { KeySecretFields } from "@/components/KeySecretFields";
+import { KeyOwnerFields, type KeyOwnerOption } from "@/components/KeyOwnerFields";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewKeyPage() {
+export default async function NewKeyPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const me = await requireUser();
+  if (!canCreateKey(me)) redirect("/keys?denied=1");
+  const params = await searchParams;
   const providers = await prisma.provider.findMany({ where: { isActive: true }, orderBy: { order: "asc" } });
-  const isAdmin = me.role === "ADMIN";
+  const keyTeams = keyTeamScope(me);
+  const assignTeams = assignScope(me);
   const [projects, teams] = await Promise.all([
-    prisma.project.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
-    prisma.team.findMany({ where: isAdmin ? {} : { id: { in: me.leadTeamIds } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.project.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }], select: { id: true, name: true, _count: { select: { slots: true } } } }),
+    prisma.team.findMany({
+      where: keyTeams === "all" && assignTeams === "all" ? {} : { id: { in: [...(keyTeams === "all" ? [] : keyTeams), ...(assignTeams === "all" ? [] : assignTeams)] } },
+      orderBy: { name: "asc" }, select: { id: true, name: true },
+    }),
   ]);
+  const owners: KeyOwnerOption[] = [];
+  if (canCreateSharedKey(me)) owners.push({ value: "shared", label: "Общий: всем по правилам" });
+  for (const t of teams) if (keyTeams === "all" || keyTeams.includes(t.id)) owners.push({ value: `team:${t.id}`, label: `Команда «${t.name}»` });
+  if (canCreatePersonalKey(me)) owners.push({ value: "personal", label: "Личный: только мне" });
+  const wantTeam = sp(params, "team");
+  const defaultOwner = owners.find((o) => wantTeam && o.value === `team:${wantTeam}`)?.value ?? owners[0]?.value ?? "personal";
+  const assignable = teams.filter((t) => assignTeams === "all" || assignTeams.includes(t.id));
+
   return (
     <>
       <PageHeader back={{ href: "/keys", label: "Ключи" }} title="Новый ключ" subtitle="Ключ хранится в зашифрованном виде, в интерфейсе виден только его хвост. После сохранения он сразу проверяется." />
@@ -24,32 +41,15 @@ export default async function NewKeyPage() {
           <KeySecretFields providers={providers.map((p) => ({ id: p.id, name: p.name, authType: p.authType }))} />
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Месячный лимит, $ (необязательно)" hint="При достижении вызовы через этот ключ блокируются до конца месяца."><input name="monthlyLimitUsd" className="input" inputMode="decimal" placeholder="например 50" /></Field>
-            {me.role === "ADMIN" ? (
-              <Field label="Кому доступен">
-                <select name="personal" className="input" defaultValue="0">
-                  <option value="0">Общий ключ (всем по правилам)</option>
-                  <option value="1">Личный (только мне)</option>
-                </select>
-              </Field>
-            ) : <input type="hidden" name="personal" value="1" />}
+            <KeyOwnerFields
+              owners={owners}
+              defaultOwner={defaultOwner}
+              projects={projects.map((p) => ({ id: p.id, name: p.name, hint: `слотов: ${p._count.slots}` }))}
+              teams={assignable}
+              global={canAssignGlobal(me)}
+            />
           </div>
           <Field label="Заметка"><input name="notes" className="input" placeholder="Чей аккаунт, где пополнять…" /></Field>
-          {(isAdmin || teams.length > 0) && (
-            <div className="rounded-xl border border-line p-3 sm:p-4">
-              <div className="font-medium mb-1">Где работает этот ключ</div>
-              <p className="help mb-3">Отметьте сервисы и команды. Для личного ключа это не нужно: он работает по вашему личному правилу.</p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <span className="label">Сервисы</span>
-                  <div className="space-y-1.5">{projects.map((p) => <label key={p.id} className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="projectIds" value={p.id} className="h-4 w-4" /> {p.name}</label>)}</div>
-                </div>
-                <div>
-                  <span className="label">Команды</span>
-                  <div className="space-y-1.5">{teams.map((t) => <label key={t.id} className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="teamIds" value={t.id} className="h-4 w-4" /> {t.name}</label>)}</div>
-                </div>
-              </div>
-            </div>
-          )}
           <SubmitButton className="btn-brand" pendingText="Сохраняю и проверяю…">Сохранить ключ</SubmitButton>
         </ActionForm>
       </Card>

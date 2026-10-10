@@ -4,6 +4,7 @@ import { cache } from "react";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
 import { randomToken } from "./crypto";
+import { canManageTeam as permCanManageTeam, resolvePermissions, type Permissions } from "./permissions";
 
 export const SESSION_COOKIE = "zx_session";
 const SESSION_DAYS = 30;
@@ -46,8 +47,10 @@ export type CurrentUser = {
   name: string;
   role: "ADMIN" | "MEMBER";
   teamIds: string[];
-  /** Teams where the user has the LEAD role: they may manage that team's rules. */
+  /** Teams where the user has the LEAD role: they get team-level rights in that team on top of `perms`. */
   leadTeamIds: string[];
+  /** Effective permissions (admins get everything). See src/lib/permissions.ts. */
+  perms: Permissions;
 };
 
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
@@ -64,12 +67,13 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     id: u.id, email: u.email, name: u.name, role: u.role,
     teamIds: u.memberships.map((m) => m.teamId),
     leadTeamIds: u.memberships.filter((m) => m.role === "LEAD").map((m) => m.teamId),
+    perms: resolvePermissions(u.role, u.permissions),
   };
 });
 
-/** Admins manage every team; a team lead manages only teams they lead. */
+/** Admins and users with the «all teams» right manage every team; «own teams» right and team leads manage theirs. */
 export function canManageTeam(u: CurrentUser, teamId: string): boolean {
-  return u.role === "ADMIN" || u.leadTeamIds.includes(teamId);
+  return permCanManageTeam(u, teamId);
 }
 
 export async function requireUser(): Promise<CurrentUser> {

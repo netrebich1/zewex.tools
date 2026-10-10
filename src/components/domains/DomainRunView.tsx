@@ -38,7 +38,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
   const [view, setView] = useState<"available" | "taken" | "all">("available");
   const [copied, setCopied] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.run.settings.brands.length <= 8 ? initial.run.settings.brands : []));
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.run.settings.brands.length <= 30 ? initial.run.settings.brands : []));
   const [groupBrands, setGroupBrands] = useState<Set<string>>(new Set());
   const [balanceZones, setBalanceZones] = useState(false);
   const [balanceSuffixes, setBalanceSuffixes] = useState(false);
@@ -238,7 +238,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {run.settings.brands.map((brand) => {
           const rows = byBrand.get(brand) ?? [];
           if (q && !brand.toLowerCase().includes(q) && !rows.some((d) => d.domain.includes(q))) return null;
@@ -247,50 +247,56 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
           const open = expanded.has(brand);
           const incomplete = run.incompleteBrands.includes(brand);
           const inProgress = live && run.progress?.brand === brand;
+          const toggleOpen = () => setExpanded((prev) => { const n = new Set(prev); if (n.has(brand)) n.delete(brand); else n.add(brand); return n; });
           return (
-            <section key={brand} className="card">
-              <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-5">
-                {!live && <input type="checkbox" className="h-4 w-4" checked={groupBrands.has(brand)} onChange={(e) => setGroupBrands((prev) => { const n = new Set(prev); if (e.target.checked) n.add(brand); else n.delete(brand); return n; })} title="В группу для ИИ-отбора" />}
-                <button type="button" className="font-semibold text-[16px] hover:underline" onClick={() => setExpanded((prev) => { const n = new Set(prev); if (n.has(brand)) n.delete(brand); else n.add(brand); return n; })}>
-                  {open ? "▾" : "▸"} {brand}
+            <section key={brand} className="card flex flex-col min-w-0">
+              <div className="flex items-center gap-2 px-3 py-2.5">
+                {!live && <input type="checkbox" className="h-4 w-4 shrink-0" checked={groupBrands.has(brand)} onChange={(e) => setGroupBrands((prev) => { const n = new Set(prev); if (e.target.checked) n.add(brand); else n.delete(brand); return n; })} title="В группу для ИИ-отбора" />}
+                <button type="button" className="min-w-0 flex-1 text-left font-semibold text-[15px] truncate hover:underline" onClick={toggleOpen} title={brand}>
+                  {brand}
                 </button>
-                {inProgress && <Badge tone="brand">проверяется</Badge>}
-                {incomplete && <Badge tone="warn">не хватило</Badge>}
-                <span className="help">выбрано <b>{stats.counts.selected}</b> · свободно <b>{stats.counts.available}</b> · занято {stats.counts.taken}{stats.counts.unknown ? ` · не проверено ${stats.counts.unknown}` : ""}{rows.length === 0 ? " · ещё не проверялся" : ""}</span>
-                {!live && rows.length > 0 && (
-                  <div className="ml-auto flex flex-wrap gap-2">
-                    <button type="button" className="btn-ghost btn-sm" onClick={() => toggleBrandAll(brand, true)}>Выбрать все свободные</button>
-                    <button type="button" className="btn-ghost btn-sm" onClick={() => toggleBrandAll(brand, false)}>Снять</button>
-                    <button type="button" className="btn-primary btn-sm" disabled={!!aiBusy || stats.counts.available === 0} onClick={() => runAi([brand], brand)}>{aiBusy === brand ? "ИИ думает…" : "ИИ-отбор"}</button>
-                  </div>
-                )}
+                {inProgress && <Badge tone="brand">идёт</Badge>}
+                {incomplete && <Badge tone="warn">мало</Badge>}
+                <span className="shrink-0 text-[12.5px] tabular-nums whitespace-nowrap" title="выбрано / свободно / занято">
+                  <b className={stats.counts.selected ? "text-brand" : ""}>{stats.counts.selected}</b>
+                  <span className="text-muted"> / </span><b className="text-ok">{stats.counts.available}</b>
+                  <span className="text-muted"> / {stats.counts.taken}</span>
+                </span>
+                <button type="button" className="shrink-0 text-muted hover:text-ink px-1" onClick={toggleOpen} aria-label={open ? "Свернуть" : "Развернуть"}>{open ? "▾" : "▸"}</button>
               </div>
-              {open && rows.length > 0 && (
-                <div className="border-t border-line px-4 pb-4 sm:px-5">
-                  <div className="help py-2">
-                    Зоны: выбрано {formatCounts(stats.zones.selected)} · свободно {formatCounts(stats.zones.available)} · не задействовано {formatCounts(stats.zones.unused)}<br />
-                    Приставки: выбрано {formatCounts(stats.suffixes.selected)} · свободно {formatCounts(stats.suffixes.available)} · не задействовано {formatCounts(stats.suffixes.unused)}
-                  </div>
-                  <div className="table-wrap">
-                    <table className="table">
-                      <thead><tr><th></th><th>Домен</th><th>Приставка</th><th>Уровень</th><th>Шаблон</th><th>Статус</th><th>ИИ</th><th>Комментарий ИИ</th></tr></thead>
-                      <tbody>
+              {open && (
+                <div className="border-t border-line flex flex-col min-h-0">
+                  {rows.length === 0 ? (
+                    <p className="help px-3 py-3">Ещё не проверялся</p>
+                  ) : (
+                    <>
+                      <ul className="max-h-72 overflow-auto divide-y divide-line/70">
                         {visible.map((d) => (
-                          <tr key={d.id} className={d.selected ? "bg-brand-soft/40" : ""}>
-                            <td>{d.status === "available" && <input type="checkbox" className="h-4 w-4" checked={d.selected} onChange={(e) => toggle(d.id, e.target.checked)} />}</td>
-                            <td className="font-mono font-medium">{d.domain}</td>
-                            <td className="font-mono">{d.suffix ?? <span className="text-muted">—</span>}</td>
-                            <td>{d.tier || <span className="text-muted">—</span>}</td>
-                            <td className="help">{PATTERN_LABELS[d.pattern as CandidatePattern] ?? d.pattern}</td>
-                            <td><Badge tone={STATUS_BADGE[d.status]?.tone ?? "neutral"}>{STATUS_BADGE[d.status]?.label ?? d.status}</Badge></td>
-                            <td>{d.aiScore != null ? <b>{d.aiScore}</b> : ""}</td>
-                            <td className="help max-w-[360px]">{d.aiReason ?? ""}</td>
-                          </tr>
+                          <li key={d.id} className={`flex items-center gap-2 px-3 py-1.5 text-[13.5px] ${d.selected ? "bg-brand-soft/40" : ""}`} title={[PATTERN_LABELS[d.pattern as CandidatePattern] ?? d.pattern, d.aiReason].filter(Boolean).join(" · ")}>
+                            {d.status === "available" ? (
+                              <input type="checkbox" className="h-4 w-4 shrink-0" checked={d.selected} onChange={(e) => toggle(d.id, e.target.checked)} />
+                            ) : (
+                              <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${d.status === "taken" ? "bg-danger" : "bg-line-2"}`} title={STATUS_BADGE[d.status]?.label} />
+                            )}
+                            <span className="font-mono min-w-0 flex-1 truncate">{d.domain}</span>
+                            {d.tier > 0 && <span className="shrink-0 rounded-md bg-ink/5 px-1.5 text-[11px] text-muted" title={`приставка ${d.suffix}, уровень ${d.tier}`}>{d.tier}</span>}
+                            {d.aiScore != null && <span className="shrink-0 rounded-md bg-ok-soft px-1.5 text-[11px] font-semibold text-ok" title={d.aiReason ?? "оценка ИИ"}>{d.aiScore}</span>}
+                          </li>
                         ))}
-                        {visible.length === 0 && <tr><td colSpan={8} className="help">Нет доменов под фильтр</td></tr>}
-                      </tbody>
-                    </table>
-                  </div>
+                        {visible.length === 0 && <li className="help px-3 py-2">Нет доменов под фильтр</li>}
+                      </ul>
+                      <div className="help px-3 py-1.5 border-t border-line truncate" title={`Зоны: выбрано ${formatCounts(stats.zones.selected)} · свободно ${formatCounts(stats.zones.available)}\nПриставки: выбрано ${formatCounts(stats.suffixes.selected)} · свободно ${formatCounts(stats.suffixes.available)}`}>
+                        {stats.counts.selected ? <>зоны {formatCounts(stats.zones.selected)} · приставки {formatCounts(stats.suffixes.selected)}</> : <>свободно: {formatCounts(stats.zones.available)}</>}
+                      </div>
+                      {!live && (
+                        <div className="flex gap-1.5 px-3 py-2 border-t border-line">
+                          <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleBrandAll(brand, true)} title="Выбрать все свободные">Все</button>
+                          <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleBrandAll(brand, false)}>Снять</button>
+                          <button type="button" className="btn-primary btn-sm !px-2.5 !py-1 text-[12.5px] ml-auto" disabled={!!aiBusy || stats.counts.available === 0} onClick={() => runAi([brand], brand)}>{aiBusy === brand ? "ИИ…" : "ИИ-отбор"}</button>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </section>

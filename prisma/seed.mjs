@@ -1,4 +1,7 @@
 import { PrismaClient } from "@prisma/client";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 const prisma = new PrismaClient();
 
 const providers = [
@@ -108,5 +111,56 @@ for (const s of orphans) {
   await prisma.pinSite.update({ where: { id: s.id }, data: { wpConnectionId: access.id, name } });
 }
 if (orphans.length) console.log(`site accesses created for ${orphans.length} tool sites`);
+
+// ───────────────────────────── Pinterest Articles ─────────────────────────────
+// Проект «Статьи» и его слоты; ниши, профили, наборы промтов, промты и рецепты из перенесённого сервиса
+// (prisma/seed-data/articles/*.json, старые UUID сохранены). Идемпотентно: существующие записи не перезаписываются,
+// кроме текстов промтов, которые ещё никто не правил в UI (нет версий).
+
+const seedDir = join(dirname(fileURLToPath(import.meta.url)), "seed-data", "articles");
+const articlesProject = await prisma.project.upsert({
+  where: { slug: "articles" },
+  update: {},
+  create: { sectionId: pinterest.id, slug: "articles", name: "Pinterest Articles", description: "Статьи-подборки под Pinterest: реальные фото → модерация → текст → публикация в WordPress", url: "/pinterest/articles", status: "MIGRATING", order: 2 },
+});
+const articleSlots = [
+  { key: "text_main", name: "Тексты статьи (писатель)", capability: "CHAT", description: "Секции, вступление и заключение, мета (deepseek-v4-flash/pro по рецепту)", preferProviders: "openrouter,laozhang,openai" },
+  { key: "text_fast", name: "Быстрые шаги текста", capability: "CHAT", description: "Запросы поиска фото, план статьи, план секций, alt-тексты (gemini-2.5-flash-lite по рецепту)", preferProviders: "openrouter,laozhang,openai" },
+  { key: "vision", name: "Оценка и отбор фото (vision)", capability: "CHAT", description: "Оценка кандидатов по картинкам, сравнение, финальный отбор, ИИ-модерация", preferProviders: "openrouter,laozhang,openai" },
+  { key: "image_main", name: "Генерация картинок", capability: "IMAGE", description: "Формат «ИИ-фото»: gpt-image-2 (quality low, 1024×1536)", preferProviders: "openai,laozhang,openrouter" },
+  { key: "photo_dfs", name: "Поиск фото (DataForSEO)", capability: "SEO_DATA", description: "Google Images через DataForSEO — основной источник реальных фото ($0.004/запрос)", preferProviders: "dataforseo" },
+  { key: "photo_serp", name: "Поиск фото (SerpAPI)", capability: "SERP", description: "Запасной источник Google Images, если DataForSEO не подключён", preferProviders: "serpapi" },
+];
+for (const sl of articleSlots) {
+  await prisma.slot.upsert({ where: { projectId_key: { projectId: articlesProject.id, key: sl.key } }, update: { preferProviders: sl.preferProviders }, create: { ...sl, projectId: articlesProject.id } });
+}
+
+const artCfg = JSON.parse(readFileSync(join(seedDir, "config.json"), "utf8"));
+const artPrompts = JSON.parse(readFileSync(join(seedDir, "prompts.json"), "utf8"));
+for (const n of artCfg.niches) {
+  await prisma.artNiche.upsert({ where: { code: n.code }, update: {}, create: n });
+}
+for (const p of artCfg.profiles) {
+  await prisma.artNicheProfile.upsert({ where: { nicheCode: p.nicheCode }, update: {}, create: p });
+}
+for (const s of artPrompts.sets) {
+  await prisma.artPromptSet.upsert({ where: { id: s.id }, update: {}, create: s });
+}
+let promptsCreated = 0;
+for (const p of artPrompts.prompts) {
+  const { createdAt, ...rest } = p;
+  const existing = await prisma.artPrompt.findUnique({ where: { id: p.id }, select: { id: true, versions: { select: { id: true }, take: 1 } } });
+  if (!existing) {
+    await prisma.artPrompt.create({ data: { ...rest, createdAt: new Date(createdAt) } });
+    promptsCreated++;
+  } else if (!existing.versions.length) {
+    // Текст ещё не редактировали в портале — обновляем до версии из переноса (исправления аудита).
+    await prisma.artPrompt.update({ where: { id: p.id }, data: { system: rest.system, text: rest.text, name: rest.name } });
+  }
+}
+for (const r of artCfg.recipes) {
+  await prisma.artRecipe.upsert({ where: { id: r.id }, update: {}, create: r });
+}
+console.log(`articles seed: ${artCfg.niches.length} niches, ${artCfg.profiles.length} profiles, ${artPrompts.sets.length} sets, ${artPrompts.prompts.length} prompts (${promptsCreated} new), ${artCfg.recipes.length} recipes`);
 console.log("seed done");
 await prisma.$disconnect();

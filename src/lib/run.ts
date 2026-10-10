@@ -17,6 +17,11 @@ export type RunRequest = {
   meta?: { teamId?: string; refId?: string };
   /** Уже выбранное правило (resolveSlot), чтобы не искать его второй раз. */
   pre?: ResolvedSlot;
+  /**
+   * Модель, заданная настройкой инструмента (например, рецептом статьи): `provider:model` или просто `model`.
+   * Применяется, если провайдер правила совпадает с указанным (или провайдер не указан); иначе берётся модель правила.
+   */
+  model?: string;
 };
 
 export type ResolvedSlot = {
@@ -53,6 +58,15 @@ export type RunResponse = {
   error?: string;
   meta?: { provider: string; model: string | null; key: string; scope: string; inputTokens: number; outputTokens: number; costUsd: number | null; durationMs: number };
 };
+
+/** `provider:model` → {provider, model}; строка без двоеточия (или с "/" слева от него) — только модель. */
+export function parseModelSpec(spec?: string | null): { provider: string | null; model: string } | null {
+  const s = (spec ?? "").trim();
+  if (!s) return null;
+  const i = s.indexOf(":");
+  if (i > 0 && !s.slice(0, i).includes("/")) return { provider: s.slice(0, i).toLowerCase(), model: s.slice(i + 1) };
+  return { provider: null, model: s };
+}
 
 function estimateCost(inT: number, outT: number, inPrice: number | null, outPrice: number | null): number | null {
   if (inPrice == null && outPrice == null) return null;
@@ -94,17 +108,27 @@ export async function runSlot(req: RunRequest): Promise<RunResponse> {
   const keyRow = await prisma.apiKey.findUniqueOrThrow({ where: { id: b.apiKey.id }, select: { secretEnc: true } });
   const secret = decryptSecret(keyRow.secretEnc);
 
+  // Модель из настройки инструмента: только для провайдера, который совпадает с правилом ключа.
+  let modelId = b.model?.modelId ?? "";
+  let modelRow = b.model;
+  const wanted = parseModelSpec(req.model);
+  if (wanted && (!wanted.provider || wanted.provider === b.provider.slug) && wanted.model !== modelId) {
+    modelId = wanted.model;
+    const known = await prisma.model.findUnique({ where: { providerId_modelId: { providerId: b.provider.id, modelId } }, select: { id: true, modelId: true, name: true, inputPrice: true, outputPrice: true, unitPrice: true } });
+    modelRow = known ?? { id: "", modelId, name: modelId, inputPrice: null, outputPrice: null, unitPrice: null };
+  }
+
   let input: RunInput;
   const payload = req.payload ?? {};
   switch (slot.capability) {
     case "CHAT":
-      input = { kind: "chat", model: b.model!.modelId, body: payload };
+      input = { kind: "chat", model: modelId, body: payload };
       break;
     case "IMAGE":
-      input = { kind: "image", model: b.model!.modelId, body: payload };
+      input = { kind: "image", model: modelId, body: payload };
       break;
     case "EMBEDDING":
-      input = { kind: "embedding", model: b.model!.modelId, body: payload };
+      input = { kind: "embedding", model: modelId, body: payload };
       break;
     case "SERP": {
       const params: Record<string, string> = {};
@@ -123,8 +147,8 @@ export async function runSlot(req: RunRequest): Promise<RunResponse> {
   let costUsd: number | null = null;
   if (result.ok && slot.capability !== "SERP") {
     if (result.exactCostUsd != null) costUsd = result.exactCostUsd;
-    else if (slot.capability === "IMAGE" && b.model?.unitPrice != null) costUsd = result.units * b.model.unitPrice;
-    else costUsd = estimateCost(result.inputTokens, result.outputTokens, b.model?.inputPrice ?? null, b.model?.outputPrice ?? null);
+    else if (slot.capability === "IMAGE" && modelRow?.unitPrice != null) costUsd = result.units * modelRow.unitPrice;
+    else costUsd = estimateCost(result.inputTokens, result.outputTokens, modelRow?.inputPrice ?? null, modelRow?.outputPrice ?? null);
   }
   const dfsCost = slot.capability === "SEO_DATA" && result.ok ? ((result.data as { cost?: number })?.cost ?? null) : null;
 
@@ -134,7 +158,7 @@ export async function runSlot(req: RunRequest): Promise<RunResponse> {
       projectId: project.id,
       slotId: slot.id,
       providerId: b.provider.id,
-      modelId: b.model?.id ?? null,
+      modelId: modelRow?.id || null,
       apiKeyId: b.apiKey.id,
       scope: b.scope,
       inputTokens: result.inputTokens,
@@ -156,7 +180,7 @@ export async function runSlot(req: RunRequest): Promise<RunResponse> {
     error: result.error,
     meta: {
       provider: b.provider.name,
-      model: b.model?.modelId ?? null,
+      model: modelId || null,
       key: b.apiKey.label,
       scope: b.scope,
       inputTokens: result.inputTokens,
