@@ -282,16 +282,29 @@ export async function assignKeyUsage(_p: FormState, f: FormData): Promise<FormSt
 }
 
 /* ---------- Keys ---------- */
+/**
+ * Секрет из формы ключа. У DataForSEO (BASIC) это два поля — логин и пароль API,
+ * храним их одной строкой «логин:пароль», как ждёт Basic-авторизация.
+ */
+function secretFromForm(f: FormData, authType: string): string {
+  if (authType === "BASIC") {
+    const login = str(f, "secretLogin");
+    const password = str(f, "secretPassword");
+    if (!login && !password) return str(f, "secret");
+    return login && password ? `${login}:${password}` : "";
+  }
+  return str(f, "secret");
+}
+
 export async function createKey(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const providerId = str(f, "providerId");
   const label = str(f, "label");
-  const secret = str(f, "secret");
   const personal = str(f, "personal") === "1" || me.role !== "ADMIN";
-  if (!providerId || !label || !secret) return { error: "Заполните провайдера, название и сам ключ" };
   const provider = await prisma.provider.findUnique({ where: { id: providerId } });
   if (!provider) return { error: "Провайдер не найден" };
-  if (provider.authType === "BASIC" && !secret.includes(":")) return { error: "Для DataForSEO укажите «логин:пароль» одной строкой" };
+  const secret = secretFromForm(f, provider.authType);
+  if (!providerId || !label || !secret) return { error: provider.authType === "BASIC" ? "Заполните название, логин и пароль API" : "Заполните провайдера, название и сам ключ" };
   const key = await prisma.apiKey.create({
     data: {
       providerId, label,
@@ -317,10 +330,11 @@ export async function createKey(_p: FormState, f: FormData): Promise<FormState> 
 export async function updateKey(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const id = str(f, "id");
-  const key = await prisma.apiKey.findUnique({ where: { id } });
+  const key = await prisma.apiKey.findUnique({ where: { id }, include: { provider: { select: { authType: true } } } });
   if (!key) return { error: "Ключ не найден" };
   if (me.role !== "ADMIN" && key.ownerId !== me.id) return { error: "Нет прав" };
-  const secret = str(f, "secret");
+  const secret = secretFromForm(f, key.provider.authType);
+  if (key.provider.authType === "BASIC" && (str(f, "secretLogin") || str(f, "secretPassword")) && !secret) return { error: "Чтобы заменить доступ DataForSEO, заполните и логин, и пароль API" };
   await prisma.apiKey.update({
     where: { id },
     data: {
@@ -368,14 +382,30 @@ export async function updateProvider(_p: FormState, f: FormData): Promise<FormSt
   const baseUrl = str(f, "baseUrl");
   const bad = validateBaseUrl(baseUrl);
   if (bad) return { error: bad };
+  const balanceToken = str(f, "balanceToken");
   try {
     await prisma.provider.update({
       where: { id },
-      data: { name: str(f, "name"), baseUrl, modelsEndpoint: str(f, "modelsEndpoint") || null, docsUrl: str(f, "docsUrl") || null, isActive: str(f, "isActive") === "1", defaultChatModel: str(f, "defaultChatModel") || null, defaultImageModel: str(f, "defaultImageModel") || null },
+      data: {
+        name: str(f, "name"), baseUrl, modelsEndpoint: str(f, "modelsEndpoint") || null, docsUrl: str(f, "docsUrl") || null, isActive: str(f, "isActive") === "1",
+        defaultChatModel: str(f, "defaultChatModel") || null, defaultImageModel: str(f, "defaultImageModel") || null,
+        ...(balanceToken ? { balanceTokenEnc: encryptSecret(balanceToken), balanceTokenHint: secretHint(balanceToken) } : {}),
+      },
     });
   } catch (e) { return fail(e); }
   revalidatePath("/providers");
+  revalidatePath("/", "layout");
   return { ok: "Сохранено" };
+}
+
+/** Убрать токен баланса провайдера (остаток в шапке перестанет запрашиваться). */
+export async function clearBalanceToken(_p: FormState, f: FormData): Promise<FormState> {
+  await requireAdmin();
+  const id = str(f, "id");
+  await prisma.provider.update({ where: { id }, data: { balanceTokenEnc: null, balanceTokenHint: null } });
+  revalidatePath("/providers");
+  revalidatePath("/", "layout");
+  return { ok: "Токен удалён" };
 }
 
 export async function createProvider(_p: FormState, f: FormData): Promise<FormState> {

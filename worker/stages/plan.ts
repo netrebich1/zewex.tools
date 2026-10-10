@@ -3,6 +3,8 @@ import { planAiPins } from "@/lib/pins/plan/aiPlan";
 import { planPinoraPins } from "@/lib/pins/plan/pinoraPlan";
 import { buildPinoraParams } from "@/lib/pins/prompts/pinora";
 import { decideElements, pinYear, pinSiteName } from "@/lib/pins/prompts/elements";
+import { allowedPinoraTypes } from "@/lib/pins/recipeForm";
+import { nicheLabel } from "@/lib/pins/prompts/pinoraTypes";
 import { ideaCountFor } from "@/lib/pins/types";
 import { hash32 } from "@/lib/pins/plan/seed";
 import type { StageHandler } from "./index";
@@ -21,7 +23,10 @@ export const plan: StageHandler = async (ctx) => {
   const { ai: perPageAi, pinora: perPagePinora } = rc.recipe.mix;
   const sets = await prisma.pinSet.findMany({ where: { siteId: rc.site.id, setKind: "ai", id: { in: rc.recipe.sets.aiSetIds } } });
   if (perPageAi > 0 && !sets.length) return { fatal: "В рецепте включены ИИ-пины, но не выбран ни один набор стилей. Откройте настройки сайта → Стили." };
-  if (perPagePinora > 0 && !rc.recipe.sets.pinoraTypes.length) return { fatal: "В рецепте включены Pinora-пины, но не выбран ни один тип Pinora." };
+  // Ниша Pinora: заданная в прогоне для всех статей, либо «авто» — по каждой статье; типы — только допустимые для ниши.
+  const pinoraNiche = rc.recipe.sets.pinoraNiche && rc.recipe.sets.pinoraNiche !== "auto" ? rc.recipe.sets.pinoraNiche : "";
+  const pinoraTypes = rc.recipe.sets.pinoraTypes.filter((t) => allowedPinoraTypes(pinoraNiche || "auto").includes(t));
+  if (perPagePinora > 0 && !pinoraTypes.length) return { fatal: `В настройках прогона включены Pinora-пины, но не выбран ни один тип Pinora${pinoraNiche ? ` для ниши «${nicheLabel(pinoraNiche)}»` : " (для ниши «авто» нужны универсальные типы)"}.` };
   const exclusions = await prisma.pinStyleExclusion.findMany({ where: { siteId: rc.site.id, kind: "ai" }, select: { topic: true, styleId: true } });
 
   const existing = await prisma.pinRunItem.groupBy({ by: ["pageId", "engine"], where: { runId: rc.run.id, status: { notIn: ["REMOVED"] } }, _count: { _all: true } });
@@ -42,7 +47,7 @@ export const plan: StageHandler = async (ctx) => {
       })
     : [];
   const pinoraRows = perPagePinora > 0
-    ? planPinoraPins({ pages: todo.map((p) => ({ id: p.id, niche: p.niche, existingPinoraCount: countOf(p.id, "PINORA") })), types: rc.recipe.sets.pinoraTypes, perPage: perPagePinora, seed: rc.settings.seed })
+    ? planPinoraPins({ pages: todo.map((p) => ({ id: p.id, niche: pinoraNiche || p.niche || rc.site.niche, existingPinoraCount: countOf(p.id, "PINORA") })), types: pinoraTypes, perPage: perPagePinora, seed: rc.settings.seed })
     : [];
 
   const year = pinYear(rc.recipe.text);
@@ -53,7 +58,7 @@ export const plan: StageHandler = async (ctx) => {
       const page = rc.pageById.get(r.pageId)!;
       const id = `${rc.run.id}|${r.pageId}|pinora|${r.sortOrder}`;
       const tags = decideElements(id, rc.recipe.text);
-      const params = buildPinoraParams({ type: r.pinType, niche: page.niche || rc.site.niche, seed: hash32(id), tags, keyword: page.keyword, pageTitle: page.pageTitle, siteName, ideaCount: ideaCountFor(page, rc.recipe.text) || undefined, year: tags.year ? year : undefined, season: tags.season ? page.seasonWord || page.season : undefined });
+      const params = buildPinoraParams({ type: r.pinType, niche: r.niche || page.niche || rc.site.niche, seed: hash32(id), tags, keyword: page.keyword, pageTitle: page.pageTitle, siteName, ideaCount: ideaCountFor(page, rc.recipe.text) || undefined, year: tags.year ? year : undefined, season: tags.season ? page.seasonWord || page.season : undefined });
       return { runId: rc.run.id, pageId: r.pageId, siteId: rc.site.id, kind: "pin", engine: "PINORA" as const, pinType: r.pinType, sortOrder: 500 + r.sortOrder, styleParams: params as object };
     }),
   ];

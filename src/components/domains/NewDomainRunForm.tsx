@@ -6,7 +6,8 @@ import { Alert, Badge, Card, Field } from "@/components/ui";
 import { launchDomainRun } from "@/actions/domains";
 import { candidatesPerBrand, cleanSuffix, parseList } from "@/lib/domains/generator";
 import { countValues, domainsOfBrand, suffixesOf, tldOf } from "@/lib/domains/mining";
-import type { DfsCountry, DomainRunSettings, MinedSuffix, SerpSnapshot } from "@/lib/domains/types";
+import type { DomainRunSettings, MinedSuffix, SerpSnapshot } from "@/lib/domains/types";
+import { CountryPicker } from "./CountryPicker";
 
 type SuffixRow = MinedSuffix & { geo: boolean; tier: number };
 type Analysis = { snapshot: SerpSnapshot; suffixes: SuffixRow[]; failed: Array<{ query: string; error: string }>; allDomains: string[]; queries: string | null };
@@ -18,7 +19,7 @@ const TIER_HINTS = [
 ];
 
 /** Форма нового подбора с панелью анализа выдачи Google (приставки и зоны конкурентов). */
-export function NewDomainRunForm({ defaults, countries, initialName }: { defaults: DomainRunSettings; countries: DfsCountry[]; initialName?: string }) {
+export function NewDomainRunForm({ defaults, initialName }: { defaults: DomainRunSettings; initialName?: string }) {
   const [brands, setBrands] = useState(defaults.brands.join("\n"));
   const [tlds, setTlds] = useState(defaults.tlds.join(", "));
   const [tiers, setTiers] = useState<[string, string, string]>([defaults.suffixTiers[0].join(", "), defaults.suffixTiers[1].join(", "), defaults.suffixTiers[2].join(", ")]);
@@ -131,11 +132,7 @@ export function NewDomainRunForm({ defaults, countries, initialName }: { default
         <div className="space-y-5">
           <Card title="3. Регион и выдача Google" description="Страна нужна для анализа выдачи и для ИИ-отбора. Анализ необязателен.">
             <div className="space-y-4">
-              <Field label="Страна продвижения">
-                <select name="countryCode" className="input" value={country} onChange={(e) => setCountry(e.target.value)}>
-                  {countries.map((c) => <option key={c.code} value={c.code}>{c.name} ({c.code.toUpperCase()})</option>)}
-                </select>
-              </Field>
+              <CountryPicker value={country} onChange={setCountry} />
               <Field label="Ключевое слово для выдачи" hint="Пусто — выдача снимается по каждому бренду (до 25). С ключом — один запрос.">
                 <input name="serpKeyword" className="input" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="online casino" />
               </Field>

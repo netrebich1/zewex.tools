@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
   const r = await analyzeSerp({ userId: me.id, teamId: me.teamIds[0] ?? null }, { brands, countryCode, keyword: String(body.keyword ?? "") });
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 502 });
-  const suffixes = r.value.suffixes.map((s) => ({ ...s, geo: isGeoSuffix(s.suffix), tier: isGeoSuffix(s.suffix) ? 1 : 2 }));
+  const suffixes = r.value.suffixes.map((s) => { const geo = isGeoSuffix(s.suffix, countryCode); return { ...s, geo, tier: geo ? 1 : 2 }; });
   return NextResponse.json({
     snapshot: r.value.snapshot,
     suffixes,

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import { Card, Empty, PageHeader, type SearchParams, sp } from "@/components/ui";
 import { moderationBatch, moderationCounts } from "@/lib/pins/runs/moderation";
 import { ModerationGrid } from "@/components/pins/ModerationGrid";
@@ -22,10 +23,11 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
     return `/pinterest/pins/moderation${s ? `?${s}` : ""}`;
   };
   const visibleRuns = counts.runs.filter((r) => !siteId || r.siteId === siteId);
+  const currentRun = runId ? await prisma.pinRun.findUnique({ where: { id: runId }, select: { id: true, name: true } }) : null;
 
   return (
     <>
-      <PageHeader title="Модерация" subtitle={`Непроверенных пинов: ${counts.total}. Клик по пину помечает его на отклонение, остальные одобряются кнопкой внизу.`} />
+      <PageHeader back={currentRun ? { href: `/pinterest/pins/runs/${currentRun.id}`, label: `Прогон «${currentRun.name || currentRun.id.slice(0, 8)}»` } : { href: "/pinterest/pins", label: "Сегодня" }} title="Модерация" subtitle={`Непроверенных пинов: ${counts.total}. Клик по пину помечает его на отклонение, остальные одобряются кнопкой внизу.`} actions={currentRun ? <Link href={`/pinterest/pins/runs/${currentRun.id}`} className="btn-ghost">К прогону</Link> : <Link href="/pinterest/pins/runs" className="btn-ghost">Все прогоны</Link>} />
       <div className="space-y-4">
         <Card>
           <div className="flex flex-wrap gap-2 items-center">
@@ -38,7 +40,10 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
             <div className="mt-3 flex flex-wrap gap-2 items-center">
               <Link href={qs({ run: undefined })} className={`badge px-3 py-1 ${!runId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все прогоны</Link>
               {visibleRuns.map((r) => (
-                <Link key={r.runId} href={qs({ run: r.runId })} className={`badge px-3 py-1 ${runId === r.runId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{r.name} · {r.total}</Link>
+                <span key={r.runId} className="inline-flex items-center gap-1">
+                  <Link href={qs({ run: r.runId })} className={`badge px-3 py-1 ${runId === r.runId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{r.name} · {r.total}</Link>
+                  <Link href={`/pinterest/pins/runs/${r.runId}`} className="help underline" title="Открыть страницу прогона">↗</Link>
+                </span>
               ))}
             </div>
           )}

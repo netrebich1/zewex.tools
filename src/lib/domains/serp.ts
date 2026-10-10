@@ -53,7 +53,7 @@ async function viaSerpApi(ctx: SerpCtx, pre: ResolvedSlot, keyword: string, coun
     userId: ctx.userId,
     projectSlug: PROJECT_SLUG,
     slotKey: SLOT_SERP_API,
-    payload: { engine: "google", q: keyword, gl: countryCode, hl: country?.languageCode ?? "en", num: 10, google_domain: `google.${countryCode === "gb" ? "co.uk" : countryCode === "us" ? "com" : countryCode}` },
+    payload: { engine: "google", q: keyword, gl: countryCode, hl: country?.languageCode ?? "en", num: 10 },
     timeoutMs: 60_000,
     meta: { teamId: ctx.teamId ?? undefined, refId: ctx.refId },
     pre,

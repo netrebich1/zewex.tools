@@ -2,12 +2,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const ITEMS = [
+const ITEMS: Array<{ href: string; label: string; exact?: boolean; not?: string }> = [
   { href: "/pinterest/pins", label: "Сегодня", exact: true },
   { href: "/pinterest/pins/moderation", label: "Модерация" },
   { href: "/pinterest/pins/export", label: "Выгрузка" },
   { href: "/pinterest/pins/styles", label: "Стили" },
   { href: "/pinterest/pins/sites", label: "Сайты" },
+  { href: "/pinterest/pins/runs", label: "Прогоны", not: "/pinterest/pins/runs/new" },
   { href: "/pinterest/pins/runs/new", label: "Новый прогон" },
 ];
 
@@ -18,7 +19,7 @@ export function PinsNav() {
     <div className="mb-5 flex flex-wrap items-center gap-1.5 border-b border-line pb-3">
       <span className="text-[13px] font-semibold text-muted mr-2">Pinterest Pins</span>
       {ITEMS.map((it) => {
-        const active = it.exact ? pathname === it.href : pathname.startsWith(it.href);
+        const active = it.exact ? pathname === it.href : pathname.startsWith(it.href) && !("not" in it && it.not && pathname.startsWith(it.not));
         return (
           <Link key={it.href} href={it.href} className={`tab ${active ? "active" : ""}`}>
             {it.label}

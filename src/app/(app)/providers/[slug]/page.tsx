@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { addModel, deleteModel, syncModels, toggleModel, updateProvider } from "@/actions/admin";
+import { addModel, clearBalanceToken, deleteModel, syncModels, toggleModel, updateProvider } from "@/actions/admin";
 import { CAPABILITY_LABELS, fmtMoney } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -142,9 +142,24 @@ export default async function ProviderPage({ params, searchParams }: { params: P
                   </select>
                 </Field>
               </div>
+              {provider.slug === "laozhang" && (
+                <div className="mt-3 rounded-xl border border-line p-3 sm:p-4">
+                  <Field
+                    label={`Токен для баланса в шапке${provider.balanceTokenHint ? ` · сейчас ${provider.balanceTokenHint}` : ""}`}
+                    hint="laozhang не отдаёт остаток по API-ключу. В кабинете laozhang: Настройки → «System Token» (нужен пароль аккаунта). Пусто — оставить как есть."
+                  >
+                    <input name="balanceToken" className="input font-mono" autoComplete="off" placeholder={provider.balanceTokenHint ? "новый системный токен" : "вставьте System Token"} />
+                  </Field>
+                </div>
+              )}
               <p className="help">Адаптер: {provider.adapter} · авторизация: {provider.authType}</p>
               <SubmitButton pendingText="…">Сохранить</SubmitButton>
             </ActionForm>
+            {provider.slug === "laozhang" && provider.balanceTokenHint && (
+              <ActionForm action={clearBalanceToken} className="mt-2" hidden={{ id: provider.id }}>
+                <SubmitButton className="btn-ghost btn-sm" confirm="Удалить токен баланса? Остаток laozhang в шапке пропадёт." pendingText="…">Удалить токен баланса</SubmitButton>
+              </ActionForm>
+            )}
           </Card>
         )}
       </div>

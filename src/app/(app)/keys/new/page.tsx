@@ -4,6 +4,7 @@ import { Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { createKey } from "@/actions/admin";
+import { KeySecretFields } from "@/components/KeySecretFields";
 
 export const dynamic = "force-dynamic";
 
@@ -20,17 +21,7 @@ export default async function NewKeyPage() {
       <PageHeader back={{ href: "/keys", label: "Ключи" }} title="Новый ключ" subtitle="Ключ хранится в зашифрованном виде, в интерфейсе виден только его хвост. После сохранения он сразу проверяется." />
       <Card className="max-w-2xl">
         <ActionForm action={createKey}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Провайдер">
-              <select name="providerId" className="input" required>
-                {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Название (как вы его узнаете)"><input name="label" className="input" required placeholder="OpenRouter — основной" /></Field>
-          </div>
-          <Field label="Секрет" hint="Для DataForSEO введите «логин:пароль» одной строкой. Для SerpAPI — api_key.">
-            <input name="secret" className="input font-mono" required autoComplete="off" placeholder="sk-…" />
-          </Field>
+          <KeySecretFields providers={providers.map((p) => ({ id: p.id, name: p.name, authType: p.authType }))} />
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Месячный лимит, $ (необязательно)" hint="При достижении вызовы через этот ключ блокируются до конца месяца."><input name="monthlyLimitUsd" className="input" inputMode="decimal" placeholder="например 50" /></Field>
             {me.role === "ADMIN" ? (

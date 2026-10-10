@@ -98,6 +98,9 @@ model Team {
   members     TeamMember[]
   bindings    Binding[]
   pinSites    PinSite[]
+  artSites    ArtSite[]
+  artRuns     ArtRun[]
+  articles    Article[]
   pinRuns     PinRun[]
   siteShares  SiteAccessTeam[]
 }
@@ -169,6 +172,9 @@ model Provider {
   defaultChatModel  String?
   /// Модель по умолчанию для слотов картинок
   defaultImageModel String?
+  /// Отдельный токен аккаунта для запроса баланса (laozhang: «System Token»), зашифрован
+  balanceTokenEnc  String?  @db.Text
+  balanceTokenHint String?
   models         Model[]
   apiKeys        ApiKey[]
   bindings       Binding[]
@@ -457,6 +463,7 @@ model SiteAccess {
   teams               SiteAccessTeam[]
   /// Если не пусто — сайт видят только эти сотрудники (плюс админы и лидеры команды-владельца)
   viewers             SiteAccessViewer[]
+  artSites            ArtSite[]
 
   @@index([teamId])
   @@map("PinWpConnection")
@@ -709,4 +716,449 @@ model DomainCandidate {
   @@unique([runId, domain])
   @@index([runId, brand, sortOrder])
   @@index([runId, status])
+}
+
+// ───────────────────────────── Pinterest Articles ─────────────────────────────
+// Сервис статей-подборок под Pinterest (перенос Zewex Pinterest Articles).
+// Статья — строка очереди: воркер захватывает её по lease и ведёт по этапам
+// (src/lib/articles/stages.ts) до состояния ожидания или конца. Все модели с префиксом Art.
+
+enum ArtFormat {
+  REAL_PHOTO
+  GENERATED_PHOTO
+}
+
+enum ArtStatus {
+  PENDING
+  RUNNING
+  PHOTO_REVIEW
+  INSUFFICIENT_PHOTOS
+  WAITING_FOR_PHOTOS
+  REVIEW_PENDING
+  NEEDS_REWORK
+  PUBLISH_QUEUED
+  PUBLISHING
+  COMPLETED
+  PUBLISH_ERROR
+  FAILED
+  PAUSED
+  STOPPED
+}
+
+/// Ниша или подниша (parentCode): outfits, hair, nails/manicure/pedicure, interior/decor/outdoor, blog
+model ArtNiche {
+  code       String   @id
+  name       String
+  emoji      String   @default("📄")
+  sortOrder  Int      @default(0)
+  isActive   Boolean  @default(true)
+  parentCode String?
+  profile    ArtNicheProfile?
+}
+
+/// Профиль ниши: словари поиска, обязательные визуальные признаки, оси разнообразия, подсказки для текста (JSON)
+model ArtNicheProfile {
+  nicheCode String   @id
+  label     String
+  /// {attributes, required_visuals, exclusive_terms, diversity_axes, search_templates, constraint_specs, concept_fields, fact_block}
+  profile   Json
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+  niche     ArtNiche @relation(fields: [nicheCode], references: [code], onDelete: Cascade)
+}
+
+/// Набор промтов на связку ниша + подниша + формат (старые UUID сохранены)
+model ArtPromptSet {
+  id           String      @id @db.Char(36)
+  name         String
+  description  String?     @db.Text
+  nicheCode    String
+  subnicheCode String?
+  format       ArtFormat
+  isActive     Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  prompts      ArtPrompt[]
+  recipes      ArtRecipe[]
+
+  @@index([nicheCode, format, isActive])
+}
+
+/// Промт шага (stageKey: rp_photo_search, rp_photo_rate, rp_photo_plan, rp_section_plan, stage_2, stage_5_scene_planner,
+/// stage_6_image_seo, stage_7_writer_system, stage_7_writer_user, stage_7_intro_outro). В одном наборе может быть несколько вариантов шага.
+model ArtPrompt {
+  id        String             @id @db.Char(36)
+  setId     String             @db.Char(36)
+  stageKey  String
+  name      String
+  system    String?            @db.LongText
+  text      String             @db.LongText
+  /// Справочно (модель задаётся в рецепте)
+  model     String?
+  isActive  Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  set       ArtPromptSet       @relation(fields: [setId], references: [id], onDelete: Cascade)
+  versions  ArtPromptVersion[]
+
+  @@index([setId, stageKey, createdAt])
+}
+
+/// История правок промта (пишется при каждом сохранении в UI)
+model ArtPromptVersion {
+  id            String    @id @default(uuid()) @db.Char(36)
+  promptId      String    @db.Char(36)
+  version       Int
+  system        String?   @db.LongText
+  text          String    @db.LongText
+  changeSummary String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  prompt        ArtPrompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@unique([promptId, version])
+}
+
+/// Рецепт статьи (= сценарий оригинала): ниша, формат, набор промтов, модели и варианты по шагам, настройки поиска/текста/картинок/публикации
+model ArtRecipe {
+  id             String        @id @db.Char(36)
+  number         Int?
+  name           String
+  description    String?       @db.Text
+  nicheCode      String
+  subnicheCode   String?
+  format         ArtFormat
+  promptSetId    String?       @db.Char(36)
+  isActive       Boolean       @default(true)
+  isDefault      Boolean       @default(false)
+  /// {stage_key: prompt_id}
+  stagePromptIds Json
+  /// {stage_key: "provider:model"}
+  stageModels    Json
+  /// {batchSize, personality, wordCount, schemaEnabled}
+  text           Json
+  /// {provider, model, quality, size, mode, groupId, promptId, promptWriterModel}
+  images         Json
+  /// PhotoSearchConfig: source, country, language, freshness, license, orientation[], minWidth, minHeight, minScore, candidatesTotal, ratingBatchSize, includeDomains, excludeDomains, imageType, uniqueMode, writerMode, captionMode, captionTemplate, querySuffix
+  photoSearch    Json
+  /// {mode: auto | moderate_first | publish_then_edit, seoYearUrlPercent}
+  publish        Json
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  promptSet      ArtPromptSet? @relation(fields: [promptSetId], references: [id], onDelete: SetNull)
+  sites          ArtSite[]
+  runs           ArtRun[]
+  articles       Article[]
+
+  @@index([nicheCode, format, isActive])
+}
+
+/// Сайт в сервисе статей: привязка к доступу WordPress (SiteAccess), ниша, рецепт по умолчанию, автозапуск и лимиты (settings)
+model ArtSite {
+  id              String      @id @default(uuid()) @db.Char(36)
+  teamId          String
+  accessId        String?     @db.Char(36)
+  name            String
+  slug            String
+  isActive        Boolean     @default(true)
+  nicheCode       String?
+  defaultRecipeId String?     @db.Char(36)
+  /// ArtSiteSettings (src/lib/articles/types.ts): фото по умолчанию, модерация фото до текста, публикация, категории WP и правила,
+  /// автозапуск (photoEnabled/photoLimit/writingEnabled/writingLimit/publishLimit/autoRestart), ИИ-модерация, поиск по умолчанию
+  settings        Json
+  /// Кэш категорий WordPress [{id, name, slug, parent}]
+  wpCategories    Json?
+  sortOrder       Int         @default(0)
+  createdById     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  team            Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  access          SiteAccess? @relation(fields: [accessId], references: [id], onDelete: SetNull)
+  defaultRecipe   ArtRecipe?  @relation(fields: [defaultRecipeId], references: [id], onDelete: SetNull)
+  runs            ArtRun[]
+  articles        Article[]
+
+  @@unique([teamId, slug])
+  @@index([teamId])
+  @@index([accessId])
+}
+
+/// Запуск (партия ключей на один сайт с одним рецептом и параметрами)
+model ArtRun {
+  id          String     @id @default(uuid()) @db.Char(36)
+  teamId      String
+  siteId      String     @db.Char(36)
+  recipeId    String?    @db.Char(36)
+  createdById String?
+  name        String     @default("")
+  /// ArtRunSettings: photoCount {mode: exact|range, min, max}, photoReview, publishMode, search overrides, yearInUrl, testLabel
+  settings    Json
+  createdAt   DateTime   @default(now())
+  team        Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  site        ArtSite    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  recipe      ArtRecipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  articles    Article[]
+
+  @@index([siteId, createdAt])
+  @@index([teamId, createdAt])
+}
+
+/// Статья: ключ, состояние конвейера, план, тексты, мета, публикация. Одновременно строка очереди воркера.
+model Article {
+  id                 String      @id @default(uuid()) @db.Char(36)
+  teamId             String
+  siteId             String      @db.Char(36)
+  runId              String?     @db.Char(36)
+  recipeId           String?     @db.Char(36)
+  createdById        String?
+  keyword            String
+  seoKeyword         String      @default("")
+  focusKeyword       String      @default("")
+  keywordRu          String      @default("")
+  format             ArtFormat   @default(REAL_PHOTO)
+  /// Сколько фото/секций нужно (из запуска: точное или уже выбранное из диапазона)
+  photoCount         Int         @default(20)
+  /// Модерация фото человеком/ИИ до написания текста (режим 2 оригинала)
+  photoReview        Boolean     @default(true)
+  /// auto | moderate_first | publish_then_edit
+  publishMode        String      @default("moderate_first")
+  /// Снимок рецепта и настроек запуска на момент старта (ArticleRecipeSnapshot) — его исполняет воркер
+  recipe             Json
+  status             ArtStatus   @default(PENDING)
+  /// Текущий этап реестра (search, filter, …, publish, done)
+  stage              String      @default("search")
+  /// Данные этапов: кольца добора, план, контракт темы, тренд-бриф и т.п. (ArticleCursor)
+  cursor             Json?
+  /// Атрибуты ключа и контракт темы (parse-keyword + topicContract)
+  facts              Json?
+  /// План статьи: h1, title, metaDescription, slug, порядок фото, план вступления (ArticlePlan)
+  plan               Json?
+  introHtml          String?     @db.MediumText
+  outroHtml          String?     @db.MediumText
+  html               String?     @db.LongText
+  h1                 String      @default("")
+  metaTitle          String      @default("")
+  metaDescription    String      @default("") @db.Text
+  slug               String      @default("")
+  wpPostId           Int?
+  wpUrl              String?     @db.VarChar(1000)
+  wpCategoryId       Int?
+  wpStatus           String?
+  publishAttempts    Int         @default(0)
+  error              String?     @db.Text
+  errorStage         String?
+  note               String?     @db.Text
+  /// Причина «Мало фото» и кто поставил
+  insufficientReason String?     @db.Text
+  insufficientById   String?
+  insufficientByAi   Boolean     @default(false)
+  attempts           Int         @default(0)
+  priority           Int         @default(0)
+  nextRunAt          DateTime?
+  leaseUntil         DateTime?
+  workerId           String?
+  stopRequested      Boolean     @default(false)
+  /// Закрепление за модератором (TTL 15 мин)
+  claimedById        String?
+  claimedAt          DateTime?
+  moderatedById      String?
+  moderatedAt        DateTime?
+  reviewedById       String?
+  reviewedAt         DateTime?
+  costUsd            Float       @default(0)
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  publishedAt        DateTime?
+  purgedAt           DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  team               Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  site               ArtSite     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  run                ArtRun?     @relation(fields: [runId], references: [id], onDelete: SetNull)
+  recipeRef          ArtRecipe?  @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  candidates         ArtPhotoCandidate[]
+  photos             ArtPhoto[]
+  sections           ArtSection[]
+  stageLogs          ArtStageLog[]
+  events             ArtModerationEvent[]
+  errors             ArtError[]
+
+  @@index([siteId, status])
+  @@index([teamId, status])
+  @@index([status, priority, createdAt])
+  @@index([runId])
+  @@index([siteId, keyword(length: 191)])
+  @@index([claimedById])
+}
+
+/// Кандидат фото (все найденные, включая отбракованные с причиной)
+model ArtPhotoCandidate {
+  id            String   @id @default(uuid()) @db.Char(36)
+  articleId     String   @db.Char(36)
+  /// URL файла картинки (source_url DataForSEO / original SerpApi)
+  url           String   @db.VarChar(2000)
+  /// Страница, где найдено фото, и её домен
+  pageUrl       String   @default("") @db.VarChar(2000)
+  domain        String   @default("")
+  thumbUrl      String   @default("") @db.VarChar(2000)
+  title         String   @default("") @db.Text
+  searchQuery   String   @default("")
+  /// Позиция в выдаче и номер вариации запроса
+  position      Int      @default(0)
+  queryIndex    Int      @default(0)
+  width         Int?
+  height        Int?
+  bytes         Int?
+  sha256        String?
+  phash         String?
+  /// Локальный путь к скачанному оригиналу и миниатюре (storage/articles/<id>/cand/…)
+  path          String   @default("")
+  thumbPath     String   @default("")
+  /// found | downloaded | rejected | rated | keep | selected | reserve
+  status        String   @default("found")
+  rejectStage   String?
+  rejectReason  String?  @db.Text
+  techScore     Int?
+  techDetails   Json?
+  beautyRank    Int?
+  aiScore       Float?
+  /// {virality, trend, composition, framing, lighting, …} и прочие поля vision-оценки
+  aiBreakdown   Json?
+  aiFacts       Json?
+  aiDescription String?  @db.Text
+  relevance     Float?
+  audience      Json?
+  rankScore     Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  article       Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId, status])
+  @@index([articleId, rankScore])
+  @@index([sha256])
+}
+
+/// Фото статьи (отобранные, по позициям; одна секция = одно фото)
+model ArtPhoto {
+  id            String   @id @default(uuid()) @db.Char(36)
+  articleId     String   @db.Char(36)
+  candidateId   String?  @db.Char(36)
+  position      Int
+  path          String   @default("")
+  thumbPath     String   @default("")
+  publicUrl     String   @default("") @db.VarChar(1000)
+  sourceUrl     String   @default("") @db.VarChar(2000)
+  sourcePageUrl String   @default("") @db.VarChar(2000)
+  sourceDomain  String   @default("")
+  width         Int?
+  height        Int?
+  sha256        String?
+  phash         String?
+  altText       String   @default("") @db.Text
+  caption       String   @default("") @db.Text
+  fileName      String   @default("")
+  facts         Json?
+  description   String?  @db.Text
+  aiScore       Float?
+  wpMediaId     Int?
+  wpUrl         String?  @db.VarChar(1000)
+  /// Исключено модератором (остаётся для истории и undo)
+  excluded      Boolean  @default(false)
+  excludedById  String?
+  excludedByAi  Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  article       Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId, position])
+  @@index([sha256])
+}
+
+/// Секция статьи (0 — вступление, 9990 — заключение, 1..n — по фото)
+model ArtSection {
+  id        String   @id @default(uuid()) @db.Char(36)
+  articleId String   @db.Char(36)
+  position  Int
+  photoId   String?  @db.Char(36)
+  heading   String   @default("") @db.Text
+  html      String?  @db.MediumText
+  /// Рецепт секции из плана (угол, объём, список, уход, честный минус)
+  brief     Json?
+  wordCount Int      @default(0)
+  /// planned | written | failed
+  status    String   @default("planned")
+  error     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, position])
+}
+
+/// Отпечатки использованных фото: уникальность между сайтами и статьями (не удаляются при очистке)
+model ArtPhotoFingerprint {
+  id        String   @id @default(uuid()) @db.Char(36)
+  teamId    String
+  siteId    String   @db.Char(36)
+  articleId String?  @db.Char(36)
+  sha256    String?
+  phash     String?
+  sourceUrl String   @default("") @db.VarChar(2000)
+  createdAt DateTime @default(now())
+
+  @@index([sha256])
+  @@index([phash])
+  @@index([teamId, createdAt])
+}
+
+/// Действия модерации (человек или ИИ) — для статистики сотрудников и undo
+model ArtModerationEvent {
+  id        String   @id @default(uuid()) @db.Char(36)
+  articleId String   @db.Char(36)
+  userId    String?
+  byAi      Boolean  @default(false)
+  /// approve | exclude | restore | add | reorder | topup | insufficient | skip | review_approve | review_rework | publish
+  action    String
+  payload   Json?
+  createdAt DateTime @default(now())
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId, createdAt])
+  @@index([userId, createdAt])
+}
+
+/// Журнал этапов статьи: таймлайн карточки статьи
+model ArtStageLog {
+  id         String    @id @default(uuid()) @db.Char(36)
+  articleId  String    @db.Char(36)
+  stage      String
+  /// running | done | error | skipped
+  status     String    @default("running")
+  summary    String?   @db.Text
+  error      String?   @db.Text
+  details    Json?
+  costUsd    Float     @default(0)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  article    Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId, startedAt])
+}
+
+/// Ошибки конвейера: группировка по сигнатуре, «устранено»
+model ArtError {
+  id         String    @id @default(uuid()) @db.Char(36)
+  teamId     String
+  siteId     String?   @db.Char(36)
+  articleId  String?   @db.Char(36)
+  stage      String
+  message    String    @db.Text
+  signature  String
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  article    Article?  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, createdAt])
+  @@index([signature, createdAt])
+  @@index([siteId, createdAt])
 }

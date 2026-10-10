@@ -178,18 +178,22 @@ async function hasDnsRecords(domain: string): Promise<boolean | null> {
 }
 
 export async function checkDomain(domain: string): Promise<AvailabilityResult> {
+  // Сначала дешёвый DNS: у занятого домена почти всегда есть NS-записи, и RDAP (с лимитами реестров) не нужен.
+  const pre = await hasDnsRecords(domain);
+  if (pre === true) return { domain, status: "taken", source: "dns" };
   for (const url of await endpointsFor(domain)) {
     const res = await rdapFetch(url);
     if (!res) continue;
     if (res.status === 404) {
-      const dns = await hasDnsRecords(domain);
+      // DNS не ответил заранее — перепроверим, прежде чем объявить домен свободным
+      const dns = pre === null ? await hasDnsRecords(domain) : pre;
       if (dns === true) return { domain, status: "taken", source: "dns" };
       return { domain, status: "available", source: "rdap" };
     }
     if (res.status === 200) return { domain, status: "taken", source: "rdap" };
     // 5xx / неожиданный ответ — пробуем следующий эндпоинт
   }
-  const dns = await hasDnsRecords(domain);
+  const dns = pre === null ? await hasDnsRecords(domain) : pre;
   if (dns === true) return { domain, status: "taken", source: "dns" };
   return { domain, status: "unknown", source: "none" };
 }

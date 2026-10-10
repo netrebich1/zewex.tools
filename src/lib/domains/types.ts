@@ -3,6 +3,8 @@
  * Тяжёлую проверку свободности выполняет воркер; Next.js ставит подбор в очередь и читает результаты.
  */
 
+import { countryByCode, dfsLocationCode } from "./countries";
+
 export const PROJECT_SLUG = "domains";
 export const SLOT_AI = "text_main";
 export const SLOT_SERP_DFS = "serp_dfs";
@@ -77,56 +79,35 @@ export const DEFAULT_SETTINGS: DomainRunSettings = {
 
 export type DfsCountry = { code: string; name: string; locationCode: number; languageCode: string };
 
-/** Страны для анализа выдачи: код → location_code DataForSEO (ISO-3166 numeric) и язык. Для SerpAPI — gl/hl. */
-export const DFS_COUNTRIES: DfsCountry[] = [
-  { code: "nl", name: "Нидерланды", locationCode: 2528, languageCode: "nl" },
-  { code: "be", name: "Бельгия", locationCode: 2056, languageCode: "nl" },
-  { code: "de", name: "Германия", locationCode: 2276, languageCode: "de" },
-  { code: "at", name: "Австрия", locationCode: 2040, languageCode: "de" },
-  { code: "ch", name: "Швейцария", locationCode: 2756, languageCode: "de" },
-  { code: "gb", name: "Великобритания", locationCode: 2826, languageCode: "en" },
-  { code: "us", name: "США", locationCode: 2840, languageCode: "en" },
-  { code: "ca", name: "Канада", locationCode: 2124, languageCode: "en" },
-  { code: "au", name: "Австралия", locationCode: 2036, languageCode: "en" },
-  { code: "fr", name: "Франция", locationCode: 2250, languageCode: "fr" },
-  { code: "es", name: "Испания", locationCode: 2724, languageCode: "es" },
-  { code: "it", name: "Италия", locationCode: 2380, languageCode: "it" },
-  { code: "pl", name: "Польша", locationCode: 2616, languageCode: "pl" },
-  { code: "ro", name: "Румыния", locationCode: 2642, languageCode: "ro" },
-  { code: "bg", name: "Болгария", locationCode: 2100, languageCode: "bg" },
-  { code: "gr", name: "Греция", locationCode: 2300, languageCode: "el" },
-  { code: "hu", name: "Венгрия", locationCode: 2348, languageCode: "hu" },
-  { code: "cz", name: "Чехия", locationCode: 2203, languageCode: "cs" },
-  { code: "sk", name: "Словакия", locationCode: 2703, languageCode: "sk" },
-  { code: "si", name: "Словения", locationCode: 2705, languageCode: "sl" },
-  { code: "pt", name: "Португалия", locationCode: 2620, languageCode: "pt" },
-  { code: "br", name: "Бразилия", locationCode: 2076, languageCode: "pt" },
-  { code: "tr", name: "Турция", locationCode: 2792, languageCode: "tr" },
-  { code: "se", name: "Швеция", locationCode: 2752, languageCode: "sv" },
-  { code: "no", name: "Норвегия", locationCode: 2578, languageCode: "no" },
-  { code: "dk", name: "Дания", locationCode: 2208, languageCode: "da" },
-  { code: "fi", name: "Финляндия", locationCode: 2246, languageCode: "fi" },
-  { code: "ie", name: "Ирландия", locationCode: 2372, languageCode: "en" },
-  { code: "nz", name: "Новая Зеландия", locationCode: 2554, languageCode: "en" },
-  { code: "jp", name: "Япония", locationCode: 2392, languageCode: "ja" },
-];
-
-const BY_CODE = new Map(DFS_COUNTRIES.map((c) => [c.code, c]));
-
+/** Страна для анализа выдачи: все страны мира из countries.ts (DataForSEO location_code = 2000 + ISO numeric). */
 export function getCountry(code: string): DfsCountry | null {
-  return BY_CODE.get(code.trim().toLowerCase()) ?? null;
+  const c = countryByCode(code);
+  return c ? { code: c.code, name: c.name, locationCode: dfsLocationCode(c), languageCode: c.lang } : null;
 }
 
-/** Гео-слова: такие приставки из анализа выдачи попадают в уровень 1 по умолчанию. */
+/** Гео-слова общего списка: такие приставки из анализа выдачи попадают в уровень 1 по умолчанию. */
 export const GEO_WORDS = new Set([
-  ...DFS_COUNTRIES.map((c) => c.code),
   "nederland", "netherlands", "netherland", "holland", "deutschland", "espana", "italia", "france", "polska", "belgie", "belgique", "belgium",
   "osterreich", "suisse", "schweiz", "eu", "uk", "usa", "canada", "australia", "romania", "bulgaria", "greece", "magyar", "cesko", "slovensko",
-  "slovenija", "portugal", "brasil", "turkiye", "sverige", "norge", "danmark", "suomi", "ireland", "japan",
+  "slovenija", "portugal", "brasil", "turkiye", "sverige", "norge", "danmark", "suomi", "ireland", "japan", "africa", "asia", "europe", "latam",
 ]);
 
-export function isGeoSuffix(s: string): boolean {
-  return GEO_WORDS.has(s.toLowerCase());
+/** Коды стран, которые встречаются как гео-приставки (короткие коды вроде it, in, me, to слишком похожи на обычные слова). */
+export const GEO_CODES = new Set(["nl", "de", "be", "at", "ch", "fr", "es", "pl", "pt", "br", "uk", "us", "ca", "au", "nz", "ie", "za", "ng", "ke", "zm", "jp", "kr", "mx", "ar", "cl", "pe", "se", "dk", "fi", "cz", "sk", "hu", "ro", "bg", "gr", "tr", "ua", "eu"]);
+
+/** Приставка считается гео, если это код выбранной страны, её название (en/местное) или слово из общего гео-списка. */
+export function isGeoSuffix(s: string, countryCode?: string): boolean {
+  const v = s.toLowerCase();
+  if (GEO_WORDS.has(v)) return true;
+  if (countryCode) {
+    const c = countryByCode(countryCode);
+    if (c) {
+      if (v === c.code) return true;
+      const names = [c.en.toLowerCase().replace(/[^a-z]/g, ""), ...(c.words ?? [])];
+      if (names.includes(v)) return true;
+    }
+  }
+  return GEO_CODES.has(v);
 }
 
 export const RUN_STATUS_LABELS: Record<string, string> = {

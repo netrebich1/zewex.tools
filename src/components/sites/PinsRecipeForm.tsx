@@ -20,6 +20,7 @@ export async function recipeFieldsData(sets: PinSet[], wps?: Pick<SiteAccess, "i
   const canvas = await approvedCatalogStyles();
   return {
     aiSets: sets.filter((s) => s.setKind === "ai").map(opt),
+    canvasSets: sets.filter((s) => s.setKind === "canvas").map(opt),
     canvasStyles: canvas.map((c) => ({ id: c.id, name: c.name.replace(/^Zewex · /, ""), previewUrl: c.previewPath ? publicUrl(c.previewPath) : null, zewex: c.tags.includes("zewex") })),
     pinoraTypes: PINORA_TYPES.map((t) => ({ id: t.id, ru: t.ru })),
     ...(wps ? { wps: wps.map((w) => ({ id: w.id, name: w.name })) } : {}),

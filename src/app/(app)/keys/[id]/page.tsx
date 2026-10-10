@@ -114,7 +114,14 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
                     </Field>
                   )}
                 </div>
-                <Field label="Заменить секрет" hint="Оставьте пустым, чтобы не менять."><input name="secret" className="input font-mono" autoComplete="off" placeholder="новый ключ" /></Field>
+                {key.provider.authType === "BASIC" ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Заменить логин DataForSEO" hint="Оба поля пустые — доступ не меняется."><input name="secretLogin" className="input" autoComplete="off" placeholder="email аккаунта" /></Field>
+                    <Field label="Заменить пароль API"><input name="secretPassword" className="input font-mono" autoComplete="off" placeholder="пароль из кабинета DataForSEO" /></Field>
+                  </div>
+                ) : (
+                  <Field label="Заменить секрет" hint="Оставьте пустым, чтобы не менять."><input name="secret" className="input font-mono" autoComplete="off" placeholder="новый ключ" /></Field>
+                )}
                 <Field label="Заметка"><input name="notes" className="input" defaultValue={key.notes ?? ""} /></Field>
                 <SubmitButton pendingText="Сохраняю…">Сохранить</SubmitButton>
               </ActionForm>

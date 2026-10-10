@@ -2,12 +2,15 @@ import type { ReactNode } from "react";
 import { Field } from "@/components/ui";
 import type { Recipe } from "@/lib/pins/types";
 import { pinYear } from "@/lib/pins/prompts/elements";
+import { PinoraPicker } from "@/components/pins/PinoraPicker";
 
 export type RecipeSetOption = { id: string; name: string; count: number; topic?: string };
 export type RecipeCanvasStyle = { id: string; name: string; previewUrl: string | null; zewex: boolean };
 export type RecipeFieldsData = {
   aiSets: RecipeSetOption[];
-  /** Утверждённые Canvas-стили каталога (выбираются напрямую, с превью). */
+  /** Canvas-наборы сайта (наборы утверждённых стилей). */
+  canvasSets: RecipeSetOption[];
+  /** Утверждённые Canvas-стили каталога (выбираются напрямую, с превью) — только в настройках сайта. */
   canvasStyles: RecipeCanvasStyle[];
   pinoraTypes: Array<{ id: string; ru: string }>;
   /** Доступы WordPress для сайтов без привязки; не передавать, если выбор WP не нужен. */
@@ -40,41 +43,51 @@ export function RecipeFields({ r, data, scope }: { r: Recipe; data: RecipeFields
     </div>
   );
 
-  /** Наборы ИИ, типы Pinora и Canvas-стили. compact — для прогона: плотнее сетка, подпись «для этого прогона». */
+  const setChips = (name: string, list: RecipeSetOption[], chosen: string[], empty: string) => (
+    <div className="flex flex-wrap gap-1.5">
+      {list.map((s) => <label key={s.id} className={chip} title={s.topic || ""}><input type="checkbox" name={name} value={s.id} defaultChecked={chosen.includes(s.id)} className="h-3.5 w-3.5" /> {s.name} <span className="text-muted">{s.count}</span></label>)}
+      {!list.length && <p className="help">{empty}</p>}
+    </div>
+  );
+
+  /**
+   * Наборы: ИИ-наборы, Canvas-наборы, типы Pinora — только названия (для этого наборы и собираются).
+   * compact — для прогона: отдельные Canvas-стили сайта не показываются, а передаются скрытыми полями как есть.
+   */
   const styles = (compact: boolean) => (
-    <>
+    <section className="rounded-xl border border-line p-3 space-y-3 lg:col-span-2">
       <input type="hidden" name="setsPresent" value="1" />
-      <section className="rounded-xl border border-line p-3 space-y-2">
-        <div className="text-[13px] font-semibold">ИИ-наборы {compact && <span className="help font-normal">· шаблоны ИИ-пинов для этого прогона</span>}</div>
-        <div className="flex flex-wrap gap-1.5">
-          {data.aiSets.map((s) => <label key={s.id} className={chip}><input type="checkbox" name="aiSetIds" value={s.id} defaultChecked={r.sets.aiSetIds.includes(s.id)} className="h-3.5 w-3.5" /> {s.name} <span className="text-muted">{s.count}</span></label>)}
-          {!data.aiSets.length && <p className="help">Наборов нет: соберите их в разделе «Стили».</p>}
+      {compact && (r.sets.canvasStyleIds ?? []).map((id) => <input key={id} type="hidden" name="canvasStyleIds" value={id} />)}
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <div className="text-[13px] font-semibold">{compact ? "Наборы стилей для этого прогона" : "Наборы стилей"}</div>
+        <span className="help">Наборы собираются в разделе «Стили». {compact ? "Отмечено как у сайта." : ""} Canvas: ничего не отмечено — все утверждённые стили.</span>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-3">
+        <div className="space-y-1.5"><div className="text-[12px] text-muted">ИИ-наборы (шаблоны ИИ-пинов)</div>{setChips("aiSetIds", data.aiSets, r.sets.aiSetIds, "Наборов нет: соберите их в разделе «Стили».")}</div>
+        <div className="space-y-1.5"><div className="text-[12px] text-muted">Canvas-наборы</div>{setChips("canvasSetIds", data.canvasSets, r.sets.canvasSetIds, "Canvas-наборов нет: соберите их в разделе «Стили» → Canvas.")}</div>
+        <div className="space-y-1.5"><div className="text-[12px] text-muted">Pinora: ниша и типы</div>
+          <PinoraPicker key={`${r.sets.pinoraNiche}|${r.sets.pinoraTypes.join(",")}`} niche={r.sets.pinoraNiche} types={r.sets.pinoraTypes} />
         </div>
-        <div className="text-[13px] font-semibold pt-1">Типы Pinora</div>
-        <div className="flex flex-wrap gap-1.5">
-          {data.pinoraTypes.map((t) => <label key={t.id} className={chip}><input type="checkbox" name="pinoraTypes" value={t.id} defaultChecked={r.sets.pinoraTypes.includes(t.id)} className="h-3.5 w-3.5" /> {t.ru}</label>)}
-        </div>
-      </section>
-      <section className={`rounded-xl border border-line p-3 space-y-2 ${compact ? "" : "lg:col-span-2"}`}>
-        <div className="flex items-baseline gap-2 flex-wrap">
-          <div className="text-[13px] font-semibold">Canvas-стили</div>
-          <span className="help">{compact ? "Отмечено как у сайта; поменяйте для этого прогона." : "Отметьте стили для этого сайта."} Ничего не отмечено — используются все утверждённые.</span>
-        </div>
-        {data.canvasStyles.length === 0 ? (
-          <p className="help">Утверждённых стилей нет: откройте Стили → Canvas-стили и примите понравившиеся.</p>
-        ) : (
-          <div className={`grid gap-1.5 ${compact ? "grid-cols-5 sm:grid-cols-8 max-h-72 overflow-auto pr-1" : "grid-cols-4 sm:grid-cols-6 lg:grid-cols-10 gap-2"}`}>
-            {data.canvasStyles.map((c) => (
-              <label key={c.id} className="group relative cursor-pointer rounded-lg border border-line p-1 has-[:checked]:border-brand has-[:checked]:ring-2 has-[:checked]:ring-brand/40" title={c.name}>
-                <input type="checkbox" name="canvasStyleIds" value={c.id} defaultChecked={r.sets.canvasStyleIds?.includes(c.id)} className="absolute left-1.5 top-1.5 z-10 h-4 w-4" />
-                {c.previewUrl ? <img src={c.previewUrl} alt="" loading="lazy" className="w-full aspect-[2/3] object-cover rounded-md" /> : <div className="w-full aspect-[2/3] rounded-md bg-ink/5" />}
-                {!compact && <div className="mt-1 text-[11px] leading-tight truncate">{c.zewex ? "★ " : ""}{c.name}</div>}
-              </label>
-            ))}
-          </div>
-        )}
-      </section>
-    </>
+      </div>
+      {!compact && (
+        <details className="pt-1">
+          <summary className="help cursor-pointer">Отдельные Canvas-стили (необязательно): отмечаются вдобавок к наборам{(r.sets.canvasStyleIds ?? []).length ? ` · выбрано ${(r.sets.canvasStyleIds ?? []).length}` : ""}</summary>
+          {data.canvasStyles.length === 0 ? (
+            <p className="help mt-2">Утверждённых стилей нет: откройте Стили → Canvas-стили и примите понравившиеся.</p>
+          ) : (
+            <div className="mt-2 grid gap-2 grid-cols-4 sm:grid-cols-6 lg:grid-cols-10">
+              {data.canvasStyles.map((c) => (
+                <label key={c.id} className="group relative cursor-pointer rounded-lg border border-line p-1 has-[:checked]:border-brand has-[:checked]:ring-2 has-[:checked]:ring-brand/40" title={c.name}>
+                  <input type="checkbox" name="canvasStyleIds" value={c.id} defaultChecked={r.sets.canvasStyleIds?.includes(c.id)} className="absolute left-1.5 top-1.5 z-10 h-4 w-4" />
+                  {c.previewUrl ? <img src={c.previewUrl} alt="" loading="lazy" className="w-full aspect-[2/3] object-cover rounded-md" /> : <div className="w-full aspect-[2/3] rounded-md bg-ink/5" />}
+                  <div className="mt-1 text-[11px] leading-tight truncate">{c.zewex ? "★ " : ""}{c.name}</div>
+                </label>
+              ))}
+            </div>
+          )}
+        </details>
+      )}
+    </section>
   );
 
   if (scope === "run") {

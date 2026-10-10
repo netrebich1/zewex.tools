@@ -3,6 +3,12 @@
  * Без обращений к базе: проверку принадлежности наборов/доступа делает вызывающий код.
  */
 import { mergeRecipe, type Recipe } from "./types";
+import { PINORA_NICHES, PINORA_TYPES, typesForNiche } from "./prompts/pinoraTypes";
+
+/** Типы Pinora, допустимые для ниши: «авто» — только универсальные (без привязки к нише), как в старом сервисе. */
+export function allowedPinoraTypes(niche: string): string[] {
+  return niche === "auto" || !niche ? PINORA_TYPES.filter((t) => !t.only).map((t) => t.id) : typesForNiche(niche);
+}
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const num = (f: FormData, k: string, def: number, min = 0, max = 1000) => {
@@ -56,7 +62,8 @@ export function recipeFromForm(f: FormData, base: unknown, opts: RecipeFormOptio
       aiSetIds: has("setsPresent") ? only(f.getAll("aiSetIds").map(String)) : r.sets.aiSetIds,
       canvasSetIds: has("setsPresent") ? only(f.getAll("canvasSetIds").map(String)) : r.sets.canvasSetIds,
       canvasStyleIds: has("setsPresent") ? f.getAll("canvasStyleIds").map(String) : r.sets.canvasStyleIds,
-      pinoraTypes: has("setsPresent") ? f.getAll("pinoraTypes").map(String) : r.sets.pinoraTypes,
+      pinoraTypes: has("setsPresent") ? f.getAll("pinoraTypes").map(String).filter((t) => allowedPinoraTypes(has("pinoraNiche") ? str(f, "pinoraNiche") : r.sets.pinoraNiche).includes(t)) : r.sets.pinoraTypes,
+      pinoraNiche: has("pinoraNiche") ? (PINORA_NICHES.some((n) => n.id === str(f, "pinoraNiche")) ? str(f, "pinoraNiche") : "auto") : r.sets.pinoraNiche,
     },
     text: {
       ...r.text,

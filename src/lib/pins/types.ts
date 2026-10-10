@@ -74,7 +74,8 @@ export type Recipe = {
   mix: { ai: number; photos: number; canvas: number; pinora: number };
   photosMode: "all" | "featured_only";
   /** canvasStyleIds — утверждённые Canvas-стили каталога, выбранные напрямую; canvasSetIds — старые наборы (совместимость). */
-  sets: { aiSetIds: string[]; canvasSetIds: string[]; canvasStyleIds: string[]; pinoraTypes: string[] };
+  /** pinoraNiche — ниша Pinora: "auto" (по каждой статье) или id ниши (decor, nails, hair, outfit, cooking). */
+  sets: { aiSetIds: string[]; canvasSetIds: string[]; canvasStyleIds: string[]; pinoraTypes: string[]; pinoraNiche: string };
   text: {
     language: string;
     /** Устаревшие поля (до percents): hashtags/variety/elements. Сохраняются для совместимости. */
@@ -101,7 +102,7 @@ export const DEFAULT_RECIPE: Recipe = {
   pages: { source: "manual", postType: "posts", categories: [], excludeCategories: false, period: "all", after: "", before: "", days: 30, limit: 100, skipUsed: true },
   mix: { ai: 3, photos: 4, canvas: 2, pinora: 0 },
   photosMode: "all",
-  sets: { aiSetIds: [], canvasSetIds: [], canvasStyleIds: [], pinoraTypes: [] },
+  sets: { aiSetIds: [], canvasSetIds: [], canvasStyleIds: [], pinoraTypes: [], pinoraNiche: "auto" },
   text: {
     language: "en",
     hashtags: true,
@@ -218,7 +219,7 @@ export function mergeRecipe(partial: unknown): Recipe {
     pages: mergePages(p.pages),
     mix: { ...d.mix, ...(p.mix ?? {}) },
     photosMode: p.photosMode ?? d.photosMode,
-    sets: { ...d.sets, ...(p.sets ?? {}) },
+    sets: { ...d.sets, ...(p.sets ?? {}), pinoraNiche: String((p.sets as Partial<Recipe["sets"]> | undefined)?.pinoraNiche || "auto") },
     text: mergeText(p.text),
     publishing: { ...d.publishing, ...(p.publishing ?? {}) },
     schedule: { ...d.schedule, ...(p.schedule ?? {}) },

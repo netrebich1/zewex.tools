@@ -3,43 +3,46 @@ import { decryptSecret } from "./crypto";
 import { monthStart } from "./utils";
 
 /**
- * Балансы провайдеров ИИ для меню администратора.
- * Запрашиваются по всем активным ключам провайдера, ответы кэшируются в памяти на несколько минут,
- * чтобы открытие меню не дёргало внешние API каждый раз.
+ * Балансы провайдеров для плашки в шапке (только админам).
+ * Запрашиваем только то, что провайдер реально отдаёт:
+ *  - OpenRouter: GET /credits по API-ключу;
+ *  - laozhang: GET /api/user/self по отдельному системному токену аккаунта (Provider.balanceTokenEnc), не по API-ключу;
+ *  - DataForSEO: appendix/user_data по логину и паролю API;
+ *  - OpenAI: баланса по API нет — только расход за месяц по журналу портала, без запросов.
+ * Ответы кэшируются в памяти на несколько минут.
  */
-export const BALANCE_PROVIDERS = ["openrouter", "laozhang", "openai"] as const;
+export const BALANCE_PROVIDERS = ["openrouter", "laozhang", "openai", "dataforseo"] as const;
 
-export type KeyBalance = {
-  keyId: string;
-  label: string;
-  hint: string;
-  /** Остаток в долларах; null — провайдер не отдал. */
-  remaining: number | null;
-  /** Пополнено/лимит и потрачено по данным провайдера, если есть. */
-  total: number | null;
-  used: number | null;
-  note: string | null;
-  checkedAt: string;
-};
+export type KeyBalance = { keyId: string; label: string; hint: string; remaining: number | null; note: string | null };
 
 export type ProviderBalance = {
   slug: string;
   name: string;
-  docsUrl: string | null;
-  /** Расход за текущий месяц по журналу портала (все ключи провайдера). */
+  /** Остаток в долларах; null — провайдер не отдаёт или не настроено. */
+  remaining: number | null;
+  /** Пополнено/лимит и потрачено по данным провайдера, если он их сообщает. */
+  total: number | null;
+  used: number | null;
+  /** Почему остатка нет или что нужно настроить. */
+  note: string | null;
+  /** Расход за текущий месяц по журналу портала. */
   monthSpendUsd: number;
+  /** Разбивка по ключам, когда остаток считается по ключам и их несколько. */
   keys: KeyBalance[];
+  checkedAt: string | null;
 };
 
+type Probe = { remaining: number | null; total: number | null; used: number | null; note: string | null };
+
 const CACHE_TTL_MS = 5 * 60 * 1000;
-const cache = new Map<string, { at: number; value: Omit<KeyBalance, "keyId" | "label" | "hint"> }>();
+const cache = new Map<string, { at: number; value: Probe }>();
 
 function joinUrl(base: string, path: string) {
   return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
-async function getJson(url: string, secret: string): Promise<{ ok: boolean; status: number; data: unknown }> {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(15000), cache: "no-store" });
+async function getJson(url: string, headers: Record<string, string>): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const res = await fetch(url, { headers: { Accept: "application/json", ...headers }, signal: AbortSignal.timeout(15000), cache: "no-store" });
   const text = await res.text();
   let data: unknown = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
@@ -47,16 +50,23 @@ async function getJson(url: string, secret: string): Promise<{ ok: boolean; stat
 }
 
 function errText(data: unknown, status: number): string {
-  const d = data as { error?: { message?: string } | string; message?: string } | null;
-  const msg = typeof d?.error === "string" ? d.error : d?.error?.message ?? d?.message;
+  const d = data as { error?: { message?: string } | string; message?: string; status_message?: string } | null;
+  const msg = typeof d?.error === "string" ? d.error : d?.error?.message ?? d?.message ?? d?.status_message;
   return msg ? `${msg}` : `HTTP ${status}`;
 }
 
-type Probe = Omit<KeyBalance, "keyId" | "label" | "hint" | "checkedAt">;
+async function cached(id: string, force: boolean, run: () => Promise<Probe>): Promise<Probe> {
+  const hit = cache.get(id);
+  if (!force && hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
+  let value: Probe;
+  try { value = await run(); } catch (e) { value = { remaining: null, total: null, used: null, note: e instanceof Error ? e.message : String(e) }; }
+  cache.set(id, { at: Date.now(), value });
+  return value;
+}
 
-/** OpenRouter: GET /credits → total_credits, total_usage. */
+/** OpenRouter: /credits → total_credits, total_usage. */
 async function probeOpenRouter(baseUrl: string, secret: string): Promise<Probe> {
-  const r = await getJson(joinUrl(baseUrl, "credits"), secret);
+  const r = await getJson(joinUrl(baseUrl, "credits"), { Authorization: `Bearer ${secret}` });
   if (!r.ok) return { remaining: null, total: null, used: null, note: errText(r.data, r.status) };
   const d = (r.data as { data?: { total_credits?: number; total_usage?: number } }).data ?? {};
   const total = typeof d.total_credits === "number" ? d.total_credits : null;
@@ -64,63 +74,71 @@ async function probeOpenRouter(baseUrl: string, secret: string): Promise<Probe> 
   return { remaining: total != null && used != null ? total - used : null, total, used, note: null };
 }
 
-/**
- * OpenAI-совместимые релеи (laozhang — форк New API): /dashboard/billing/subscription даёт лимит,
- * /dashboard/billing/usage — потрачено в центах. Остаток = лимит − потрачено.
- * У самого OpenAI эти адреса для API-ключей закрыты — тогда честно говорим об этом.
- */
-async function probeBillingDashboard(baseUrl: string, secret: string, slug: string): Promise<Probe> {
-  const sub = await getJson(joinUrl(baseUrl, "dashboard/billing/subscription"), secret);
-  if (!sub.ok) {
-    const note = slug === "openai"
-      ? "OpenAI не отдаёт баланс по API-ключу — смотрите в кабинете platform.openai.com"
-      : errText(sub.data, sub.status);
-    return { remaining: null, total: null, used: null, note };
-  }
-  const limit = (sub.data as { hard_limit_usd?: number }).hard_limit_usd;
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
-  const end = new Date(now.getTime() + 86400000).toISOString().slice(0, 10);
-  const usage = await getJson(joinUrl(baseUrl, `dashboard/billing/usage?start_date=${start}&end_date=${end}`), secret);
-  const usedCents = usage.ok ? (usage.data as { total_usage?: number }).total_usage : undefined;
-  const total = typeof limit === "number" ? limit : null;
-  const used = typeof usedCents === "number" ? usedCents / 100 : null;
-  return { remaining: total != null ? total - (used ?? 0) : null, total, used, note: null };
+/** laozhang: /api/user/self по системному токену (заголовок Authorization без Bearer); quota / 500 000 ≈ $. */
+async function probeLaozhang(baseUrl: string, token: string): Promise<Probe> {
+  const origin = new URL(baseUrl).origin;
+  const r = await getJson(`${origin}/api/user/self`, { Authorization: token });
+  if (!r.ok) return { remaining: null, total: null, used: null, note: r.status === 401 ? "Системный токен laozhang не принят: обновите его на странице провайдера" : errText(r.data, r.status) };
+  const d = (r.data as { success?: boolean; message?: string; data?: { quota?: number; used_quota?: number } });
+  if (d.success === false) return { remaining: null, total: null, used: null, note: d.message ?? "laozhang вернул ошибку" };
+  const quota = d.data?.quota;
+  const usedQ = d.data?.used_quota;
+  const remaining = typeof quota === "number" ? quota / 500_000 : null;
+  const used = typeof usedQ === "number" ? usedQ / 500_000 : null;
+  return { remaining, total: remaining != null && used != null ? remaining + used : null, used, note: remaining == null ? "laozhang не вернул поле quota" : null };
 }
 
-async function probe(slug: string, baseUrl: string, secret: string): Promise<Probe> {
-  try {
-    if (slug === "openrouter") return await probeOpenRouter(baseUrl, secret);
-    return await probeBillingDashboard(baseUrl, secret, slug);
-  } catch (e) {
-    return { remaining: null, total: null, used: null, note: e instanceof Error ? e.message : String(e) };
-  }
+/** DataForSEO: appendix/user_data → money.balance. */
+async function probeDataForSeo(baseUrl: string, secret: string): Promise<Probe> {
+  const r = await getJson(joinUrl(baseUrl, "appendix/user_data"), { Authorization: `Basic ${Buffer.from(secret).toString("base64")}` });
+  const d = r.data as { status_code?: number; status_message?: string; tasks?: Array<{ result?: Array<{ money?: { balance?: number; total?: number } }> }> } | null;
+  if (!r.ok || d?.status_code !== 20000) return { remaining: null, total: null, used: null, note: d?.status_message ?? `HTTP ${r.status}` };
+  const money = d.tasks?.[0]?.result?.[0]?.money;
+  const bal = typeof money?.balance === "number" ? money.balance : null;
+  return { remaining: bal, total: null, used: null, note: bal == null ? "DataForSEO не вернул баланс" : null };
 }
 
 export async function providerBalances(force = false): Promise<ProviderBalance[]> {
   const providers = await prisma.provider.findMany({
     where: { slug: { in: [...BALANCE_PROVIDERS] } },
-    include: { apiKeys: { where: { status: "ACTIVE" }, orderBy: { createdAt: "asc" }, take: 5 } },
+    include: { apiKeys: { where: { status: "ACTIVE" }, orderBy: { createdAt: "asc" }, take: 5, select: { id: true, label: true, secretHint: true, secretEnc: true } } },
   });
-  const since = monthStart();
   const spend = await prisma.usageLog.groupBy({
     by: ["providerId"],
-    where: { providerId: { in: providers.map((p) => p.id) }, createdAt: { gte: since }, ok: true },
+    where: { providerId: { in: providers.map((p) => p.id) }, createdAt: { gte: monthStart() }, ok: true },
     _sum: { costUsd: true },
   });
   const spendBy = new Map(spend.map((s) => [s.providerId, s._sum.costUsd ?? 0]));
-  const order = new Map(BALANCE_PROVIDERS.map((s, i) => [s, i]));
+  const order = new Map<string, number>(BALANCE_PROVIDERS.map((s, i) => [s, i]));
+  const now = new Date().toISOString();
 
   const out = await Promise.all(providers.map(async (p): Promise<ProviderBalance> => {
-    const keys = await Promise.all(p.apiKeys.map(async (k): Promise<KeyBalance> => {
-      const hit = cache.get(k.id);
-      if (!force && hit && Date.now() - hit.at < CACHE_TTL_MS) return { keyId: k.id, label: k.label, hint: k.secretHint, ...hit.value };
-      const res = await probe(p.slug, p.baseUrl, decryptSecret(k.secretEnc));
-      const value = { ...res, checkedAt: new Date().toISOString() };
-      cache.set(k.id, { at: Date.now(), value });
-      return { keyId: k.id, label: k.label, hint: k.secretHint, ...value };
+    const base = { slug: p.slug, name: p.name, monthSpendUsd: spendBy.get(p.id) ?? 0, keys: [] as KeyBalance[], checkedAt: now };
+
+    if (p.slug === "openai") {
+      return { ...base, remaining: null, total: null, used: null, note: "OpenAI не отдаёт остаток по API-ключу: смотрите в кабинете platform.openai.com", checkedAt: null };
+    }
+    if (p.slug === "laozhang") {
+      if (!p.balanceTokenEnc) return { ...base, remaining: null, total: null, used: null, note: "Нужен системный токен laozhang: страница провайдера → «Токен для баланса»", checkedAt: null };
+      const r = await cached(`provider:${p.id}`, force, () => probeLaozhang(p.baseUrl, decryptSecret(p.balanceTokenEnc!)));
+      return { ...base, ...r };
+    }
+    if (p.apiKeys.length === 0) return { ...base, remaining: null, total: null, used: null, note: "Нет активных ключей", checkedAt: null };
+
+    const keys = await Promise.all(p.apiKeys.map(async (k): Promise<KeyBalance & Probe> => {
+      const r = await cached(`key:${k.id}`, force, () => (p.slug === "dataforseo" ? probeDataForSeo(p.baseUrl, decryptSecret(k.secretEnc)) : probeOpenRouter(p.baseUrl, decryptSecret(k.secretEnc))));
+      return { keyId: k.id, label: k.label, hint: k.secretHint, ...r };
     }));
-    return { slug: p.slug, name: p.name, docsUrl: p.docsUrl, monthSpendUsd: spendBy.get(p.id) ?? 0, keys };
+    const known = keys.filter((k) => k.remaining != null);
+    const sum = (f: (k: KeyBalance & Probe) => number | null) => { const v = known.map(f).filter((x): x is number => x != null); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
+    return {
+      ...base,
+      remaining: sum((k) => k.remaining),
+      total: sum((k) => k.total),
+      used: sum((k) => k.used),
+      note: known.length ? null : keys.find((k) => k.note)?.note ?? null,
+      keys: keys.length > 1 ? keys.map(({ keyId, label, hint, remaining, note }) => ({ keyId, label, hint, remaining, note })) : [],
+    };
   }));
-  return out.sort((a, b) => (order.get(a.slug as typeof BALANCE_PROVIDERS[number]) ?? 9) - (order.get(b.slug as typeof BALANCE_PROVIDERS[number]) ?? 9));
+  return out.sort((a, b) => (order.get(a.slug) ?? 9) - (order.get(b.slug) ?? 9));
 }

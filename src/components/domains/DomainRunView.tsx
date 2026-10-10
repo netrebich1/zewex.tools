@@ -35,7 +35,8 @@ const STATUS_BADGE: Record<string, { label: string; tone: "ok" | "danger" | "neu
 /** Живая карточка подбора: прогресс, домены по брендам, ручной и ИИ-выбор, статистика, выгрузка. */
 export function DomainRunView({ initial }: { initial: RunPayload }) {
   const [data, setData] = useState(initial);
-  const [onlyFree, setOnlyFree] = useState(true);
+  const [view, setView] = useState<"available" | "taken" | "all">("available");
+  const [copied, setCopied] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.run.settings.brands.length <= 8 ? initial.run.settings.brands : []));
   const [groupBrands, setGroupBrands] = useState<Set<string>>(new Set());
@@ -118,6 +119,26 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
     }
   }
 
+  /** Домены по текущему выбору области (как у выгрузки): только выбранные / все свободные / все проверенные. */
+  const scopedRows = (s: typeof scope) => domains.filter((d) => (s === "selected" ? d.selected : s === "available" ? d.status === "available" : true));
+  async function copyList(format: "domains" | "sheet") {
+    const rows = scopedRows(scope);
+    if (!rows.length) { setCopied("Нечего копировать: отметьте домены или смените область"); return; }
+    const text = format === "domains" ? rows.map((d) => d.domain).join("\n") : rows.map((d) => `${d.brand}\t${d.domain}`).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopied(`Скопировано: ${rows.length} ${format === "sheet" ? "строк (бренд и домен в двух колонках)" : "доменов"}`);
+    setTimeout(() => setCopied(null), 4000);
+  }
+
   const pct = run.progress && run.progress.brandsTotal ? Math.round((run.progress.brandIndex / run.progress.brandsTotal) * 100) : run.status === "DONE" ? 100 : 0;
   const aiCost = aiLog?.reduce((a, r) => a + (r.costUsd ?? 0), 0) ?? 0;
 
@@ -181,8 +202,8 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
 
       {domains.length > 0 && (
         <Card
-          title="Статистика"
-          description="Выбрано / свободно / не задействовано по зонам и приставкам — по всему подбору. По бренду — внутри его блока."
+          title="Выгрузка и статистика"
+          description="Область действует и на файлы, и на копирование. «Для таблицы» копирует две колонки: бренд и домен — вставляется в Google Таблицу как есть."
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <select className="input !w-auto !py-1.5 text-[13px]" value={scope} onChange={(e) => setScope(e.target.value as typeof scope)}>
@@ -190,11 +211,14 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
                 <option value="available">все свободные</option>
                 <option value="all">все проверенные</option>
               </select>
-              <a className="btn-primary btn-sm" href={`/api/domains/runs/${run.id}/export?format=xlsx&scope=${scope}`}>Скачать XLSX</a>
+              <button type="button" className="btn-primary btn-sm" onClick={() => copyList("domains")}>Скопировать домены</button>
+              <button type="button" className="btn-primary btn-sm" onClick={() => copyList("sheet")}>Скопировать для таблицы</button>
+              <a className="btn-ghost btn-sm" href={`/api/domains/runs/${run.id}/export?format=xlsx&scope=${scope}`}>XLSX</a>
               <a className="btn-ghost btn-sm" href={`/api/domains/runs/${run.id}/export?format=csv&scope=${scope}`}>CSV</a>
             </div>
           }
         >
+          {copied && <div className="mb-3"><Alert tone={copied.startsWith("Нечего") ? "warn" : "ok"}>{copied}</Alert></div>}
           <StatsTable stats={overall} />
         </Card>
       )}
@@ -202,7 +226,11 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
       {domains.length > 0 && (
         <div className="flex flex-wrap items-center gap-3">
           <input className="input !w-auto min-w-[220px]" placeholder="Поиск по домену или бренду" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <label className="flex items-center gap-2 text-[14px]"><input type="checkbox" className="h-4 w-4" checked={onlyFree} onChange={(e) => setOnlyFree(e.target.checked)} /> Только свободные</label>
+          <div className="flex gap-1.5">
+            {([["available", `Свободные · ${overall.counts.available}`], ["taken", `Занятые · ${overall.counts.taken}`], ["all", `Все · ${overall.counts.total}`]] as const).map(([v, label]) => (
+              <button key={v} type="button" className={`tab ${view === v ? "active" : ""}`} onClick={() => setView(v)}>{label}</button>
+            ))}
+          </div>
           <div className="ml-auto flex gap-2">
             <button type="button" className="btn-ghost btn-sm" onClick={() => setExpanded(new Set(run.settings.brands))}>Развернуть все</button>
             <button type="button" className="btn-ghost btn-sm" onClick={() => setExpanded(new Set())}>Свернуть все</button>
@@ -215,7 +243,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
           const rows = byBrand.get(brand) ?? [];
           if (q && !brand.toLowerCase().includes(q) && !rows.some((d) => d.domain.includes(q))) return null;
           const stats = computeStats(rows);
-          const visible = rows.filter((d) => (!onlyFree || d.status === "available") && (!q || d.domain.includes(q) || brand.toLowerCase().includes(q)));
+          const visible = rows.filter((d) => (view === "all" || (view === "available" ? d.status === "available" : d.status === "taken")) && (!q || d.domain.includes(q) || brand.toLowerCase().includes(q)));
           const open = expanded.has(brand);
           const incomplete = run.incompleteBrands.includes(brand);
           const inProgress = live && run.progress?.brand === brand;
