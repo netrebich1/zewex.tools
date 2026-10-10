@@ -9,7 +9,8 @@ import { RecipeFields, type RecipeFieldsData } from "@/components/pins/RecipeFie
 import { PagesSourceFields } from "@/components/pins/PagesSourceFields";
 import { describePagesSource, pagesDateWindow, type PagesSource, type Recipe } from "@/lib/pins/types";
 
-export type NewRunSite = { id: string; name: string; per: number; perDay: number; boards: number; hasWp: boolean; aiSets: number; canvasStyles: number; mix: { ai: number; photos: number; canvas: number; pinora: number }; recipe: Recipe; fields: RecipeFieldsData };
+/** recipe — настройки для нового прогона: сайтовые поля сайта + поля прогона из последнего прогона (или по умолчанию). */
+export type NewRunSite = { id: string; name: string; per: number; perDay: number; boards: number; hasWp: boolean; aiSets: number; canvasStyles: number; mix: { ai: number; photos: number; canvas: number; pinora: number }; recipe: Recipe; lastRun: { name: string | null; at: string } | null; fields: RecipeFieldsData };
 type Post = { id: number; url: string; title: string; date: string; used: boolean };
 type Term = { id: number; name: string; count: number };
 
@@ -67,8 +68,8 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
 
   const recipeWarnings: string[] = [];
   if (site) {
-    if (site.mix.ai > 0 && !site.aiSets) recipeWarnings.push("В рецепте включены ИИ-пины, но не выбран ни один набор ИИ-стилей: запуск будет отклонён.");
-    if (site.mix.canvas > 0 && !site.canvasStyles) recipeWarnings.push("Canvas-пины включены, стили не выбраны: будут использованы все утверждённые Canvas-стили.");
+    if (site.mix.ai > 0 && !site.aiSets) recipeWarnings.push("У сайта не выбран ни один набор ИИ-стилей: прогон с ИИ-пинами будет отклонён. Выберите наборы в настройках сайта или поставьте ИИ-пинов 0.");
+    if (site.mix.canvas > 0 && !site.canvasStyles) recipeWarnings.push("Canvas-стили у сайта не выбраны: будут использованы все утверждённые.");
     if (!site.boards) recipeWarnings.push("У сайта нет досок Pinterest: ИИ не сможет назначить доску.");
     if (!site.hasWp) recipeWarnings.push("У сайта нет доступа WordPress: загрузка картинок в медиатеку не пройдёт, импорт статей недоступен.");
   }
@@ -84,7 +85,7 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
           {sites.map((s) => <option key={s.id} value={s.id}>{s.name} — ≈{s.per} пинов на ссылку, {s.perDay}/день, досок: {s.boards}</option>)}
         </select>
         {site && (
-          <p className="help">Рецепт: ИИ {site.mix.ai}, фото {site.mix.photos}, canvas {site.mix.canvas}, pinora {site.mix.pinora} на ссылку · наборов ИИ: {site.aiSets}, Canvas-стилей: {site.canvasStyles || "все"} · <Link href={`/sites/${site.id}`} className="underline">настройки сайта</Link></p>
+          <p className="help">Наборов ИИ: {site.aiSets}, Canvas-стилей: {site.canvasStyles || "все"}, досок: {site.boards} · <Link href={`/pinterest/pins/sites/${site.id}?tab=settings`} className="underline">настройки сайта</Link></p>
         )}
         {recipeWarnings.map((w) => <Alert key={w} tone="warn">{w}</Alert>)}
       </section>
@@ -120,7 +121,7 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
           </>
         ) : (
           <div className="space-y-3">
-            <p className="help">Фильтр взят из рецепта сайта ({describePagesSource(site?.recipe.pages ?? filter)}). Здесь его можно поправить для этого прогона. Можно запускать сразу: статьи подтянутся по фильтру при запуске. Или нажмите «Показать статьи», чтобы выбрать нужные вручную.</p>
+            <p className="help">Фильтр взят из последнего прогона сайта ({describePagesSource(site?.recipe.pages ?? filter)}). Здесь его можно поправить для этого прогона. Можно запускать сразу: статьи подтянутся по фильтру при запуске. Или нажмите «Показать статьи», чтобы выбрать нужные вручную.</p>
             {site && <PagesSourceFields compact siteId={site.id} p={filter} hasWp={site.hasWp} onChange={setFilter} />}
             <div className="flex flex-wrap items-end gap-3">
               <Field label="Поиск по заголовку (только для предпросмотра)"><input className="input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="nails, decor…" /></Field>
@@ -160,12 +161,12 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
       </section>
 
       <section className="space-y-2">
-        <div className="font-medium">4. Настройки прогона</div>
-        <p className="help">Заполнены из рецепта сайта «{site?.name}». Здесь их можно изменить только для этого прогона: сколько пинов каждого вида, наборы стилей, тексты, модерация, расписание. Рецепт сайта не меняется.</p>
+        <div className="font-medium">4. Сколько пинов, стили и расписание</div>
+        <p className="help">{site?.lastRun ? `Заполнено из последнего прогона сайта («${site.lastRun.name || "без названия"}», ${site.lastRun.at}).` : "Первый прогон сайта: значения по умолчанию."} Сколько пинов каждого вида, стили, расписание, модерация и элементы текстов — свои у каждого прогона. Стили по умолчанию отмечены как в настройках сайта; язык и доски берутся из настроек сайта.</p>
         {site && (
           <details open className="rounded-xl border border-line p-3 sm:p-4">
             <summary className="cursor-pointer font-medium text-[14px]">Показать / скрыть настройки</summary>
-            <div className="mt-3" key={site.id}><RecipeFields r={site.recipe} data={site.fields} /></div>
+            <div className="mt-3" key={site.id}><RecipeFields r={site.recipe} data={site.fields} scope="run" /></div>
           </details>
         )}
       </section>

@@ -2,109 +2,88 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { canAccessTeam } from "@/lib/pins/runs/actions";
+import { canAccessPinSite, canSeeAccess } from "@/lib/sites/access";
+import { accessFormData } from "@/lib/sites/form";
 import { Alert, Badge, Card, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { deleteSiteAccess, testSiteAccess } from "@/actions/access";
-import { enablePinsForSite, toggleSiteActive } from "@/actions/pins";
+import { enablePinsForSite } from "@/actions/pins";
 import { PROJECT_SLUG } from "@/lib/pins/types";
 import { fmtDate } from "@/lib/utils";
 import { SiteAccessForm } from "@/components/sites/SiteAccessForm";
-import { PinsRecipeForm } from "@/components/sites/PinsRecipeForm";
 
 export const dynamic = "force-dynamic";
 
-const pinsInclude = { boards: { orderBy: { sortOrder: "asc" as const } }, sets: { orderBy: { name: "asc" as const } }, _count: { select: { runs: true } } };
+const accessInclude = { teams: { select: { teamId: true } }, viewers: { select: { userId: true } } };
 
-/** Страница сайта: доступ REST API (команда, сервисы) и настройки Pinterest Pins. id — доступ; старые ссылки по id сайта Pinterest тоже работают. */
+/**
+ * Уровень системы: доступ к сайту (REST API WordPress), команды, сервисы, видимость.
+ * Настройки сервисов — в самих сервисах (Pinterest Pins → Сайты). id — доступ; старые ссылки по id сайта Pinterest перенаправляются.
+ */
 export default async function SitePage({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireUser();
   const { id } = await params;
-  const isAdmin = me.role === "ADMIN";
 
-  let access = await prisma.siteAccess.findUnique({ where: { id } });
-  let pins = access ? await prisma.pinSite.findFirst({ where: { wpConnectionId: access.id }, include: pinsInclude }) : null;
+  const access = await prisma.siteAccess.findUnique({ where: { id }, include: accessInclude });
   if (!access) {
-    // Ссылка по id сайта Pinterest Pins (из сервиса или старых адресов).
-    pins = await prisma.pinSite.findUnique({ where: { id }, include: pinsInclude });
-    if (!pins || !canAccessTeam(me, pins.teamId)) notFound();
-    if (pins.wpConnectionId) redirect(`/sites/${pins.wpConnectionId}`);
+    const pins = await prisma.pinSite.findUnique({ where: { id }, select: { id: true, teamId: true, wpConnectionId: true } });
+    if (!pins || !(await canAccessPinSite(me, pins))) notFound();
+    redirect(pins.wpConnectionId ? `/sites/${pins.wpConnectionId}` : `/pinterest/pins/sites/${pins.id}`);
   }
-  const teamId = access?.teamId ?? pins!.teamId;
-  if (!canAccessTeam(me, teamId)) notFound();
+  if (!canSeeAccess(me, access)) notFound();
 
-  const [teams, projects, team, wps] = await Promise.all([
-    prisma.team.findMany({ where: isAdmin ? {} : { id: { in: me.teamIds } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.project.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }], select: { id: true, slug: true, name: true } }),
-    prisma.team.findUnique({ where: { id: teamId }, select: { name: true } }),
-    prisma.siteAccess.findMany({ where: { teamId, kind: "wordpress" }, orderBy: { name: "asc" }, select: { id: true, name: true, projects: true } })
-      .then((rows) => rows.filter((w) => { const pr = (w.projects as string[] | null) ?? []; return !pr.length || pr.includes(PROJECT_SLUG); })),
+  const [{ teams, projects, members }, pins] = await Promise.all([
+    accessFormData(me),
+    prisma.pinSite.findFirst({ where: { wpConnectionId: access.id }, select: { id: true, isActive: true } }),
   ]);
-  const pr = (access?.projects as string[] | null) ?? [];
-  const pinsAllowed = !access || !pr.length || pr.includes(PROJECT_SLUG);
-  const title = access?.name ?? pins!.name;
+  const teamName = (tid: string) => teams.find((t) => t.id === tid)?.name ?? "другая команда";
+  const pr = (access.projects as string[] | null) ?? [];
+  const pinsAllowed = !pr.length || pr.includes(PROJECT_SLUG);
 
   return (
     <>
-      <PageHeader back={{ href: "/sites", label: "Сайты" }} title={title} subtitle={`${team?.name ?? ""}${access ? ` · ${access.baseUrl}` : ` · ${pins!.slug}`}`} actions={pins ? <><Link href={`/pinterest/pins/styles?tab=ai&site=${pins.id}`} className="btn-ghost">Стили сайта</Link><Link href={`/pinterest/pins/sites/${pins.id}`} className="btn-ghost">Открыть в Pinterest Pins</Link></> : null} />
+      <PageHeader back={{ href: "/sites", label: "Сайты" }} title={access.name} subtitle={`${teamName(access.teamId)} · ${access.baseUrl}`} actions={pins ? <Link href={`/pinterest/pins/sites/${pins.id}`} className="btn-ghost">Открыть в Pinterest Pins</Link> : null} />
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
-          {access ? (
-            <Card title="Доступ по REST API WordPress" description="Команда владеет сайтом, сервисы получают к нему доступ. Пароль хранится в зашифрованном виде.">
-              <SiteAccessForm row={access} teams={teams} projects={projects} />
-            </Card>
-          ) : (
-            <Alert tone="warn">У этого сайта нет доступа WordPress. Выберите его в поле «WordPress для медиатеки» ниже или <Link href="/sites/new" className="underline">добавьте новый сайт</Link>.</Alert>
-          )}
+          {(!access.username || !access.appPasswordEnc) && <Alert tone="warn">Сайт перенесён из старого сервиса: доступ к REST API ещё не введён. Укажите логин WordPress и Application Password и нажмите «Сохранить сайт», иначе загрузка картинок в медиатеку и импорт статей работать не будут.</Alert>}
+          <Card title="Доступ, команды и видимость" description="Доступ по REST API WordPress вводится один раз. Здесь же — какие команды и сотрудники видят сайт и в какие инструменты он интегрирован. Пароль хранится в зашифрованном виде.">
+            <SiteAccessForm row={access} teams={teams} projects={projects} members={members} />
+          </Card>
 
-          {pins ? (
-            <PinsRecipeForm site={pins} wps={wps} />
-          ) : pinsAllowed ? (
-            <Card title="Pinterest Pins" description="Сервис ещё не включён для этого сайта. После включения появятся рецепт пинов и доски.">
-              <ActionForm action={enablePinsForSite} hidden={{ accessId: access!.id }}>
-                <SubmitButton className="btn-primary" pendingText="Включаю…">Включить Pinterest Pins</SubmitButton>
-              </ActionForm>
-            </Card>
-          ) : (
-            <Card title="Pinterest Pins" description="Сервис Pinterest Pins не отмечен в списке сервисов этого сайта. Отметьте его выше и сохраните доступ."><p className="help">Пока недоступно.</p></Card>
-          )}
+          <Card title="Инструменты" description="Сайт интегрирован в инструменты ниже. Все настройки, относящиеся к инструменту, делаются внутри него.">
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line p-3">
+              <div><div className="font-medium">Pinterest Pins</div><div className="help">Доски, шаблоны ИИ- и Canvas-пинов, язык — в настройках сайта внутри инструмента.</div></div>
+              <div className="ml-auto flex items-center gap-2">
+                {pins ? <>{pins.isActive ? <Badge tone="ok">включён</Badge> : <Badge>в архиве</Badge>}<Link href={`/pinterest/pins/sites/${pins.id}?tab=settings`} className="btn-primary">Открыть настройки</Link></>
+                  : pinsAllowed ? <ActionForm action={enablePinsForSite} hidden={{ accessId: access.id }} className="inline"><SubmitButton className="btn-primary" pendingText="Включаю…">Включить</SubmitButton></ActionForm>
+                  : <span className="help">не отмечен в списке инструментов выше</span>}
+              </div>
+            </div>
+          </Card>
         </div>
 
         <div className="space-y-4">
           <Card title="Состояние">
             <dl className="space-y-2 text-[14px]">
-              <div className="flex justify-between gap-3"><dt className="text-muted">Команда</dt><dd>{team?.name}</dd></div>
-              {access && <div className="flex justify-between gap-3"><dt className="text-muted">Сервисы</dt><dd className="text-right">{pr.length ? pr.map((s) => projects.find((p) => p.slug === s)?.name ?? s).join(", ") : "все"}</dd></div>}
-              {access && <div className="flex justify-between gap-3"><dt className="text-muted">Подключение</dt><dd>{access.lastCheckOk == null ? <span className="text-muted">не проверялось</span> : access.lastCheckOk ? <Badge tone="ok">работает</Badge> : <Badge tone="danger">ошибка</Badge>}</dd></div>}
+              <div className="flex justify-between gap-3"><dt className="text-muted">Владелец</dt><dd>{teamName(access.teamId)}</dd></div>
+              {access.teams.length > 0 && <div className="flex justify-between gap-3"><dt className="text-muted">Также</dt><dd className="text-right">{access.teams.map((t) => teamName(t.teamId)).join(", ")}</dd></div>}
+              <div className="flex justify-between gap-3"><dt className="text-muted">Видят</dt><dd className="text-right">{access.viewers.length ? `${access.viewers.length} сотрудник(ов)` : "все участники"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted">Инструменты</dt><dd className="text-right">{pr.length ? pr.map((s) => projects.find((p) => p.slug === s)?.name ?? s).join(", ") : "все"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted">Подключение</dt><dd>{access.lastCheckOk == null ? <span className="text-muted">не проверялось</span> : access.lastCheckOk ? <Badge tone="ok">работает</Badge> : <Badge tone="danger">ошибка</Badge>}</dd></div>
               {pins && <div className="flex justify-between gap-3"><dt className="text-muted">Pinterest Pins</dt><dd>{pins.isActive ? <Badge tone="ok">включён</Badge> : <Badge>в архиве</Badge>}</dd></div>}
-              {pins && <div className="flex justify-between gap-3"><dt className="text-muted">Досок / прогонов</dt><dd>{pins.boards.length} / {pins._count.runs}</dd></div>}
-              <div className="flex justify-between gap-3"><dt className="text-muted">Создан</dt><dd>{fmtDate(access?.createdAt ?? pins!.createdAt)}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted">Создан</dt><dd>{fmtDate(access.createdAt)}</dd></div>
             </dl>
             <div className="mt-4 space-y-2">
-              {access?.lastCheckedAt && <Alert tone={access.lastCheckOk ? "ok" : "danger"}>{access.lastCheckNote} <span className="opacity-70">({fmtDate(access.lastCheckedAt)})</span></Alert>}
-              {access && (
-                <ActionForm action={testSiteAccess} hidden={{ id: access.id }}>
-                  <SubmitButton className="btn-ghost w-full" pendingText="Проверяю…">Проверить подключение</SubmitButton>
-                </ActionForm>
-              )}
-              {pins && pins.isActive && <Link href={`/pinterest/pins/runs/new?site=${pins.id}`} className="btn-primary w-full">Новый прогон</Link>}
-              {pins && <Link href={`/pinterest/pins/styles?tab=ai&site=${pins.id}`} className="btn-ghost w-full">Стили: примеры ИИ и Canvas</Link>}
-              {pins && <Link href={`/pinterest/pins/sites/${pins.id}`} className="btn-ghost w-full">Запас пинов и прогоны</Link>}
+              {access.lastCheckedAt && <Alert tone={access.lastCheckOk ? "ok" : "danger"}>{access.lastCheckNote} <span className="opacity-70">({fmtDate(access.lastCheckedAt)})</span></Alert>}
+              <ActionForm action={testSiteAccess} hidden={{ id: access.id }}>
+                <SubmitButton className="btn-ghost w-full" pendingText="Проверяю…">Проверить подключение</SubmitButton>
+              </ActionForm>
             </div>
           </Card>
-          {pins && (
-            <ActionForm action={toggleSiteActive} hidden={{ id: pins.id }}>
-              {pins.isActive
-                ? <SubmitButton className="btn-ghost w-full" confirm="Убрать сайт из Pinterest Pins в архив? Прогоны и настройки сохранятся." pendingText="…">Pinterest Pins: в архив</SubmitButton>
-                : <SubmitButton className="btn-ghost w-full" pendingText="…">Pinterest Pins: вернуть из архива</SubmitButton>}
-            </ActionForm>
-          )}
-          {access && (
-            <ActionForm action={deleteSiteAccess} hidden={{ id: access.id }}>
-              <SubmitButton className="btn-danger w-full" confirm="Удалить сайт и доступ безвозвратно?" pendingText="…">Удалить сайт</SubmitButton>
-            </ActionForm>
-          )}
+          <ActionForm action={deleteSiteAccess} hidden={{ id: access.id }}>
+            <SubmitButton className="btn-danger w-full" confirm="Удалить сайт и доступ безвозвратно?" pendingText="…">Удалить сайт</SubmitButton>
+          </ActionForm>
         </div>
       </div>
     </>

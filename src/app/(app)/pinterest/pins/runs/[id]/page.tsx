@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getRunForUser } from "@/lib/pins/runs/actions";
 import { runStatus } from "@/lib/pins/runs/status";
@@ -6,7 +7,6 @@ import { Card, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { continueRunAction, deleteRunAction, redoMissingAction, skipFailedAction, stopRunAction, updateRunSettings } from "@/actions/pins";
-import { prisma } from "@/lib/db";
 import { RecipeFields } from "@/components/pins/RecipeFields";
 import { recipeFieldsData } from "@/components/sites/PinsRecipeForm";
 import { RunStatus } from "@/components/pins/RunStatus";
@@ -23,13 +23,13 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   if (!view) notFound();
   const r = mergeRecipe(run.settings);
   const busy = view.job != null && ["PENDING", "RUNNING", "STOPPING"].includes(view.job.status);
-  const sets = run.siteId ? await prisma.pinSet.findMany({ where: { siteId: run.siteId }, orderBy: { name: "asc" } }) : [];
   const live = ["QUEUED", "RUNNING"].includes(run.status);
+  const sets = run.siteId ? await prisma.pinSet.findMany({ where: { siteId: run.siteId }, orderBy: { name: "asc" } }) : [];
   const fieldsData = await recipeFieldsData(sets);
 
   return (
     <>
-      <PageHeader back={{ href: "/pinterest/pins", label: "Сегодня" }} title={run.name || `Прогон ${id.slice(0, 8)}`} subtitle={`${run.site?.name ?? "—"} · рецепт: ИИ ${r.mix.ai}, фото ${r.mix.photos}, canvas ${r.mix.canvas}, pinora ${r.mix.pinora} на ссылку · ${r.schedule.pinsPerDay}/день · модерация: ${r.schedule.moderationMode === "auto" ? "авто" : "обязательна"} · режим: ${run.stepByStep ? "пошаговый" : "автопилот"}`} />
+      <PageHeader back={{ href: "/pinterest/pins", label: "Сегодня" }} title={run.name || `Прогон ${id.slice(0, 8)}`} subtitle={`${run.site?.name ?? "—"} · ИИ ${r.mix.ai}, фото ${r.mix.photos}, canvas ${r.mix.canvas}, pinora ${r.mix.pinora} на ссылку · ${r.schedule.pinsPerDay}/день · модерация: ${r.schedule.moderationMode === "auto" ? "авто" : "обязательна"} · режим: ${run.stepByStep ? "пошаговый" : "автопилот"}`} />
       <div className="space-y-5">
         <RunStatus initial={view} />
         <Card title="Действия" description={run.stepByStep ? "Пошаговый режим: после каждого этапа прогон встаёт на паузу, «Продолжить» запускает следующий этап." : "Автопилот: этапы идут сами. «Продолжить» нужен после модерации, паузы или исправления проблемы."}>
@@ -51,10 +51,10 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
             </ActionForm>
           </div>
         </Card>
-        <Card title="Настройки прогона" description={live ? "Прогон выполняется: чтобы изменить настройки, сначала нажмите «Стоп»." : "Свои для этого прогона (рецепт сайта был подставлен при запуске). Изменения применяются к этапам, которые ещё не прошли: например, число пинов в день — к расписанию, наборы стилей — к плану."}>
+        <Card title="Настройки прогона" description={live ? "Прогон выполняется: чтобы изменить настройки, сначала нажмите «Стоп»." : "Свои для этого прогона. Изменения применяются к этапам, которые ещё не прошли: например, число пинов в день — к расписанию, количество пинов — к плану. Стили, язык и доски — в настройках сайта."}>
           <ActionForm action={updateRunSettings} hidden={{ id }} className="space-y-4">
             <fieldset disabled={live} className="space-y-4 disabled:opacity-60">
-              <RecipeFields r={r} data={fieldsData} />
+              <RecipeFields r={r} data={fieldsData} scope="run" />
               <SubmitButton pendingText="Сохраняю…">Сохранить настройки прогона</SubmitButton>
             </fieldset>
           </ActionForm>

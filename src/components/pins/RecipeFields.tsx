@@ -1,6 +1,7 @@
+import type { ReactNode } from "react";
 import { Field } from "@/components/ui";
 import type { Recipe } from "@/lib/pins/types";
-import { PagesSourceFields } from "@/components/pins/PagesSourceFields";
+import { pinYear } from "@/lib/pins/prompts/elements";
 
 export type RecipeSetOption = { id: string; name: string; count: number; topic?: string };
 export type RecipeCanvasStyle = { id: string; name: string; previewUrl: string | null; zewex: boolean };
@@ -9,10 +10,8 @@ export type RecipeFieldsData = {
   /** Утверждённые Canvas-стили каталога (выбираются напрямую, с превью). */
   canvasStyles: RecipeCanvasStyle[];
   pinoraTypes: Array<{ id: string; ru: string }>;
-  /** Доступы WordPress команды; не передавать, если выбор WP на этой форме не нужен. */
+  /** Доступы WordPress для сайтов без привязки; не передавать, если выбор WP не нужен. */
   wps?: Array<{ id: string; name: string }>;
-  /** Показать блок «Откуда брать статьи» (только в рецепте сайта; у прогона ссылки уже заданы). */
-  pages?: { siteId: string; hasWp: boolean };
 };
 
 export const LANGS = [["en", "English"], ["ru", "Русский"], ["uk", "Українська"], ["de", "Deutsch"], ["fr", "Français"], ["es", "Español"], ["it", "Italiano"], ["pl", "Polski"], ["pt", "Português"]];
@@ -20,102 +19,33 @@ export const LANGS = [["en", "English"], ["ru", "Русский"], ["uk", "Ук�
 const chip = "inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[13px] cursor-pointer has-[:checked]:border-brand has-[:checked]:bg-brand/10 has-[:checked]:text-ink hover:border-line-2";
 
 /**
- * Поля рецепта: компактно, в четыре блока. Наборы ИИ и типы Pinora — чипы,
- * Canvas-стили — сетка превью. Чистая разметка без серверных импортов.
+ * Поля настроек пинов. Два уровня:
+ * - scope="site" — настройки сайта в сервисе: наборы ИИ, Canvas-стили, типы Pinora, язык, аудитория, цвет, домен ссылок;
+ * - scope="run"  — настройки прогона: сколько пинов каждого вида, расписание и модерация, элементы текстов, доски.
+ * Имена полей разбирает lib/pins/recipeForm.ts; группа меняется, только если её поля пришли.
  */
-export function RecipeFields({ r, data }: { r: Recipe; data: RecipeFieldsData }) {
+export function RecipeFields({ r, data, scope }: { r: Recipe; data: RecipeFieldsData; scope: "site" | "run" }) {
   const num = (name: string, label: string, value: number, max = 20, min = 0) => (
     <label className="flex items-center justify-between gap-2 rounded-lg border border-line px-3 py-2">
       <span className="text-[13px]">{label}</span>
       <input name={name} type="number" min={min} max={max} className="input w-20 py-1 text-center" defaultValue={value} />
     </label>
   );
-  const pct = (name: string, label: string, value: number) => (
-    <label className="flex items-center justify-between gap-1 rounded-lg border border-line px-2 py-1">
-      <span className="text-[12px]">{label}</span>
-      <span className="flex items-center gap-0.5"><input name={name} type="number" min={0} max={100} className="input w-14 py-0.5 px-1 text-center text-[12px]" defaultValue={value} /><span className="text-[11px] text-muted">%</span></span>
-    </label>
+  /** Строка таблицы элементов: название, доля пинов в %, поле со значением (или пояснение). */
+  const element = (name: string, label: string, value: number, control: ReactNode) => (
+    <div className="grid grid-cols-[1fr_96px] sm:grid-cols-[150px_110px_1fr] gap-2 items-center px-3 py-2">
+      <span className="text-[13px] font-medium">{label}</span>
+      <span className="flex items-center gap-1"><input name={name} type="number" min={0} max={100} className="input w-16 py-1 px-1 text-center" defaultValue={value} /><span className="text-[12px] text-muted">%</span></span>
+      <div className="col-span-2 sm:col-span-1 min-w-0">{control}</div>
+    </div>
   );
-  const check = (name: string, label: string, on: boolean) => (
-    <label className={chip}><input type="checkbox" name={name} defaultChecked={on} className="h-3.5 w-3.5" /> {label}</label>
-  );
 
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      {/* 0. Откуда брать статьи (только у сайта) */}
-      {data.pages && (
-        <section className="rounded-xl border border-line p-3 space-y-2 lg:col-span-2">
-          <div className="flex items-baseline gap-2">
-            <div className="text-[13px] font-semibold">Откуда брать статьи</div>
-            <span className="help">Подставляется в новый прогон; там фильтр можно поправить и посмотреть найденные статьи перед запуском.</span>
-          </div>
-          <PagesSourceFields siteId={data.pages.siteId} p={r.pages} hasWp={data.pages.hasWp} />
-        </section>
-      )}
-
-      {/* 1. Сколько и каких пинов */}
+  /** Наборы ИИ, типы Pinora и Canvas-стили. compact — для прогона: плотнее сетка, подпись «для этого прогона». */
+  const styles = (compact: boolean) => (
+    <>
+      <input type="hidden" name="setsPresent" value="1" />
       <section className="rounded-xl border border-line p-3 space-y-2">
-        <div className="text-[13px] font-semibold">Пинов на одну ссылку</div>
-        <div className="grid grid-cols-2 gap-2">
-          {num("mixAi", "ИИ-пины", r.mix.ai)}
-          {num("mixPhotos", "Фото из статьи", r.mix.photos)}
-          {num("mixCanvas", "Canvas-пины", r.mix.canvas)}
-          {num("mixPinora", "Pinora-пины", r.mix.pinora)}
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Какие фото брать"><select name="photosMode" className="input py-1.5" defaultValue={r.photosMode}><option value="all">Все фото статьи</option><option value="featured_only">Только миниатюру</option></select></Field>
-          <Field label="Фото со ссылкой, %"><input name="photoLinkPercent" type="number" min={0} max={100} className="input py-1.5" defaultValue={r.publishing.photoLinkPercent} /></Field>
-        </div>
-      </section>
-
-      {/* 2. Расписание и публикация */}
-      <section className="rounded-xl border border-line p-3 space-y-2">
-        <div className="text-[13px] font-semibold">Расписание и публикация</div>
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Пинов в день (до 100)"><input name="pinsPerDay" type="number" min={1} max={100} className="input py-1.5" defaultValue={r.schedule.pinsPerDay} /></Field>
-          <Field label="Начинать с" hint="Пусто — следующий свободный день"><input name="startFrom" type="date" className="input py-1.5" defaultValue={r.schedule.startFrom === "next_free_day" ? "" : r.schedule.startFrom} /></Field>
-          <Field label="Модерация"><select name="moderationMode" className="input py-1.5" defaultValue={r.schedule.moderationMode}><option value="required">Обязательна</option><option value="auto">Автоодобрение</option></select></Field>
-          <Field label="Домен для ссылок" hint="Пусто — домен статьи"><input name="linkDomain" className="input py-1.5" defaultValue={r.publishing.linkDomain} placeholder="site.com" /></Field>
-          {data.wps && (
-            <div className="col-span-2">
-              <Field label="WordPress для медиатеки">
-                <select name="wpConnectionId" className="input py-1.5" defaultValue={r.publishing.wpConnectionId ?? ""}>
-                  <option value="">— не выбрано —</option>
-                  {data.wps.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                </select>
-              </Field>
-            </div>
-          )}
-        </div>
-        <p className="help">Окно 30 дней, до 2 пинов со статьи в день, первый пин в первые 3 дня, шаг 2–5 дней, 08:00–21:00.</p>
-      </section>
-
-      {/* 3. Тексты */}
-      <section className="rounded-xl border border-line p-3 space-y-2">
-        <div className="text-[13px] font-semibold">Тексты и надписи</div>
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Язык"><select name="language" className="input py-1.5" defaultValue={r.text.language}>{LANGS.map(([c, l]) => <option key={c} value={c}>{l}</option>)}</select></Field>
-          <Field label="Аудитория"><select name="audience" className="input py-1.5" defaultValue={r.text.audience}><option value="women">Женщины</option><option value="men">Мужчины</option><option value="mix">Смешанная</option></select></Field>
-          <Field label="Число идей брать" hint="Цифра на пине и в текстах"><select name="numberSource" className="input py-1.5" defaultValue={r.text.numberSource}><option value="sections">По разделам статьи (H2 с фото)</option><option value="images">По всем фото статьи</option><option value="none">Не считать</option></select></Field>
-          <Field label="Фирменный цвет"><input name="brandColor" className="input py-1.5" placeholder="#FFC800" defaultValue={r.text.brandColor ?? ""} /></Field>
-        </div>
-        <div className="text-[12px] text-muted">Доля пинов с элементом, % (0 — никогда, 100 — всегда). Действует на ИИ-, Pinora- и Canvas-пины.</div>
-        <div className="grid grid-cols-3 gap-1.5">
-          {pct("pctSeason", "сезон", r.text.percents.season)}
-          {pct("pctYear", "год", r.text.percents.year)}
-          {pct("pctNumber", "число идей", r.text.percents.number)}
-          {pct("pctCta", "призыв", r.text.percents.cta)}
-          {pct("pctSiteName", "имя сайта", r.text.percents.siteName)}
-          {pct("pctHashtags", "хэштеги", r.text.percents.hashtags)}
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {check("multiBoard", "до 3 досок на пин", r.boards.multiBoard)}
-        </div>
-      </section>
-
-      {/* 4. ИИ-наборы и Pinora */}
-      <section className="rounded-xl border border-line p-3 space-y-2">
-        <div className="text-[13px] font-semibold">ИИ-наборы</div>
+        <div className="text-[13px] font-semibold">ИИ-наборы {compact && <span className="help font-normal">· шаблоны ИИ-пинов для этого прогона</span>}</div>
         <div className="flex flex-wrap gap-1.5">
           {data.aiSets.map((s) => <label key={s.id} className={chip}><input type="checkbox" name="aiSetIds" value={s.id} defaultChecked={r.sets.aiSetIds.includes(s.id)} className="h-3.5 w-3.5" /> {s.name} <span className="text-muted">{s.count}</span></label>)}
           {!data.aiSets.length && <p className="help">Наборов нет: соберите их в разделе «Стили».</p>}
@@ -125,27 +55,120 @@ export function RecipeFields({ r, data }: { r: Recipe; data: RecipeFieldsData })
           {data.pinoraTypes.map((t) => <label key={t.id} className={chip}><input type="checkbox" name="pinoraTypes" value={t.id} defaultChecked={r.sets.pinoraTypes.includes(t.id)} className="h-3.5 w-3.5" /> {t.ru}</label>)}
         </div>
       </section>
-
-      {/* 5. Canvas-стили */}
-      <section className="rounded-xl border border-line p-3 space-y-2 lg:col-span-2">
-        <div className="flex items-baseline gap-2">
+      <section className={`rounded-xl border border-line p-3 space-y-2 ${compact ? "" : "lg:col-span-2"}`}>
+        <div className="flex items-baseline gap-2 flex-wrap">
           <div className="text-[13px] font-semibold">Canvas-стили</div>
-          <span className="help">Отметьте стили для этого {data.wps ? "сайта" : "прогона"}. Ничего не отмечено — используются все утверждённые.</span>
+          <span className="help">{compact ? "Отмечено как у сайта; поменяйте для этого прогона." : "Отметьте стили для этого сайта."} Ничего не отмечено — используются все утверждённые.</span>
         </div>
         {data.canvasStyles.length === 0 ? (
           <p className="help">Утверждённых стилей нет: откройте Стили → Canvas-стили и примите понравившиеся.</p>
         ) : (
-          <div className="grid gap-2 grid-cols-4 sm:grid-cols-6 lg:grid-cols-10">
+          <div className={`grid gap-1.5 ${compact ? "grid-cols-5 sm:grid-cols-8 max-h-72 overflow-auto pr-1" : "grid-cols-4 sm:grid-cols-6 lg:grid-cols-10 gap-2"}`}>
             {data.canvasStyles.map((c) => (
               <label key={c.id} className="group relative cursor-pointer rounded-lg border border-line p-1 has-[:checked]:border-brand has-[:checked]:ring-2 has-[:checked]:ring-brand/40" title={c.name}>
-                <input type="checkbox" name="canvasStyleIds" value={c.id} defaultChecked={r.sets.canvasStyleIds?.includes(c.id)} className="absolute left-2 top-2 z-10 h-4 w-4" />
+                <input type="checkbox" name="canvasStyleIds" value={c.id} defaultChecked={r.sets.canvasStyleIds?.includes(c.id)} className="absolute left-1.5 top-1.5 z-10 h-4 w-4" />
                 {c.previewUrl ? <img src={c.previewUrl} alt="" loading="lazy" className="w-full aspect-[2/3] object-cover rounded-md" /> : <div className="w-full aspect-[2/3] rounded-md bg-ink/5" />}
-                <div className="mt-1 text-[11px] leading-tight truncate">{c.zewex ? "★ " : ""}{c.name}</div>
+                {!compact && <div className="mt-1 text-[11px] leading-tight truncate">{c.zewex ? "★ " : ""}{c.name}</div>}
               </label>
             ))}
           </div>
         )}
       </section>
+    </>
+  );
+
+  if (scope === "run") {
+    return (
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="rounded-xl border border-line p-3 space-y-2">
+          <div className="text-[13px] font-semibold">Пинов на одну ссылку</div>
+          <div className="grid grid-cols-2 gap-2">
+            {num("mixAi", "ИИ-пины", r.mix.ai)}
+            {num("mixPhotos", "Фото из статьи", r.mix.photos)}
+            {num("mixCanvas", "Canvas-пины", r.mix.canvas)}
+            {num("mixPinora", "Pinora-пины", r.mix.pinora)}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Какие фото брать"><select name="photosMode" className="input py-1.5" defaultValue={r.photosMode}><option value="all">Все фото статьи</option><option value="featured_only">Только миниатюру</option></select></Field>
+            <Field label="Фото со ссылкой, %"><input name="photoLinkPercent" type="number" min={0} max={100} className="input py-1.5" defaultValue={r.publishing.photoLinkPercent} /></Field>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-line p-3 space-y-2">
+          <div className="text-[13px] font-semibold">Расписание и модерация</div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Пинов в день (до 100)"><input name="pinsPerDay" type="number" min={1} max={100} className="input py-1.5" defaultValue={r.schedule.pinsPerDay} /></Field>
+            <Field label="Начинать с" hint="Пусто — следующий свободный день"><input name="startFrom" type="date" className="input py-1.5" defaultValue={r.schedule.startFrom === "next_free_day" ? "" : r.schedule.startFrom} /></Field>
+            <Field label="Модерация"><select name="moderationMode" className="input py-1.5" defaultValue={r.schedule.moderationMode}><option value="required">Обязательна</option><option value="auto">Автоодобрение</option></select></Field>
+            <Field label="Доски">
+              <input type="hidden" name="multiBoardPresent" value="1" />
+              <label className={`${chip} mt-0.5`}><input type="checkbox" name="multiBoard" defaultChecked={r.boards.multiBoard} className="h-3.5 w-3.5" /> до 3 досок на пин</label>
+            </Field>
+          </div>
+          <p className="help">Окно 30 дней, до 2 пинов со статьи в день, первый пин в первые 3 дня, шаг 2–5 дней, 08:00–21:00.</p>
+        </section>
+
+        {styles(true)}
+
+        <section className="rounded-xl border border-line p-3 space-y-2 lg:col-span-2">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <div className="text-[13px] font-semibold">Элементы текстов и надписей</div>
+            <span className="help">Для каждого элемента: на какой доле пинов он появится (0 — никогда, 100 — всегда) и что именно подставлять. Действует на ИИ-, Pinora- и Canvas-пины.</span>
+          </div>
+          <div className="divide-y divide-line rounded-lg border border-line">
+            <div className="grid grid-cols-[1fr_96px] sm:grid-cols-[150px_110px_1fr] gap-2 px-3 py-1.5 text-[11px] uppercase tracking-wide text-muted">
+              <span>Элемент</span><span>Доля пинов</span><span className="hidden sm:block">Что подставлять</span>
+            </div>
+            {element("pctSeason", "Сезон", r.text.percents.season, <span className="help">Слово сезона определяется по статье и дате.</span>)}
+            {element("pctYear", "Год", r.text.percents.year, (
+              <div className="flex items-center gap-2">
+                <input name="textYear" inputMode="numeric" pattern="[0-9]{4}" className="input w-24 py-1 text-center" placeholder={pinYear({})} defaultValue={r.text.year} />
+                <span className="help">Пусто — текущий ({pinYear({})}, с октября уже следующий). Впишите 2027 для статей на будущий год.</span>
+              </div>
+            ))}
+            {element("pctNumber", "Число идей", r.text.percents.number, (
+              <div className="flex items-center gap-2">
+                <select name="numberSource" className="input py-1 w-auto" defaultValue={r.text.numberSource}><option value="sections">По разделам статьи (H2 с фото)</option><option value="images">По всем фото статьи</option><option value="none">Не считать</option></select>
+                <span className="help">Цифра на пине и в текстах.</span>
+              </div>
+            ))}
+            {element("pctCta", "Призыв", r.text.percents.cta, <span className="help">Фраза-призыв подбирается ИИ под тему.</span>)}
+            {element("pctSiteName", "Имя сайта", r.text.percents.siteName, (
+              <div className="flex items-center gap-2">
+                <input name="textSiteName" className="input w-48 py-1" placeholder="site.com" defaultValue={r.text.siteName} />
+                <span className="help">Пусто — домен сайта (домен для ссылок из настроек сайта, иначе домен статьи).</span>
+              </div>
+            ))}
+            {element("pctHashtags", "Хэштеги", r.text.percents.hashtags, <span className="help">В описании пина; Pinterest их не показывает, но учитывает.</span>)}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <section className="rounded-xl border border-line p-3 space-y-2">
+        <div className="text-[13px] font-semibold">Язык и аудитория</div>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Язык текстов"><select name="language" className="input py-1.5" defaultValue={r.text.language}>{LANGS.map(([c, l]) => <option key={c} value={c}>{l}</option>)}</select></Field>
+          <Field label="Аудитория"><select name="audience" className="input py-1.5" defaultValue={r.text.audience}><option value="women">Женщины</option><option value="men">Мужчины</option><option value="mix">Смешанная</option></select></Field>
+          <Field label="Фирменный цвет"><input name="brandColor" className="input py-1.5" placeholder="#FFC800" defaultValue={r.text.brandColor ?? ""} /></Field>
+          <Field label="Домен для ссылок" hint="Пусто — домен статьи"><input name="linkDomain" className="input py-1.5" defaultValue={r.publishing.linkDomain} placeholder="site.com" /></Field>
+          {data.wps && (
+            <div className="col-span-2">
+              <Field label="Доступ WordPress" hint="У сайта нет привязки к доступу: выберите, через какой WordPress грузить медиатеку.">
+                <select name="wpConnectionId" className="input py-1.5" defaultValue={r.publishing.wpConnectionId ?? ""}>
+                  <option value="">— не выбрано —</option>
+                  {data.wps.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+              </Field>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {styles(false)}
     </div>
   );
 }

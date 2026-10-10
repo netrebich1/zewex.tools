@@ -6,15 +6,16 @@ import { hash32 } from "../plan/seed";
 import { removePath, runDir } from "../storage";
 import { nextStageAfter } from "./stages";
 import { autoModerate, pendingModeration } from "./moderation";
+import { canAccessPinSite, canAccessRun } from "@/lib/sites/access";
 
-/** Пользователь работает только с сайтами своих команд (админ — со всеми). */
+/** Командные сущности (заметки к стилям, каталог): только свои команды, админ — все. Доступ к сайтам — lib/sites/access. */
 export function canAccessTeam(me: CurrentUser, teamId: string): boolean {
   return me.role === "ADMIN" || me.teamIds.includes(teamId);
 }
 
 export async function getRunForUser(me: CurrentUser, runId: string) {
   const run = await prisma.pinRun.findUnique({ where: { id: runId }, include: { site: true } });
-  if (!run || !canAccessTeam(me, run.teamId)) return null;
+  if (!run || !(await canAccessRun(me, run))) return null;
   return run;
 }
 
@@ -62,7 +63,7 @@ export type CreateRunInput = {
  */
 export async function createRun(me: CurrentUser, input: CreateRunInput): Promise<{ runId: string; warnings: string[] }> {
   const site = await prisma.pinSite.findUnique({ where: { id: input.siteId } });
-  if (!site || !canAccessTeam(me, site.teamId)) throw new Error("Сайт не найден");
+  if (!site || !(await canAccessPinSite(me, site))) throw new Error("Сайт не найден");
   if (!input.urls.length) throw new Error("Добавьте хотя бы одну ссылку");
   if (input.urls.length > 500) throw new Error("Не больше 500 ссылок за один прогон");
   const warnings: string[] = [];

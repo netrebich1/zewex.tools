@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { pinSiteWhere } from "@/lib/sites/access";
 import { requireUser } from "@/lib/auth";
 import { Badge, Card, Empty, Field, PageHeader, type SearchParams, sp } from "@/components/ui";
 import { exportOverview } from "@/lib/pins/export/service";
@@ -15,7 +16,7 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   const today = todayKey(new Date(), TZ);
   const from = /^\d{4}-\d{2}-\d{2}$/.test(sp(p, "from") ?? "") ? (sp(p, "from") as string) : today;
   const to = /^\d{4}-\d{2}-\d{2}$/.test(sp(p, "to") ?? "") ? (sp(p, "to") as string) : from;
-  const sites = await prisma.pinSite.findMany({ where: { ...(me.role === "ADMIN" ? {} : { teamId: { in: me.teamIds } }), isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } });
+  const sites = await prisma.pinSite.findMany({ where: { ...(await pinSiteWhere(me)), isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } });
   const selected = (p.site ? (Array.isArray(p.site) ? p.site : [p.site]) : sites.map((s) => s.id)).filter((id) => sites.some((s) => s.id === id));
   const days: string[] = [];
   for (let d = from, i = 0; d <= to && i < 31; d = addDays(d, 1), i++) days.push(d);

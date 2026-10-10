@@ -7,7 +7,7 @@ import { generateHooks, type CanvasHook } from "@/lib/pins/canvas/hooks";
 import { cachedPhoto } from "@/lib/pins/canvas/photos";
 import { planCanvasPins } from "@/lib/pins/plan/canvasPlan";
 import { hash32 } from "@/lib/pins/plan/seed";
-import { decideElements, currentYear, seasonForDate, seasonWord } from "@/lib/pins/prompts/elements";
+import { decideElements, seasonForDate, seasonWord, pinYear } from "@/lib/pins/prompts/elements";
 import { ideaCountFor } from "@/lib/pins/types";
 import { makeThumb } from "@/lib/pins/images";
 import { itemImageRel, itemThumbRel, writeFileAtomic } from "@/lib/pins/storage";
@@ -99,13 +99,13 @@ export const canvasStage: StageHandler = async (ctx) => {
       const showNumber = ideaCount >= 3 && !!style.spec.number && (numberRequired || tags.number);
       const lang = rc.recipe.text.language;
       const seasonTxt = tags.season ? (page.seasonWord || seasonWord((page.season as "fall" | "winter" | "spring" | "summer") || seasonForDate(), lang)) : "";
-      const yearTxt = tags.year ? currentYear() : "";
+      const yearTxt = tags.year ? pinYear(rc.recipe.text) : "";
       const kickerParts = [seasonTxt, yearTxt].filter(Boolean);
       const kicker = kickerParts.length ? kickerParts.join(" ") : hook.kicker;
       // Профиль акцента для умной обрезки: ниша сайта и ключ страницы (ногти, волосы, одежда…).
       const accent = guessAccent(page.niche || rc.site.niche, page.keyword, page.topic, page.pageTitle || page.h1);
       const recipe = { ...toRecipe(style.spec, seed, photos.length), accent };
-      const r = await renderPin({ recipe, photos, texts: { title: hook.title, kicker, cta: tags.cta ? hook.cta : undefined, domain: tags.siteName ? domainFor(page.finalUrl || page.url) : undefined, number: showNumber ? String(ideaCount) : undefined }, seed });
+      const r = await renderPin({ recipe, photos, texts: { title: hook.title, kicker, cta: tags.cta ? hook.cta : undefined, domain: tags.siteName ? (rc.recipe.text.siteName.trim() || domainFor(page.finalUrl || page.url)) : undefined, number: showNumber ? String(ideaCount) : undefined }, seed });
       const item = await prisma.pinRunItem.create({
         data: { runId: rc.run.id, pageId: page.id, siteId: rc.site.id, kind: "pin", engine: "CANVAS", styleId: row.styleId, sourceImageUrl: chosen[0] ?? "", sortOrder: 2000 + row.sortOrder, status: "PENDING", title: "", styleParams: { hook, tags, ideaCount, photos: chosen, photoCount: photos.length, issues: r.issues } as object },
       });

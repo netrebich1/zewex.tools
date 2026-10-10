@@ -58,6 +58,20 @@ export function currentYear(now: Date = new Date()): string {
   return String(now.getMonth() >= 9 ? y + 1 : y);
 }
 
+/** Год для пинов: заданный в настройках прогона, иначе текущий (с октября — следующий). */
+export function pinYear(text: { year?: string }, now: Date = new Date()): string {
+  return /^\d{4}$/.test(text.year ?? "") ? (text.year as string) : currentYear(now);
+}
+
+const hostOf = (s: string) => s.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
+
+/** Имя сайта для пинов: заданное в настройках прогона, иначе домен (домен для ссылок, иначе хост сайта). */
+export function pinSiteName(text: { siteName?: string }, site: { linkDomain?: string | null; siteName: string }): string {
+  const custom = (text.siteName ?? "").trim();
+  if (custom) return custom;
+  return hostOf(site.linkDomain || "") || hostOf(site.siteName);
+}
+
 export type Season = "winter" | "spring" | "summer" | "fall";
 
 /** Метеорологические сезоны северного полушария: дек–фев, мар–май, июн–авг, сен–ноя. */

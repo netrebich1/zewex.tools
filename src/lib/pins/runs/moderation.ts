@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { publicUrl } from "../storage";
 import { enqueueJob, JobConflict } from "../jobs";
 import { mergeRecipe } from "../types";
+import { pinRunWhere } from "@/lib/sites/access";
 
 /** Пин в очереди модерации: только то, что нужно сетке. */
 export type ModerationItem = {
@@ -20,16 +21,14 @@ export type ModerationItem = {
 
 export type ModerationFilter = { siteId?: string; runId?: string; engine?: string; cursor?: string; limit?: number };
 
-function teamWhere(me: CurrentUser): Prisma.PinRunWhereInput {
-  return me.role === "ADMIN" ? {} : { teamId: { in: me.teamIds } };
-}
+const teamWhere = (me: CurrentUser): Promise<Prisma.PinRunWhereInput> => pinRunWhere(me);
 
 /** Непроверенные пины с картинкой, keyset-пагинация по id. */
 export async function moderationBatch(me: CurrentUser, f: ModerationFilter): Promise<{ items: ModerationItem[]; nextCursor: string | null }> {
   const limit = Math.min(120, Math.max(10, f.limit ?? 60));
   const rows = await prisma.pinRunItem.findMany({
     where: {
-      run: { ...teamWhere(me), ...(f.runId ? { id: f.runId } : {}), ...(f.siteId ? { siteId: f.siteId } : {}) },
+      run: { ...(await teamWhere(me)), ...(f.runId ? { id: f.runId } : {}), ...(f.siteId ? { siteId: f.siteId } : {}) },
       moderation: "NONE",
       status: "READY",
       ...(f.engine ? { engine: f.engine as "OPENAI" | "PINORA" | "CANVAS" | "PHOTO" } : {}),
@@ -58,7 +57,7 @@ export async function moderationBatch(me: CurrentUser, f: ModerationFilter): Pro
 export async function moderationCounts(me: CurrentUser) {
   const rows = await prisma.pinRunItem.groupBy({
     by: ["runId", "engine"],
-    where: { run: teamWhere(me), moderation: "NONE", status: "READY" },
+    where: { run: await teamWhere(me), moderation: "NONE", status: "READY" },
     _count: { _all: true },
   });
   const runIds = [...new Set(rows.map((r) => r.runId))];
@@ -90,7 +89,7 @@ export type Decision = { id: string; moderation: "APPROVED" | "REJECTED" };
 export async function applyDecisions(me: CurrentUser, decisions: Decision[]): Promise<{ applied: number; continued: string[] }> {
   if (!decisions.length) return { applied: 0, continued: [] };
   const ids = decisions.slice(0, 200).map((d) => d.id);
-  const allowed = await prisma.pinRunItem.findMany({ where: { id: { in: ids }, run: teamWhere(me) }, select: { id: true, runId: true } });
+  const allowed = await prisma.pinRunItem.findMany({ where: { id: { in: ids }, run: await teamWhere(me) }, select: { id: true, runId: true } });
   const ok = new Set(allowed.map((a) => a.id));
   const approve = decisions.filter((d) => ok.has(d.id) && d.moderation === "APPROVED").map((d) => d.id);
   const reject = decisions.filter((d) => ok.has(d.id) && d.moderation === "REJECTED").map((d) => d.id);

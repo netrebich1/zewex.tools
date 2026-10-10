@@ -2,7 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { Card, PageHeader } from "@/components/ui";
-import { mergeRecipe } from "@/lib/pins/types";
+import { runDefaultsFrom } from "@/lib/pins/types";
+import { pinRunWhere, pinSiteWhere } from "@/lib/sites/access";
 import { StockCalendar } from "@/components/pins/StockCalendar";
 import { sitesStock } from "@/lib/pins/runs/stats";
 import { RunsBoard } from "@/components/pins/RunsBoard";
@@ -12,12 +13,15 @@ export const dynamic = "force-dynamic";
 
 export default async function PinsHome() {
   const me = await requireUser();
-  const teamFilter = me.role === "ADMIN" ? {} : { teamId: { in: me.teamIds } };
-  const sites = await prisma.pinSite.findMany({ where: { ...teamFilter, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, recipe: true } });
-  const overview = await runsOverview(me.role === "ADMIN" ? null : me.teamIds);
-  const stock = await sitesStock(sites.map((s) => s.id), 92);
+  const sites = await prisma.pinSite.findMany({ where: { ...(await pinSiteWhere(me)), isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, recipe: true } });
+  const [overview, stock, lastRuns] = await Promise.all([
+    runsOverview(await pinRunWhere(me)),
+    sitesStock(sites.map((s) => s.id), 92),
+    prisma.pinRun.findMany({ where: { siteId: { in: sites.map((s) => s.id) }, NOT: { name: { startsWith: "__" } } }, orderBy: { createdAt: "desc" }, distinct: ["siteId"], select: { siteId: true, settings: true } }),
+  ]);
+  // Ориентир «пинов в день» — из последнего прогона сайта.
   const calendarSites = sites
-    .map((s) => ({ id: s.id, name: s.name, target: mergeRecipe(s.recipe).schedule.pinsPerDay, counts: stock.bySite.get(s.id) ?? [] }))
+    .map((s) => ({ id: s.id, name: s.name, target: runDefaultsFrom(s.recipe, lastRuns.find((x) => x.siteId === s.id)?.settings ?? null).schedule.pinsPerDay, counts: stock.bySite.get(s.id) ?? [] }))
     .sort((a, b) => {
       const run = (c: number[]) => { let n = 0; while (n < c.length && c[n] > 0) n++; return n; };
       return run(a.counts) - run(b.counts) || a.name.localeCompare(b.name);
@@ -25,7 +29,7 @@ export default async function PinsHome() {
 
   return (
     <>
-      <PageHeader title="Сегодня" subtitle="Прогоны в работе и запас пинов по сайтам." actions={<><Link href="/sites" className="btn-ghost">Сайты и настройки</Link><Link href="/pinterest/pins/runs/new" className="btn-brand">Новый прогон</Link></>} />
+      <PageHeader title="Сегодня" subtitle="Прогоны в работе и запас пинов по сайтам." actions={<><Link href="/pinterest/pins/sites" className="btn-ghost">Сайты</Link><Link href="/pinterest/pins/runs/new" className="btn-brand">Новый прогон</Link></>} />
       <div className="space-y-5">
         <Card title="Прогоны" description="Что сейчас выполняется, на каком этапе, где нужна модерация или есть ошибка. Обновляется само.">
           <RunsBoard initial={overview} />

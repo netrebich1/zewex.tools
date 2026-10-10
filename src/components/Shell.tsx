@@ -4,6 +4,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { LogoFull, LogoMark } from "./Logo";
 import { Icon, type IconName } from "./Icons";
+import { ThemeSwitch } from "./ThemeSwitch";
+import { MenuBalances } from "./MenuBalances";
 
 type NavItem = { href: string; label: string; icon: IconName; admin?: boolean };
 
@@ -26,8 +28,9 @@ export function Shell({ user, children }: { user: { name: string; email: string;
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const items = MENU.filter((n) => !n.admin || user.role === "ADMIN");
-  const isTools = pathname === "/" || pathname.startsWith("/projects") || pathname.startsWith("/pinterest");
+  const isAdmin = user.role === "ADMIN";
+  const items = MENU.filter((n) => !n.admin || isAdmin);
+  const isTools = pathname === "/" || pathname.startsWith("/projects") || pathname.startsWith("/pinterest") || pathname.startsWith("/gambling");
 
   useEffect(() => {
     if (!open) return;
@@ -47,18 +50,20 @@ export function Shell({ user, children }: { user: { name: string; email: string;
           <nav className="flex items-center gap-1 ml-2">
             <Link href="/" className={`tab ${isTools ? "active" : ""}`}><Icon.grid width={15} height={15} /> Инструменты</Link>
           </nav>
-          <div className="relative ml-auto flex items-center gap-2" ref={ref}>
-            <button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 rounded-full border border-line bg-surface pl-1 pr-2.5 py-1 hover:border-line-2 transition" aria-haspopup="menu" aria-expanded={open}>
+          <ThemeSwitch className="ml-auto" />
+          <div className="relative flex items-center gap-2" ref={ref}>
+            <button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 h-9 rounded-full border border-line bg-surface pl-1 pr-2.5 hover:border-line-2 transition" aria-haspopup="menu" aria-expanded={open}>
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-ink text-bg text-[12px] font-bold">{initials(user.name)}</span>
               <span className="hidden sm:block text-[13.5px] font-medium max-w-[140px] truncate">{user.name}</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`text-muted transition ${open ? "rotate-180" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
             </button>
             {open && (
-              <div className="menu" role="menu">
+              <div className="menu" style={isAdmin ? { width: 300 } : undefined} role="menu">
                 <div className="px-3 py-2 border-b border-line mb-1">
                   <div className="text-[14px] font-semibold truncate">{user.name}</div>
                   <div className="help truncate">{user.email}</div>
                 </div>
+                {isAdmin && <MenuBalances />}
                 {items.map((n) => {
                   const I = Icon[n.icon];
                   const active = pathname.startsWith(n.href);

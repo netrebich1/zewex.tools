@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import type { PinRunItem } from "@prisma/client";
 import { generateAiPrompts } from "@/lib/pins/prompts/aiPrompt";
 import { generatePinoraPrompts, type PinoraParams } from "@/lib/pins/prompts/pinora";
-import { decideElements, currentYear } from "@/lib/pins/prompts/elements";
+import { decideElements, pinYear, pinSiteName } from "@/lib/pins/prompts/elements";
 import { ideaCountFor } from "@/lib/pins/types";
 import { AiError } from "@/lib/pins/ai/errors";
 import type { StageHandler } from "./index";
@@ -27,7 +27,8 @@ export const prompts: StageHandler = async (ctx) => {
     const o = overrides.find((x) => x.styleId === styleId && x.siteId === rc.site.id) ?? overrides.find((x) => x.styleId === styleId && !x.siteId);
     return o?.instruction || undefined;
   };
-  const year = currentYear();
+  const year = pinYear(rc.recipe.text);
+  const siteName = pinSiteName(rc.recipe.text, { linkDomain: rc.recipe.publishing.linkDomain, siteName: rc.settings.siteName });
   const acc: ItemOutcome = { retry: 0 };
   let done = 0;
   const bump = async (n: number) => {
@@ -53,7 +54,7 @@ export const prompts: StageHandler = async (ctx) => {
           niche: page.niche || rc.site.niche,
           language: rc.recipe.text.language,
           audience: rc.recipe.text.audience,
-          siteName: rc.settings.siteName,
+          siteName,
           brandColor: rc.recipe.text.brandColor,
           ideaCount: ideaCountFor(page, rc.recipe.text) || undefined,
           season: page.season || undefined,

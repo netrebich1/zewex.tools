@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ───────── Дизайн-токены. Светлая тема по умолчанию, тёмная — по настройке системы. ───────── */
+/* ───────── Дизайн-токены. Светлая тема — база; тёмная и нейтральная переопределяют переменные ниже. ───────── */
 @theme {
   --color-ink: #0f1115;
   --color-ink-2: #3a3d46;
@@ -29,27 +29,58 @@
   --shadow-pop: 0 8px 30px rgba(15, 17, 21, 0.12), 0 2px 6px rgba(15, 17, 21, 0.06);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --color-ink: #f2f3f5;
-    --color-ink-2: #c9ccd4;
-    --color-muted: #8b8f9a;
-    --color-line: #262932;
-    --color-line-2: #30343f;
-    --color-bg: #0f1115;
-    --color-surface: #161920;
-    --color-surface-2: #1b1f27;
-    --color-brand-soft: #3a2d0c;
-    --color-ok-soft: #10311d;
-    --color-warn-soft: #3a260c;
-    --color-danger-soft: #3c161b;
-    --color-info-soft: #14223f;
-    --shadow-card: 0 1px 1px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.35);
-    --shadow-pop: 0 8px 30px rgba(0, 0, 0, 0.6);
-  }
+/* ───────── Темы. Атрибут data-theme ставит RootLayout (cookie) и скрипт в <head> до первой отрисовки. ───────── */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-ink: #f2f3f5;
+  --color-ink-2: #c9ccd4;
+  --color-muted: #8b8f9a;
+  --color-line: #262932;
+  --color-line-2: #30343f;
+  --color-bg: #0f1115;
+  --color-surface: #161920;
+  --color-surface-2: #1b1f27;
+  --color-brand-soft: #3a2d0c;
+  --color-ok: #4ade80;
+  --color-ok-soft: #10311d;
+  --color-warn: #fbbf24;
+  --color-warn-soft: #3a260c;
+  --color-danger: #f87171;
+  --color-danger-soft: #3c161b;
+  --color-info: #60a5fa;
+  --color-info-soft: #14223f;
+  --shadow-card: 0 1px 1px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 8px 30px rgba(0, 0, 0, 0.6);
 }
 
-html { color-scheme: light dark; scroll-behavior: smooth; }
+/* Нейтральная: тёплый серо-бежевый «бумажный» тон, без яркого белого и без чёрного. */
+:root[data-theme="neutral"] {
+  color-scheme: light;
+  --color-ink: #2b2825;
+  --color-ink-2: #55504a;
+  --color-muted: #7f786f;
+  --color-line: #d9d4cb;
+  --color-line-2: #c9c3b8;
+  --color-bg: #e7e4de;
+  --color-surface: #f1eee8;
+  --color-surface-2: #ebe7e0;
+  --color-brand: #e89d12;
+  --color-brand-2: #f2b23a;
+  --color-brand-soft: #f3e6c6;
+  --color-ok: #2f7a4a;
+  --color-ok-soft: #dfeadf;
+  --color-warn: #9a5a12;
+  --color-warn-soft: #f0e2cc;
+  --color-danger: #b8323f;
+  --color-danger-soft: #f0d9d9;
+  --color-info: #2f5fb3;
+  --color-info-soft: #dde4f0;
+  --shadow-card: 0 1px 1px rgba(43, 40, 37, 0.04), 0 2px 8px rgba(43, 40, 37, 0.06);
+  --shadow-pop: 0 8px 30px rgba(43, 40, 37, 0.16), 0 2px 6px rgba(43, 40, 37, 0.08);
+}
+
+html { color-scheme: light; scroll-behavior: smooth; }
+html, body { transition: background-color 0.2s ease, color 0.2s ease; }
 body {
   @apply bg-bg text-ink antialiased;
   font-feature-settings: "cv11", "ss01", "tnum";

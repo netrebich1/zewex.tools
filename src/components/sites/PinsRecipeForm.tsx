@@ -12,10 +12,10 @@ import type { PinBoard, PinSet, PinSite, SiteAccess } from "@prisma/client";
 
 export const NICHES = [["", "— не задана —"], ["decor", "Декор и интерьер"], ["nails", "Ногти"], ["hair", "Причёски"], ["outfit", "Одежда"], ["cooking", "Рецепты"], ["other", "Другое"]];
 
-type Props = { site: PinSite & { boards: PinBoard[]; sets: PinSet[] }; wps: Pick<SiteAccess, "id" | "name">[] };
+type Props = { site: PinSite & { boards: PinBoard[]; sets: PinSet[] }; wps?: Pick<SiteAccess, "id" | "name">[] };
 
-/** Данные для полей рецепта: наборы ИИ сайта, утверждённые Canvas-стили каталога, типы Pinora. */
-export async function recipeFieldsData(sets: PinSet[], wps?: Pick<SiteAccess, "id" | "name">[], pages?: RecipeFieldsData["pages"]): Promise<RecipeFieldsData> {
+/** Данные для полей настроек: наборы ИИ сайта, утверждённые Canvas-стили каталога, типы Pinora. */
+export async function recipeFieldsData(sets: PinSet[], wps?: Pick<SiteAccess, "id" | "name">[]): Promise<RecipeFieldsData> {
   const opt = (s: PinSet) => ({ id: s.id, name: s.name, count: (s.styleIds as string[]).length, topic: s.topic || undefined });
   const canvas = await approvedCatalogStyles();
   return {
@@ -23,26 +23,29 @@ export async function recipeFieldsData(sets: PinSet[], wps?: Pick<SiteAccess, "i
     canvasStyles: canvas.map((c) => ({ id: c.id, name: c.name.replace(/^Zewex · /, ""), previewUrl: c.previewPath ? publicUrl(c.previewPath) : null, zewex: c.tags.includes("zewex") })),
     pinoraTypes: PINORA_TYPES.map((t) => ({ id: t.id, ru: t.ru })),
     ...(wps ? { wps: wps.map((w) => ({ id: w.id, name: w.name })) } : {}),
-    ...(pages ? { pages } : {}),
   };
 }
 
-/** Настройки Pinterest Pins для сайта: рецепт по умолчанию для прогонов и доски. */
-export async function PinsRecipeForm({ site, wps }: Props) {
+/**
+ * Настройки сайта внутри сервиса Pinterest Pins: имя, ниша, доски, наборы стилей, язык.
+ * Количество пинов, расписание и источник ссылок задаются у каждого прогона.
+ */
+export async function PinsSiteSettings({ site, wps }: Props) {
   const id = site.id;
   const r = mergeRecipe(site.recipe);
-  const data = await recipeFieldsData(site.sets, wps, { siteId: id, hasWp: !!(r.publishing.wpConnectionId || site.wpConnectionId) });
+  // Выбор доступа WordPress нужен только сайтам без привязки.
+  const data = await recipeFieldsData(site.sets, site.wpConnectionId ? undefined : wps);
   return (
     <>
-      <Card title="Pinterest Pins: рецепт по умолчанию" description="Эти настройки подставляются в каждый новый прогон; там их можно изменить для конкретного прогона.">
+      <Card title="Настройки сайта в Pinterest Pins" description="Что относится к сайту целиком: стили, язык, аудитория. Сколько пинов делать и по какому расписанию — задаётся в каждом прогоне.">
         <ActionForm action={saveRecipe} hidden={{ id }} className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Название сайта"><input name="name" className="input" defaultValue={site.name} /></Field>
             <Field label="Ниша" hint="Влияет на умную обрезку фото и подбор стилей."><select name="niche" className="input" defaultValue={site.niche}>{NICHES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
           </div>
-          <p className="help">Наборы стилей собираются в разделе <Link href={`/pinterest/pins/styles?tab=ai&site=${id}`} className="underline">«Стили» сервиса</Link>: там видно, как выглядит каждый ИИ-стиль и Canvas-шаблон.</p>
-          <RecipeFields r={r} data={data} />
-          <SubmitButton pendingText="Сохраняю…">Сохранить рецепт</SubmitButton>
+          <p className="help">Наборы стилей собираются в разделе <Link href={`/pinterest/pins/styles?tab=ai&site=${id}`} className="underline">«Стили»</Link>: там видно, как выглядит каждый ИИ-стиль и Canvas-шаблон.</p>
+          <RecipeFields r={r} data={data} scope="site" />
+          <SubmitButton pendingText="Сохраняю…">Сохранить настройки сайта</SubmitButton>
         </ActionForm>
       </Card>
 

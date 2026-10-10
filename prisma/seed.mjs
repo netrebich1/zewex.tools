@@ -82,5 +82,31 @@ const pinSlots = [
 for (const sl of pinSlots) {
   await prisma.slot.upsert({ where: { projectId_key: { projectId: pins.id, key: sl.key } }, update: { preferProviders: sl.preferProviders }, create: { ...sl, projectId: pins.id } });
 }
+// Проект «Подбор доменов» (раздел Gambling): ИИ-отбор + анализ выдачи (DataForSEO, SerpAPI как запасной).
+const gambling = await prisma.section.findUnique({ where: { slug: "gambling" } });
+const domains = await prisma.project.upsert({
+  where: { slug: "domains" },
+  update: {},
+  create: { sectionId: gambling.id, slug: "domains", name: "Подбор доменов", description: "Бренды × приставки × зоны: свободные домены по RDAP, анализ Google TOP-10, ИИ-отбор, выгрузка CSV/XLSX", url: "/gambling/domains", status: "ACTIVE", order: 1 },
+});
+const domainSlots = [
+  { key: "text_main", name: "ИИ-отбор доменов", capability: "CHAT", description: "Выбор лучших свободных доменов под бренд-запрос", preferProviders: "openrouter,laozhang,openai" },
+  { key: "serp_dfs", name: "Выдача Google (DataForSEO)", capability: "SEO_DATA", description: "TOP-10 по брендам для анализа приставок и зон; основной источник", preferProviders: "dataforseo" },
+  { key: "serp_api", name: "Выдача Google (SerpAPI)", capability: "SERP", description: "Запасной источник TOP-10, если DataForSEO не подключён или недоступен", preferProviders: "serpapi" },
+];
+for (const sl of domainSlots) {
+  await prisma.slot.upsert({ where: { projectId_key: { projectId: domains.id, key: sl.key } }, update: { preferProviders: sl.preferProviders }, create: { ...sl, projectId: domains.id } });
+}
+// Системная запись сайта для каждого сайта инструмента без неё (сайты, импортированные из легаси).
+// Адрес выводится из имени, логин и Application Password владелец вводит в разделе «Сайты». Идемпотентно.
+const orphans = await prisma.pinSite.findMany({ where: { wpConnectionId: null }, select: { id: true, name: true, teamId: true } });
+for (const s of orphans) {
+  const host = s.name.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/[^a-z0-9.-]/g, "");
+  const name = host || s.name.trim();
+  const baseUrl = `https://${host || s.name.trim().toLowerCase().replace(/[^a-z0-9.-]/g, "")}`;
+  const access = await prisma.siteAccess.create({ data: { teamId: s.teamId, kind: "wordpress", name, baseUrl, username: "", appPasswordEnc: "", projects: ["pins"] } });
+  await prisma.pinSite.update({ where: { id: s.id }, data: { wpConnectionId: access.id, name } });
+}
+if (orphans.length) console.log(`site accesses created for ${orphans.length} tool sites`);
 console.log("seed done");
 await prisma.$disconnect();

@@ -61,7 +61,14 @@ export type PagesSource = {
   skipUsed: boolean;
 };
 
-/** Рецепт сайта: единственный объект настроек, снимок которого хранится в прогоне. */
+/**
+ * Настройки пинов. Хранятся в двух местах одним и тем же типом:
+ * - PinSite.recipe — уровень сайта в сервисе: наборы стилей (sets), язык/аудитория/цвет (text.language, audience, brandColor),
+ *   публикация (publishing). Остальные поля там — только исторические значения.
+ * - PinRun.settings — уровень прогона: источник статей (pages), сколько пинов (mix, photosMode, photoLinkPercent),
+ *   тексты (percents, numberSource), расписание и модерация (schedule), доски (boards). Плюс снимок сайтовых полей.
+ * Поля формы прогона подставляются из последнего прогона сайта (runDefaultsFrom), а не из сайта.
+ */
 export type Recipe = {
   pages: PagesSource;
   mix: { ai: number; photos: number; canvas: number; pinora: number };
@@ -80,6 +87,10 @@ export type Recipe = {
     numberSource: "sections" | "images" | "none";
     audience: "women" | "men" | "mix";
     brandColor?: string;
+    /** Год на пинах и в текстах; пусто — текущий (с октября уже следующий). Уровень прогона. */
+    year: string;
+    /** Имя сайта на пинах и в текстах; пусто — домен сайта (домен для ссылок или хост статьи). Уровень прогона. */
+    siteName: string;
   };
   publishing: { wpConnectionId: string | null; linkDomain: string; photoLinkPercent: number };
   schedule: { pinsPerDay: number; startFrom: "next_free_day" | string; moderationMode: ModerationMode; samplePercent: number };
@@ -99,6 +110,8 @@ export const DEFAULT_RECIPE: Recipe = {
     percents: { season: 60, year: 60, number: 60, cta: 60, siteName: 0, hashtags: 60 },
     numberSource: "sections",
     audience: "women",
+    year: "",
+    siteName: "",
   },
   publishing: { wpConnectionId: null, linkDomain: "", photoLinkPercent: 40 },
   schedule: { pinsPerDay: 90, startFrom: "next_free_day", moderationMode: "required", samplePercent: 20 },
@@ -132,6 +145,8 @@ function mergeText(t: Partial<Recipe["text"]> | undefined): Recipe["text"] {
   return {
     ...d, ...(t ?? {}), elements, variety, hashtags, percents,
     numberSource: t?.numberSource === "images" || t?.numberSource === "none" ? t.numberSource : "sections",
+    year: /^\d{4}$/.test(String(t?.year ?? "")) ? String(t!.year) : "",
+    siteName: String(t?.siteName ?? "").trim().slice(0, 80),
   };
 }
 
@@ -180,6 +195,20 @@ export function describePagesSource(p: PagesSource): string {
   parts.push(`до ${p.limit}`);
   if (p.skipUsed) parts.push("без уже использованных");
   return parts.join(", ");
+}
+
+/** Поля уровня прогона из последнего прогона сайта поверх сайтовых полей; без прогонов — значения по умолчанию. */
+export function runDefaultsFrom(siteRecipe: unknown, lastRunSettings: unknown | null): Recipe {
+  const site = mergeRecipe(siteRecipe);
+  const last = lastRunSettings ? mergeRecipe(lastRunSettings) : DEFAULT_RECIPE;
+  return {
+    ...site,
+    pages: last.pages, mix: last.mix, photosMode: last.photosMode,
+    text: { ...site.text, percents: last.text.percents, numberSource: last.text.numberSource, hashtags: last.text.hashtags, variety: last.text.variety, elements: last.text.elements, year: last.text.year, siteName: last.text.siteName },
+    publishing: { ...site.publishing, photoLinkPercent: last.publishing.photoLinkPercent },
+    schedule: { ...last.schedule, startFrom: "next_free_day" },
+    boards: last.boards,
+  };
 }
 
 export function mergeRecipe(partial: unknown): Recipe {

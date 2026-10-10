@@ -7,6 +7,7 @@ const ITEMS = [
   { href: "/pinterest/pins/moderation", label: "Модерация" },
   { href: "/pinterest/pins/export", label: "Выгрузка" },
   { href: "/pinterest/pins/styles", label: "Стили" },
+  { href: "/pinterest/pins/sites", label: "Сайты" },
   { href: "/pinterest/pins/runs/new", label: "Новый прогон" },
 ];
 

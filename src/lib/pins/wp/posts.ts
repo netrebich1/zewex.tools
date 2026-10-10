@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { decryptSecret } from "@/lib/crypto";
 import { mergeRecipe, pagesDateWindow, type PagesSource } from "../types";
-import { canAccessTeam } from "../runs/actions";
+import { canAccessPinSite, canAccessSiteAccess } from "@/lib/sites/access";
 import { listAllPosts, listTaxonomies, type WpCreds, type WpPost, type WpTerm } from "./client";
 
 export type SitePost = WpPost & { used: boolean };
@@ -15,11 +15,11 @@ export type SitePostsFilter = { categories?: number[]; excludeCategories?: boole
 
 async function siteCreds(me: CurrentUser, siteId: string): Promise<{ creds: WpCreds; siteId: string }> {
   const site = await prisma.pinSite.findUnique({ where: { id: siteId } });
-  if (!site || !canAccessTeam(me, site.teamId)) throw new Error("Сайт не найден");
-  const connId = mergeRecipe(site.recipe).publishing.wpConnectionId || site.wpConnectionId;
-  if (!connId) throw new Error("У сайта нет доступа WordPress: откройте сайт в разделе «Сайты» и выберите доступ в рецепте.");
-  const conn = await prisma.siteAccess.findFirst({ where: { id: connId, teamId: site.teamId } });
-  if (!conn) throw new Error("Доступ WordPress не найден. Выберите другой в рецепте сайта.");
+  if (!site || !(await canAccessPinSite(me, site))) throw new Error("Сайт не найден");
+  const connId = site.wpConnectionId || mergeRecipe(site.recipe).publishing.wpConnectionId;
+  if (!connId) throw new Error("У сайта нет доступа WordPress: добавьте сайт в разделе «Сайты» и включите для него Pinterest Pins.");
+  const conn = (await canAccessSiteAccess(me, connId)) ? await prisma.siteAccess.findUnique({ where: { id: connId } }) : null;
+  if (!conn) throw new Error("Доступ WordPress не найден или недоступен вашей команде.");
   return { creds: { baseUrl: conn.baseUrl, username: conn.username, appPassword: decryptSecret(conn.appPasswordEnc) }, siteId: site.id };
 }
 

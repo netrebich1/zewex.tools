@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import type { PinRunStatus } from "@prisma/client";
 import { PIN_STAGES, type PinStage } from "../types";
 
@@ -94,9 +95,9 @@ export type RunOverview = {
   topProblem: string | null;
 };
 
-export async function runsOverview(teamIds: string[] | null, limit = 20): Promise<RunOverview[]> {
+export async function runsOverview(where: Prisma.PinRunWhereInput, limit = 20): Promise<RunOverview[]> {
   const runs = await prisma.pinRun.findMany({
-    where: { ...(teamIds ? { teamId: { in: teamIds } } : {}), NOT: { name: { startsWith: "__" } } },
+    where: { ...where, NOT: { name: { startsWith: "__" } } },
     orderBy: { updatedAt: "desc" }, take: limit,
     include: { site: { select: { name: true } } },
   });

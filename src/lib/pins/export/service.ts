@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
-import { canAccessTeam } from "../runs/actions";
+import { canAccessPinSite, pinSiteWhere } from "@/lib/sites/access";
 import { buildDayFiles } from "./day";
 import type { ExportItem } from "./pinterest";
 import { startOfDay, addDays, todayKey } from "../schedule/math";
@@ -33,8 +33,8 @@ export type DayFile = { siteId: string; siteName: string; day: string; fileName:
 
 /** Сводка по дням и сайтам без построения CSV целиком (CSV собирается при скачивании). */
 export async function exportOverview(me: CurrentUser, siteIds: string[], days: string[]): Promise<DayFile[]> {
-  const sites = await prisma.pinSite.findMany({ where: { id: { in: siteIds } }, select: { id: true, name: true, teamId: true } });
-  const allowed = sites.filter((s) => canAccessTeam(me, s.teamId));
+  const sites = await prisma.pinSite.findMany({ where: { id: { in: siteIds }, ...(await pinSiteWhere(me)) }, select: { id: true, name: true, teamId: true } });
+  const allowed = sites;
   const logs = await prisma.pinExportLog.findMany({ where: { siteId: { in: allowed.map((s) => s.id) }, day: { in: days } }, orderBy: { createdAt: "desc" } });
   const out: DayFile[] = [];
   const now = new Date();
@@ -52,8 +52,8 @@ export async function exportOverview(me: CurrentUser, siteIds: string[], days: s
 
 /** Готовый CSV на день: сегодняшние пропущенные слоты пересчитываются и сохраняются; скачивание логируется. */
 export async function dayCsv(me: CurrentUser, siteId: string, day: string): Promise<{ fileName: string; csv: string; count: number } | null> {
-  const site = await prisma.pinSite.findUnique({ where: { id: siteId }, select: { id: true, name: true, teamId: true } });
-  if (!site || !canAccessTeam(me, site.teamId)) return null;
+  const site = await prisma.pinSite.findUnique({ where: { id: siteId }, select: { id: true, name: true, teamId: true, wpConnectionId: true } });
+  if (!site || !(await canAccessPinSite(me, site))) return null;
   const items = await dayItems(siteId, day);
   if (!items.length) return null;
   const now = new Date();

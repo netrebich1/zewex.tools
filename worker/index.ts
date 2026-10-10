@@ -8,6 +8,7 @@ import { log } from "./log";
 import { join } from "path";
 import { installNodeCanvasHost } from "@/lib/pins/canvas/host.node";
 import { storageRoot } from "@/lib/pins/storage";
+import { domainsInflight, domainsLoop, domainsRequeueStale } from "./domains";
 
 /**
  * Воркер сервиса пинов: единственный процесс, который двигает прогоны.
@@ -61,17 +62,18 @@ async function main() {
   }
   await requeueOrphans(hostname());
   await requeueStale();
+  await domainsRequeueStale(hostname()).catch((e) => log.warn("domains requeue failed", e));
   const stopCron = startCron();
   const shutdown = async (sig: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    log.info(`${sig}: finishing ${inflight.size} job(s), up to 60s`);
+    log.info(`${sig}: finishing ${inflight.size} job(s) and ${domainsInflight().size} domain run(s), up to 60s`);
     stopCron();
     const t = setTimeout(() => {
       log.warn("forced exit");
       process.exit(1);
     }, 60_000);
-    await Promise.allSettled([...inflight]);
+    await Promise.allSettled([...inflight, ...domainsInflight()]);
     clearTimeout(t);
     await prisma.$disconnect();
     log.info("bye");
@@ -79,7 +81,8 @@ async function main() {
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
-  await loop();
+  // Очередь подборов доменов работает рядом с очередью пинов в том же процессе.
+  await Promise.all([loop(), domainsLoop(WORKER_ID, () => shuttingDown)]);
 }
 
 main().catch((e) => {

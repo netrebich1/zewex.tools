@@ -1,3 +1,4 @@
+import { pinSiteName } from "@/lib/pins/prompts/elements";
 import { prisma } from "@/lib/db";
 import { generatePinTexts, type TextItem } from "@/lib/pins/texts/generate";
 import { dedupeTitles } from "@/lib/pins/texts/dedupe";
@@ -48,7 +49,7 @@ export const texts: StageHandler = async (ctx) => {
         hashtags: rc.recipe.text.percents.hashtags > 0,
         hashtagShare: rc.recipe.text.percents.hashtags,
         audience: rc.recipe.text.audience,
-        siteName: rc.settings.siteName,
+        siteName: pinSiteName(rc.recipe.text, { linkDomain: rc.recipe.publishing.linkDomain, siteName: rc.settings.siteName }),
       }, { signal: ctx.signal });
       for (const it of group) {
         const t = res.get(it.id);

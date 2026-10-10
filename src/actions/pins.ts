@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { canAccessTeam } from "@/lib/pins/runs/actions";
+import { canAccessPinSite, canAccessRun, canAccessSiteAccess } from "@/lib/sites/access";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createRun, continueRun, deleteRun, parseUrls, redoMissing, skipFailed, stopRun } from "@/lib/pins/runs/actions";
@@ -22,8 +23,8 @@ export async function launchRun(_p: FormState, f: FormData): Promise<FormState> 
   let runId: string;
   try {
     const siteId = str(f, "siteId");
-    const site = await prisma.pinSite.findUnique({ where: { id: siteId }, select: { recipe: true, teamId: true, isActive: true, sets: { select: { id: true } } } });
-    if (!site || !canAccessTeam(me, site.teamId)) return { error: "Сайт не найден" };
+    const site = await prisma.pinSite.findUnique({ where: { id: siteId }, select: { recipe: true, teamId: true, wpConnectionId: true, isActive: true, sets: { select: { id: true } } } });
+    if (!site || !(await canAccessPinSite(me, site))) return { error: "Сайт не найден" };
     if (!site.isActive) return { error: "Сайт в архиве: верните его из архива в разделе «Сайты»" };
     // Настройки этого прогона: рецепт сайта как основа, поля формы — поверх.
     const recipe = recipeFromForm(f, site.recipe, { allowedSetIds: new Set(site.sets.map((x) => x.id)) });
@@ -47,8 +48,8 @@ export async function updateRunSettings(_p: FormState, f: FormData): Promise<For
   const me = await requireUser();
   const id = str(f, "id");
   try {
-    const run = await prisma.pinRun.findUnique({ where: { id }, include: { site: { select: { id: true, teamId: true, sets: { select: { id: true } } } } } });
-    if (!run || !run.site || !canAccessTeam(me, run.site.teamId)) throw new Error("Прогон не найден");
+    const run = await prisma.pinRun.findUnique({ where: { id }, include: { site: { select: { id: true, teamId: true, wpConnectionId: true, sets: { select: { id: true } } } } } });
+    if (!run || !run.site || !(await canAccessRun(me, run))) throw new Error("Прогон не найден");
     if (["QUEUED", "RUNNING"].includes(run.status)) throw new Error("Прогон выполняется: остановите его, затем меняйте настройки");
     const base = run.settings as Record<string, unknown>;
     const recipe = recipeFromForm(f, base, { allowedSetIds: new Set(run.site.sets.map((x) => x.id)) });
@@ -117,7 +118,7 @@ const num = (f: FormData, k: string, def: number, min = 0, max = 1000) => {
 
 async function siteForUser(me: Awaited<ReturnType<typeof requireUser>>, id: string) {
   const site = await prisma.pinSite.findUnique({ where: { id } });
-  if (!site || !canAccessTeam(me, site.teamId)) throw new Error("Сайт не найден");
+  if (!site || !(await canAccessPinSite(me, site))) throw new Error("Сайт не найден");
   return site;
 }
 
@@ -128,18 +129,18 @@ export async function saveRecipe(_p: FormState, f: FormData): Promise<FormState>
     const site = await siteForUser(me, id);
     const r = mergeRecipe(site.recipe);
     // Чужие id не принимаем: доступ WordPress — только своей команды, наборы — только этого сайта.
-    const wpId = str(f, "wpConnectionId");
-    const wpOk = wpId ? await prisma.siteAccess.findFirst({ where: { id: wpId, teamId: site.teamId }, select: { id: true } }) : null;
-    if (wpId && !wpOk) throw new Error("Доступ WordPress не принадлежит команде сайта");
+    // Доступ WordPress меняется только у сайтов без привязки (у привязанных он задан самим доступом).
+    const wpId = f.has("wpConnectionId") ? str(f, "wpConnectionId") : (site.wpConnectionId ?? "");
+    if (wpId && !(await canAccessSiteAccess(me, wpId))) throw new Error("Доступ WordPress недоступен вашей команде");
     const ownSets = new Set((await prisma.pinSet.findMany({ where: { siteId: id }, select: { id: true } })).map((s) => s.id));
-    const next = recipeFromForm(f, r, { allowedSetIds: ownSets, wpConnectionId: wpOk ? wpId : null });
-    await prisma.pinSite.update({ where: { id }, data: { recipe: next, name: str(f, "name") || site.name, niche: str(f, "niche"), wpConnectionId: next.publishing.wpConnectionId } });
+    const next = recipeFromForm(f, r, { allowedSetIds: ownSets, wpConnectionId: wpId || null });
+    await prisma.pinSite.update({ where: { id }, data: { recipe: next, name: f.has("name") ? str(f, "name") || site.name : site.name, niche: f.has("niche") ? str(f, "niche") : site.niche, wpConnectionId: next.publishing.wpConnectionId } });
     if (next.publishing.wpConnectionId) revalidatePath(`/sites/${next.publishing.wpConnectionId}`);
   } catch (e) { return fail(e); }
   revalidatePath(`/sites/${id}`);
   revalidatePath("/sites");
   revalidatePath(`/pinterest/pins/sites/${id}`);
-  return { ok: "Рецепт сохранён" };
+  return { ok: "Настройки сайта сохранены" };
 }
 
 export async function saveBoards(_p: FormState, f: FormData): Promise<FormState> {
@@ -164,7 +165,7 @@ export async function enablePinsForSite(_p: FormState, f: FormData): Promise<For
   const accessId = str(f, "accessId");
   try {
     const access = await prisma.siteAccess.findUnique({ where: { id: accessId } });
-    if (!access || !canAccessTeam(me, access.teamId)) throw new Error("Сайт не найден");
+    if (!access || !(await canAccessSiteAccess(me, accessId))) throw new Error("Сайт не найден");
     const exists = await prisma.pinSite.findFirst({ where: { wpConnectionId: accessId } });
     if (exists) throw new Error("Pinterest Pins уже включён");
     const base = access.name.toLowerCase().replace(/^https?:\/\//, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70) || "site";

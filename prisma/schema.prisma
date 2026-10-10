@@ -76,6 +76,7 @@ model User {
   apiKeys       ApiKey[]
   bindings      Binding[]
   usage         UsageLog[]
+  siteViews     SiteAccessViewer[]
 }
 
 model Session {
@@ -98,6 +99,7 @@ model Team {
   bindings    Binding[]
   pinSites    PinSite[]
   pinRuns     PinRun[]
+  siteShares  SiteAccessTeam[]
 }
 
 model TeamMember {
@@ -451,9 +453,33 @@ model SiteAccess {
   lastCheckNote       String?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
+  /// Дополнительные команды, которым доступен сайт (teamId — команда-владелец)
+  teams               SiteAccessTeam[]
+  /// Если не пусто — сайт видят только эти сотрудники (плюс админы и лидеры команды-владельца)
+  viewers             SiteAccessViewer[]
 
   @@index([teamId])
   @@map("PinWpConnection")
+}
+
+model SiteAccessTeam {
+  accessId String     @db.Char(36)
+  teamId   String
+  access   SiteAccess @relation(fields: [accessId], references: [id], onDelete: Cascade)
+  team     Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([accessId, teamId])
+  @@index([teamId])
+}
+
+model SiteAccessViewer {
+  accessId String     @db.Char(36)
+  userId   String
+  access   SiteAccess @relation(fields: [accessId], references: [id], onDelete: Cascade)
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([accessId, userId])
+  @@index([userId])
 }
 
 model PinRun {
@@ -614,4 +640,73 @@ model PinUrlHistory {
   createdAt DateTime @default(now())
 
   @@index([siteId, url(length: 191)])
+}
+
+// ───────────────────────────── Подбор доменов (Gambling) ─────────────────────────────
+// Бренды × приставки (3 уровня приоритета) × зоны → проверка свободности (RDAP + DNS)
+// в воркере; выбор вручную или ИИ; выгрузка CSV/XLSX. Данные видны команде автора.
+
+enum DomainRunStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  STOPPED
+}
+
+model DomainRun {
+  id              String          @id @default(uuid()) @db.Char(36)
+  teamId          String?
+  createdById     String
+  name            String          @default("")
+  status          DomainRunStatus @default(QUEUED)
+  /// Все настройки подбора (бренды, зоны, уровни приставок, страна, анализ выдачи)
+  settings        Json
+  /// Ход проверки: текущий бренд, сколько брендов готово, сколько доменов проверено
+  progress        Json?
+  totalGenerated  Int             @default(0)
+  totalChecked    Int             @default(0)
+  totalAvailable  Int             @default(0)
+  /// Бренды, для которых не набралось нужного числа свободных доменов
+  incompleteBrands Json?
+  stopRequested   Boolean         @default(false)
+  error           String?         @db.Text
+  workerId        String?
+  leaseUntil      DateTime?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  domains         DomainCandidate[]
+
+  @@index([teamId, createdAt])
+  @@index([createdById, createdAt])
+  @@index([status])
+}
+
+model DomainCandidate {
+  id        String    @id @default(uuid()) @db.Char(36)
+  runId     String    @db.Char(36)
+  brand     String
+  domain    String
+  tld       String
+  suffix    String?
+  /// Уровень приставки: 1–3; 0 — без приставки
+  tier      Int       @default(0)
+  pattern   String    @default("brand")
+  /// available | taken | unknown
+  status    String    @default("unknown")
+  /// rdap | dns | none
+  source    String    @default("none")
+  checkedAt DateTime?
+  selected  Boolean   @default(false)
+  aiScore   Int?
+  aiReason  String?
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  run       DomainRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, domain])
+  @@index([runId, brand, sortOrder])
+  @@index([runId, status])
 }

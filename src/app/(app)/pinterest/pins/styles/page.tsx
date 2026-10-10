@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { pinSiteWhere } from "@/lib/sites/access";
 import { requireUser } from "@/lib/auth";
 import { Card, Empty, PageHeader, type SearchParams, sp } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
@@ -18,7 +19,7 @@ export default async function StylesPage({ searchParams }: { searchParams: Promi
   const me = await requireUser();
   const p = await searchParams;
   const tab = sp(p, "tab") ?? "ai";
-  const sites = await prisma.pinSite.findMany({ where: { ...(me.role === "ADMIN" ? {} : { teamId: { in: me.teamIds } }), isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, teamId: true, niche: true } });
+  const sites = await prisma.pinSite.findMany({ where: { ...(await pinSiteWhere(me)), isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, teamId: true, niche: true } });
   const siteId = sp(p, "site") ?? sites[0]?.id ?? "";
   const site = sites.find((s) => s.id === siteId) ?? sites[0];
   const tabs = [["ai", "ИИ-стили и наборы"], ["canvas", "Canvas-стили"], ["pinora", "Pinora"]];
