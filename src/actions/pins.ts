@@ -14,7 +14,9 @@ const fail = (e: unknown): FormState => ({ error: e instanceof Error ? e.message
 export async function launchRun(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const fromList = f.getAll("urlList").map(String).filter(Boolean);
-  const { urls, invalid } = parseUrls(fromList.length ? fromList.join("\n") : str(f, "urls"));
+  const parsed = parseUrls(fromList.length ? fromList.join("\n") : str(f, "urls"));
+  const invalid = parsed.invalid;
+  let urls = parsed.urls;
   if (invalid.length) return { error: `Не похоже на ссылки: ${invalid.slice(0, 3).join(", ")}${invalid.length > 3 ? "…" : ""}` };
   const mode = str(f, "moderationMode") as ModerationMode;
   let runId: string;
@@ -25,6 +27,15 @@ export async function launchRun(_p: FormState, f: FormData): Promise<FormState> 
     if (!site.isActive) return { error: "Сайт в архиве: верните его из архива в разделе «Сайты»" };
     // Настройки этого прогона: рецепт сайта как основа, поля формы — поверх.
     const recipe = recipeFromForm(f, site.recipe, { allowedSetIds: new Set(site.sets.map((x) => x.id)) });
+    // Ссылки не вставлены, источник — WordPress: подтягиваем статьи по фильтру рецепта прямо при запуске.
+    if (!urls.length && recipe.pages.source === "wp") {
+      const got = await sitePostsBySource(me, siteId, recipe.pages);
+      if (!got.urls.length) {
+        return { error: got.found ? `WordPress вернул ${got.found} статей, но все они уже были в прогонах (${got.skippedUsed}). Расширьте период или снимите «пропускать использованные».` : "По фильтру WordPress ничего не найдено: проверьте период, категории и тип записей." };
+      }
+      urls = got.urls;
+    }
+    if (!urls.length) return { error: "Добавьте хотя бы одну ссылку" };
     const r = await createRun(me, { siteId, urls, name: str(f, "name"), recipe, moderationMode: ["required", "auto", "sample"].includes(mode) ? mode : undefined, stepByStep: f.get("stepByStep") === "on" });
     runId = r.runId;
   } catch (e) { return fail(e); }
@@ -96,6 +107,7 @@ export async function deleteRunAction(_p: FormState, f: FormData): Promise<FormS
 
 /* ---------- Сайт: рецепт, доски ---------- */
 import { mergeRecipe } from "@/lib/pins/types";
+import { sitePostsBySource } from "@/lib/pins/wp/posts";
 import { recipeFromForm } from "@/lib/pins/recipeForm";
 
 const num = (f: FormData, k: string, def: number, min = 0, max = 1000) => {

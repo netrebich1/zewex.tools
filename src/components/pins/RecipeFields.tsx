@@ -1,5 +1,6 @@
 import { Field } from "@/components/ui";
 import type { Recipe } from "@/lib/pins/types";
+import { PagesSourceFields } from "@/components/pins/PagesSourceFields";
 
 export type RecipeSetOption = { id: string; name: string; count: number; topic?: string };
 export type RecipeCanvasStyle = { id: string; name: string; previewUrl: string | null; zewex: boolean };
@@ -10,6 +11,8 @@ export type RecipeFieldsData = {
   pinoraTypes: Array<{ id: string; ru: string }>;
   /** Доступы WordPress команды; не передавать, если выбор WP на этой форме не нужен. */
   wps?: Array<{ id: string; name: string }>;
+  /** Показать блок «Откуда брать статьи» (только в рецепте сайта; у прогона ссылки уже заданы). */
+  pages?: { siteId: string; hasWp: boolean };
 };
 
 export const LANGS = [["en", "English"], ["ru", "Русский"], ["uk", "Українська"], ["de", "Deutsch"], ["fr", "Français"], ["es", "Español"], ["it", "Italiano"], ["pl", "Polski"], ["pt", "Português"]];
@@ -39,6 +42,17 @@ export function RecipeFields({ r, data }: { r: Recipe; data: RecipeFieldsData })
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
+      {/* 0. Откуда брать статьи (только у сайта) */}
+      {data.pages && (
+        <section className="rounded-xl border border-line p-3 space-y-2 lg:col-span-2">
+          <div className="flex items-baseline gap-2">
+            <div className="text-[13px] font-semibold">Откуда брать статьи</div>
+            <span className="help">Подставляется в новый прогон; там фильтр можно поправить и посмотреть найденные статьи перед запуском.</span>
+          </div>
+          <PagesSourceFields siteId={data.pages.siteId} p={r.pages} hasWp={data.pages.hasWp} />
+        </section>
+      )}
+
       {/* 1. Сколько и каких пинов */}
       <section className="rounded-xl border border-line p-3 space-y-2">
         <div className="text-[13px] font-semibold">Пинов на одну ссылку</div>

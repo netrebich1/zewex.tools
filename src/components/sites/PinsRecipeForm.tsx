@@ -15,7 +15,7 @@ export const NICHES = [["", "— не задана —"], ["decor", "Декор 
 type Props = { site: PinSite & { boards: PinBoard[]; sets: PinSet[] }; wps: Pick<SiteAccess, "id" | "name">[] };
 
 /** Данные для полей рецепта: наборы ИИ сайта, утверждённые Canvas-стили каталога, типы Pinora. */
-export async function recipeFieldsData(sets: PinSet[], wps?: Pick<SiteAccess, "id" | "name">[]): Promise<RecipeFieldsData> {
+export async function recipeFieldsData(sets: PinSet[], wps?: Pick<SiteAccess, "id" | "name">[], pages?: RecipeFieldsData["pages"]): Promise<RecipeFieldsData> {
   const opt = (s: PinSet) => ({ id: s.id, name: s.name, count: (s.styleIds as string[]).length, topic: s.topic || undefined });
   const canvas = await approvedCatalogStyles();
   return {
@@ -23,6 +23,7 @@ export async function recipeFieldsData(sets: PinSet[], wps?: Pick<SiteAccess, "i
     canvasStyles: canvas.map((c) => ({ id: c.id, name: c.name.replace(/^Zewex · /, ""), previewUrl: c.previewPath ? publicUrl(c.previewPath) : null, zewex: c.tags.includes("zewex") })),
     pinoraTypes: PINORA_TYPES.map((t) => ({ id: t.id, ru: t.ru })),
     ...(wps ? { wps: wps.map((w) => ({ id: w.id, name: w.name })) } : {}),
+    ...(pages ? { pages } : {}),
   };
 }
 
@@ -30,7 +31,7 @@ export async function recipeFieldsData(sets: PinSet[], wps?: Pick<SiteAccess, "i
 export async function PinsRecipeForm({ site, wps }: Props) {
   const id = site.id;
   const r = mergeRecipe(site.recipe);
-  const data = await recipeFieldsData(site.sets, wps);
+  const data = await recipeFieldsData(site.sets, wps, { siteId: id, hasWp: !!(r.publishing.wpConnectionId || site.wpConnectionId) });
   return (
     <>
       <Card title="Pinterest Pins: рецепт по умолчанию" description="Эти настройки подставляются в каждый новый прогон; там их можно изменить для конкретного прогона.">

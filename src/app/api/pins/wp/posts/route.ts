@@ -14,6 +14,7 @@ export async function GET(req: Request) {
   try {
     const r = await sitePosts(me, siteId, {
       categories: categories.length ? categories : undefined,
+      excludeCategories: q.get("exclude") === "1",
       after: q.get("after") || undefined,
       before: q.get("before") || undefined,
       search: q.get("search") || undefined,

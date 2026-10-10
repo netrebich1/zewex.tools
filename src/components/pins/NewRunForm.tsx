@@ -6,58 +6,58 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Alert, Field } from "@/components/ui";
 import { launchRun } from "@/actions/pins";
 import { RecipeFields, type RecipeFieldsData } from "@/components/pins/RecipeFields";
-import type { Recipe } from "@/lib/pins/types";
+import { PagesSourceFields } from "@/components/pins/PagesSourceFields";
+import { describePagesSource, pagesDateWindow, type PagesSource, type Recipe } from "@/lib/pins/types";
 
 export type NewRunSite = { id: string; name: string; per: number; perDay: number; boards: number; hasWp: boolean; aiSets: number; canvasStyles: number; mix: { ai: number; photos: number; canvas: number; pinora: number }; recipe: Recipe; fields: RecipeFieldsData };
 type Post = { id: number; url: string; title: string; date: string; used: boolean };
 type Term = { id: number; name: string; count: number };
 
 /**
- * Новый прогон: сайт → режим (автопилот / пошаговый) → откуда ссылки (вручную или из WordPress по REST API) → запуск.
+ * Новый прогон: сайт → режим (автопилот / пошаговый) → откуда ссылки (вручную или из WordPress по REST API:
+ * фильтр из рецепта сайта, статьи либо подбираются при запуске, либо выбираются здесь из предпросмотра) → запуск.
  */
 export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; presetSiteId?: string }) {
   const [siteId, setSiteId] = useState(presetSiteId && sites.some((s) => s.id === presetSiteId) ? presetSiteId : sites[0]?.id ?? "");
   const site = sites.find((s) => s.id === siteId);
-  const [source, setSource] = useState<"manual" | "wp">("manual");
+  const [source, setSource] = useState<"manual" | "wp">(site?.hasWp && site.recipe.pages.source === "wp" ? "wp" : "manual");
   const [mode, setMode] = useState<"auto" | "steps">("auto");
 
-  // --- WordPress ---
-  const [cats, setCats] = useState<Term[]>([]);
-  const [catId, setCatId] = useState("");
-  const [after, setAfter] = useState("");
-  const [before, setBefore] = useState("");
+  // --- WordPress: фильтр из рецепта сайта, правится здесь только для этого прогона ---
+  const [filter, setFilter] = useState<PagesSource>(site ? { ...site.recipe.pages, source: "wp" } : { source: "manual", postType: "posts", categories: [], excludeCategories: false, period: "all", after: "", before: "", days: 30, limit: 100, skipUsed: true });
   const [search, setSearch] = useState("");
-  const [limit, setLimit] = useState("100");
   const [hideUsed, setHideUsed] = useState(true);
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [wpError, setWpError] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
+  // Смена сайта: источник и фильтр берём из его рецепта, найденные статьи сбрасываем.
   useEffect(() => {
-    setPosts(null); setPicked(new Set()); setCats([]); setCatId(""); setWpError("");
-    if (source !== "wp" || !siteId || !site?.hasWp) return;
-    fetch(`/api/pins/wp/taxonomies?site=${siteId}`, { cache: "no-store" }).then(async (r) => {
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || "Ошибка");
-      setCats(j.categories ?? []);
-    }).catch((e) => setWpError(e.message));
-  }, [siteId, source, site?.hasWp]);
+    setPosts(null); setPicked(new Set()); setWpError(""); setSearch("");
+    if (!site) return;
+    setFilter({ ...site.recipe.pages, source: "wp" });
+    setSource(site.hasWp && site.recipe.pages.source === "wp" ? "wp" : "manual");
+    setHideUsed(site.recipe.pages.skipUsed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteId]);
 
   const loadPosts = async () => {
     setLoading(true); setWpError(""); setPosts(null); setPicked(new Set());
     try {
-      const q = new URLSearchParams({ site: siteId, limit });
-      if (catId) q.set("categories", catId);
-      if (after) q.set("after", after);
-      if (before) q.set("before", before);
+      const win = pagesDateWindow(filter);
+      const q = new URLSearchParams({ site: siteId, limit: String(filter.limit), type: filter.postType });
+      if (filter.categories.length) q.set("categories", filter.categories.join(","));
+      if (filter.excludeCategories) q.set("exclude", "1");
+      if (win.after) q.set("after", win.after);
+      if (win.before) q.set("before", win.before);
       if (search.trim()) q.set("search", search.trim());
       const r = await fetch(`/api/pins/wp/posts?${q}`, { cache: "no-store" });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Ошибка");
       const list: Post[] = j.posts ?? [];
       setPosts(list);
-      setPicked(new Set(list.filter((p) => !p.used).map((p) => p.url)));
+      setPicked(new Set(list.filter((p) => !filter.skipUsed || !p.used).map((p) => p.url)));
     } catch (e) { setWpError((e as Error).message); }
     finally { setLoading(false); }
   };
@@ -112,34 +112,33 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
         </div>
 
         {source === "manual" ? (
-          <Field label="Ссылки" hint="По одной в строке. Дубли убираются автоматически.">
-            <textarea name="urls" className="input font-mono text-[13px]" rows={10} required placeholder={"https://site.com/article-1\nhttps://site.com/article-2"} />
-          </Field>
+          <>
+            <input type="hidden" name="pagesSource" value="manual" />
+            <Field label="Ссылки" hint="По одной в строке. Дубли убираются автоматически.">
+              <textarea name="urls" className="input font-mono text-[13px]" rows={10} required placeholder={"https://site.com/article-1\nhttps://site.com/article-2"} />
+            </Field>
+          </>
         ) : (
           <div className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <Field label="Категория">
-                <select className="input" value={catId} onChange={(e) => setCatId(e.target.value)}>
-                  <option value="">Все категории</option>
-                  {cats.map((c) => <option key={c.id} value={String(c.id)}>{c.name} · {c.count}</option>)}
-                </select>
-              </Field>
-              <Field label="Опубликованы с"><input type="date" className="input" value={after} onChange={(e) => setAfter(e.target.value)} /></Field>
-              <Field label="по"><input type="date" className="input" value={before} onChange={(e) => setBefore(e.target.value)} /></Field>
-              <Field label="Поиск по заголовку"><input className="input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="nails, decor…" /></Field>
-              <Field label="Не больше"><input type="number" min={1} max={1000} className="input" value={limit} onChange={(e) => setLimit(e.target.value)} /></Field>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <button type="button" className="btn-primary" onClick={loadPosts} disabled={loading}>{loading ? "Загружаю…" : "Загрузить статьи"}</button>
-              <label className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" checked={hideUsed} onChange={(e) => setHideUsed(e.target.checked)} /> скрыть уже использованные</label>
-              {posts && <span className="help">Найдено: {posts.length}, использованных: {posts.filter((p) => p.used).length}, выбрано: <b>{picked.size}</b></span>}
+            <p className="help">Фильтр взят из рецепта сайта ({describePagesSource(site?.recipe.pages ?? filter)}). Здесь его можно поправить для этого прогона. Можно запускать сразу: статьи подтянутся по фильтру при запуске. Или нажмите «Показать статьи», чтобы выбрать нужные вручную.</p>
+            {site && <PagesSourceFields compact siteId={site.id} p={filter} hasWp={site.hasWp} onChange={setFilter} />}
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="Поиск по заголовку (только для предпросмотра)"><input className="input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="nails, decor…" /></Field>
+              <button type="button" className="btn-primary" onClick={loadPosts} disabled={loading}>{loading ? "Загружаю…" : posts ? "Обновить список" : "Показать статьи"}</button>
               {posts && (
+                <button type="button" className="btn-ghost btn-sm" onClick={() => { setPosts(null); setPicked(new Set()); }} title="Вернуться к автоматическому подбору при запуске">Сбросить выбор</button>
+              )}
+            </div>
+            {posts && (
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" checked={hideUsed} onChange={(e) => setHideUsed(e.target.checked)} /> скрыть уже использованные</label>
+                <span className="help">Найдено: {posts.length}, использованных: {posts.filter((p) => p.used).length}, выбрано: <b>{picked.size}</b></span>
                 <span className="ml-auto flex gap-1.5">
                   <button type="button" className="btn-ghost btn-sm" onClick={() => setPicked(new Set(visible.map((p) => p.url)))}>Выбрать все</button>
                   <button type="button" className="btn-ghost btn-sm" onClick={() => setPicked(new Set())}>Снять</button>
                 </span>
-              )}
-            </div>
+              </div>
+            )}
             {wpError && <Alert tone="danger">{wpError}</Alert>}
             {posts && (
               <div className="max-h-[420px] overflow-auto rounded-xl border border-line divide-y divide-line">
@@ -154,8 +153,8 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
                 {!visible.length && <p className="help p-3">Ничего не найдено по фильтру.</p>}
               </div>
             )}
-            {pickedList.map((u) => <input key={u} type="hidden" name="urlList" value={u} />)}
-            <input type="hidden" name="urls" value={pickedList.join("\n")} />
+            {posts && pickedList.map((u) => <input key={u} type="hidden" name="urlList" value={u} />)}
+            {posts && <input type="hidden" name="urls" value={pickedList.join("\n")} />}
           </div>
         )}
       </section>
@@ -173,7 +172,7 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
 
       <div className="flex items-center gap-3">
         <SubmitButton className="btn-brand" pendingText="Запускаю…">{mode === "auto" ? "Запустить автопилот" : "Запустить пошагово"}</SubmitButton>
-        <span className="help">{source === "wp" ? `${picked.size} ссылок из WordPress` : "ссылки из поля выше"}</span>
+        <span className="help">{source === "wp" ? (posts ? `${picked.size} выбранных ссылок из WordPress` : `статьи подтянутся из WordPress по фильтру при запуске (${describePagesSource({ ...filter, source: "wp" })})`) : "ссылки из поля выше"}</span>
       </div>
     </ActionForm>
   );
