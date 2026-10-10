@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { assignScope, canAssignGlobal, canAssignKey, canCreatePersonalKey, canCreateSharedKey, canManageKey, canViewKey, keyTeamScope } from "@/lib/permissions";
+import type { KeyOwnerOption } from "@/components/KeyOwnerFields";
 import { Alert, Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -16,22 +18,33 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
   const key = await prisma.apiKey.findUnique({
     where: { id },
     include: {
-      provider: true, owner: { select: { id: true, name: true } },
+      provider: true, owner: { select: { id: true, name: true } }, team: { select: { id: true, name: true } },
       bindings: { include: { slot: { include: { project: true } }, team: true, user: true, model: true }, orderBy: { createdAt: "asc" } },
     },
   });
-  if (!key) notFound();
-  const isAdmin = me.role === "ADMIN";
-  if (!isAdmin && key.ownerId && key.ownerId !== me.id) notFound();
-  const canEdit = isAdmin || key.ownerId === me.id;
+  if (!key || !canViewKey(me, key)) notFound();
+  const canEdit = canManageKey(me, key);
+  const canAssign = canAssignKey(me, key);
+  const assignTeams = assignScope(me);
+  const keyTeams = keyTeamScope(me);
   const spend = await prisma.usageLog.aggregate({ _sum: { costUsd: true }, _count: true, where: { apiKeyId: id, createdAt: { gte: monthStart() } } });
   const [projects, teams] = await Promise.all([
     prisma.project.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }], select: { id: true, name: true, _count: { select: { slots: true } } } }),
-    prisma.team.findMany({ where: isAdmin ? {} : { id: { in: me.leadTeamIds } }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.team.findMany({
+      where: keyTeams === "all" && assignTeams === "all" ? {} : { id: { in: [...(keyTeams === "all" ? [] : keyTeams), ...(assignTeams === "all" ? [] : assignTeams)] } },
+      orderBy: { name: "asc" }, select: { id: true, name: true },
+    }),
   ]);
-  const usedProjectIds = new Set(key.bindings.filter((b) => b.slot).map((b) => b.slot!.project.id));
-  const usedTeamIds = new Set(key.bindings.filter((b) => b.teamId).map((b) => b.teamId as string));
-  const canAssign = canEdit && !key.ownerId && (isAdmin || teams.length > 0);
+  const usedProjectIds = [...new Set(key.bindings.filter((b) => b.slot).map((b) => b.slot!.project.id))];
+  const usedTeamIds = [...new Set(key.bindings.filter((b) => b.teamId).map((b) => b.teamId as string))];
+  const assignable = teams.filter((t) => assignTeams === "all" || assignTeams.includes(t.id));
+  const currentOwner = key.ownerId ? "personal" : key.teamId ? `team:${key.teamId}` : "shared";
+  // Варианты «чей ключ» для формы настроек: текущий всегда есть, остальные — по правам.
+  const owners: KeyOwnerOption[] = [];
+  if (canCreateSharedKey(me) || currentOwner === "shared") owners.push({ value: "shared", label: "Общий: всем по правилам" });
+  for (const t of teams) if (keyTeams === "all" || keyTeams.includes(t.id) || key.teamId === t.id) owners.push({ value: `team:${t.id}`, label: `Команда «${t.name}»` });
+  if (key.team && !owners.some((o) => o.value === `team:${key.team!.id}`)) owners.push({ value: `team:${key.team.id}`, label: `Команда «${key.team.name}»` });
+  if (canCreatePersonalKey(me) || currentOwner === "personal") owners.push({ value: "personal", label: `Личный${key.owner ? ` · ${key.owner.name}` : ""}` });
   // The monthly limit only works when every call's cost is known; warn about rules where it is not.
   const limitWarning = key.monthlyLimitUsd == null ? null
     : key.provider.adapter === "SERPAPI" ? "SerpAPI не сообщает стоимость запросов, поэтому вызовы через этот ключ будут отклоняться, пока на нём стоит лимит. Снимите лимит."
@@ -39,35 +52,38 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
         const unpriced = key.bindings.filter((b) => key.provider.kind === "LLM" && (!b.model || (b.model.inputPrice == null && b.model.outputPrice == null))).map((b) => b.model?.modelId ?? "без модели");
         return unpriced.length ? `У моделей ${Array.from(new Set(unpriced)).join(", ")} не заданы цены: вызовы по этим правилам будут отклоняться, пока на ключе стоит лимит. Укажите цены на странице провайдера.` : null;
       })();
+  const whose = key.owner ? `личный · ${key.owner.name}` : key.team ? `команда «${key.team.name}»` : "общий";
 
   return (
     <>
-      <PageHeader back={{ href: "/keys", label: "Ключи" }} title={key.label} subtitle={`${key.provider.name} · ${key.secretHint}`} />
+      <PageHeader back={{ href: "/keys", label: "Ключи" }} title={key.label} subtitle={`${key.provider.name} · ${key.secretHint} · ${whose}`} />
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
           {limitWarning && <Alert tone="warn">{limitWarning}</Alert>}
           {canAssign && (
-            <Card title="Подключить к сервисам и командам" description="Отметьте, где работает этот ключ. Правила создаются сами, модель берётся из настроек провайдера. Несколько ключей на одном сервисе делят нагрузку.">
+            <Card title="Подключить к сервисам и командам" description={key.teamId ? `Командный ключ: правила создаются только для команды «${key.team?.name}». Отметьте сервисы или оставьте пусто, чтобы ключ работал во всех инструментах команды.` : "Отметьте, где работает этот ключ. Правила создаются сами, модель берётся из настроек провайдера. Несколько ключей на одном сервисе делят нагрузку."}>
               <ActionForm action={assignKeyUsage} hidden={{ id: key.id }}>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <span className="label">Сервисы</span>
                     <div className="space-y-1.5">
                       {projects.map((p) => (
-                        <label key={p.id} className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="projectIds" value={p.id} defaultChecked={usedProjectIds.has(p.id)} className="h-4 w-4" /> {p.name} <span className="help">· слотов: {p._count.slots}</span></label>
+                        <label key={p.id} className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="projectIds" value={p.id} defaultChecked={usedProjectIds.includes(p.id)} className="h-4 w-4" /> {p.name} <span className="help">· слотов: {p._count.slots}</span></label>
                       ))}
                       {projects.length === 0 && <p className="help">Сервисов пока нет.</p>}
                     </div>
                   </div>
-                  <div>
-                    <span className="label">Команды</span>
-                    <div className="space-y-1.5">
-                      {teams.map((t) => (
-                        <label key={t.id} className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="teamIds" value={t.id} defaultChecked={usedTeamIds.has(t.id)} className="h-4 w-4" /> {t.name}</label>
-                      ))}
+                  {key.teamId ? <input type="hidden" name="teamIds" value={key.teamId} /> : (
+                    <div>
+                      <span className="label">Команды</span>
+                      <div className="space-y-1.5">
+                        {assignable.map((t) => (
+                          <label key={t.id} className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="teamIds" value={t.id} defaultChecked={usedTeamIds.includes(t.id)} className="h-4 w-4" /> {t.name}</label>
+                        ))}
+                      </div>
+                      <p className="help mt-2">{canAssignGlobal(me) ? "Без команд ключ станет ключом сервиса по умолчанию для всех." : "Вы подключаете ключ только к своим командам: отметьте хотя бы одну."}</p>
                     </div>
-                    <p className="help mt-2">Без команд ключ станет ключом сервиса по умолчанию для всех.</p>
-                  </div>
+                  )}
                 </div>
                 <SubmitButton pendingText="Подключаю…">Сохранить подключения</SubmitButton>
               </ActionForm>
@@ -105,14 +121,13 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
                     </select>
                   </Field>
                   <Field label="Месячный лимит, $"><input name="monthlyLimitUsd" className="input" inputMode="decimal" defaultValue={key.monthlyLimitUsd ?? ""} placeholder="без лимита" /></Field>
-                  {isAdmin && (
-                    <Field label="Кому доступен">
-                      <select name="personal" className="input" defaultValue={key.ownerId ? "1" : "0"}>
-                        <option value="0">Общий</option>
-                        <option value="1">Личный{key.owner ? ` · ${key.owner.name}` : ""}</option>
+                  {owners.length > 1 ? (
+                    <Field label="Чей ключ" hint={key.bindings.length ? "Чтобы поменять, сначала уберите ключ из правил." : undefined}>
+                      <select name="owner" className="input" defaultValue={currentOwner} disabled={key.bindings.length > 0}>
+                        {owners.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </Field>
-                  )}
+                  ) : <input type="hidden" name="owner" value={currentOwner} />}
                 </div>
                 {key.provider.authType === "BASIC" ? (
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -133,7 +148,7 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
           <Card title="Состояние">
             <dl className="space-y-2 text-[14px]">
               <div className="flex justify-between gap-3"><dt className="text-muted">Статус</dt><dd>{key.status === "ACTIVE" ? <Badge tone="ok">активен</Badge> : <Badge tone="danger">выключен</Badge>}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-muted">Чей</dt><dd>{key.owner ? `личный · ${key.owner.name}` : "общий"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted">Чей</dt><dd>{whose}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Расход за месяц</dt><dd>{fmtMoney(spend._sum.costUsd ?? 0)}{key.monthlyLimitUsd != null ? ` / ${fmtMoney(key.monthlyLimitUsd)}` : ""}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Вызовов за месяц</dt><dd>{spend._count}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Создан</dt><dd>{fmtDate(key.createdAt)}</dd></div>

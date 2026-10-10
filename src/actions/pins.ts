@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { canAccessTeam } from "@/lib/pins/runs/actions";
 import { canAccessPinSite, canAccessRun, canAccessSiteAccess } from "@/lib/sites/access";
 import { redirect } from "next/navigation";
-import { requireUser } from "@/lib/auth";
+import { canManageTeam, requireUser } from "@/lib/auth";
 import { createRun, continueRun, deleteRun, parseUrls, redoMissing, skipFailed, stopRun } from "@/lib/pins/runs/actions";
 import type { ModerationMode } from "@/lib/pins/types";
 
@@ -278,7 +278,7 @@ export async function buildCanvasCatalog(_p: FormState, f: FormData): Promise<Fo
   const me = await requireUser();
   const teamId = str(f, "teamId");
   if (!canAccessTeam(me, teamId)) return { error: "Нет доступа" };
-  if (me.role !== "ADMIN" && !me.leadTeamIds.includes(teamId)) return { error: "Собирать каталог может администратор или лидер команды" };
+  if (!canManageTeam(me, teamId)) return { error: "Собирать каталог может администратор или лидер команды" };
   try {
     const runId = await systemRun(teamId);
     await enqueueJob(runId, "previews", { harvest: true, force: f.get("force") === "1" });
@@ -289,7 +289,7 @@ export async function buildCanvasCatalog(_p: FormState, f: FormData): Promise<Fo
 
 export async function decideCanvasStyle(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
-  if (me.role !== "ADMIN" && !me.leadTeamIds.length) return { error: "Утверждать стили может администратор или лидер команды" };
+  if (me.role !== "ADMIN" && !me.leadTeamIds.length && me.perms.teams === "view") return { error: "Утверждать стили может администратор или лидер команды" };
   const id = str(f, "id");
   const decision = str(f, "decision");
   try {

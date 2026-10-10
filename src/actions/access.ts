@@ -8,6 +8,7 @@ import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { testConnection } from "@/lib/pins/wp/client";
 import { assertPublicUrl } from "@/lib/pins/fetch";
 import { canAccessSiteAccess } from "@/lib/sites/access";
+import { seesAllSites } from "@/lib/permissions";
 
 export type FormState = { error?: string; ok?: string };
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -34,7 +35,7 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
   } catch (e) { return fail(e); }
   const projects = f.getAll("projects").map(String).filter(Boolean);
   // Дополнительные команды: только те, где пользователь состоит (админ — любые); владелец не дублируется.
-  const extraTeams = [...new Set(f.getAll("teamIds").map(String).filter((t) => t && t !== teamId && (me.role === "ADMIN" || me.teamIds.includes(t))))];
+  const extraTeams = [...new Set(f.getAll("teamIds").map(String).filter((t) => t && t !== teamId && (seesAllSites(me) || me.teamIds.includes(t))))];
   const allTeams = [teamId, ...extraTeams];
   // Видимость: только участники выбранных команд.
   const wantViewers = [...new Set(f.getAll("viewerIds").map(String).filter(Boolean))];

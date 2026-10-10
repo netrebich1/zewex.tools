@@ -9,6 +9,7 @@ import { createSlot, deleteBinding, deleteProject, deleteSlot, updateProject } f
 import { BindingForm } from "@/components/BindingForm";
 import { RouteCheck } from "@/components/RouteCheck";
 import { CAPABILITY_LABELS, SCOPE_LABELS, STATUS_LABELS } from "@/lib/utils";
+import { assignScope, canAssignGlobal, canDeleteBinding, keyWhere } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -27,20 +28,25 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
   });
   if (!project) notFound();
   const isAdmin = me.role === "ADMIN";
+  const assign = assignScope(me);
+  const visibleKeys = keyWhere(me) ?? { id: "" };
   const [sections, providers, teams, users] = await Promise.all([
     prisma.section.findMany({ orderBy: { order: "asc" } }),
     prisma.provider.findMany({
       where: { isActive: true }, orderBy: { order: "asc" },
-      include: { models: { where: { isEnabled: true }, orderBy: { name: "asc" } }, apiKeys: { where: { status: "ACTIVE" }, orderBy: { label: "asc" } } },
+      include: { models: { where: { isEnabled: true }, orderBy: { name: "asc" } }, apiKeys: { where: { status: "ACTIVE", ...visibleKeys }, orderBy: { label: "asc" } } },
     }),
     prisma.team.findMany({ orderBy: { name: "asc" } }),
-    prisma.user.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.user.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, memberships: { select: { teamId: true } } } }),
   ]);
   const providerOptions = providers.map((p) => ({
     id: p.id, name: p.name, kind: p.kind,
     models: p.models.map((m) => ({ id: m.id, modelId: m.modelId, name: m.name, capabilities: m.capabilities })),
-    keys: p.apiKeys.map((k) => ({ id: k.id, label: k.label, secretHint: k.secretHint, ownerId: k.ownerId, status: k.status })),
+    keys: p.apiKeys.map((k) => ({ id: k.id, label: k.label, secretHint: k.secretHint, ownerId: k.ownerId, teamId: k.teamId, status: k.status })),
   }));
+  const userOptions = users.map((u) => ({ id: u.id, name: u.name, teamIds: u.memberships.map((m) => m.teamId) }));
+  // Проверка маршрута за других: «любые правила» — за всех, уровень команды — за участников своих команд.
+  const routeUsers = assign === "all" ? userOptions : userOptions.filter((u) => u.id === me.id || u.teamIds.some((t) => assign.includes(t)));
   const slotOptions = project.slots.map((s) => ({ id: s.id, name: s.name, capability: s.capability }));
   const scopeOrder = ["USER_PROJECT", "TEAM_PROJECT", "PROJECT"];
 
@@ -80,7 +86,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
                         <thead><tr><th>Уровень</th><th>Для кого</th><th>Провайдер · модель</th><th>Ключ</th><th></th></tr></thead>
                         <tbody>
                           {[...slot.bindings].sort((a, b) => scopeOrder.indexOf(a.scope) - scopeOrder.indexOf(b.scope)).map((b) => {
-                            const canDelete = isAdmin || (b.scope === "USER_PROJECT" && b.userId === me.id) || (b.teamId != null && me.leadTeamIds.includes(b.teamId));
+                            const canDelete = canDeleteBinding(me, b);
                             return (
                               <tr key={b.id}>
                                 <td><Badge tone={b.scope === "PROJECT" ? "neutral" : b.scope === "TEAM_PROJECT" ? "brand" : "ink"}>{SCOPE_LABELS[b.scope]}</Badge></td>
@@ -110,7 +116,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
             <details className="mt-4 group">
               <summary className="btn-primary cursor-pointer list-none inline-flex">+ Добавить правило</summary>
               <div className="mt-4 rounded-xl border border-line p-3 sm:p-4">
-                <BindingForm providers={providerOptions} teams={teams.map((t) => ({ id: t.id, name: t.name }))} users={users} slots={slotOptions} isAdmin={isAdmin} meId={me.id} leadTeamIds={me.leadTeamIds} compact />
+                <BindingForm providers={providerOptions} teams={teams.map((t) => ({ id: t.id, name: t.name }))} users={userOptions} slots={slotOptions} can={{ meId: me.id, myTeamIds: me.teamIds, assign }} compact />
               </div>
             </details>
           )}
@@ -135,7 +141,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
 
         {project.slots.length > 0 && (
           <Card title="Проверка маршрута" description="Покажет, какой ключ и модель получит конкретный человек, и какое правило сработало.">
-            <RouteCheck slots={slotOptions} users={isAdmin ? users : users.filter((u) => u.id === me.id)} meId={me.id} />
+            <RouteCheck slots={slotOptions} users={routeUsers} meId={me.id} />
           </Card>
         )}
 

@@ -6,12 +6,13 @@
 import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
+import { seesAllSites } from "@/lib/permissions";
 
 type AccessRow = { id: string; teamId: string; teams: { teamId: string }[]; viewers: { userId: string }[] };
 
-/** Видит ли пользователь доступ: админ — всё; иначе одна из его команд + (список сотрудников пуст, или он в нём, или он лидер команды-владельца). */
+/** Видит ли пользователь доступ: админ и право «все сайты» — всё; иначе одна из его команд + (список сотрудников пуст, или он в нём, или он лидер команды-владельца). */
 export function canSeeAccess(me: CurrentUser, a: Omit<AccessRow, "id">): boolean {
-  if (me.role === "ADMIN") return true;
+  if (seesAllSites(me)) return true;
   const inTeam = me.teamIds.includes(a.teamId) || a.teams.some((t) => me.teamIds.includes(t.teamId));
   if (!inTeam) return false;
   if (!a.viewers.length) return true;
@@ -20,7 +21,7 @@ export function canSeeAccess(me: CurrentUser, a: Omit<AccessRow, "id">): boolean
 
 /** Id доступов, видимых пользователю; null — все (админ). */
 export async function visibleAccessIds(me: CurrentUser): Promise<string[] | null> {
-  if (me.role === "ADMIN") return null;
+  if (seesAllSites(me)) return null;
   if (!me.teamIds.length) return [];
   const rows = await prisma.siteAccess.findMany({
     where: { OR: [{ teamId: { in: me.teamIds } }, { teams: { some: { teamId: { in: me.teamIds } } } }] },
@@ -50,14 +51,14 @@ export async function pinRunWhere(me: CurrentUser): Promise<Prisma.PinRunWhereIn
 }
 
 export async function canAccessSiteAccess(me: CurrentUser, accessId: string): Promise<boolean> {
-  if (me.role === "ADMIN") return true;
+  if (seesAllSites(me)) return true;
   const a = await prisma.siteAccess.findUnique({ where: { id: accessId }, select: { teamId: true, teams: { select: { teamId: true } }, viewers: { select: { userId: true } } } });
   return !!a && canSeeAccess(me, a);
 }
 
 /** Доступ к сайту сервиса: через его доступ WordPress, а без него — по команде. */
 export async function canAccessPinSite(me: CurrentUser, site: { teamId: string; wpConnectionId: string | null }): Promise<boolean> {
-  if (me.role === "ADMIN") return true;
+  if (seesAllSites(me)) return true;
   if (site.wpConnectionId) {
     const ok = await canAccessSiteAccess(me, site.wpConnectionId);
     // Доступ удалён/недоступен, но сайт в своей команде — пусть остаётся виден команде.
@@ -68,7 +69,7 @@ export async function canAccessPinSite(me: CurrentUser, site: { teamId: string; 
 
 /** Прогон виден, если виден его сайт; прогон без сайта — по команде. */
 export async function canAccessRun(me: CurrentUser, run: { teamId: string; site: { teamId: string; wpConnectionId: string | null } | null }): Promise<boolean> {
-  if (me.role === "ADMIN") return true;
+  if (seesAllSites(me)) return true;
   if (run.site) return canAccessPinSite(me, run.site);
   return me.teamIds.includes(run.teamId);
 }

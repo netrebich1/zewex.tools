@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { pinSiteWhere } from "@/lib/sites/access";
-import { requireUser } from "@/lib/auth";
+import { canManageTeam, requireUser } from "@/lib/auth";
 import { Card, Empty, PageHeader, type SearchParams, sp } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -36,7 +36,7 @@ export default async function StylesPage({ searchParams }: { searchParams: Promi
           <button className="btn-ghost btn-sm">Сайт</button>
         </form>
       </div>
-      {!site ? <Empty title="Сайтов нет" /> : tab === "ai" ? <AiTab siteId={site.id} teamId={site.teamId} /> : tab === "canvas" ? <CanvasTab siteId={site.id} teamId={site.teamId} canDecide={me.role === "ADMIN" || me.leadTeamIds.includes(site.teamId)} /> : <PinoraTab />}
+      {!site ? <Empty title="Сайтов нет" /> : tab === "ai" ? <AiTab siteId={site.id} teamId={site.teamId} /> : tab === "canvas" ? <CanvasTab siteId={site.id} teamId={site.teamId} canDecide={canManageTeam(me, site.teamId)} /> : <PinoraTab />}
     </>
   );
 }

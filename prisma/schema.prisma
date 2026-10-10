@@ -1008,7 +1008,7 @@ model Article {
   @@index([teamId, status])
   @@index([status, priority, createdAt])
   @@index([runId])
-  @@index([siteId, keyword(length: 191)])
+  @@index([siteId, keyword])
   @@index([claimedById])
 }
 

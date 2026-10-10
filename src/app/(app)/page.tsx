@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { sp, type SearchParams } from "@/components/ui";
 import { Icon } from "@/components/Icons";
 import { ToolsBrowser, type ToolSection } from "@/components/tools/ToolsBrowser";
+import { keyWhere, usageWhere } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const [sections, favorites, keys, rules, calls] = await Promise.all([
     prisma.section.findMany({ orderBy: { order: "asc" }, include: { projects: { orderBy: [{ order: "asc" }, { name: "asc" }], include: { _count: { select: { slots: true } } } } } }),
     prisma.favoriteTool.findMany({ where: { userId: me.id }, select: { projectId: true } }),
-    prisma.apiKey.count({ where: { status: "ACTIVE" } }),
+    prisma.apiKey.count({ where: { status: "ACTIVE", ...(keyWhere(me) ?? { id: "" }) } }),
     prisma.binding.count(),
-    prisma.usageLog.count({ where: { createdAt: { gte: new Date(Date.now() - 7 * 86400000) } } }),
+    prisma.usageLog.count({ where: { createdAt: { gte: new Date(Date.now() - 7 * 86400000) }, ...usageWhere(me) } }),
   ]);
   const data: ToolSection[] = sections.map((s) => ({
     id: s.id, slug: s.slug, name: s.name, icon: s.icon,

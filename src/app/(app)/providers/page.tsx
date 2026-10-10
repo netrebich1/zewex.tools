@@ -5,11 +5,14 @@ import { Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { createProvider } from "@/actions/admin";
+import { redirect } from "next/navigation";
+import { canManageProviders, canViewProviders } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProvidersPage() {
   const me = await requireUser();
+  if (!canViewProviders(me)) redirect("/?denied=1");
   const providers = await prisma.provider.findMany({ orderBy: { order: "asc" }, include: { _count: { select: { apiKeys: true, bindings: true } }, models: { select: { isEnabled: true } } } });
   return (
     <>
@@ -33,7 +36,7 @@ export default async function ProvidersPage() {
           );
         })}
       </div>
-      {me.role === "ADMIN" && (
+      {canManageProviders(me) && (
         <Card className="mt-6 max-w-2xl" title="Добавить OpenAI-совместимого провайдера" description="Подходит для любого реселлера с API в стиле OpenAI (chat/completions, Bearer-ключ).">
           <ActionForm action={createProvider}>
             <div className="grid gap-3 sm:grid-cols-2">

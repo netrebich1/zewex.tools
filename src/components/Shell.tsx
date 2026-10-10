@@ -6,16 +6,17 @@ import { LogoFull, LogoMark } from "./Logo";
 import { Icon, type IconName } from "./Icons";
 import { ThemeSwitch } from "./ThemeSwitch";
 import { HeaderBalances } from "./HeaderBalances";
+import { canSeeBalances, canViewKeys, canViewProviders, canViewUsers, type Actor } from "@/lib/permissions";
 
-type NavItem = { href: string; label: string; icon: IconName; admin?: boolean };
+type NavItem = { href: string; label: string; icon: IconName; show?: (u: Actor) => boolean };
 
-/** Меню под аватаркой: всё служебное. Основной экран — инструменты. */
+/** Меню под аватаркой: всё служебное. Основной экран — инструменты. Пункты скрываются по правам. */
 const MENU: NavItem[] = [
-  { href: "/keys", label: "Ключи ИИ", icon: "key" },
+  { href: "/keys", label: "Ключи ИИ", icon: "key", show: canViewKeys },
   { href: "/sites", label: "Сайты", icon: "layers" },
-  { href: "/providers", label: "Провайдеры и модели", icon: "cloud" },
+  { href: "/providers", label: "Провайдеры и модели", icon: "cloud", show: canViewProviders },
   { href: "/teams", label: "Команды", icon: "users" },
-  { href: "/users", label: "Пользователи", icon: "user", admin: true },
+  { href: "/users", label: "Пользователи", icon: "user", show: canViewUsers },
   { href: "/usage", label: "Расход", icon: "chart" },
   { href: "/account", label: "Аккаунт", icon: "user" },
 ];
@@ -24,12 +25,11 @@ function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "•";
 }
 
-export function Shell({ user, children }: { user: { name: string; email: string; role: string }; children: ReactNode }) {
+export function Shell({ user, children }: { user: Actor & { name: string; email: string }; children: ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const isAdmin = user.role === "ADMIN";
-  const items = MENU.filter((n) => !n.admin || isAdmin);
+  const items = MENU.filter((n) => !n.show || n.show(user));
   const isTools = pathname === "/" || pathname.startsWith("/projects") || pathname.startsWith("/pinterest") || pathname.startsWith("/gambling");
 
   useEffect(() => {
@@ -51,7 +51,7 @@ export function Shell({ user, children }: { user: { name: string; email: string;
             <Link href="/" className={`tab ${isTools ? "active" : ""}`}><Icon.grid width={15} height={15} /> Инструменты</Link>
           </nav>
           <div className="ml-auto flex items-center gap-2">
-            {isAdmin && <HeaderBalances />}
+            {canSeeBalances(user) && <HeaderBalances />}
             <ThemeSwitch />
           </div>
           <div className="relative flex items-center gap-2" ref={ref}>
