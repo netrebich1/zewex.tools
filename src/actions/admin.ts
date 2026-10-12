@@ -2,8 +2,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getCurrentUser, hashPassword, requireAdmin, requireUser } from "@/lib/auth";
-import { encryptSecret, decryptSecret, randomToken, secretHint } from "@/lib/crypto";
+import { LOGIN_RE, allowedRegistrationEmails, getCurrentUser, hashPassword, normalizeLogin, requireAdmin, requireUser } from "@/lib/auth";
+import { encryptSecret, decryptSecret, secretHint } from "@/lib/crypto";
 import { checkKey, fetchModels } from "@/lib/adapters";
 import { parseNumber, slugify } from "@/lib/utils";
 import {
@@ -608,25 +608,28 @@ export async function removeTeamMember(_p: FormState, f: FormData): Promise<Form
 }
 
 /* ---------- Users ---------- */
-export async function inviteUser(_p: FormState, f: FormData): Promise<FormState> {
+/** Админ сам заводит сотрудника: логин и пароль задаются сразу, писем и ссылок-приглашений нет. */
+export async function createUser(_p: FormState, f: FormData): Promise<FormState & { login?: string }> {
   await requireAdmin();
-  const email = str(f, "email").toLowerCase();
-  const name = str(f, "name") || email.split("@")[0];
+  const login = normalizeLogin(str(f, "login"));
+  const password = String(f.get("password") ?? "");
+  const name = str(f, "name") || login.split("@")[0];
   const role = str(f, "role") === "ADMIN" ? "ADMIN" : "MEMBER";
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Некорректная почта" };
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing?.passwordHash) return { error: "Пользователь уже зарегистрирован" };
-  const inviteToken = randomToken(24);
-  const inviteExpires = new Date(Date.now() + 7 * 86400 * 1000);
-  // Права из формы приглашения (если поля присланы); иначе у существующего остаются свои, у нового — по умолчанию.
-  const permissions = f.has("usage") ? permissionsFromForm(f) : undefined;
+  if (!LOGIN_RE.test(login)) return { error: "Логин: от 3 до 64 символов, латинские буквы, цифры и знаки . _ - @ (можно почту)" };
+  const badPassword = passwordProblem(password);
+  if (badPassword) return { error: badPassword };
+  if (await prisma.user.findUnique({ where: { email: login }, select: { id: true } })) return { error: "Такой логин уже занят" };
   const teamIds = f.getAll("teamIds").map(String).filter(Boolean);
-  const user = existing
-    ? await prisma.user.update({ where: { id: existing.id }, data: { inviteToken, inviteExpires, role, name, ...(permissions ? { permissions } : {}) } })
-    : await prisma.user.create({ data: { email, name, role, inviteToken, inviteExpires, ...(permissions ? { permissions } : {}) } });
+  const user = await prisma.user.create({ data: { email: login, name, role, passwordHash: await hashPassword(password), permissions: permissionsFromForm(f) } });
   if (teamIds.length) await prisma.teamMember.createMany({ data: teamIds.map((teamId) => ({ teamId, userId: user.id })), skipDuplicates: true });
   revalidatePath("/users");
-  return { ok: `Приглашение создано, ссылка действует 7 дней: ${process.env.APP_URL ?? ""}/invite/${inviteToken}` };
+  return { ok: "Сотрудник добавлен", login };
+}
+
+function passwordProblem(password: string): string | null {
+  if (password.length < 8) return "Пароль не короче 8 символов";
+  if (password !== password.trim()) return "Пароль не должен начинаться или заканчиваться пробелом";
+  return null;
 }
 
 export async function updateUser(_p: FormState, f: FormData): Promise<FormState> {
@@ -635,7 +638,16 @@ export async function updateUser(_p: FormState, f: FormData): Promise<FormState>
   const role = str(f, "role") === "ADMIN" ? "ADMIN" : "MEMBER";
   const isActive = str(f, "isActive") === "1";
   if (id === me.id && (role !== "ADMIN" || !isActive)) return { error: "Нельзя понизить или отключить самого себя" };
-  await prisma.user.update({ where: { id }, data: { role, isActive, name: str(f, "name") || undefined } });
+  const user = await prisma.user.findUnique({ where: { id }, select: { email: true } });
+  if (!user) return { error: "Пользователь не найден" };
+  // Логин меняется только у сотрудников: смена почты владельца заново открыла бы первую регистрацию.
+  const login = f.has("login") ? normalizeLogin(str(f, "login")) : user.email;
+  if (login !== user.email) {
+    if (id === me.id || allowedRegistrationEmails().includes(user.email)) return { error: "Логин владельца портала менять нельзя" };
+    if (!LOGIN_RE.test(login)) return { error: "Логин: от 3 до 64 символов, латинские буквы, цифры и знаки . _ - @ (можно почту)" };
+    if (await prisma.user.findUnique({ where: { email: login }, select: { id: true } })) return { error: "Такой логин уже занят" };
+  }
+  await prisma.user.update({ where: { id }, data: { role, isActive, email: login, name: str(f, "name") || undefined } });
   if (!isActive) await prisma.session.deleteMany({ where: { userId: id } });
   revalidatePath("/users");
   revalidatePath(`/users/${id}`);
@@ -657,10 +669,11 @@ export async function updateUserPermissions(_p: FormState, f: FormData): Promise
 export async function resetUserPassword(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireAdmin();
   const id = str(f, "id");
-  const password = str(f, "password");
-  if (password.length < 8) return { error: "Пароль не короче 8 символов" };
+  const password = String(f.get("password") ?? "");
+  const badPassword = passwordProblem(password);
+  if (badPassword) return { error: badPassword };
   if (id === me.id) return { error: "Свой пароль меняйте в разделе «Аккаунт»" };
-  await prisma.user.update({ where: { id }, data: { passwordHash: await hashPassword(password) } });
+  await prisma.user.update({ where: { id }, data: { passwordHash: await hashPassword(password), inviteToken: null, inviteExpires: null } });
   await prisma.session.deleteMany({ where: { userId: id } });
   return { ok: "Пароль задан, сессии пользователя сброшены" };
 }

@@ -9,6 +9,12 @@ import { canManageTeam as permCanManageTeam, resolvePermissions, type Permission
 export const SESSION_COOKIE = "zx_session";
 const SESSION_DAYS = 30;
 
+/** Логин для входа: почта или короткое имя. Хранится в `User.email` в нижнем регистре. */
+export const LOGIN_RE = /^[a-z0-9][a-z0-9._@+-]{2,63}$/;
+export function normalizeLogin(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
 export async function hashPassword(p: string) {
   return bcrypt.hash(p, 11);
 }

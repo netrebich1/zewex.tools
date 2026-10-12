@@ -24,7 +24,7 @@ export type Permissions = {
   sites: "team" | "all";
   /** Остатки на балансах провайдеров в шапке. */
   balances: boolean;
-  /** Список пользователей: скрыт / только смотреть. Приглашать и менять права может только админ. */
+  /** Список пользователей: скрыт / только смотреть. Добавлять людей и менять права может только админ. */
   users: "none" | "view";
 };
 
@@ -85,7 +85,7 @@ export const PERMISSION_FIELDS: Array<FieldMeta<PermissionKey>> = [
   { key: "sites", label: "Сайты", options: [{ value: "team", label: "Сайты своих команд" }, { value: "all", label: "Все сайты" }] },
   { key: "providers", label: "Провайдеры и модели", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }, { value: "manage", label: "Менять настройки и модели" }] },
   { key: "balances", label: "Балансы провайдеров в шапке", options: [{ value: false, label: "Не показывать" }, { value: true, label: "Показывать" }] },
-  { key: "users", label: "Пользователи", hint: "Приглашать людей и менять их права может только админ.", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }] },
+  { key: "users", label: "Пользователи", hint: "Добавлять людей и менять их права может только админ.", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }] },
 ] as Array<FieldMeta<PermissionKey>>;
 
 /** Разбирает JSON из базы или данные формы; неизвестные значения заменяются значениями по умолчанию. */

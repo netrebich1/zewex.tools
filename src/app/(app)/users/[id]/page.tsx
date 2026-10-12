@@ -1,17 +1,18 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/auth";
+import { allowedRegistrationEmails, requireAdmin } from "@/lib/auth";
 import { parsePermissions } from "@/lib/permissions";
 import { Alert, Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { addTeamMember, deleteUser, inviteUser, removeTeamMember, resetUserPassword, updateUser, updateUserPermissions } from "@/actions/admin";
+import { addTeamMember, deleteUser, removeTeamMember, resetUserPassword, updateUser, updateUserPermissions } from "@/actions/admin";
 import { PermissionsFields } from "@/components/PermissionsFields";
+import { PasswordInput } from "@/components/users/PasswordInput";
 import { fmtDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-/** Карточка сотрудника: роль и доступ, права, команды, пароль и приглашение. Только для админа. */
+/** Карточка сотрудника: логин, роль и доступ, права, команды, пароль. Только для админа. */
 export default async function UserPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireAdmin();
   const { id } = await params;
@@ -21,14 +22,13 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
   ]);
   if (!u) notFound();
   const pending = !u.passwordHash;
-  const inviteOk = pending && u.inviteToken && u.inviteExpires && u.inviteExpires > new Date();
-  const appUrl = process.env.APP_URL ?? "";
   const memberIds = new Set(u.memberships.map((m) => m.teamId));
   const isSelf = u.id === me.id;
+  const loginLocked = isSelf || allowedRegistrationEmails().includes(u.email);
 
   return (
     <>
-      <PageHeader back={{ href: "/users", label: "Пользователи" }} title={u.name} subtitle={`${u.email} · с ${fmtDate(u.createdAt)}`} actions={<div className="flex gap-1.5"><Badge tone={u.role === "ADMIN" ? "ink" : "neutral"}>{u.role === "ADMIN" ? "админ" : "сотрудник"}</Badge>{!u.isActive && <Badge tone="danger">отключён</Badge>}{pending && (inviteOk ? <Badge tone="warn">ждёт регистрации</Badge> : <Badge tone="danger">приглашение истекло</Badge>)}</div>} />
+      <PageHeader back={{ href: "/users", label: "Пользователи" }} title={u.name} subtitle={`${u.email} · с ${fmtDate(u.createdAt)}`} actions={<div className="flex gap-1.5"><Badge tone={u.role === "ADMIN" ? "ink" : "neutral"}>{u.role === "ADMIN" ? "админ" : "сотрудник"}</Badge>{!u.isActive && <Badge tone="danger">отключён</Badge>}{pending && <Badge tone="warn">пароль не задан</Badge>}</div>} />
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div className="space-y-4">
           <Card title="Права" description={u.role === "ADMIN" ? "Админ может всё: эти настройки не ограничивают его. Они вступят в силу, если сменить роль на «сотрудник»." : "Выберите готовый профиль или настройте каждое право отдельно. Лидер команды дополнительно получает уровень «команда» в своей команде."}>
@@ -71,6 +71,9 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
         <div className="space-y-4">
           <Card title="Роль и доступ">
             <ActionForm action={updateUser} hidden={{ id: u.id }}>
+              <Field label="Логин" hint={loginLocked ? "Логин владельца портала не меняется." : "С ним сотрудник входит в портал. Латинские буквы, цифры и знаки . _ - @."}>
+                <input name="login" className="input" defaultValue={u.email} readOnly={loginLocked} minLength={3} maxLength={64} autoComplete="off" autoCapitalize="none" spellCheck={false} />
+              </Field>
               <Field label="Имя"><input name="name" className="input" defaultValue={u.name} /></Field>
               <Field label="Роль">
                 <select name="role" className="input" defaultValue={u.role} disabled={isSelf}>
@@ -90,20 +93,12 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
           </Card>
 
           {!isSelf && (
-            <Card title={pending ? "Приглашение" : "Пароль"}>
-              {pending ? (
-                <div className="space-y-3">
-                  {inviteOk ? <p className="text-[12.5px] break-all font-mono bg-ink/5 rounded-lg px-2 py-1">{appUrl}/invite/{u.inviteToken}</p> : <Alert tone="warn">Ссылка истекла. Создайте новую.</Alert>}
-                  <ActionForm action={inviteUser} className="inline" hidden={{ email: u.email, name: u.name, role: u.role }}>
-                    <SubmitButton className="btn-ghost btn-sm" pendingText="…">Новая ссылка-приглашение</SubmitButton>
-                  </ActionForm>
-                </div>
-              ) : (
-                <ActionForm action={resetUserPassword} hidden={{ id: u.id }}>
-                  <Field label="Задать новый пароль" hint="Сессии пользователя будут сброшены."><input name="password" className="input" minLength={8} placeholder="не короче 8 символов" /></Field>
-                  <SubmitButton className="btn-ghost btn-sm" pendingText="…">Задать пароль</SubmitButton>
-                </ActionForm>
-              )}
+            <Card title="Пароль" description="Пароль хранится в зашифрованном виде и не показывается. Если сотрудник его забыл, задайте новый и передайте ему.">
+              {pending && <div className="mb-3"><Alert tone="warn">Пароль ещё не задан: войти в портал этот человек не может.</Alert></div>}
+              <ActionForm action={resetUserPassword} hidden={{ id: u.id }}>
+                <Field label={pending ? "Задать пароль" : "Задать новый пароль"} hint={pending ? undefined : "Сессии пользователя будут сброшены."}><PasswordInput /></Field>
+                <SubmitButton className="btn-ghost btn-sm" pendingText="…">Задать пароль</SubmitButton>
+              </ActionForm>
             </Card>
           )}
 
