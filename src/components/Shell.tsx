@@ -6,7 +6,7 @@ import { LogoFull, LogoMark } from "./Logo";
 import { Icon, type IconName } from "./Icons";
 import { ThemeSwitch } from "./ThemeSwitch";
 import { HeaderBalances } from "./HeaderBalances";
-import { canSeeBalances, canViewKeys, canViewProviders, canViewUsers, type Actor } from "@/lib/permissions";
+import { canSeeBalances, canViewKeys, canViewProviders, canViewTeams, canViewUsage, canViewUsers, type Actor } from "@/lib/permissions";
 
 type NavItem = { href: string; label: string; icon: IconName; show?: (u: Actor) => boolean };
 
@@ -15,9 +15,9 @@ const MENU: NavItem[] = [
   { href: "/keys", label: "Ключи ИИ", icon: "key", show: canViewKeys },
   { href: "/sites", label: "Сайты", icon: "layers" },
   { href: "/providers", label: "Провайдеры и модели", icon: "cloud", show: canViewProviders },
-  { href: "/teams", label: "Команды", icon: "users" },
+  { href: "/teams", label: "Команды", icon: "users", show: canViewTeams },
   { href: "/users", label: "Пользователи", icon: "user", show: canViewUsers },
-  { href: "/usage", label: "Расход", icon: "chart" },
+  { href: "/usage", label: "Расход", icon: "chart", show: canViewUsage },
   { href: "/account", label: "Аккаунт", icon: "user" },
 ];
 

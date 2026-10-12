@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { canViewUsers, describePermissions, parsePermissions } from "@/lib/permissions";
+import { canViewUsers, describePermissions, describeTools, parsePermissions } from "@/lib/permissions";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { NewUserForm } from "@/components/users/NewUserForm";
 import { fmtDate } from "@/lib/utils";
@@ -13,9 +13,10 @@ export default async function UsersPage() {
   const me = await requireUser();
   if (!canViewUsers(me)) redirect("/?denied=1");
   const isAdmin = me.role === "ADMIN";
-  const [users, teams] = await Promise.all([
+  const [users, teams, projects] = await Promise.all([
     prisma.user.findMany({ orderBy: { createdAt: "asc" }, include: { memberships: { include: { team: { select: { name: true } } } }, _count: { select: { apiKeys: true } } } }),
     prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.project.findMany({ orderBy: [{ section: { order: "asc" } }, { order: "asc" }, { name: "asc" }], select: { slug: true, name: true, section: { select: { name: true } } } }),
   ]);
   const appUrl = process.env.APP_URL ?? "";
   return (
@@ -32,6 +33,7 @@ export default async function UsersPage() {
                   <div className="help">{u.email} · с {fmtDate(u.createdAt)}</div>
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     <Badge tone={u.role === "ADMIN" ? "ink" : "neutral"}>{u.role === "ADMIN" ? "админ" : describePermissions(parsePermissions(u.permissions))}</Badge>
+                    {u.role !== "ADMIN" && <Badge tone={parsePermissions(u.permissions).tools === "all" || parsePermissions(u.permissions).tools.length ? "neutral" : "warn"}>{describeTools(parsePermissions(u.permissions))}</Badge>}
                     {!u.isActive && <Badge tone="danger">отключён</Badge>}
                     {pending && <Badge tone="warn">пароль не задан</Badge>}
                     {u.memberships.map((m) => <Badge key={m.teamId} tone="brand">{m.team.name}{m.role === "LEAD" ? " · лидер" : ""}</Badge>)}
@@ -48,7 +50,7 @@ export default async function UsersPage() {
         </div>
         {isAdmin && (
           <Card title="Добавить сотрудника" description="Вы сами задаёте логин и пароль и передаёте их человеку. Писем портал не отправляет.">
-            <NewUserForm teams={teams} loginUrl={`${appUrl}/login`} />
+            <NewUserForm teams={teams} tools={projects.map((p) => ({ slug: p.slug, name: p.name, section: p.section.name }))} loginUrl={`${appUrl}/login`} />
           </Card>
         )}
       </div>

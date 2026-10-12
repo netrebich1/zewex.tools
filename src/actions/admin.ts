@@ -9,7 +9,7 @@ import { manualBalanceProvider } from "@/lib/balances";
 import { parseNumber, slugify } from "@/lib/utils";
 import {
   assignScope, canAssignGlobal, canAssignKey, canCreatePersonalKey, canCreateSharedKey, canCreateTeam, canDeleteBinding, canManageKey, canManageProviders,
-  canManageTeam, inScope, keyFitsRule, keyTeamScope, permissionsFromForm, type Actor,
+  canManageTeam, inScope, keyFitsRule, keyTeamScope, parsePermissions, permissionsFromForm, type Actor,
 } from "@/lib/permissions";
 import type { Capability, BindingScope } from "@prisma/client";
 
@@ -695,9 +695,9 @@ export async function updateUser(_p: FormState, f: FormData): Promise<FormState>
 export async function updateUserPermissions(_p: FormState, f: FormData): Promise<FormState> {
   await requireAdmin();
   const id = str(f, "id");
-  const user = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+  const user = await prisma.user.findUnique({ where: { id }, select: { role: true, permissions: true } });
   if (!user) return { error: "Пользователь не найден" };
-  await prisma.user.update({ where: { id }, data: { permissions: permissionsFromForm(f) } });
+  await prisma.user.update({ where: { id }, data: { permissions: permissionsFromForm(f, parsePermissions(user.permissions).tools) } });
   revalidatePath("/users");
   revalidatePath(`/users/${id}`);
   return { ok: user.role === "ADMIN" ? "Сохранено. Пока пользователь админ, права не ограничивают его." : "Права сохранены" };

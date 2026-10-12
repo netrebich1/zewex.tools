@@ -8,6 +8,7 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { addTeamMember, deleteUser, removeTeamMember, resetUserPassword, updateUser, updateUserPermissions } from "@/actions/admin";
 import { PermissionsFields } from "@/components/PermissionsFields";
 import { PasswordInput } from "@/components/users/PasswordInput";
+import { ToolsAccessFields } from "@/components/users/ToolsAccessFields";
 import { fmtDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +17,13 @@ export const dynamic = "force-dynamic";
 export default async function UserPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireAdmin();
   const { id } = await params;
-  const [u, teams] = await Promise.all([
+  const [u, teams, projects] = await Promise.all([
     prisma.user.findUnique({ where: { id }, include: { memberships: { include: { team: { select: { id: true, name: true, slug: true } } }, orderBy: { createdAt: "asc" } }, apiKeys: { select: { id: true, label: true, provider: { select: { name: true } } } } } }),
     prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.project.findMany({ orderBy: [{ section: { order: "asc" } }, { order: "asc" }, { name: "asc" }], select: { slug: true, name: true, section: { select: { name: true } } } }),
   ]);
   if (!u) notFound();
+  const perms = parsePermissions(u.permissions);
   const pending = !u.passwordHash;
   const memberIds = new Set(u.memberships.map((m) => m.teamId));
   const isSelf = u.id === me.id;
@@ -31,9 +34,13 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
       <PageHeader back={{ href: "/users", label: "Пользователи" }} title={u.name} subtitle={`${u.email} · с ${fmtDate(u.createdAt)}`} actions={<div className="flex gap-1.5"><Badge tone={u.role === "ADMIN" ? "ink" : "neutral"}>{u.role === "ADMIN" ? "админ" : "сотрудник"}</Badge>{!u.isActive && <Badge tone="danger">отключён</Badge>}{pending && <Badge tone="warn">пароль не задан</Badge>}</div>} />
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div className="space-y-4">
-          <Card title="Права" description={u.role === "ADMIN" ? "Админ может всё: эти настройки не ограничивают его. Они вступят в силу, если сменить роль на «сотрудник»." : "Выберите готовый профиль или настройте каждое право отдельно. Лидер команды дополнительно получает уровень «команда» в своей команде."}>
+          <Card title="Права" description={u.role === "ADMIN" ? "Админ может всё: эти настройки не ограничивают его. Они вступят в силу, если сменить роль на «сотрудник»." : "Отметьте инструменты, которые видит сотрудник, затем выберите готовый профиль или настройте каждое право отдельно. Лидер команды дополнительно получает уровень «команда» в своей команде."}>
             <ActionForm action={updateUserPermissions} hidden={{ id: u.id }}>
-              <PermissionsFields value={parsePermissions(u.permissions)} />
+              <div>
+                <span className="label">Инструменты</span>
+                <ToolsAccessFields tools={projects.map((p) => ({ slug: p.slug, name: p.name, section: p.section.name }))} value={perms.tools} />
+              </div>
+              <PermissionsFields value={perms} />
               <SubmitButton pendingText="Сохраняю…">Сохранить права</SubmitButton>
             </ActionForm>
           </Card>

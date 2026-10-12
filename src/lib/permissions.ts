@@ -8,16 +8,16 @@
  */
 
 export type Permissions = {
-  /** Расход: только свой / своих команд / всех. */
-  usage: "own" | "team" | "all";
+  /** Расход: раздел скрыт / только свой / своих команд / всех. */
+  usage: "none" | "own" | "team" | "all";
   /** Ключи ИИ: раздел скрыт / только личные / личные + командные + общие / все, включая чужие личные. */
   keysView: "none" | "own" | "team" | "all";
   /** Добавлять и редактировать ключи: нельзя / только личные / личные и командные / любые, включая общие. */
   keysCreate: "none" | "personal" | "team" | "all";
   /** Назначать и переназначать ключи (правила): нельзя / правила своих команд / любые правила, включая сервисы и глобальные. */
   keysAssign: "none" | "team" | "all";
-  /** Команды: смотреть / управлять составом своих команд / создавать и управлять всеми командами. */
-  teams: "view" | "manage" | "all";
+  /** Команды: раздел скрыт / смотреть / управлять составом своих команд / создавать и управлять всеми командами. */
+  teams: "none" | "view" | "manage" | "all";
   /** Провайдеры и модели: раздел скрыт / смотреть / менять настройки, модели и цены. */
   providers: "none" | "view" | "manage";
   /** Сайты: только сайты своих команд / все сайты. */
@@ -26,20 +26,27 @@ export type Permissions = {
   balances: boolean;
   /** Список пользователей: скрыт / только смотреть. Добавлять людей и менять права может только админ. */
   users: "none" | "view";
+  /**
+   * Какие инструменты видит сотрудник: "all" — все, включая будущие; иначе список slug проектов (пустой — ни одного).
+   * Задаётся галочками (`ToolsAccessFields`), в готовые профили не входит.
+   */
+  tools: "all" | string[];
 };
 
-export type PermissionKey = keyof Permissions;
+/** Поля-переключатели формы прав; список инструментов настраивается отдельно. */
+export type PermissionKey = Exclude<keyof Permissions, "tools">;
 
 export const DEFAULT_PERMISSIONS: Permissions = {
-  usage: "own",
+  usage: "none",
   keysView: "team",
   keysCreate: "personal",
   keysAssign: "none",
-  teams: "view",
+  teams: "none",
   providers: "view",
   sites: "team",
   balances: false,
   users: "none",
+  tools: [],
 };
 
 export const ADMIN_PERMISSIONS: Permissions = {
@@ -52,13 +59,14 @@ export const ADMIN_PERMISSIONS: Permissions = {
   sites: "all",
   balances: true,
   users: "view",
+  tools: "all",
 };
 
 /** Готовые профили: подставляются в форму, дальше можно подправить любое поле. */
 export const PERMISSION_PRESETS: Record<string, { label: string; hint: string; value: Permissions }> = {
   member: {
     label: "Сотрудник",
-    hint: "Работает в инструментах, видит свой расход, добавляет только личные ключи.",
+    hint: "Работает в отмеченных инструментах. Расход и команды скрыты, добавляет только личные ключи.",
     value: DEFAULT_PERMISSIONS,
   },
   lead: {
@@ -69,7 +77,7 @@ export const PERMISSION_PRESETS: Record<string, { label: string; hint: string; v
   manager: {
     label: "Менеджер",
     hint: "Видит всё, управляет ключами, правилами, командами и провайдерами. Без управления пользователями.",
-    value: { usage: "all", keysView: "all", keysCreate: "all", keysAssign: "all", teams: "all", providers: "manage", sites: "all", balances: true, users: "view" },
+    value: { usage: "all", keysView: "all", keysCreate: "all", keysAssign: "all", teams: "all", providers: "manage", sites: "all", balances: true, users: "view", tools: [] },
   },
 };
 
@@ -77,11 +85,11 @@ type FieldMeta<K extends PermissionKey> = { key: K; label: string; hint?: string
 
 /** Описание полей для формы прав (порядок — порядок в форме). */
 export const PERMISSION_FIELDS: Array<FieldMeta<PermissionKey>> = [
-  { key: "usage", label: "Расход", options: [{ value: "own", label: "Только свой" }, { value: "team", label: "Свой и своих команд" }, { value: "all", label: "Всех" }] },
+  { key: "usage", label: "Расход", options: [{ value: "none", label: "Раздел скрыт" }, { value: "own", label: "Только свой" }, { value: "team", label: "Свой и своих команд" }, { value: "all", label: "Всех" }] },
   { key: "keysView", label: "Видит ключи ИИ", hint: "Секрет ключа никогда не показывается, только название и хвост.", options: [{ value: "none", label: "Раздел скрыт" }, { value: "own", label: "Только личные" }, { value: "team", label: "Личные, командные и общие" }, { value: "all", label: "Все, включая чужие личные" }] },
   { key: "keysCreate", label: "Добавляет и меняет ключи", options: [{ value: "none", label: "Нельзя" }, { value: "personal", label: "Только личные" }, { value: "team", label: "Личные и своих команд" }, { value: "all", label: "Любые, включая общие" }] },
   { key: "keysAssign", label: "Назначает ключи (правила)", hint: "Подключение ключей к сервисам и командам, правила на страницах инструментов.", options: [{ value: "none", label: "Только личные правила" }, { value: "team", label: "Правила своих команд" }, { value: "all", label: "Любые: сервисы, команды, глобальные" }] },
-  { key: "teams", label: "Команды", options: [{ value: "view", label: "Только смотреть" }, { value: "manage", label: "Состав своих команд" }, { value: "all", label: "Создавать и управлять всеми" }] },
+  { key: "teams", label: "Команды", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }, { value: "manage", label: "Состав своих команд" }, { value: "all", label: "Создавать и управлять всеми" }] },
   { key: "sites", label: "Сайты", options: [{ value: "team", label: "Сайты своих команд" }, { value: "all", label: "Все сайты" }] },
   { key: "providers", label: "Провайдеры и модели", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }, { value: "manage", label: "Менять настройки и модели" }] },
   { key: "balances", label: "Балансы провайдеров в шапке", options: [{ value: false, label: "Не показывать" }, { value: true, label: "Показывать" }] },
@@ -97,12 +105,18 @@ export function parsePermissions(raw: unknown): Permissions {
     const norm = typeof v === "string" && (v === "true" || v === "false") ? v === "true" : v;
     if (f.options.some((o) => o.value === norm)) out[f.key] = norm;
   }
+  out.tools = src.tools === "all" ? "all" : Array.isArray(src.tools) ? [...new Set(src.tools.filter((x): x is string => typeof x === "string" && !!x))] : DEFAULT_PERMISSIONS.tools;
   return out as Permissions;
 }
 
-export function permissionsFromForm(f: FormData): Permissions {
+/**
+ * Права из формы. Список инструментов берётся из полей `ToolsAccessFields` (маркер `toolsPresent`);
+ * если форма их не прислала, остаётся прежний список `keepTools`.
+ */
+export function permissionsFromForm(f: FormData, keepTools?: Permissions["tools"]): Permissions {
   const o: Record<string, unknown> = {};
   for (const k of PERMISSION_FIELDS) o[k.key] = f.get(k.key);
+  o.tools = f.has("toolsPresent") ? (f.get("toolsAll") ? "all" : f.getAll("tools").map(String)) : keepTools;
   return parsePermissions(o);
 }
 
@@ -115,6 +129,12 @@ export function presetOf(p: Permissions): string | null {
 export function describePermissions(p: Permissions): string {
   const k = presetOf(p);
   return k ? PERMISSION_PRESETS[k].label : "Свои настройки";
+}
+
+/** Подпись к списку инструментов сотрудника: «все инструменты», «инструментов: 2», «нет инструментов». */
+export function describeTools(p: Permissions): string {
+  if (p.tools === "all") return "все инструменты";
+  return p.tools.length ? `инструментов: ${p.tools.length}` : "нет инструментов";
 }
 
 /** Права действующего пользователя; админу — всё. */
@@ -135,7 +155,24 @@ function ownTeams(u: Actor): string[] {
 export type TeamScope = "all" | string[];
 export const inScope = (scope: TeamScope, teamId: string | null | undefined) => scope === "all" || (!!teamId && scope.includes(teamId));
 
+/* Инструменты */
+export function canUseTool(u: Actor, slug: string): boolean {
+  return u.role === "ADMIN" || u.perms.tools === "all" || u.perms.tools.includes(slug);
+}
+/** Условие для Project.findMany: только инструменты, открытые сотруднику. */
+export function toolWhere(u: Actor): Record<string, unknown> {
+  return u.role === "ADMIN" || u.perms.tools === "all" ? {} : { slug: { in: u.perms.tools } };
+}
+
 /* Расход */
+/** Раздел «Расход» в меню; лидер команды всегда видит расход своей команды. */
+export function canViewUsage(u: Actor): boolean {
+  return u.role === "ADMIN" || u.perms.usage !== "none" || u.leadTeamIds.length > 0;
+}
+/** Суммы расхода других людей внутри инструментов (журналы, сводки): уровень «команда» и выше. */
+export function seesTeamCosts(u: Actor): boolean {
+  return u.role === "ADMIN" || u.perms.usage === "team" || u.perms.usage === "all";
+}
 export function usageScope(u: Actor): TeamScope {
   if (u.role === "ADMIN" || u.perms.usage === "all") return "all";
   return u.perms.usage === "team" ? ownTeams(u) : u.leadTeamIds;
@@ -228,6 +265,18 @@ export function canDeleteBinding(u: Actor, b: { scope: string; userId: string | 
 }
 
 /* Команды */
+/** Раздел «Команды» в меню; лидер всегда видит свою команду. */
+export function canViewTeams(u: Actor): boolean {
+  return u.role === "ADMIN" || u.perms.teams !== "none" || u.leadTeamIds.length > 0;
+}
+export function canViewTeam(u: Actor, teamId: string): boolean {
+  return u.role === "ADMIN" || u.perms.teams !== "none" || u.leadTeamIds.includes(teamId);
+}
+/** Условие для Team.findMany; null — раздел недоступен. */
+export function teamWhere(u: Actor): Record<string, unknown> | null {
+  if (u.role === "ADMIN" || u.perms.teams !== "none") return {};
+  return u.leadTeamIds.length ? { id: { in: u.leadTeamIds } } : null;
+}
 export function canManageTeam(u: Actor, teamId: string): boolean {
   if (u.role === "ADMIN" || u.perms.teams === "all") return true;
   if (u.perms.teams === "manage" && u.teamIds.includes(teamId)) return true;

@@ -5,6 +5,7 @@ import { Field, Messages } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { PermissionsFields } from "@/components/PermissionsFields";
 import { PasswordInput } from "./PasswordInput";
+import { ToolsAccessFields, type ToolOption } from "./ToolsAccessFields";
 
 type Created = { login: string; password: string };
 type State = { error?: string; created?: Created };
@@ -13,7 +14,7 @@ type State = { error?: string; created?: Created };
  * Добавление сотрудника: админ сам задаёт логин и пароль. После создания показываем готовый текст
  * с адресом, логином и паролем — пароль в базе хранится только хэшем, позже его не посмотреть.
  */
-export function NewUserForm({ teams, loginUrl }: { teams: { id: string; name: string }[]; loginUrl: string }) {
+export function NewUserForm({ teams, tools, loginUrl }: { teams: { id: string; name: string }[]; tools: ToolOption[]; loginUrl: string }) {
   const [login, setLogin] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -74,6 +75,10 @@ export function NewUserForm({ teams, loginUrl }: { teams: { id: string; name: st
           </div>
         </div>
       )}
+      <div>
+        <span className="label">Инструменты</span>
+        <ToolsAccessFields tools={tools} />
+      </div>
       <details className="rounded-xl border border-line p-3">
         <summary className="cursor-pointer text-[14px] font-medium">Права сотрудника</summary>
         <div className="mt-3"><PermissionsFields compact /></div>

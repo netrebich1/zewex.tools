@@ -1,6 +1,7 @@
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { usageScope, usageWhere } from "@/lib/permissions";
+import { canViewUsage, usageScope, usageWhere } from "@/lib/permissions";
 import { Badge, Card, Empty, PageHeader, sp, type SearchParams } from "@/components/ui";
 import { fmtDate, fmtMoney, monthStart } from "@/lib/utils";
 import type { Prisma } from "@prisma/client";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function UsagePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const me = await requireUser();
+  if (!canViewUsage(me)) redirect("/?denied=1");
   const params = await searchParams;
   const scope = usageScope(me);
   const onlyMine = scope !== "all" && scope.length === 0;

@@ -209,14 +209,14 @@ export type MyKeyBalance = {
 const SCOPE_ORDER: BindingScope[] = ["USER_PROJECT", "TEAM_PROJECT", "PROJECT", "TEAM", "GLOBAL"];
 
 /**
- * Ключи, которые обслуживают сотрудника в его инструментах (тот же порядок правил, что в resolveBinding),
+ * Ключи, которые обслуживают сотрудника в открытых ему инструментах `tools` (тот же порядок правил, что в resolveBinding),
  * с остатком на счёте. Остаток общий для ключа: в нём учтён расход всех инструментов и команд.
  */
-export async function myKeyBalances(userId: string, force = false): Promise<MyKeyBalance[]> {
+export async function myKeyBalances(userId: string, tools: "all" | string[], force = false): Promise<MyKeyBalance[]> {
   const memberships = await prisma.teamMember.findMany({ where: { userId }, orderBy: { createdAt: "asc" }, select: { teamId: true } });
   const teamIds = memberships.map((m) => m.teamId);
   const [slots, bindings] = await Promise.all([
-    prisma.slot.findMany({ select: { id: true, capability: true, preferProviders: true, project: { select: { name: true, order: true } } } }),
+    prisma.slot.findMany({ where: tools === "all" ? {} : { project: { slug: { in: tools } } }, select: { id: true, capability: true, preferProviders: true, project: { select: { name: true, order: true } } } }),
     prisma.binding.findMany({
       where: {
         apiKey: { status: "ACTIVE" },

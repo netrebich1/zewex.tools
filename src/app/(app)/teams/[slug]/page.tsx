@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { assignScope, canCreateTeam, canDeleteBinding, canManageTeam, canViewKey, inScope, keyTeamScope, keyWhere } from "@/lib/permissions";
+import { assignScope, canCreateTeam, canDeleteBinding, canManageTeam, canViewKey, canViewTeam, inScope, keyTeamScope, keyWhere } from "@/lib/permissions";
 import { Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -23,7 +23,7 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
       apiKeys: { include: { provider: { select: { name: true } } }, orderBy: { label: "asc" } },
     },
   });
-  if (!team) notFound();
+  if (!team || !canViewTeam(me, team.id)) notFound();
   const canManage = canManageTeam(me, team.id);
   const canRules = inScope(assignScope(me), team.id);
   const canKeys = inScope(keyTeamScope(me), team.id);

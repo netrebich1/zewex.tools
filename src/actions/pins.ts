@@ -289,7 +289,7 @@ export async function buildCanvasCatalog(_p: FormState, f: FormData): Promise<Fo
 
 export async function decideCanvasStyle(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
-  if (me.role !== "ADMIN" && !me.leadTeamIds.length && me.perms.teams === "view") return { error: "Утверждать стили может администратор или лидер команды" };
+  if (me.role !== "ADMIN" && !me.leadTeamIds.length && (me.perms.teams === "view" || me.perms.teams === "none")) return { error: "Утверждать стили может администратор или лидер команды" };
   const id = str(f, "id");
   const decision = str(f, "decision");
   try {

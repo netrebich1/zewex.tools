@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { canCreateTeam, canManageTeam } from "@/lib/permissions";
+import { canCreateTeam, canManageTeam, teamWhere } from "@/lib/permissions";
 import { Badge, Card, Empty, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -11,7 +12,9 @@ export const dynamic = "force-dynamic";
 
 export default async function TeamsPage() {
   const me = await requireUser();
-  const teams = await prisma.team.findMany({ orderBy: { name: "asc" }, include: { members: { include: { user: { select: { name: true } } } }, _count: { select: { bindings: true, apiKeys: true } } } });
+  const where = teamWhere(me);
+  if (!where) redirect("/?denied=1");
+  const teams = await prisma.team.findMany({ where, orderBy: { name: "asc" }, include: { members: { include: { user: { select: { name: true } } } }, _count: { select: { bindings: true, apiKeys: true } } } });
   return (
     <>
       <PageHeader title="Команды" subtitle="Команда — группа людей со своими ключами и правилами. Один человек может быть в нескольких командах; лидер управляет ключами, правилами и составом своей команды." />

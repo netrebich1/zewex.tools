@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { sp, type SearchParams } from "@/components/ui";
+import { Alert, sp, type SearchParams } from "@/components/ui";
 import { Icon } from "@/components/Icons";
 import { ToolsBrowser, type ToolSection } from "@/components/tools/ToolsBrowser";
-import { keyWhere, usageWhere } from "@/lib/permissions";
+import { canViewKeys, canViewProviders, canViewUsage, keyWhere, toolWhere, usageWhere } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -18,13 +18,15 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const params = await searchParams;
   const isAdmin = me.role === "ADMIN";
   const [sections, favorites, keys, rules, calls] = await Promise.all([
-    prisma.section.findMany({ orderBy: { order: "asc" }, include: { projects: { orderBy: [{ order: "asc" }, { name: "asc" }], include: { _count: { select: { slots: true } } } } } }),
+    prisma.section.findMany({ orderBy: { order: "asc" }, include: { projects: { where: toolWhere(me), orderBy: [{ order: "asc" }, { name: "asc" }], include: { _count: { select: { slots: true } } } } } }),
     prisma.favoriteTool.findMany({ where: { userId: me.id }, select: { projectId: true } }),
     prisma.apiKey.count({ where: { status: "ACTIVE", ...(keyWhere(me) ?? { id: "" }) } }),
     prisma.binding.count(),
     prisma.usageLog.count({ where: { createdAt: { gte: new Date(Date.now() - 7 * 86400000) }, ...usageWhere(me) } }),
   ]);
-  const data: ToolSection[] = sections.map((s) => ({
+  // Сотруднику с ограниченным списком инструментов пустые разделы не показываем.
+  const restricted = !isAdmin && me.perms.tools !== "all";
+  const data: ToolSection[] = sections.filter((s) => !restricted || s.projects.length > 0).map((s) => ({
     id: s.id, slug: s.slug, name: s.name, icon: s.icon,
     projects: s.projects.map((p) => ({ id: p.id, slug: p.slug, name: p.name, description: p.description, url: p.url, status: p.status, slots: p._count.slots })),
   }));
@@ -33,6 +35,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   return (
     <>
+      {sp(params, "denied") && <div className="mb-4"><Alert tone="warn">Этот раздел вам не открыт. Если он нужен для работы, напишите администратору.</Alert></div>}
+      {restricted && total === 0 && <div className="mb-4"><Alert>Вам пока не открыт ни один инструмент. Напишите администратору.</Alert></div>}
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-[13px] text-muted mb-1">Привет, {firstName(me.name)}</p>
@@ -41,10 +45,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
         <div className="flex flex-wrap gap-2">
           {[
-            { label: "ключей", value: keys, href: "/keys", icon: Icon.key },
-            { label: "правил", value: rules, href: "/providers", icon: Icon.route },
-            { label: "вызовов за 7 дней", value: calls, href: "/usage", icon: Icon.chart },
-          ].map((s) => (
+            { label: "ключей", value: keys, href: "/keys", icon: Icon.key, show: canViewKeys(me) },
+            { label: "правил", value: rules, href: "/providers", icon: Icon.route, show: canViewProviders(me) },
+            { label: "вызовов за 7 дней", value: calls, href: "/usage", icon: Icon.chart, show: canViewUsage(me) },
+          ].filter((s) => s.show).map((s) => (
             <Link key={s.href} href={s.href} className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-1.5 text-[13px] hover:border-line-2 hover:shadow-[var(--shadow-card)] transition">
               <s.icon width={14} height={14} className="text-muted" />
               <span className="font-semibold tabular-nums">{s.value}</span>

@@ -1,10 +1,11 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
 import { randomToken } from "./crypto";
-import { canManageTeam as permCanManageTeam, resolvePermissions, type Permissions } from "./permissions";
+import { canManageTeam as permCanManageTeam, canUseTool, resolvePermissions, type Permissions } from "./permissions";
+import { PATH_HEADER } from "./requestPath";
 
 export const SESSION_COOKIE = "zx_session";
 const SESSION_DAYS = 30;
@@ -59,7 +60,7 @@ export type CurrentUser = {
   perms: Permissions;
 };
 
-export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
+const sessionUser = cache(async (): Promise<CurrentUser | null> => {
   const jar = await cookies();
   const id = jar.get(SESSION_COOKIE)?.value;
   if (!id) return null;
@@ -77,14 +78,42 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   };
 });
 
+/** Адреса инструментов: страницы — `Project.url`, API — `/api/<slug>`. Список меняется только сидом, держим минуту. */
+let toolPaths: { at: number; list: { slug: string; prefixes: string[] }[] } | null = null;
+async function toolForPath(pathname: string): Promise<string | null> {
+  if (!toolPaths || Date.now() - toolPaths.at > 60_000) {
+    const projects = await prisma.project.findMany({ select: { slug: true, url: true } });
+    toolPaths = {
+      at: Date.now(),
+      list: projects.map((p) => ({ slug: p.slug, prefixes: [`/api/${p.slug}`, ...(p.url && /^\/[^/]/.test(p.url) ? [p.url.replace(/\/+$/, "")] : [])] })),
+    };
+  }
+  return toolPaths.list.find((t) => t.prefixes.some((pre) => pathname === pre || pathname.startsWith(`${pre}/`)))?.slug ?? null;
+}
+
+/** Запрос идёт в инструмент, который сотруднику не выдан (см. `Permissions.tools`). */
+async function toolDenied(u: CurrentUser): Promise<boolean> {
+  if (u.role === "ADMIN" || u.perms.tools === "all") return false;
+  const path = (await headers()).get(PATH_HEADER);
+  const slug = path ? await toolForPath(path) : null;
+  return !!slug && !canUseTool(u, slug);
+}
+
+/** Текущий пользователь; null — не вошёл или запрос относится к инструменту, который ему не выдан. */
+export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
+  const u = await sessionUser();
+  return u && !(await toolDenied(u)) ? u : null;
+});
+
 /** Admins and users with the «all teams» right manage every team; «own teams» right and team leads manage theirs. */
 export function canManageTeam(u: CurrentUser, teamId: string): boolean {
   return permCanManageTeam(u, teamId);
 }
 
 export async function requireUser(): Promise<CurrentUser> {
-  const u = await getCurrentUser();
+  const u = await sessionUser();
   if (!u) redirect("/login");
+  if (await toolDenied(u)) redirect("/?denied=1");
   return u;
 }
 

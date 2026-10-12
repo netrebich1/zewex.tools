@@ -9,7 +9,7 @@ import { createSlot, deleteBinding, deleteProject, deleteSlot, updateProject } f
 import { BindingForm } from "@/components/BindingForm";
 import { RouteCheck } from "@/components/RouteCheck";
 import { CAPABILITY_LABELS, SCOPE_LABELS, STATUS_LABELS } from "@/lib/utils";
-import { assignScope, canAssignGlobal, canDeleteBinding, keyWhere } from "@/lib/permissions";
+import { assignScope, canAssignGlobal, canDeleteBinding, canUseTool, keyWhere } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ slug: 
       },
     },
   });
-  if (!project) notFound();
+  if (!project || !canUseTool(me, project.slug)) notFound();
   const isAdmin = me.role === "ADMIN";
   const assign = assignScope(me);
   const visibleKeys = keyWhere(me) ?? { id: "" };
