@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { LOGIN_RE, allowedRegistrationEmails, getCurrentUser, hashPassword, normalizeLogin, requireAdmin, requireUser } from "@/lib/auth";
 import { encryptSecret, decryptSecret, secretHint } from "@/lib/crypto";
 import { checkKey, fetchModels } from "@/lib/adapters";
+import { manualBalanceProvider } from "@/lib/balances";
 import { parseNumber, slugify } from "@/lib/utils";
 import {
   assignScope, canAssignGlobal, canAssignKey, canCreatePersonalKey, canCreateSharedKey, canCreateTeam, canDeleteBinding, canManageKey, canManageProviders,
@@ -329,6 +330,7 @@ export async function createKey(_p: FormState, f: FormData): Promise<FormState> 
   if (!provider) return { error: "Провайдер не найден" };
   const secret = secretFromForm(f, provider.authType);
   if (!providerId || !label || !secret) return { error: provider.authType === "BASIC" ? "Заполните название, логин и пароль API" : "Заполните провайдера, название и сам ключ" };
+  const balance = parseNumber(f.get("balanceUsd"));
   const key = await prisma.apiKey.create({
     data: {
       providerId, label,
@@ -337,6 +339,7 @@ export async function createKey(_p: FormState, f: FormData): Promise<FormState> 
       ownerId: owner.ownerId,
       teamId: owner.teamId,
       monthlyLimitUsd: parseNumber(f.get("monthlyLimitUsd")),
+      ...(balance != null && balance >= 0 && manualBalanceProvider(provider) ? { balanceUsd: balance, balanceAt: new Date() } : {}),
       notes: str(f, "notes") || null,
     },
   });
@@ -350,6 +353,40 @@ export async function createKey(_p: FormState, f: FormData): Promise<FormState> 
   revalidatePath("/keys");
   revalidatePath("/", "layout");
   redirect(`/keys/${key.id}`);
+}
+
+/**
+ * Остаток на счёте провайдера, который не отдаёт баланс по API (OpenAI и т. п.): админ вписывает сумму из кабинета,
+ * дальше портал вычитает расход через ключ. `mode=set` — вписать остаток заново (сверка; пустое поле убирает учёт),
+ * `mode=topup` — прибавить пополнение к текущему остатку.
+ */
+export async function setKeyBalance(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  const id = str(f, "id");
+  const key = await prisma.apiKey.findUnique({ where: { id }, include: { provider: { select: { slug: true, kind: true, name: true } } } });
+  if (!key) return { error: "Ключ не найден" };
+  if (!canManageKey(me, key)) return { error: "Нет прав" };
+  if (!manualBalanceProvider(key.provider)) return { error: `${key.provider.name} сам сообщает остаток: вписывать его не нужно` };
+  const amount = parseNumber(f.get("amount"));
+  const topup = str(f, "mode") === "topup";
+  if (str(f, "amount") && amount == null) return { error: "Сумма должна быть числом, например 50 или 49.5" };
+  let ok: string;
+  if (topup) {
+    if (amount == null || amount <= 0) return { error: "Укажите сумму пополнения больше нуля" };
+    if (key.balanceUsd == null || !key.balanceAt) return { error: "Сначала впишите текущий остаток, потом добавляйте пополнения" };
+    await prisma.apiKey.update({ where: { id }, data: { balanceUsd: { increment: amount } } });
+    ok = `Пополнение $${amount} добавлено к остатку`;
+  } else if (amount == null) {
+    await prisma.apiKey.update({ where: { id }, data: { balanceUsd: null, balanceAt: null } });
+    ok = "Учёт остатка на этом ключе выключен";
+  } else {
+    if (amount < 0) return { error: "Остаток не может быть меньше нуля" };
+    await prisma.apiKey.update({ where: { id }, data: { balanceUsd: amount, balanceAt: new Date() } });
+    ok = `Остаток $${amount} записан: с этого момента портал вычитает из него расход`;
+  }
+  revalidatePath(`/keys/${id}`);
+  revalidatePath("/keys");
+  return { ok };
 }
 
 export async function updateKey(_p: FormState, f: FormData): Promise<FormState> {

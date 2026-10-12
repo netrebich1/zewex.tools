@@ -26,6 +26,24 @@ const include = {
 } as const;
 
 /**
+ * Правила одного уровня, между которыми делится нагрузка: у командных уровней — только первая команда
+ * по дате вступления, затем предпочтительный провайдер слота (например, картинки → OpenAI, тексты → OpenRouter).
+ */
+export function levelCandidates<T extends { teamId: string | null; provider: { slug: string } }>(usable: T[], scope: BindingScope, teamIds: string[], preferProviders: string | null): T[] {
+  if (usable.length <= 1) return usable;
+  let list = usable;
+  if (scope === "TEAM_PROJECT" || scope === "TEAM") {
+    list = [...usable].sort((a, b) => teamIds.indexOf(a.teamId!) - teamIds.indexOf(b.teamId!));
+    const firstTeam = list[0].teamId;
+    list = list.filter((b) => b.teamId === firstTeam);
+  }
+  const prefer = (preferProviders ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const rank = (slug: string) => { const i = prefer.indexOf(slug); return i === -1 ? prefer.length : i; };
+  const best = Math.min(...list.map((b) => rank(b.provider.slug)));
+  return list.filter((b) => rank(b.provider.slug) === best);
+}
+
+/**
  * Finds the binding for a slot for a given user, from the most specific scope to the most general:
  * USER_PROJECT → TEAM_PROJECT → PROJECT → TEAM (by capability) → GLOBAL (by capability).
  */
@@ -50,17 +68,9 @@ export async function resolveBinding(userId: string, slotId: string): Promise<Re
     if (usable.length > 1 && (scope === "TEAM_PROJECT" || scope === "TEAM")) {
       const names = usable.map((b) => memberships.find((m) => m.teamId === b.teamId)?.team.name ?? "?").join(", ");
       warnings.push(`Пользователь состоит в нескольких командах с правилами (${names}); взято первое по дате вступления`);
-      usable.sort((a, b) => teamIds.indexOf(a.teamId!) - teamIds.indexOf(b.teamId!));
     }
     steps.push({ scope, label, matched: usable.length > 0 });
-    if (usable.length <= 1) return usable[0] ?? null;
-    const firstTeam = usable[0].teamId;
-    let sameLevel = scope === "TEAM_PROJECT" || scope === "TEAM" ? usable.filter((b) => b.teamId === firstTeam) : usable;
-    // Разные провайдеры на одном уровне: берём предпочтительного для слота (например, картинки → OpenAI, тексты → OpenRouter)
-    const prefer = (slot.preferProviders ?? "").split(",").map((x) => x.trim()).filter(Boolean);
-    const rank = (slug: string) => { const i = prefer.indexOf(slug); return i === -1 ? prefer.length : i; };
-    const best = Math.min(...sameLevel.map((b) => rank(b.provider.slug)));
-    sameLevel = sameLevel.filter((b) => rank(b.provider.slug) === best);
+    const sameLevel = levelCandidates(usable, scope, teamIds, slot.preferProviders);
     // Несколько ключей одного провайдера: нагрузка распределяется случайно между ними
     return sameLevel[Math.floor(Math.random() * sameLevel.length)] ?? null;
   };

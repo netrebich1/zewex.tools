@@ -7,7 +7,8 @@ import type { KeyOwnerOption } from "@/components/KeyOwnerFields";
 import { Alert, Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { assignKeyUsage, deleteKey, testKey, updateKey } from "@/actions/admin";
+import { assignKeyUsage, deleteKey, setKeyBalance, testKey, updateKey } from "@/actions/admin";
+import { manualBalanceProvider, manualBalances } from "@/lib/balances";
 import { CAPABILITY_LABELS, SCOPE_LABELS, fmtDate, fmtMoney, monthStart } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,8 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
   const assignTeams = assignScope(me);
   const keyTeams = keyTeamScope(me);
   const spend = await prisma.usageLog.aggregate({ _sum: { costUsd: true }, _count: true, where: { apiKeyId: id, createdAt: { gte: monthStart() } } });
+  const tracksBalance = manualBalanceProvider(key.provider);
+  const balance = tracksBalance ? (await manualBalances([key])).get(key.id) ?? null : null;
   const [projects, teams] = await Promise.all([
     prisma.project.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }], select: { id: true, name: true, _count: { select: { slots: true } } } }),
     prisma.team.findMany({
@@ -145,6 +148,35 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
         </div>
 
         <div className="space-y-4">
+          {tracksBalance && (balance || canEdit) && (
+            <Card title="Остаток на счёте" description={balance ? undefined : `${key.provider.name} не сообщает остаток сам. Впишите сумму из кабинета — портал будет вычитать из неё расход через этот ключ во всех инструментах и командах.`}>
+              {balance && (
+                <>
+                  <div className={`text-[28px] font-bold tabular-nums tracking-tight ${balance.remaining < 5 ? "text-danger" : balance.remaining < 20 ? "text-warn" : "text-ok"}`}>{fmtMoney(balance.remaining)}</div>
+                  <dl className="mt-2 space-y-1.5 text-[14px]">
+                    <div className="flex justify-between gap-3"><dt className="text-muted">Вписано</dt><dd>{fmtMoney(balance.startUsd)} · {fmtDate(balance.at)}</dd></div>
+                    <div className="flex justify-between gap-3"><dt className="text-muted">Потрачено с тех пор</dt><dd>{fmtMoney(balance.spentUsd)} · вызовов: {balance.calls}</dd></div>
+                  </dl>
+                  {balance.unpriced > 0 && <div className="mt-3"><Alert tone="warn">Вызовов без цены: {balance.unpriced}. У модели не заданы цены, эти вызовы не вычтены — настоящий остаток меньше. Укажите цены на странице провайдера.</Alert></div>}
+                  <p className="help mt-3">Расход считается по ценам моделей и только по вызовам через портал. Время от времени сверяйте с кабинетом {key.provider.name} и вписывайте остаток заново.</p>
+                </>
+              )}
+              {canEdit && (
+                <ActionForm action={setKeyBalance} hidden={{ id: key.id }} className={balance ? "mt-4 space-y-3 border-t border-line pt-4" : "space-y-3"}>
+                  <Field label="Сумма, $"><input name="amount" className="input" inputMode="decimal" placeholder="например 50" /></Field>
+                  {balance ? (
+                    <Field label="Что сделать" hint="Пустая сумма при «вписать заново» выключает учёт остатка.">
+                      <select name="mode" className="input" defaultValue="topup">
+                        <option value="topup">Прибавить пополнение к остатку</option>
+                        <option value="set">Вписать остаток заново (сверка с кабинетом)</option>
+                      </select>
+                    </Field>
+                  ) : <input type="hidden" name="mode" value="set" />}
+                  <SubmitButton className="btn-ghost w-full" pendingText="Сохраняю…">{balance ? "Сохранить" : "Записать остаток"}</SubmitButton>
+                </ActionForm>
+              )}
+            </Card>
+          )}
           <Card title="Состояние">
             <dl className="space-y-2 text-[14px]">
               <div className="flex justify-between gap-3"><dt className="text-muted">Статус</dt><dd>{key.status === "ACTIVE" ? <Badge tone="ok">активен</Badge> : <Badge tone="danger">выключен</Badge>}</dd></div>

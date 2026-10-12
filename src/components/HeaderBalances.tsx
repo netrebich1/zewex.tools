@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "./Icons";
 import { fmtMoney } from "@/lib/utils";
-import type { ProviderBalance } from "@/lib/balances";
+import type { MyKeyBalance, ProviderBalance } from "@/lib/balances";
 
 /** Короткие подписи для плашки в шапке; полные имена — в выпадающем окне. */
 const SHORT: Record<string, string> = { openrouter: "OR", laozhang: "LZ", openai: "OAI", dataforseo: "DFS" };
@@ -14,9 +14,20 @@ function tone(v: number | null) {
   return "text-ok";
 }
 
-/** Балансы провайдеров в шапке (только админам): плашка с остатками, по клику — подробности. */
-export function HeaderBalances() {
+/** Сумма остатков без повторов: ключи одного счёта (laozhang) считаются один раз. */
+function sumAccounts(keys: MyKeyBalance[]): number | null {
+  const seen = new Map<string, number>();
+  for (const k of keys) if (k.remaining != null) seen.set(k.account, k.remaining);
+  return seen.size ? [...seen.values()].reduce((a, b) => a + b, 0) : null;
+}
+
+/**
+ * Балансы в шапке: плашка с остатками, по клику — подробности.
+ * Админам и сотрудникам с правом «балансы» — все провайдеры; остальным (`mine`) — ключи, которые работают в их инструментах.
+ */
+export function HeaderBalances({ mine = false }: { mine?: boolean }) {
   const [rows, setRows] = useState<ProviderBalance[] | null>(null);
+  const [keys, setKeys] = useState<MyKeyBalance[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
@@ -27,16 +38,17 @@ export function HeaderBalances() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/balances${refresh ? "?refresh=1" : ""}`, { cache: "no-store" });
+      const res = await fetch(`/api/balances${mine ? "/mine" : ""}${refresh ? "?refresh=1" : ""}`, { cache: "no-store" });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
-      setRows((await res.json()) as ProviderBalance[]);
+      if (mine) setKeys((await res.json()) as MyKeyBalance[]);
+      else setRows((await res.json()) as ProviderBalance[]);
       setAt(new Date());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [mine]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -49,7 +61,14 @@ export function HeaderBalances() {
   }, [open]);
 
   // В плашке только те, у кого есть цифра; остальные видны в окне с пояснением.
-  const chip = rows?.filter((p) => p.remaining != null) ?? [];
+  const loaded = mine ? keys != null : rows != null;
+  const chip: { id: string; label: string; remaining: number | null }[] = mine
+    ? [...new Set((keys ?? []).map((k) => k.providerSlug))]
+        .map((slug) => { const list = keys!.filter((k) => k.providerSlug === slug); return { id: slug, label: SHORT[slug] ?? list[0].provider, remaining: sumAccounts(list) }; })
+        .filter((c) => c.remaining != null)
+    : (rows ?? []).filter((p) => p.remaining != null).map((p) => ({ id: p.slug, label: SHORT[p.slug] ?? p.name, remaining: p.remaining }));
+  const title = mine ? "Балансы ваших ключей" : "Балансы провайдеров";
+  const total = mine && keys ? sumAccounts(keys) : null;
 
   return (
     <div className="relative" ref={ref}>
@@ -59,16 +78,16 @@ export function HeaderBalances() {
         className="flex items-center gap-2 h-9 rounded-full border border-line bg-surface px-3 hover:border-line-2 transition text-[13px]"
         aria-haspopup="dialog"
         aria-expanded={open}
-        title="Балансы провайдеров"
+        title={title}
       >
         <Icon.wallet width={15} height={15} className={`text-muted shrink-0 ${busy ? "animate-pulse" : ""}`} />
-        {rows ? (
+        {loaded ? (
           <span className="hidden sm:flex items-center gap-2.5 tabular-nums">
             {chip.length === 0 && <span className="text-muted">нет данных</span>}
-            {chip.map((p) => (
-              <span key={p.slug} className="inline-flex items-baseline gap-1">
-                <span className="text-muted font-medium">{SHORT[p.slug] ?? p.name}</span>
-                <span className={`font-semibold ${tone(p.remaining)}`}>{fmtMoney(p.remaining)}</span>
+            {chip.map((c) => (
+              <span key={c.id} className="inline-flex items-baseline gap-1">
+                <span className="text-muted font-medium">{c.label}</span>
+                <span className={`font-semibold ${tone(c.remaining)}`}>{fmtMoney(c.remaining)}</span>
               </span>
             ))}
           </span>
@@ -78,10 +97,10 @@ export function HeaderBalances() {
       </button>
 
       {open && (
-        <div className="menu overflow-hidden" style={{ width: 340, padding: 0 }} role="dialog" aria-label="Балансы провайдеров">
+        <div className="menu overflow-hidden" style={{ width: 340, padding: 0 }} role="dialog" aria-label={title}>
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-line">
             <div>
-              <div className="text-[14px] font-semibold">Балансы</div>
+              <div className="text-[14px] font-semibold">{mine ? "Балансы ваших ключей" : "Балансы"}</div>
               <div className="help">{at ? `Обновлено ${at.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : "Загружаем…"}</div>
             </div>
             <button type="button" onClick={() => void load(true)} disabled={busy} className="btn-ghost btn-sm" title="Запросить у провайдеров заново">
@@ -89,6 +108,28 @@ export function HeaderBalances() {
             </button>
           </div>
           {error && <div className="px-4 py-3 text-[13px] text-danger">{error}</div>}
+          {mine && keys && (
+            <>
+              {keys.length === 0 && <div className="px-4 py-3 help">К вашим инструментам пока не подключено ни одного ключа.</div>}
+              {keys.length > 1 && total != null && (
+                <div className="flex items-baseline justify-between gap-3 px-4 py-3 border-b border-line">
+                  <div className="text-[14px] font-semibold">Всего на ключах</div>
+                  <div className={`text-[18px] font-bold tabular-nums tracking-tight ${tone(total)}`}>{fmtMoney(total)}</div>
+                </div>
+              )}
+              {keys.map((k) => (
+                <div key={k.keyId} className="px-4 py-3 border-b border-line last:border-b-0">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <div className="min-w-0"><span className="text-[14px] font-semibold">{k.label}</span> <span className="help">· {k.provider}</span></div>
+                    <div className={`text-[18px] font-bold tabular-nums tracking-tight ${tone(k.remaining)}`}>{k.remaining != null ? fmtMoney(k.remaining) : "—"}</div>
+                  </div>
+                  <div className="mt-1 text-[12.5px] text-muted">{k.tools.join(", ")}</div>
+                  {k.note && <div className="help mt-1">{k.note}</div>}
+                </div>
+              ))}
+              {keys.length > 0 && <div className="px-4 py-2.5 help border-t border-line">Остаток общий для ключа: в нём учтён расход всех инструментов и команд, где ключ работает. Если денег мало, предупредите администратора.</div>}
+            </>
+          )}
           {rows?.map((p) => (
             <div key={p.slug} className="px-4 py-3 border-b border-line last:border-b-0">
               <div className="flex items-baseline justify-between gap-3">

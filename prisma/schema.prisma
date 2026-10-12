@@ -228,6 +228,10 @@ model ApiKey {
   teamId          String?
   status          KeyStatus  @default(ACTIVE)
   monthlyLimitUsd Float?
+  /// Остаток на счёте, введённый вручную (провайдеры без баланса по API, например OpenAI), и момент ввода.
+  /// Текущий остаток = balanceUsd − расход по журналу через этот ключ с balanceAt (src/lib/balances.ts).
+  balanceUsd      Float?
+  balanceAt       DateTime?
   notes           String?
   lastCheckedAt   DateTime?
   lastCheckOk     Boolean?

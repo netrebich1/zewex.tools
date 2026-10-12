@@ -51,7 +51,7 @@ export function Shell({ user, children }: { user: Actor & { name: string; email:
             <Link href="/" className={`tab ${isTools ? "active" : ""}`}><Icon.grid width={15} height={15} /> Инструменты</Link>
           </nav>
           <div className="ml-auto flex items-center gap-2">
-            {canSeeBalances(user) && <HeaderBalances />}
+            <HeaderBalances mine={!canSeeBalances(user)} />
             <ThemeSwitch />
           </div>
           <div className="relative flex items-center gap-2" ref={ref}>

@@ -1,5 +1,7 @@
+import type { BindingScope } from "@prisma/client";
 import { prisma } from "./db";
 import { decryptSecret } from "./crypto";
+import { levelCandidates } from "./resolve";
 import { monthStart } from "./utils";
 
 /**
@@ -8,8 +10,10 @@ import { monthStart } from "./utils";
  *  - OpenRouter: GET /credits по API-ключу;
  *  - laozhang: GET /api/user/self по отдельному системному токену аккаунта (Provider.balanceTokenEnc), не по API-ключу;
  *  - DataForSEO: appendix/user_data по логину и паролю API;
- *  - OpenAI: баланса по API нет — только расход за месяц по журналу портала, без запросов.
- * Ответы кэшируются в памяти на несколько минут.
+ *  - OpenAI и другие LLM без баланса по API: остаток вписывают вручную на странице ключа (ApiKey.balanceUsd/balanceAt),
+ *    портал вычитает из него расход по журналу через этот ключ — по всем инструментам и командам сразу.
+ * Ответы провайдеров кэшируются в памяти на несколько минут; ручные остатки считаются по базе каждый раз.
+ * Сотрудник без права «балансы» видит только ключи, которые обслуживают его самого (`myKeyBalances`).
  */
 export const BALANCE_PROVIDERS = ["openrouter", "laozhang", "openai", "dataforseo"] as const;
 
@@ -98,10 +102,45 @@ async function probeDataForSeo(baseUrl: string, secret: string): Promise<Probe> 
   return { remaining: bal, total: null, used: null, note: bal == null ? "DataForSEO не вернул баланс" : null };
 }
 
+/** Провайдеры, у которых остаток ведётся вручную на ключе: LLM без баланса по API (OpenAI, Perplexity, свои OpenAI-совместимые). */
+export function manualBalanceProvider(p: { slug: string; kind: string }): boolean {
+  return p.kind === "LLM" && p.slug !== "openrouter" && p.slug !== "laozhang";
+}
+
+export type ManualBalance = {
+  /** Сумма, вписанная со счёта провайдера, и когда её вписали. */
+  startUsd: number;
+  at: Date;
+  /** Расход через портал с этого момента: все инструменты, команды и сотрудники. */
+  spentUsd: number;
+  calls: number;
+  /** Успешные вызовы без посчитанной стоимости (у модели не заданы цены): на них остаток завышен. */
+  unpriced: number;
+  remaining: number;
+};
+
+/** Ручные остатки ключей: вписанная сумма минус расход по журналу портала с момента ввода. */
+export async function manualBalances(keys: { id: string; balanceUsd: number | null; balanceAt: Date | null }[]): Promise<Map<string, ManualBalance>> {
+  const out = new Map<string, ManualBalance>();
+  await Promise.all(keys.map(async (k) => {
+    if (k.balanceUsd == null || !k.balanceAt) return;
+    const since = { apiKeyId: k.id, createdAt: { gte: k.balanceAt } };
+    const [agg, unpriced] = await Promise.all([
+      prisma.usageLog.aggregate({ _sum: { costUsd: true }, _count: true, where: since }),
+      prisma.usageLog.count({ where: { ...since, ok: true, costUsd: null } }),
+    ]);
+    const spentUsd = agg._sum.costUsd ?? 0;
+    out.set(k.id, { startUsd: k.balanceUsd, at: k.balanceAt, spentUsd, calls: agg._count, unpriced, remaining: k.balanceUsd - spentUsd });
+  }));
+  return out;
+}
+
+const UNPRICED_NOTE = "Часть вызовов без цены модели: настоящий остаток меньше";
+
 export async function providerBalances(force = false): Promise<ProviderBalance[]> {
   const providers = await prisma.provider.findMany({
-    where: { slug: { in: [...BALANCE_PROVIDERS] } },
-    include: { apiKeys: { where: { status: "ACTIVE" }, orderBy: { createdAt: "asc" }, take: 5, select: { id: true, label: true, secretHint: true, secretEnc: true } } },
+    where: { OR: [{ slug: { in: [...BALANCE_PROVIDERS] } }, { apiKeys: { some: { status: "ACTIVE", balanceUsd: { not: null } } } }] },
+    include: { apiKeys: { where: { status: "ACTIVE" }, orderBy: { createdAt: "asc" }, take: 5, select: { id: true, label: true, secretHint: true, secretEnc: true, balanceUsd: true, balanceAt: true } } },
   });
   const spend = await prisma.usageLog.groupBy({
     by: ["providerId"],
@@ -115,8 +154,19 @@ export async function providerBalances(force = false): Promise<ProviderBalance[]
   const out = await Promise.all(providers.map(async (p): Promise<ProviderBalance> => {
     const base = { slug: p.slug, name: p.name, monthSpendUsd: spendBy.get(p.id) ?? 0, keys: [] as KeyBalance[], checkedAt: now };
 
-    if (p.slug === "openai") {
-      return { ...base, remaining: null, total: null, used: null, note: "OpenAI не отдаёт остаток по API-ключу: смотрите в кабинете platform.openai.com", checkedAt: null };
+    if (manualBalanceProvider(p)) {
+      const manual = await manualBalances(p.apiKeys);
+      const tracked = p.apiKeys.filter((k) => manual.has(k.id)).map((k) => ({ key: k, m: manual.get(k.id)! }));
+      if (!tracked.length) return { ...base, remaining: null, total: null, used: null, note: `${p.name} не отдаёт остаток по API: впишите сумму со счёта на странице ключа, портал будет вычитать расход`, checkedAt: null };
+      const sum = (f: (m: ManualBalance) => number) => tracked.reduce((a, t) => a + f(t.m), 0);
+      return {
+        ...base,
+        remaining: sum((m) => m.remaining),
+        total: sum((m) => m.startUsd),
+        used: sum((m) => m.spentUsd),
+        note: tracked.some((t) => t.m.unpriced > 0) ? UNPRICED_NOTE : "Расчёт портала: сумма, вписанная на ключе, минус расход через портал",
+        keys: tracked.length > 1 ? tracked.map(({ key, m }) => ({ keyId: key.id, label: key.label, hint: key.secretHint, remaining: m.remaining, note: m.unpriced > 0 ? UNPRICED_NOTE : null })) : [],
+      };
     }
     if (p.slug === "laozhang") {
       if (!p.balanceTokenEnc) return { ...base, remaining: null, total: null, used: null, note: "Нужен системный токен laozhang: страница провайдера → «Токен для баланса»", checkedAt: null };
@@ -141,4 +191,76 @@ export async function providerBalances(force = false): Promise<ProviderBalance[]
     };
   }));
   return out.sort((a, b) => (order.get(a.slug) ?? 9) - (order.get(b.slug) ?? 9));
+}
+
+export type MyKeyBalance = {
+  keyId: string;
+  label: string;
+  provider: string;
+  providerSlug: string;
+  /** Инструменты, в которых этот ключ работает для сотрудника. */
+  tools: string[];
+  remaining: number | null;
+  /** Один счёт на несколько ключей (laozhang): в общей сумме считается один раз. */
+  account: string;
+  note: string | null;
+};
+
+const SCOPE_ORDER: BindingScope[] = ["USER_PROJECT", "TEAM_PROJECT", "PROJECT", "TEAM", "GLOBAL"];
+
+/**
+ * Ключи, которые обслуживают сотрудника в его инструментах (тот же порядок правил, что в resolveBinding),
+ * с остатком на счёте. Остаток общий для ключа: в нём учтён расход всех инструментов и команд.
+ */
+export async function myKeyBalances(userId: string, force = false): Promise<MyKeyBalance[]> {
+  const memberships = await prisma.teamMember.findMany({ where: { userId }, orderBy: { createdAt: "asc" }, select: { teamId: true } });
+  const teamIds = memberships.map((m) => m.teamId);
+  const [slots, bindings] = await Promise.all([
+    prisma.slot.findMany({ select: { id: true, capability: true, preferProviders: true, project: { select: { name: true, order: true } } } }),
+    prisma.binding.findMany({
+      where: {
+        apiKey: { status: "ACTIVE" },
+        OR: [{ scope: "USER_PROJECT", userId }, { scope: "TEAM_PROJECT", teamId: { in: teamIds } }, { scope: "PROJECT" }, { scope: "TEAM", teamId: { in: teamIds } }, { scope: "GLOBAL" }],
+      },
+      orderBy: { createdAt: "asc" },
+      select: { scope: true, slotId: true, teamId: true, capability: true, apiKeyId: true, provider: { select: { slug: true } } },
+    }),
+  ]);
+  const toolsByKey = new Map<string, Map<string, number>>();
+  for (const slot of slots) {
+    for (const scope of SCOPE_ORDER) {
+      const level = bindings.filter((b) => b.scope === scope && (scope === "TEAM" || scope === "GLOBAL" ? b.capability === slot.capability : b.slotId === slot.id));
+      if (!level.length) continue;
+      for (const b of levelCandidates(level, scope, teamIds, slot.preferProviders)) {
+        const tools = toolsByKey.get(b.apiKeyId) ?? new Map<string, number>();
+        tools.set(slot.project.name, slot.project.order);
+        toolsByKey.set(b.apiKeyId, tools);
+      }
+      break;
+    }
+  }
+  if (!toolsByKey.size) return [];
+
+  const keys = await prisma.apiKey.findMany({
+    where: { id: { in: [...toolsByKey.keys()] } },
+    orderBy: [{ provider: { order: "asc" } }, { label: "asc" }],
+    select: { id: true, label: true, secretEnc: true, balanceUsd: true, balanceAt: true, provider: { select: { id: true, slug: true, name: true, kind: true, baseUrl: true, balanceTokenEnc: true } } },
+  });
+  const manual = await manualBalances(keys.filter((k) => manualBalanceProvider(k.provider)));
+  return Promise.all(keys.map(async (k): Promise<MyKeyBalance> => {
+    const p = k.provider;
+    const tools = [...toolsByKey.get(k.id)!.entries()].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0])).map(([name]) => name);
+    const base = { keyId: k.id, label: k.label, provider: p.name, providerSlug: p.slug, tools, account: `key:${k.id}` };
+    if (manualBalanceProvider(p)) {
+      const m = manual.get(k.id);
+      return { ...base, remaining: m?.remaining ?? null, note: !m ? "Остаток не задан" : m.unpriced > 0 ? UNPRICED_NOTE : null };
+    }
+    let probe: Probe | null = null;
+    if (p.slug === "laozhang") {
+      if (p.balanceTokenEnc) probe = await cached(`provider:${p.id}`, force, () => probeLaozhang(p.baseUrl, decryptSecret(p.balanceTokenEnc!)));
+    } else if (p.slug === "dataforseo") probe = await cached(`key:${k.id}`, force, () => probeDataForSeo(p.baseUrl, decryptSecret(k.secretEnc)));
+    else if (p.slug === "openrouter") probe = await cached(`key:${k.id}`, force, () => probeOpenRouter(p.baseUrl, decryptSecret(k.secretEnc)));
+    // Текст ошибки провайдера — для админа (плашка провайдеров); сотруднику достаточно знать, что цифры нет.
+    return { ...base, account: p.slug === "laozhang" ? `provider:${p.id}` : base.account, remaining: probe?.remaining ?? null, note: probe?.remaining != null ? null : "Остаток недоступен" };
+  }));
 }

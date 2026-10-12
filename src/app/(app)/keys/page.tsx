@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { canCreateKey, keyWhere } from "@/lib/permissions";
 import { Badge, Card, Empty, PageHeader } from "@/components/ui";
 import { fmtDate, fmtMoney, monthStart } from "@/lib/utils";
+import { manualBalanceProvider, manualBalances } from "@/lib/balances";
 import { Icon } from "@/components/Icons";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export default async function KeysPage() {
   });
   const spend = await prisma.usageLog.groupBy({ by: ["apiKeyId"], _sum: { costUsd: true }, where: { createdAt: { gte: monthStart() }, apiKeyId: { in: keys.map((k) => k.id) } } });
   const spendMap = new Map(spend.map((s) => [s.apiKeyId, s._sum.costUsd ?? 0]));
+  const balances = await manualBalances(keys);
   const byProvider = new Map<string, typeof keys>();
   for (const k of keys) byProvider.set(k.provider.name, [...(byProvider.get(k.provider.name) ?? []), k]);
   const addBtn = canCreateKey(me) ? <Link href="/keys/new" className="btn-brand"><Icon.plus width={16} height={16} /> Добавить ключ</Link> : undefined;
@@ -35,11 +37,12 @@ export default async function KeysPage() {
             <Card key={providerName} title={providerName}>
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>Название</th><th>Ключ</th><th>Чей</th><th>Статус</th><th>Проверка</th><th>Расход за месяц</th><th>Правил</th></tr></thead>
+                  <thead><tr><th>Название</th><th>Ключ</th><th>Чей</th><th>Статус</th><th>Проверка</th><th>Расход за месяц</th>{manualBalanceProvider(list[0].provider) && <th title="Вписанная сумма минус расход через портал">Остаток</th>}<th>Правил</th></tr></thead>
                   <tbody>
                     {list.map((k) => {
                       const spent = spendMap.get(k.id) ?? 0;
                       const over = k.monthlyLimitUsd != null && spent >= k.monthlyLimitUsd;
+                      const left = balances.get(k.id)?.remaining ?? null;
                       return (
                         <tr key={k.id}>
                           <td><Link href={`/keys/${k.id}`} className="font-medium hover:underline">{k.label}</Link></td>
@@ -48,6 +51,7 @@ export default async function KeysPage() {
                           <td>{k.status === "ACTIVE" ? <Badge tone="ok">активен</Badge> : <Badge tone="danger">выключен</Badge>}</td>
                           <td>{k.lastCheckOk == null ? <span className="text-muted">—</span> : k.lastCheckOk ? <span className="text-ok" title={k.lastCheckNote ?? ""}>✓ {fmtDate(k.lastCheckedAt)}</span> : <span className="text-danger" title={k.lastCheckNote ?? ""}>✕ ошибка</span>}</td>
                           <td className={over ? "text-danger font-medium" : ""}>{fmtMoney(spent)}{k.monthlyLimitUsd != null ? <span className="text-muted"> / {fmtMoney(k.monthlyLimitUsd)}</span> : null}</td>
+                          {manualBalanceProvider(k.provider) && <td className="tabular-nums">{left == null ? <span className="text-muted">—</span> : <span className={left < 5 ? "text-danger font-medium" : left < 20 ? "text-warn font-medium" : ""}>{fmtMoney(left)}</span>}</td>}
                           <td>{k._count.bindings}</td>
                         </tr>
                       );

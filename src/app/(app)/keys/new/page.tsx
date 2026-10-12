@@ -49,6 +49,7 @@ export default async function NewKeyPage({ searchParams }: { searchParams: Promi
               global={canAssignGlobal(me)}
             />
           </div>
+          <Field label="Сколько сейчас на счёте, $ (необязательно)" hint="Для OpenAI и других провайдеров, которые не сообщают остаток сами: впишите сумму из кабинета, портал будет вычитать из неё расход. Для OpenRouter, laozhang и DataForSEO не нужно."><input name="balanceUsd" className="input sm:max-w-[240px]" inputMode="decimal" placeholder="например 50" /></Field>
           <Field label="Заметка"><input name="notes" className="input" placeholder="Чей аккаунт, где пополнять…" /></Field>
           <SubmitButton className="btn-brand" pendingText="Сохраняю и проверяю…">Сохранить ключ</SubmitButton>
         </ActionForm>
