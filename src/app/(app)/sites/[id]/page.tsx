@@ -4,14 +4,17 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canAccessPinSite, canSeeAccess } from "@/lib/sites/access";
 import { accessFormData } from "@/lib/sites/form";
-import { Alert, Badge, Card, PageHeader } from "@/components/ui";
+import { Alert, Badge, Card, PageHeader, sp, type SearchParams } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { deleteSiteAccess, testSiteAccess } from "@/actions/access";
+import { testSiteAccess } from "@/actions/access";
+import { siteDeletionImpact } from "@/lib/sites/delete";
 import { enablePinsForSite } from "@/actions/pins";
 import { PROJECT_SLUG } from "@/lib/pins/types";
 import { fmtDate } from "@/lib/utils";
 import { SiteAccessForm } from "@/components/sites/SiteAccessForm";
+import { DeleteSiteForm } from "@/components/sites/DeleteSiteForm";
+import { canManageTeam } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +24,10 @@ const accessInclude = { teams: { select: { teamId: true } }, viewers: { select: 
  * Уровень системы: доступ к сайту (REST API WordPress), команды, сервисы, видимость.
  * Настройки сервисов — в самих сервисах (Pinterest Pins → Сайты). id — доступ; старые ссылки по id сайта Pinterest перенаправляются.
  */
-export default async function SitePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SitePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<SearchParams> }) {
   const me = await requireUser();
   const { id } = await params;
+  const query = await searchParams;
 
   const access = await prisma.siteAccess.findUnique({ where: { id }, include: accessInclude });
   if (!access) {
@@ -38,6 +42,8 @@ export default async function SitePage({ params }: { params: Promise<{ id: strin
     prisma.pinSite.findFirst({ where: { wpConnectionId: access.id }, select: { id: true, isActive: true } }),
   ]);
   const teamName = (tid: string) => teams.find((t) => t.id === tid)?.name ?? "другая команда";
+  const canDelete = canManageTeam(me, access.teamId);
+  const impact = canDelete ? await siteDeletionImpact(access.id) : null;
   const pr = (access.projects as string[] | null) ?? [];
   const pinsAllowed = !pr.length || pr.includes(PROJECT_SLUG);
 
@@ -81,9 +87,18 @@ export default async function SitePage({ params }: { params: Promise<{ id: strin
               </ActionForm>
             </div>
           </Card>
-          <ActionForm action={deleteSiteAccess} hidden={{ id: access.id }}>
-            <SubmitButton className="btn-danger w-full" confirm="Удалить сайт и доступ безвозвратно?" pendingText="…">Удалить сайт</SubmitButton>
-          </ActionForm>
+          {impact && (
+            <DeleteSiteForm
+              id={access.id}
+              name={access.name}
+              initialOpen={!!sp(query, "delete")}
+              summary={{
+                pinRuns: impact.pinRunIds.length, pins: impact.pins, articles: impact.articleIds.length,
+                inPins: impact.pinSiteIds.length > 0, inArticles: impact.artSiteIds.length > 0,
+                busy: impact.activePinRuns || impact.activeArticles ? "Сейчас по сайту идёт работа: остановите прогоны и статьи или дождитесь окончания, иначе удаление не пройдёт." : null,
+              }}
+            />
+          )}
         </div>
       </div>
     </>

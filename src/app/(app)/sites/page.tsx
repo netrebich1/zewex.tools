@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { siteAccessWhere, pinSiteWhere } from "@/lib/sites/access";
-import { seesAllSites } from "@/lib/permissions";
+import { canManageTeam, seesAllSites } from "@/lib/permissions";
 import { Badge, Card, Empty, PageHeader } from "@/components/ui";
 import { Icon } from "@/components/Icons";
 import { fmtDate } from "@/lib/utils";
@@ -37,7 +37,7 @@ export default async function SitesPage() {
             <Card key={team} title={team}>
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>Сайт</th><th>Адрес</th><th>Команды и видимость</th><th>Инструменты</th><th>Pinterest Pins</th><th>Проверка</th></tr></thead>
+                  <thead><tr><th>Сайт</th><th>Адрес</th><th>Команды и видимость</th><th>Инструменты</th><th>Pinterest Pins</th><th>Проверка</th><th></th></tr></thead>
                   <tbody>
                     {list.map((w) => {
                       const pr = (w.projects as string[] | null) ?? [];
@@ -50,6 +50,7 @@ export default async function SitesPage() {
                           <td><span className="flex flex-wrap gap-1">{pr.length ? pr.map((s) => <Badge key={s}>{projName(s)}</Badge>) : <Badge>все инструменты</Badge>}</span></td>
                           <td className="text-muted">{ps ? <Link href={`/pinterest/pins/sites/${ps.id}?tab=settings`} className="hover:underline">{ps.isActive ? "включён" : "в архиве"} · настройки</Link> : "не включён"}</td>
                           <td>{w.lastCheckOk == null ? <span className="text-muted">—</span> : w.lastCheckOk ? <span className="text-ok" title={w.lastCheckNote ?? ""}>✓ {fmtDate(w.lastCheckedAt)}</span> : <span className="text-danger" title={w.lastCheckNote ?? ""}>✕ ошибка</span>}</td>
+                          <td className="text-right">{canManageTeam(me, w.teamId) && <Link href={`/sites/${w.id}?delete=1#delete`} className="text-[13px] text-muted hover:text-danger">Удалить</Link>}</td>
                         </tr>
                       );
                     })}

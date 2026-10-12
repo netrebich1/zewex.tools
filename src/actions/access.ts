@@ -7,6 +7,9 @@ import { canManageTeam } from "@/lib/auth";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { testConnection } from "@/lib/pins/wp/client";
 import { assertPublicUrl } from "@/lib/pins/fetch";
+import { removePath, runDir } from "@/lib/pins/storage";
+import { purgeArticleFiles } from "@/lib/articles/storage";
+import { siteDeletionImpact } from "@/lib/sites/delete";
 import { canAccessSiteAccess } from "@/lib/sites/access";
 import { seesAllSites } from "@/lib/permissions";
 
@@ -94,18 +97,40 @@ export async function testSiteAccess(_p: FormState, f: FormData): Promise<FormSt
   return r.ok ? { ok: r.note } : { error: r.note };
 }
 
+/**
+ * Удаление сайта целиком: доступ, сайт в Pinterest Pins (доски, наборы, прогоны, пины и их картинки) и сайт в Статьях
+ * (запуски, статьи и их фото). В самом WordPress ничего не трогаем. Нужно второе подтверждение — название сайта в поле `confirm`.
+ */
 export async function deleteSiteAccess(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const id = str(f, "id");
   const c = await prisma.siteAccess.findUnique({ where: { id } });
   if (!c || !canManageTeam(me, c.teamId)) return { error: "Нет прав" };
-  const runs = await prisma.pinRun.count({ where: { site: { wpConnectionId: id } } });
-  if (runs) return { error: `У сайта ${runs} прогон(ов) в Pinterest Pins. Уберите сайт в архив вместо удаления.` };
-  await prisma.$transaction([
-    prisma.pinSite.deleteMany({ where: { wpConnectionId: id } }),
-    prisma.siteAccess.delete({ where: { id } }),
+  if (str(f, "confirm").toLowerCase() !== c.name.trim().toLowerCase()) return { error: "Название сайта введено неверно: удаление отменено" };
+  const impact = await siteDeletionImpact(id);
+  if (impact.activePinRuns || impact.activeArticles) {
+    const busy = [impact.activePinRuns ? `прогонов пинов в работе: ${impact.activePinRuns}` : "", impact.activeArticles ? `статей в работе: ${impact.activeArticles}` : ""].filter(Boolean).join(", ");
+    return { error: `Сейчас по сайту идёт работа (${busy}). Остановите её или дождитесь окончания и повторите.` };
+  }
+  try {
+    await prisma.$transaction([
+      prisma.pinRun.deleteMany({ where: { siteId: { in: impact.pinSiteIds } } }),
+      prisma.pinUrlHistory.deleteMany({ where: { siteId: { in: impact.pinSiteIds } } }),
+      prisma.pinExportLog.deleteMany({ where: { siteId: { in: impact.pinSiteIds } } }),
+      prisma.pinSite.deleteMany({ where: { id: { in: impact.pinSiteIds } } }),
+      prisma.artPhotoFingerprint.deleteMany({ where: { siteId: { in: impact.artSiteIds } } }),
+      prisma.artError.deleteMany({ where: { siteId: { in: impact.artSiteIds } } }),
+      prisma.artSite.deleteMany({ where: { id: { in: impact.artSiteIds } } }),
+      prisma.siteAccess.delete({ where: { id } }),
+    ]);
+  } catch (e) { return fail(e); }
+  // Файлы убираем после базы: если что-то не удалилось, останется только мусор на диске, а не битые записи.
+  await Promise.all([
+    ...impact.pinRunIds.map((runId) => removePath(runDir(runId)).catch(() => {})),
+    ...impact.articleIds.map((articleId) => purgeArticleFiles(articleId).catch(() => {})),
   ]);
   revalidatePath("/sites");
   revalidatePath("/pinterest/pins/sites");
+  revalidatePath("/pinterest/articles");
   redirect("/sites");
 }
