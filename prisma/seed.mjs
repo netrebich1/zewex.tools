@@ -51,7 +51,8 @@ for (const s of sections) {
 const defaults = {
   openrouter: { chat: ["google/gemini-2.5-flash", "Gemini 2.5 Flash (OpenRouter)", 0.3, 2.5], image: ["google/gemini-2.5-flash-image", "Gemini 2.5 Flash Image (OpenRouter)", null, null, 0.04] },
   laozhang: { chat: ["gemini-2.5-flash", "Gemini 2.5 Flash (laozhang)", 0.3, 2.5], image: ["gpt-image-2", "GPT Image 2 (laozhang)", null, null, 0.02] },
-  openai: { chat: ["gpt-4.1-mini", "GPT-4.1 mini", 0.4, 1.6], image: ["gpt-image-2", "GPT Image 2", null, null, 0.02] },
+  // gpt-image-2 у OpenAI тарифицируется по токенам: текст запроса $5, готовая картинка $30 за 1M (цена «за картинку» давала неверный расход).
+  openai: { chat: ["gpt-4.1-mini", "GPT-4.1 mini", 0.4, 1.6], image: ["gpt-image-2", "GPT Image 2", 5, 30, null] },
   perplexity: { chat: ["sonar", "Sonar", 1, 1] },
 };
 for (const [slug, d] of Object.entries(defaults)) {
