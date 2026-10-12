@@ -13,7 +13,7 @@ import { monthStart } from "./utils";
  *  - OpenAI и другие LLM без баланса по API: остаток вписывают вручную на странице ключа (ApiKey.balanceUsd/balanceAt),
  *    портал вычитает из него расход по журналу через этот ключ — по всем инструментам и командам сразу.
  * Ответы провайдеров кэшируются в памяти на несколько минут; ручные остатки считаются по базе каждый раз.
- * Сотрудник без права «балансы» видит только ключи, которые обслуживают его самого (`myKeyBalances`).
+ * Сотрудник (балансы «свои») видит только ключи своей команды в открытых ему инструментах (`myKeyBalances`).
  */
 export const BALANCE_PROVIDERS = ["openrouter", "laozhang", "openai", "dataforseo"] as const;
 
@@ -209,8 +209,10 @@ export type MyKeyBalance = {
 const SCOPE_ORDER: BindingScope[] = ["USER_PROJECT", "TEAM_PROJECT", "PROJECT", "TEAM", "GLOBAL"];
 
 /**
- * Ключи, которые обслуживают сотрудника в открытых ему инструментах `tools` (тот же порядок правил, что в resolveBinding),
- * с остатком на счёте. Остаток общий для ключа: в нём учтён расход всех инструментов и команд.
+ * Ключи, на которых сотрудник работает в открытых ему инструментах `tools` (тот же порядок правил, что в resolveBinding),
+ * с остатком на счёте. Только свои: правила его команд и личные; если слот обслуживает общий ключ сервиса
+ * (уровни PROJECT / GLOBAL), он не показывается — чужие балансы сотруднику не видны.
+ * Остаток общий для ключа: в нём учтён расход всех инструментов и команд.
  */
 export async function myKeyBalances(userId: string, tools: "all" | string[], force = false): Promise<MyKeyBalance[]> {
   const memberships = await prisma.teamMember.findMany({ where: { userId }, orderBy: { createdAt: "asc" }, select: { teamId: true } });
@@ -231,6 +233,7 @@ export async function myKeyBalances(userId: string, tools: "all" | string[], for
     for (const scope of SCOPE_ORDER) {
       const level = bindings.filter((b) => b.scope === scope && (scope === "TEAM" || scope === "GLOBAL" ? b.capability === slot.capability : b.slotId === slot.id));
       if (!level.length) continue;
+      if (scope === "PROJECT" || scope === "GLOBAL") break;
       for (const b of levelCandidates(level, scope, teamIds, slot.preferProviders)) {
         const tools = toolsByKey.get(b.apiKeyId) ?? new Map<string, number>();
         tools.set(slot.project.name, slot.project.order);

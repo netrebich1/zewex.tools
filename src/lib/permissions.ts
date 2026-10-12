@@ -22,8 +22,8 @@ export type Permissions = {
   providers: "none" | "view" | "manage";
   /** Сайты: только сайты своих команд / все сайты. */
   sites: "team" | "all";
-  /** Остатки на балансах провайдеров в шапке. */
-  balances: boolean;
+  /** Балансы в шапке: скрыты / только ключи своей команды в открытых сотруднику инструментах / все провайдеры. */
+  balances: "none" | "own" | "all";
   /** Список пользователей: скрыт / только смотреть. Добавлять людей и менять права может только админ. */
   users: "none" | "view";
   /**
@@ -44,7 +44,7 @@ export const DEFAULT_PERMISSIONS: Permissions = {
   teams: "none",
   providers: "view",
   sites: "team",
-  balances: false,
+  balances: "own",
   users: "none",
   tools: [],
 };
@@ -57,7 +57,7 @@ export const ADMIN_PERMISSIONS: Permissions = {
   teams: "all",
   providers: "manage",
   sites: "all",
-  balances: true,
+  balances: "all",
   users: "view",
   tools: "all",
 };
@@ -77,7 +77,7 @@ export const PERMISSION_PRESETS: Record<string, { label: string; hint: string; v
   manager: {
     label: "Менеджер",
     hint: "Видит всё, управляет ключами, правилами, командами и провайдерами. Без управления пользователями.",
-    value: { usage: "all", keysView: "all", keysCreate: "all", keysAssign: "all", teams: "all", providers: "manage", sites: "all", balances: true, users: "view", tools: [] },
+    value: { usage: "all", keysView: "all", keysCreate: "all", keysAssign: "all", teams: "all", providers: "manage", sites: "all", balances: "all", users: "view", tools: [] },
   },
 };
 
@@ -92,7 +92,7 @@ export const PERMISSION_FIELDS: Array<FieldMeta<PermissionKey>> = [
   { key: "teams", label: "Команды", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }, { value: "manage", label: "Состав своих команд" }, { value: "all", label: "Создавать и управлять всеми" }] },
   { key: "sites", label: "Сайты", options: [{ value: "team", label: "Сайты своих команд" }, { value: "all", label: "Все сайты" }] },
   { key: "providers", label: "Провайдеры и модели", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }, { value: "manage", label: "Менять настройки и модели" }] },
-  { key: "balances", label: "Балансы провайдеров в шапке", options: [{ value: false, label: "Не показывать" }, { value: true, label: "Показывать" }] },
+  { key: "balances", label: "Балансы в шапке", hint: "«Свои» — ключи команды сотрудника в открытых ему инструментах.", options: [{ value: "none", label: "Не показывать" }, { value: "own", label: "Только свои ключи" }, { value: "all", label: "Все провайдеры" }] },
   { key: "users", label: "Пользователи", hint: "Добавлять людей и менять их права может только админ.", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }] },
 ] as Array<FieldMeta<PermissionKey>>;
 
@@ -102,7 +102,8 @@ export function parsePermissions(raw: unknown): Permissions {
   const out = { ...DEFAULT_PERMISSIONS } as Record<string, unknown>;
   for (const f of PERMISSION_FIELDS) {
     const v = src[f.key];
-    const norm = typeof v === "string" && (v === "true" || v === "false") ? v === "true" : v;
+    // Раньше «балансы» были флажком: true — все провайдеры, false — без общей плашки.
+    const norm = f.key === "balances" && typeof v === "boolean" ? (v ? "all" : "own") : v;
     if (f.options.some((o) => o.value === norm)) out[f.key] = norm;
   }
   out.tools = src.tools === "all" ? "all" : Array.isArray(src.tools) ? [...new Set(src.tools.filter((x): x is string => typeof x === "string" && !!x))] : DEFAULT_PERMISSIONS.tools;
@@ -296,8 +297,13 @@ export function canViewProviders(u: Actor): boolean {
 export function canManageProviders(u: Actor): boolean {
   return u.role === "ADMIN" || u.perms.providers === "manage";
 }
+/** Балансы всех провайдеров (плашка админа). */
 export function canSeeBalances(u: Actor): boolean {
-  return u.role === "ADMIN" || u.perms.balances;
+  return u.role === "ADMIN" || u.perms.balances === "all";
+}
+/** Плашка балансов в шапке вообще: у сотрудника — только ключи его команды в его инструментах. */
+export function showsBalances(u: Actor): boolean {
+  return u.role === "ADMIN" || u.perms.balances !== "none";
 }
 export function canViewUsers(u: Actor): boolean {
   return u.role === "ADMIN" || u.perms.users === "view";

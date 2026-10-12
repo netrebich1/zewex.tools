@@ -56,6 +56,18 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
         return unpriced.length ? `У моделей ${Array.from(new Set(unpriced)).join(", ")} не заданы цены: вызовы по этим правилам будут отклоняться, пока на ключе стоит лимит. Укажите цены на странице провайдера.` : null;
       })();
   const whose = key.owner ? `личный · ${key.owner.name}` : key.team ? `команда «${key.team.name}»` : "общий";
+  // Что останется без ключа после удаления: правила этого ключа, которые не подхватит другое правило с активным ключом
+  // (тот же уровень или более общий). Личные правила проверяются без учёта команд их владельца.
+  const others = canEdit && key.bindings.length
+    ? await prisma.binding.findMany({ where: { apiKeyId: { not: key.id }, apiKey: { status: "ACTIVE" } }, select: { scope: true, slotId: true, teamId: true, userId: true, capability: true } })
+    : [];
+  const orphaned = !canEdit ? [] : key.bindings.filter((b) => {
+    const cap = b.slot?.capability ?? b.capability;
+    return !others.some((o) => o.slotId
+      ? o.slotId === b.slotId && (o.scope === "PROJECT" || (o.scope === "TEAM_PROJECT" && !!b.teamId && o.teamId === b.teamId) || (o.scope === "USER_PROJECT" && !!b.userId && o.userId === b.userId))
+      : o.capability === cap && (o.scope === "GLOBAL" || (o.scope === "TEAM" && !!b.teamId && o.teamId === b.teamId)));
+  });
+  const ruleLabel = (b: (typeof key.bindings)[number]) => `${b.team?.name ?? b.user?.name ?? "все"} · ${b.slot ? `${b.slot.project.name} · ${b.slot.name}` : b.capability ? CAPABILITY_LABELS[b.capability] : "все инструменты"}`;
 
   return (
     <>
@@ -92,7 +104,7 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
               </ActionForm>
             </Card>
           )}
-          <Card title="Где используется" description="Правила, которые ссылаются на этот ключ. Удалить ключ можно только когда список пуст.">
+          <Card title="Где используется" description="Правила, которые ссылаются на этот ключ. При смене владельца они переписываются сами, при удалении ключа удаляются вместе с ним.">
             {key.bindings.length === 0 ? <p className="help">Пока нигде.</p> : (
               <div className="table-wrap">
                 <table className="table">
@@ -125,8 +137,8 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
                   </Field>
                   <Field label="Месячный лимит, $"><input name="monthlyLimitUsd" className="input" inputMode="decimal" defaultValue={key.monthlyLimitUsd ?? ""} placeholder="без лимита" /></Field>
                   {owners.length > 1 ? (
-                    <Field label="Чей ключ" hint={key.bindings.length ? "Чтобы поменять, сначала уберите ключ из правил." : undefined}>
-                      <select name="owner" className="input" defaultValue={currentOwner} disabled={key.bindings.length > 0}>
+                    <Field label="Чей ключ" hint={key.bindings.length ? "Правила перепишутся сами: сервисы и модели останутся, ключ перейдёт к выбранной команде." : undefined}>
+                      <select name="owner" className="input" defaultValue={currentOwner}>
                         {owners.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </Field>
@@ -197,9 +209,14 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
             </div>
           </Card>
           {canEdit && (
-            <ActionForm action={deleteKey} hidden={{ id: key.id }}>
-              <SubmitButton className="btn-danger w-full" confirm="Удалить ключ безвозвратно?" pendingText="…">Удалить ключ</SubmitButton>
-            </ActionForm>
+            <div className="space-y-2">
+              {orphaned.length > 0 && (
+                <Alert tone="warn">Если удалить ключ, без ключа останутся: {[...new Set(orphaned.map(ruleLabel))].slice(0, 8).join("; ")}{new Set(orphaned.map(ruleLabel)).size > 8 ? " и другие" : ""}. Сначала подключите туда другой ключ.</Alert>
+              )}
+              <ActionForm action={deleteKey} hidden={{ id: key.id }}>
+                <SubmitButton className="btn-danger w-full" confirm={key.bindings.length ? `Удалить ключ безвозвратно? Правила с ним (${key.bindings.length}) удалятся сами${orphaned.length ? ", часть сервисов останется без ключа" : ", сервисы перейдут на другие подключённые ключи"}.` : "Удалить ключ безвозвратно?"} pendingText="…">Удалить ключ</SubmitButton>
+              </ActionForm>
+            </div>
           )}
         </div>
       </div>

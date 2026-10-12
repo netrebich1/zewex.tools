@@ -11,7 +11,7 @@ import {
   assignScope, canAssignGlobal, canAssignKey, canCreatePersonalKey, canCreateSharedKey, canCreateTeam, canDeleteBinding, canManageKey, canManageProviders,
   canManageTeam, inScope, keyFitsRule, keyTeamScope, parsePermissions, permissionsFromForm, type Actor,
 } from "@/lib/permissions";
-import type { Capability, BindingScope } from "@prisma/client";
+import type { Capability, BindingScope, Prisma } from "@prisma/client";
 
 export type FormState = { error?: string; ok?: string };
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -397,17 +397,21 @@ export async function updateKey(_p: FormState, f: FormData): Promise<FormState> 
   if (!canManageKey(me, key)) return { error: "Нет прав" };
   const secret = secretFromForm(f, key.provider.authType);
   if (key.provider.authType === "BASIC" && (str(f, "secretLogin") || str(f, "secretPassword")) && !secret) return { error: "Чтобы заменить доступ DataForSEO, заполните и логин, и пароль API" };
-  // Смена владельца: только если ключ нигде не используется (правила завязаны на то, чей это ключ) и есть права на новый вариант.
-  let ownerPatch: { ownerId: string | null; teamId: string | null } | {} = {};
+  // Смена владельца: нужны права на новый вариант; правила ключа переписываются под нового владельца (moveKeyRules).
+  let newOwner: { ownerId: string | null; teamId: string | null } | null = null;
   const ownerRaw = str(f, "owner");
   const currentOwner = key.ownerId ? "personal" : key.teamId ? `team:${key.teamId}` : "shared";
   if (ownerRaw && ownerRaw !== currentOwner) {
-    if (key._count.bindings) return { error: "Сначала уберите ключ из правил, затем меняйте, чей он" };
     const o = keyOwnerFromForm(me, ownerRaw);
     if ("error" in o) return o;
-    ownerPatch = o.ownerId ? { ownerId: key.ownerId ?? me.id, teamId: null } : o;
+    newOwner = o.ownerId ? { ownerId: key.ownerId ?? me.id, teamId: null } : o;
+    if (key._count.bindings && newOwner.teamId && !inScope(assignScope(me), newOwner.teamId)) return { error: "Ключ используется в правилах, а назначать правила этой команде вам нельзя" };
   }
-  await prisma.apiKey.update({
+  const ownerPatch = newOwner ?? {};
+  let moved: { kept: number; dropped: number } | null = null;
+  await prisma.$transaction(async (tx) => {
+    if (newOwner && key._count.bindings) moved = await moveKeyRules(tx, id, newOwner);
+    await tx.apiKey.update({
     where: { id },
     data: {
       label: str(f, "label") || key.label,
@@ -417,10 +421,42 @@ export async function updateKey(_p: FormState, f: FormData): Promise<FormState> 
       ...(secret ? { secretEnc: encryptSecret(secret), secretHint: secretHint(secret), lastCheckOk: null, lastCheckNote: null } : {}),
       ...ownerPatch,
     },
+    });
   });
   revalidatePath(`/keys/${id}`);
   revalidatePath("/keys");
-  return { ok: "Сохранено" };
+  revalidatePath("/", "layout");
+  const rules = moved as { kept: number; dropped: number } | null;
+  return { ok: rules ? `Сохранено. Правила переписаны под нового владельца: ${rules.kept}${rules.dropped ? `, убрано неподходящих: ${rules.dropped}` : ""}` : "Сохранено" };
+}
+
+/**
+ * Переписывает правила ключа под нового владельца, сохраняя сервисы и модели:
+ *  - командный ключ: все правила уходят в его команду (правила сервиса и других команд становятся правилами этой команды),
+ *    личные правила остаются только у участников команды;
+ *  - личный ключ: правила слотов становятся личными правилами владельца, правила «по типу слота» убираются;
+ *  - общий ключ: правила не меняются.
+ */
+async function moveKeyRules(tx: Prisma.TransactionClient, keyId: string, target: { ownerId: string | null; teamId: string | null }): Promise<{ kept: number; dropped: number }> {
+  const bindings = await tx.binding.findMany({ where: { apiKeyId: keyId }, orderBy: { createdAt: "asc" } });
+  if (!target.ownerId && !target.teamId) return { kept: bindings.length, dropped: 0 };
+  const members = target.teamId ? new Set((await tx.teamMember.findMany({ where: { teamId: target.teamId }, select: { userId: true } })).map((m) => m.userId)) : null;
+  const next = new Map<string, Prisma.BindingCreateManyInput>();
+  let dropped = 0;
+  for (const b of bindings) {
+    let row: { scope: BindingScope; slotId?: string; teamId?: string; userId?: string; capability?: Capability } | null = null;
+    if (target.teamId) {
+      if (b.scope === "USER_PROJECT") row = b.userId && b.slotId && members!.has(b.userId) ? { scope: "USER_PROJECT", slotId: b.slotId, userId: b.userId } : null;
+      else if (b.slotId) row = { scope: "TEAM_PROJECT", slotId: b.slotId, teamId: target.teamId };
+      else if (b.capability) row = { scope: "TEAM", capability: b.capability, teamId: target.teamId };
+    } else if (b.slotId && target.ownerId) row = { scope: "USER_PROJECT", slotId: b.slotId, userId: target.ownerId };
+    if (!row) { dropped++; continue; }
+    const id = [row.scope, row.slotId ?? "", row.capability ?? "", row.teamId ?? "", row.userId ?? ""].join("|");
+    if (!next.has(id)) next.set(id, { ...row, providerId: b.providerId, modelId: b.modelId, apiKeyId: keyId });
+  }
+  await tx.binding.deleteMany({ where: { apiKeyId: keyId } });
+  if (next.size) await tx.binding.createMany({ data: [...next.values()] });
+  return { kept: next.size, dropped };
 }
 
 export async function testKey(_p: FormState, f: FormData): Promise<FormState> {
@@ -438,12 +474,13 @@ export async function testKey(_p: FormState, f: FormData): Promise<FormState> {
 export async function deleteKey(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const id = str(f, "id");
-  const key = await prisma.apiKey.findUnique({ where: { id }, include: { _count: { select: { bindings: true } } } });
+  const key = await prisma.apiKey.findUnique({ where: { id }, select: { ownerId: true, teamId: true } });
   if (!key) return { error: "Ключ не найден" };
   if (!canManageKey(me, key)) return { error: "Нет прав" };
-  if (key._count.bindings) return { error: `Ключ используется в ${key._count.bindings} правил(ах). Сначала уберите его оттуда.` };
-  await prisma.apiKey.delete({ where: { id } });
+  // Правила с этим ключом уходят вместе с ним: слоты дальше обслуживают оставшиеся правила (другие ключи того же или более общего уровня).
+  await prisma.$transaction([prisma.binding.deleteMany({ where: { apiKeyId: id } }), prisma.apiKey.delete({ where: { id } })]);
   revalidatePath("/keys");
+  revalidatePath("/", "layout");
   redirect("/keys");
 }
 

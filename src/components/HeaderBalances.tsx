@@ -23,7 +23,7 @@ function sumAccounts(keys: MyKeyBalance[]): number | null {
 
 /**
  * Балансы в шапке: плашка с остатками, по клику — подробности.
- * Админам и сотрудникам с правом «балансы» — все провайдеры; остальным (`mine`) — ключи, которые работают в их инструментах.
+ * Админам и сотрудникам с правом «все провайдеры» — все провайдеры; остальным (`mine`) — ключи их команды в открытых им инструментах.
  */
 export function HeaderBalances({ mine = false }: { mine?: boolean }) {
   const [rows, setRows] = useState<ProviderBalance[] | null>(null);
@@ -110,7 +110,7 @@ export function HeaderBalances({ mine = false }: { mine?: boolean }) {
           {error && <div className="px-4 py-3 text-[13px] text-danger">{error}</div>}
           {mine && keys && (
             <>
-              {keys.length === 0 && <div className="px-4 py-3 help">К вашим инструментам пока не подключено ни одного ключа.</div>}
+              {keys.length === 0 && <div className="px-4 py-3 help">У вашей команды пока нет ключей в открытых вам инструментах.</div>}
               {keys.length > 1 && total != null && (
                 <div className="flex items-baseline justify-between gap-3 px-4 py-3 border-b border-line">
                   <div className="text-[14px] font-semibold">Всего на ключах</div>

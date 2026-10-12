@@ -6,7 +6,7 @@ import { LogoFull, LogoMark } from "./Logo";
 import { Icon, type IconName } from "./Icons";
 import { ThemeSwitch } from "./ThemeSwitch";
 import { HeaderBalances } from "./HeaderBalances";
-import { canSeeBalances, canViewKeys, canViewProviders, canViewTeams, canViewUsage, canViewUsers, type Actor } from "@/lib/permissions";
+import { canSeeBalances, showsBalances, canViewKeys, canViewProviders, canViewTeams, canViewUsage, canViewUsers, type Actor } from "@/lib/permissions";
 
 type NavItem = { href: string; label: string; icon: IconName; show?: (u: Actor) => boolean };
 
@@ -51,7 +51,7 @@ export function Shell({ user, children }: { user: Actor & { name: string; email:
             <Link href="/" className={`tab ${isTools ? "active" : ""}`}><Icon.grid width={15} height={15} /> Инструменты</Link>
           </nav>
           <div className="ml-auto flex items-center gap-2">
-            <HeaderBalances mine={!canSeeBalances(user)} />
+            {showsBalances(user) && <HeaderBalances mine={!canSeeBalances(user)} />}
             <ThemeSwitch />
           </div>
           <div className="relative flex items-center gap-2" ref={ref}>
