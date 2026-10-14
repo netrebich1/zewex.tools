@@ -79,6 +79,16 @@
   --shadow-pop: 0 8px 30px rgba(43, 40, 37, 0.16), 0 2px 6px rgba(43, 40, 37, 0.08);
 }
 
+/* ───────── Режимы главного админа: цвет шапки показывает, чьими глазами вы смотрите на портал. ───────── */
+:root { --view-member: #2563eb; --view-member-soft: #e3ecff; --view-as: #7c3aed; --view-as-soft: #efe6ff; }
+:root[data-theme="dark"] { --view-member: #60a5fa; --view-member-soft: #132443; --view-as: #a78bfa; --view-as-soft: #261a45; }
+:root[data-theme="neutral"] { --view-member: #2f5fb3; --view-member-soft: #d9e1f0; --view-as: #6d3fc0; --view-as-soft: #e4daf2; }
+.view-member { --view: var(--view-member); --view-soft: var(--view-member-soft); }
+.view-as { --view: var(--view-as); --view-soft: var(--view-as-soft); }
+.view-member .view-header, .view-as .view-header { background: color-mix(in oklab, var(--view-soft) 88%, transparent); border-bottom-color: var(--view); box-shadow: inset 0 3px 0 var(--view); }
+.view-member .view-avatar, .view-as .view-avatar { background: var(--view); color: #fff; }
+.view-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--view); background: var(--color-surface); border: 1px solid color-mix(in oklab, var(--view) 40%, transparent); white-space: nowrap; }
+
 html { color-scheme: light; scroll-behavior: smooth; }
 html, body { transition: background-color 0.2s ease, color 0.2s ease; }
 body {

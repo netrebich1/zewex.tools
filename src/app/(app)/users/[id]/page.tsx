@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { allowedRegistrationEmails, requireAdmin } from "@/lib/auth";
+import { allowedRegistrationEmails, isOwnerEmail, realSession, requireAdmin } from "@/lib/auth";
 import { parsePermissions } from "@/lib/permissions";
 import { Alert, Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
@@ -10,6 +10,8 @@ import { PermissionsFields } from "@/components/PermissionsFields";
 import { PasswordInput } from "@/components/users/PasswordInput";
 import { ToolsAccessFields } from "@/components/users/ToolsAccessFields";
 import { fmtDate } from "@/lib/utils";
+import { setSuperAdmin } from "@/actions/viewAs";
+import { EnterCabinetButton } from "@/components/ViewAs";
 
 export const dynamic = "force-dynamic";
 
@@ -28,13 +30,18 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
   const memberIds = new Set(u.memberships.map((m) => m.teamId));
   const isSelf = u.id === me.id;
   const loginLocked = isSelf || allowedRegistrationEmails().includes(u.email);
+  const session = await realSession();
+  const iAmOwner = !!session && !session.actAsUserId && isOwnerEmail(session.user.email);
+  const isOwner = isOwnerEmail(u.email);
+  const isSuper = u.role === "ADMIN" && (u.superAdmin || isOwner);
+  const canEnter = me.superAdmin && !isSelf && u.isActive && !isSuper;
 
   return (
     <>
-      <PageHeader back={{ href: "/users", label: "Пользователи" }} title={u.name} subtitle={`${u.email} · с ${fmtDate(u.createdAt)}`} actions={<div className="flex gap-1.5"><Badge tone={u.role === "ADMIN" ? "ink" : "neutral"}>{u.role === "ADMIN" ? "админ" : "сотрудник"}</Badge>{!u.isActive && <Badge tone="danger">отключён</Badge>}{pending && <Badge tone="warn">пароль не задан</Badge>}</div>} />
+      <PageHeader back={{ href: "/users", label: "Пользователи" }} title={u.name} subtitle={`${u.email} · с ${fmtDate(u.createdAt)}`} actions={<div className="flex gap-1.5"><Badge tone={u.role === "ADMIN" ? "ink" : "neutral"}>{u.role === "ADMIN" ? (isSuper ? "главный админ" : "админ") : "сотрудник"}</Badge>{!u.isActive && <Badge tone="danger">отключён</Badge>}{pending && <Badge tone="warn">пароль не задан</Badge>}</div>} />
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div className="space-y-4">
-          <Card title="Права" description={u.role === "ADMIN" ? "Админ может всё: эти настройки не ограничивают его. Они вступят в силу, если сменить роль на «сотрудник»." : "Отметьте инструменты, которые видит сотрудник, затем выберите готовый профиль или настройте каждое право отдельно. Лидер команды дополнительно получает уровень «команда» в своей команде."}>
+          <Card title="Права" description={u.role === "ADMIN" ? (isSuper ? "Админ может всё. Эти права работают, когда главный админ переключается в режим «Сотрудник» у аватарки: тогда он видит только свои команды, сайты и отмеченные инструменты. Если права не сохранять, в режиме сотрудника открыты все инструменты." : "Админ может всё: эти настройки не ограничивают его. Они вступят в силу, если сменить роль на «сотрудник».") : "Отметьте инструменты, которые видит сотрудник, затем выберите готовый профиль или настройте каждое право отдельно. Лидер команды дополнительно получает уровень «команда» в своей команде."}>
             <ActionForm action={updateUserPermissions} hidden={{ id: u.id }}>
               <div>
                 <span className="label">Инструменты</span>
@@ -76,6 +83,22 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
         </div>
 
         <div className="space-y-4">
+          {canEnter && (
+            <Card title="Кабинет сотрудника" description="Портал откроется так, как его видит этот сотрудник: его инструменты, сайты и прогоны. Всё, что вы сделаете, будет сделано от его имени. Вернуться — кнопкой в фиолетовой полосе сверху.">
+              <EnterCabinetButton userId={u.id} />
+            </Card>
+          )}
+
+          {iAmOwner && u.role === "ADMIN" && !isSelf && (
+            <Card title="Главный админ" description={isOwner ? "Владелец портала — главный админ всегда." : "Главный админ переключается в режим сотрудника и входит в кабинет любого сотрудника. Назначает только владелец портала."}>
+              {!isOwner && (
+                <ActionForm action={setSuperAdmin} hidden={{ id: u.id, on: u.superAdmin ? "0" : "1" }}>
+                  <SubmitButton className={u.superAdmin ? "btn-ghost btn-sm" : "btn-primary btn-sm"} pendingText="…">{u.superAdmin ? "Снять отметку" : "Сделать главным админом"}</SubmitButton>
+                </ActionForm>
+              )}
+            </Card>
+          )}
+
           <Card title="Роль и доступ">
             <ActionForm action={updateUser} hidden={{ id: u.id }}>
               <Field label="Логин" hint={loginLocked ? "Логин владельца портала не меняется." : "С ним сотрудник входит в портал. Латинские буквы, цифры и знаки . _ - @."}>

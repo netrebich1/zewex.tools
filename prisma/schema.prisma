@@ -71,6 +71,8 @@ model User {
   inviteExpires DateTime?
   /// Права участника (JSON `Permissions` из src/lib/permissions.ts); null — права по умолчанию. Для ADMIN не учитываются.
   permissions   Json?
+  /// Главный админ: переключается в режим сотрудника и входит в кабинет любого сотрудника. Владельцу портала (ALLOWED_REGISTRATION_EMAILS) не нужен — он главный всегда.
+  superAdmin    Boolean      @default(false)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   sessions      Session[]
@@ -86,6 +88,10 @@ model Session {
   id        String   @id
   userId    String
   expiresAt DateTime
+  /// Главный админ смотрит портал как обычный сотрудник (свои команды и права из User.permissions).
+  memberView  Boolean @default(false)
+  /// Главный админ вошёл в кабинет этого пользователя; вернуться может только он сам (флаг живёт в его сессии).
+  actAsUserId String?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
