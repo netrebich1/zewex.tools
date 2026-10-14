@@ -142,6 +142,8 @@ for (const n of artCfg.niches) {
   await prisma.artNiche.upsert({ where: { code: n.code }, update: {}, create: n });
 }
 for (const p of artCfg.profiles) {
+  // Профиль без описанной ниши пропускаем, иначе seed падает на внешнем ключе и ломает деплой.
+  if (!artCfg.niches.some((n) => n.code === p.nicheCode)) { console.warn(`seed: profile for unknown niche "${p.nicheCode}" skipped (add it to config.json niches)`); continue; }
   await prisma.artNicheProfile.upsert({ where: { nicheCode: p.nicheCode }, update: {}, create: p });
 }
 for (const s of artPrompts.sets) {

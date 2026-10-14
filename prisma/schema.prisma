@@ -902,6 +902,7 @@ model ArtSite {
   defaultRecipe   ArtRecipe?  @relation(fields: [defaultRecipeId], references: [id], onDelete: SetNull)
   runs            ArtRun[]
   articles        Article[]
+  aiRuns          ArtAiModerationRun[]
 
   @@unique([teamId, slug])
   @@index([teamId])
@@ -986,6 +987,8 @@ model Article {
   /// Закрепление за модератором (TTL 15 мин)
   claimedById        String?
   claimedAt          DateTime?
+  /// Запуск ИИ-модерации, который держит статью (оригинал: захват на 30 дней)
+  aiRunId            String?     @db.Char(36)
   moderatedById      String?
   moderatedAt        DateTime?
   reviewedById       String?
@@ -995,6 +998,11 @@ model Article {
   finishedAt         DateTime?
   publishedAt        DateTime?
   purgedAt           DateTime?
+  /// Строка Google Таблицы, из которой пришла статья (вкладка = домен сайта), и состояние обратной записи отчёта: ok | error
+  sheetRow           Int?
+  sheetTab           String?
+  sheetSyncState     String?
+  sheetSyncError     String?     @db.Text
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
   team               Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -1007,13 +1015,16 @@ model Article {
   stageLogs          ArtStageLog[]
   events             ArtModerationEvent[]
   errors             ArtError[]
+  aiResults          ArtAiModerationResult[]
 
   @@index([siteId, status])
+  @@index([aiRunId])
   @@index([teamId, status])
   @@index([status, priority, createdAt])
   @@index([runId])
   @@index([siteId, keyword])
   @@index([claimedById])
+  @@index([siteId, sheetRow])
 }
 
 /// Кандидат фото (все найденные, включая отбракованные с причиной)
@@ -1186,4 +1197,88 @@ model ArtError {
   @@index([teamId, createdAt])
   @@index([signature, createdAt])
   @@index([siteId, createdAt])
+}
+
+/// Глобальные настройки автозапуска сервиса статей (singleton, id = "main"): мастер-выключатели и потолки
+model ArtSettings {
+  id               String   @id @default("main")
+  /// Мастер-выключатели: при false цепочка не запускается ни на одном сайте
+  photoMaster      Boolean  @default(true)
+  writingMaster    Boolean  @default(true)
+  publishMaster    Boolean  @default(true)
+  aiModMaster      Boolean  @default(true)
+  /// Потолок одновременных статей на всех сайтах (0 — только ARTICLES_WORKER_CONCURRENCY)
+  maxConcurrent    Int      @default(0)
+  /// Пачка автозапуска ИИ-модерации по умолчанию
+  aiModAutoBatch   Int      @default(20)
+  /// Google Таблицы: JSON-ключ сервисного аккаунта (зашифрован) и его e-mail — ему выдают доступ «Редактор» к таблице
+  sheetsKeyEnc     String?  @db.Text
+  sheetsEmail      String?
+  updatedAt        DateTime @updatedAt
+}
+
+/// Запуск ИИ-модерации фото (оригинал: ai_moderation_runs)
+model ArtAiModerationRun {
+  id           String   @id @default(uuid()) @db.Char(36)
+  teamId       String
+  siteId       String   @db.Char(36)
+  /// auto — решения применяются; test — только предложения
+  mode         String   @default("auto")
+  /// mix3 (по умолчанию) | mix2 | legacy
+  model        String   @default("mix3")
+  concurrency  Int      @default(5)
+  /// running | stopped | done | failed
+  status       String   @default("running")
+  /// auto — автозапуск по сайту, manual — кнопка
+  source       String   @default("manual")
+  total        Int      @default(0)
+  processed    Int      @default(0)
+  applied      Int      @default(0)
+  costUsd      Float    @default(0)
+  startedById  String?
+  heartbeatAt  DateTime?
+  error        String?  @db.Text
+  createdAt    DateTime @default(now())
+  finishedAt   DateTime?
+  site         ArtSite  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  results      ArtAiModerationResult[]
+
+  @@index([siteId, status])
+  @@index([teamId, createdAt])
+}
+
+/// Решение ИИ по статье (оригинал: ai_moderation_results)
+model ArtAiModerationResult {
+  id           String   @id @default(uuid()) @db.Char(36)
+  runId        String   @db.Char(36)
+  articleId    String   @db.Char(36)
+  /// processing | proposed | applying | applied | sent_to_human | excluded | failed | superseded
+  status       String   @default("processing")
+  /// approve | human | insufficient
+  decision     String?
+  confidence   Int?
+  photosBefore Int      @default(0)
+  photosAfter  Int      @default(0)
+  /// id ArtPhoto, которые были в статье до решения
+  originalIds  Json?
+  /// [{photoId, reason}]
+  removed      Json?
+  /// [{candidateId, reason}]
+  added        Json?
+  /// Итоговый порядок id (фото и кандидаты)
+  finalOrder   Json?
+  /// Подробности проходов: lite/flash-мнения, споры, pass_costs
+  review       Json?
+  summary      String?  @db.Text
+  error        String?  @db.Text
+  costUsd      Float    @default(0)
+  resolvedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  run          ArtAiModerationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  article      Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, articleId])
+  @@index([articleId, createdAt])
+  @@index([runId, status])
 }

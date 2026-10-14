@@ -10,6 +10,7 @@ import { installNodeCanvasHost } from "@/lib/pins/canvas/host.node";
 import { storageRoot } from "@/lib/pins/storage";
 import { domainsInflight, domainsLoop, domainsRequeueStale } from "./domains";
 import { articlesInflight, articlesLoop, articlesStartup } from "./articles";
+import { aiModerationInflight, aiModerationLoop } from "./articles/aiModeration";
 
 /**
  * Воркер сервиса пинов: единственный процесс, который двигает прогоны.
@@ -69,13 +70,13 @@ async function main() {
   const shutdown = async (sig: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    log.info(`${sig}: finishing ${inflight.size} job(s), ${domainsInflight().size} domain run(s) and ${articlesInflight().size} article(s), up to 60s`);
+    log.info(`${sig}: finishing ${inflight.size} job(s), ${domainsInflight().size} domain run(s) and ${articlesInflight().size} article(s), ${aiModerationInflight().size} AI review(s), up to 60s`);
     stopCron();
     const t = setTimeout(() => {
       log.warn("forced exit");
       process.exit(1);
     }, 60_000);
-    await Promise.allSettled([...inflight, ...domainsInflight(), ...articlesInflight()]);
+    await Promise.allSettled([...inflight, ...domainsInflight(), ...articlesInflight(), ...aiModerationInflight()]);
     clearTimeout(t);
     await prisma.$disconnect();
     log.info("bye");
@@ -84,7 +85,7 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
   // Очереди подборов доменов и статей работают рядом с очередью пинов в том же процессе.
-  await Promise.all([loop(), domainsLoop(WORKER_ID, () => shuttingDown), articlesLoop(WORKER_ID, () => shuttingDown)]);
+  await Promise.all([loop(), domainsLoop(WORKER_ID, () => shuttingDown), articlesLoop(WORKER_ID, () => shuttingDown), aiModerationLoop(WORKER_ID, () => shuttingDown)]);
 }
 
 main().catch((e) => {

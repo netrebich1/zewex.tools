@@ -121,6 +121,13 @@ export type ArtSiteSettings = {
     publishLimit: number;
     /** Включать выключенные цепочки при появлении новых статей */
     autoRestart: boolean;
+    /** Служебные пометки автозапуска (worker/articles/autostart.ts): почему и когда цепочка выключена, с какого момента простаивает (ISO). */
+    photoOffReason?: "idle" | "manual";
+    photoOffAt?: string;
+    photoIdleSince?: string;
+    writingOffReason?: "idle" | "manual";
+    writingOffAt?: string;
+    writingIdleSince?: string;
   };
   aiModeration: { enabled: boolean; batchFrom: number; concurrency: number; backlogThreshold: number; autoApply: boolean };
   /** Переопределения поиска для сайта (пусто — из рецепта) */
@@ -168,10 +175,22 @@ export type ArtRunSettings = {
   yearInUrlPercent: number | null;
   /** Служебная метка для тестов (не попадает в тексты) */
   testLabel: string;
+  /** Запуск из Google Таблицы: откуда взяты ключи (вкладка = домен сайта). Рецепт и режим тогда у каждой статьи свои — из строки таблицы. */
+  sheet?: { url: string; tab: string };
 };
 
-/** Строка ключа при постановке в очередь. */
-export type KeywordInput = { keyword: string; seoKeyword?: string; focusKeyword?: string; photoCount?: number };
+/**
+ * Строка ключа при постановке в очередь. Поля после photoCount — переопределения одной статьи поверх параметров запуска
+ * (импорт из Google Таблицы: рецепт по номеру, режим, год в URL, поиск фото, номер строки для обратной записи отчёта).
+ */
+export type KeywordInput = {
+  keyword: string; seoKeyword?: string; focusKeyword?: string; photoCount?: number;
+  recipeId?: string;
+  photoReview?: boolean;
+  yearInUrlPercent?: number;
+  search?: { country?: string; language?: string; freshness?: string };
+  sheetRow?: number;
+};
 
 /**
  * Снимок рецепта и настроек запуска, который сохраняется в Article.recipe и исполняется воркером.

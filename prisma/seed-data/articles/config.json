@@ -71,6 +71,22 @@
    "sortOrder": 62,
    "isActive": true,
    "parentCode": "interior"
+  },
+  {
+   "code": "tattoo",
+   "name": "Тату",
+   "emoji": "🖋️",
+   "sortOrder": 71,
+   "isActive": false,
+   "parentCode": null
+  },
+  {
+   "code": "makeup",
+   "name": "Макияж",
+   "emoji": "💄",
+   "sortOrder": 72,
+   "isActive": false,
+   "parentCode": null
   }
  ],
  "profiles": [

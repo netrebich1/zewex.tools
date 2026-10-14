@@ -15,6 +15,7 @@ import { AiError, backoffMs } from "@/lib/pins/ai/errors";
 import { articleCost } from "@/lib/articles/ai";
 import type { ArticleCursor, ArticleFacts, ArticlePlan, ArticleRecipeSnapshot } from "@/lib/articles/types";
 import { nextStage, stageLabel, type StageKey } from "@/lib/articles/stages";
+import { markArticleStatus } from "@/lib/articles/sheets";
 import { STAGES, StopRequested, type ArtStageCtx, type ArtStageResult } from "./stages";
 import { finishLog, recordError } from "./journal";
 import { MAX_ATTEMPTS, releaseArticle, renewLease } from "./queue";
@@ -171,7 +172,7 @@ export async function processArticle(article: Article, workerId: string, shuttin
       }
       if (result.retryInMs && result.retryInMs > 0) {
         await finishLog(started.id, "skipped", result.summary ?? "Повтор позже", undefined, result.details, cost);
-        await releaseArticle(current.id, result.retryInMs, result.summary ?? null);
+        await releaseArticle(current.id, result.retryInMs, result.summary ?? undefined);
         return;
       }
       await finishLog(started.id, "done", result.summary, undefined, result.details, cost);
@@ -187,7 +188,8 @@ export async function processArticle(article: Article, workerId: string, shuttin
       } else {
         next = nextStage(current.format, stage);
         if (stage === "select" && current.photoReview) wait = { wait: "PHOTO_REVIEW", note: "Фото отобраны, ждут модерации" };
-        if (stage === "assemble" && !current.photoReview) wait = { wait: "REVIEW_PENDING", note: "Статья собрана, ждёт модерации" };
+        // После одобрения в модерации статьи (снятые фото → пересборка) второй раз на модерацию не ставим: cursor.reviewApproved.
+        if (stage === "assemble" && !current.photoReview && !cursor.reviewApproved) wait = { wait: "REVIEW_PENDING", note: "Статья собрана, ждёт модерации" };
       }
 
       if (wait) {
@@ -222,5 +224,7 @@ async function fail(a: Article, reason: string, stage?: string) {
   const text = reason.slice(0, 4000);
   await prisma.article.update({ where: { id: a.id }, data: { status: "FAILED", workerId: null, leaseUntil: null, error: text, errorStage: stage ?? a.stage, costUsd: await articleCost(a.id).catch(() => a.costUsd) } });
   await recordError({ teamId: a.teamId, siteId: a.siteId, articleId: a.id, stage: stage ?? a.stage, message: text });
+  // Строка в Google Таблице получает статус «ошибка», чтобы падение было видно там же (оригинал direct-pipeline :1328).
+  if (a.sheetRow) void markArticleStatus(a.id, "error").then((r) => { if (!r.ok) log.warn(`article ${a.id}: статус «ошибка» в Google Таблицу не записан: ${r.error}`); });
   log.warn(`article ${a.id} failed at ${stage ?? a.stage}: ${text.slice(0, 200)}`);
 }
