@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { siteAccessWhere, pinSiteWhere } from "@/lib/sites/access";
-import { canManageTeam, seesAllSites } from "@/lib/permissions";
+import { canManageTeam, seesAllSites, publicToolWhere } from "@/lib/permissions";
 import { Badge, Card, Empty, PageHeader } from "@/components/ui";
 import { Icon } from "@/components/Icons";
 import { fmtDate } from "@/lib/utils";
@@ -15,7 +15,7 @@ export default async function SitesPage() {
   const isAdmin = seesAllSites(me);
   const [teams, projects, rows, pinSites] = await Promise.all([
     prisma.team.findMany({ where: isAdmin ? {} : { id: { in: me.teamIds } }, orderBy: { name: "asc" } }),
-    prisma.project.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }], select: { slug: true, name: true } }),
+    prisma.project.findMany({ where: publicToolWhere, orderBy: [{ order: "asc" }, { name: "asc" }], select: { slug: true, name: true } }),
     prisma.siteAccess.findMany({ where: await siteAccessWhere(me), orderBy: { name: "asc" }, include: { teams: { select: { teamId: true } }, viewers: { select: { userId: true } } } }),
     prisma.pinSite.findMany({ where: await pinSiteWhere(me), orderBy: { name: "asc" }, include: { _count: { select: { boards: true, runs: true } } } }),
   ]);
@@ -46,9 +46,9 @@ export default async function SitesPage() {
                         <tr key={w.id}>
                           <td><Link href={`/sites/${w.id}`} className="font-medium hover:underline">{w.name}</Link></td>
                           <td className="text-muted">{w.baseUrl}{(!w.username || !w.appPasswordEnc) && <span className="ml-2"><Badge tone="warn">нет доступа REST API</Badge></span>}</td>
-                          <td className="text-muted">{w.teams.length ? `+ ${w.teams.map((t) => teamName(t.teamId)).join(", ")}` : "только владелец"}{w.viewers.length ? ` · видят ${w.viewers.length} сотр.` : ""}</td>
+                          <td className="text-muted">{w.teams.length ? `+ ${w.teams.map((t) => teamName(t.teamId)).join(", ")}` : "только владелец"}{w.viewers.length ? ` · видят ${w.viewers.length} сотр.` : " · видят только лидеры"}</td>
                           <td><span className="flex flex-wrap gap-1">{pr.length ? pr.map((s) => <Badge key={s}>{projName(s)}</Badge>) : <Badge>все инструменты</Badge>}</span></td>
-                          <td className="text-muted">{ps ? <Link href={`/pinterest/pins/sites/${ps.id}?tab=settings`} className="hover:underline">{ps.isActive ? "включён" : "в архиве"} · настройки</Link> : "не включён"}</td>
+                          <td className="text-muted">{ps ? <Link href={`/pinterest/pins/sites/${ps.id}?tab=settings`} className="hover:underline">{ps.isActive ? "подключён" : "отключён"} · настройки</Link> : "не подключён"}</td>
                           <td>{w.lastCheckOk == null ? <span className="text-muted">—</span> : w.lastCheckOk ? <span className="text-ok" title={w.lastCheckNote ?? ""}>✓ {fmtDate(w.lastCheckedAt)}</span> : <span className="text-danger" title={w.lastCheckNote ?? ""}>✕ ошибка</span>}</td>
                           <td className="text-right">{canManageTeam(me, w.teamId) && <Link href={`/sites/${w.id}?delete=1#delete`} className="text-[13px] text-muted hover:text-danger">Удалить</Link>}</td>
                         </tr>

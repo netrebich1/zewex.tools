@@ -42,9 +42,13 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
   const allTeams = [teamId, ...extraTeams];
   // Видимость: только участники выбранных команд.
   const wantViewers = [...new Set(f.getAll("viewerIds").map(String).filter(Boolean))];
-  const viewers = wantViewers.length
+  const pickedViewers = wantViewers.length
     ? (await prisma.teamMember.findMany({ where: { teamId: { in: allTeams }, userId: { in: wantViewers } }, select: { userId: true }, distinct: ["userId"] })).map((m) => m.userId)
     : [];
+  // Сотрудник видит только свои сайты: тот, кто создаёт или правит сайт, остаётся в списке видящих
+  // (иначе он сам потеряет сайт). Администратору и лидеру команды-владельца это не нужно — они видят всё.
+  const keepsSelf = me.role !== "ADMIN" && !canManageTeam(me, teamId);
+  const viewers = keepsSelf && !pickedViewers.includes(me.id) ? [...pickedViewers, me.id] : pickedViewers;
   const data = {
     teamId, kind: "wordpress", name: str(f, "name") || baseUrl.replace(/^https?:\/\//, ""), baseUrl, username,
     mediaBaseUrl: str(f, "mediaBaseUrl").replace(/\/+$/, "") || null, mediaUsername: str(f, "mediaUsername") || null, mediaDomain: str(f, "mediaDomain") || null,
@@ -133,4 +137,51 @@ export async function deleteSiteAccess(_p: FormState, f: FormData): Promise<Form
   revalidatePath("/pinterest/pins/sites");
   revalidatePath("/pinterest/articles");
   redirect("/sites");
+}
+
+/**
+ * Отключить инструмент от сайта или подключить снова. Отключение — архив в самом инструменте (`isActive=false`):
+ * сайт пропадает из новых прогонов, выгрузки и автозапуска, но настройки, прогоны, пины и статьи остаются,
+ * и «Подключить снова» возвращает всё как было. Пока по сайту в инструменте идёт работа, отключить нельзя.
+ */
+export async function setSiteToolActive(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  const accessId = str(f, "accessId");
+  const tool = str(f, "tool");
+  const on = str(f, "on") === "1";
+  if (tool !== "pins" && tool !== "articles") return { error: "Неизвестный инструмент" };
+  const access = await prisma.siteAccess.findUnique({ where: { id: accessId }, select: { id: true, projects: true } });
+  if (!access || !(await canAccessSiteAccess(me, accessId))) return { error: "Сайт не найден" };
+  const label = tool === "pins" ? "Pinterest Pins" : "Статьи";
+  const slug = tool === "pins" ? "pins" : "articles";
+  const pr = (access.projects as string[] | null) ?? [];
+  if (on && pr.length && !pr.includes(slug)) return { error: `Сначала отметьте «${label}» в списке инструментов сайта выше и сохраните сайт` };
+  try {
+    if (tool === "pins") {
+      const sites = await prisma.pinSite.findMany({ where: { wpConnectionId: accessId }, select: { id: true } });
+      if (!sites.length) return { error: "Pinterest Pins для этого сайта ещё не включали" };
+      const ids = sites.map((s) => s.id);
+      if (!on) {
+        const busy = await prisma.pinRun.count({ where: { siteId: { in: ids }, status: { in: ["QUEUED", "RUNNING"] } } });
+        if (busy) return { error: `По сайту идут прогоны пинов (${busy}). Остановите их или дождитесь окончания, потом отключайте.` };
+      }
+      await prisma.pinSite.updateMany({ where: { id: { in: ids } }, data: { isActive: on } });
+      ids.forEach((id) => revalidatePath(`/pinterest/pins/sites/${id}`));
+      revalidatePath("/pinterest/pins");
+    } else {
+      const sites = await prisma.artSite.findMany({ where: { accessId }, select: { id: true } });
+      if (!sites.length) return { error: "Статьи для этого сайта ещё не включали" };
+      const ids = sites.map((s) => s.id);
+      if (!on) {
+        const busy = await prisma.article.count({ where: { siteId: { in: ids }, status: { in: ["RUNNING", "PUBLISHING"] } } });
+        if (busy) return { error: `Сейчас пишутся или публикуются статьи сайта (${busy}). Дождитесь окончания, потом отключайте.` };
+      }
+      await prisma.artSite.updateMany({ where: { id: { in: ids } }, data: { isActive: on } });
+      ids.forEach((id) => revalidatePath(`/pinterest/articles/sites/${id}`));
+      revalidatePath("/pinterest/articles");
+    }
+  } catch (e) { return fail(e); }
+  revalidatePath(`/sites/${accessId}`);
+  revalidatePath("/sites");
+  return { ok: on ? `${label} снова подключён: настройки и история на месте` : `${label} отключён. Настройки и история сохранены, подключить можно в любой момент.` };
 }
