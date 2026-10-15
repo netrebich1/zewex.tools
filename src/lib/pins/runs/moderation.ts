@@ -19,7 +19,16 @@ export type ModerationItem = {
   imageUrl: string;
 };
 
-export type ModerationFilter = { siteId?: string; runId?: string; engine?: string; cursor?: string; limit?: number };
+/** pre — непроверенные пины (обычная модерация); post — уже одобренные, ещё не ушедшие в Pinterest и не просмотренные повторно. */
+export type ModerationView = "pre" | "post";
+export type ModerationFilter = { siteId?: string; runId?: string; engine?: string; cursor?: string; limit?: number; view?: ModerationView };
+
+/** Условие очереди: обычная модерация или пост-модерация (одобренные, дата сегодня/позже или ещё без даты). */
+function queueWhere(view: ModerationView | undefined): Prisma.PinRunItemWhereInput {
+  if (view !== "post") return { moderation: "NONE", status: "READY" };
+  const now = new Date();
+  return { moderation: "APPROVED", status: "READY", kind: "pin", postReviewedAt: null, OR: [{ scheduledAt: null }, { scheduledAt: { gte: now } }] };
+}
 
 const teamWhere = (me: CurrentUser): Promise<Prisma.PinRunWhereInput> => pinRunWhere(me);
 
@@ -29,8 +38,7 @@ export async function moderationBatch(me: CurrentUser, f: ModerationFilter): Pro
   const rows = await prisma.pinRunItem.findMany({
     where: {
       run: { ...(await teamWhere(me)), ...(f.runId ? { id: f.runId } : {}), ...(f.siteId ? { siteId: f.siteId } : {}) },
-      moderation: "NONE",
-      status: "READY",
+      ...queueWhere(f.view),
       ...(f.engine ? { engine: f.engine as "OPENAI" | "PINORA" | "CANVAS" | "PHOTO" } : {}),
       ...(f.cursor ? { id: { gt: f.cursor } } : {}),
     },
@@ -54,10 +62,10 @@ export async function moderationBatch(me: CurrentUser, f: ModerationFilter): Pro
 }
 
 /** Счётчики непроверенных по сайтам и прогонам для фильтров. */
-export async function moderationCounts(me: CurrentUser) {
+export async function moderationCounts(me: CurrentUser, view: ModerationView = "pre") {
   const rows = await prisma.pinRunItem.groupBy({
     by: ["runId", "engine"],
-    where: { run: await teamWhere(me), moderation: "NONE", status: "READY" },
+    where: { run: await teamWhere(me), ...queueWhere(view) },
     _count: { _all: true },
   });
   const runIds = [...new Set(rows.map((r) => r.runId))];
@@ -86,16 +94,18 @@ export type Decision = { id: string; moderation: "APPROVED" | "REJECTED" };
  * Пакет решений (≤200). После записи: у прогонов, ждущих модерации, при pending = 0
  * запускается этап texts (если не пошаговый режим).
  */
-export async function applyDecisions(me: CurrentUser, decisions: Decision[]): Promise<{ applied: number; continued: string[] }> {
+export async function applyDecisions(me: CurrentUser, decisions: Decision[], opts: { post?: boolean } = {}): Promise<{ applied: number; continued: string[] }> {
   if (!decisions.length) return { applied: 0, continued: [] };
   const ids = decisions.slice(0, 200).map((d) => d.id);
   const allowed = await prisma.pinRunItem.findMany({ where: { id: { in: ids }, run: await teamWhere(me) }, select: { id: true, runId: true } });
   const ok = new Set(allowed.map((a) => a.id));
   const approve = decisions.filter((d) => ok.has(d.id) && d.moderation === "APPROVED").map((d) => d.id);
   const reject = decisions.filter((d) => ok.has(d.id) && d.moderation === "REJECTED").map((d) => d.id);
+  // Пост-модерация: решения ставят отметку «просмотрено повторно», отклонённый пин уходит из выгрузки и освобождает место в дне.
+  const reviewed = opts.post ? { postReviewedAt: new Date() } : {};
   await prisma.$transaction([
-    prisma.pinRunItem.updateMany({ where: { id: { in: approve } }, data: { moderation: "APPROVED", rejectReason: null } }),
-    prisma.pinRunItem.updateMany({ where: { id: { in: reject } }, data: { moderation: "REJECTED", rejectReason: "manual" } }),
+    prisma.pinRunItem.updateMany({ where: { id: { in: approve } }, data: { moderation: "APPROVED", rejectReason: null, ...reviewed } }),
+    prisma.pinRunItem.updateMany({ where: { id: { in: reject } }, data: { moderation: "REJECTED", rejectReason: opts.post ? "post_moderation" : "manual", ...reviewed } }),
   ]);
   const continued = await continueModeratedRuns([...new Set(allowed.map((a) => a.runId))]);
   return { applied: approve.length + reject.length, continued };

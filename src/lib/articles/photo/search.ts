@@ -259,10 +259,32 @@ export type SearchResult = {
   notConfigured?: boolean;
   /** Сетевая/серверная ошибка провайдера — имеет смысл повторить позже */
   transient?: boolean;
+  /** Ключ провайдера не работает: нет средств, отклонён, исчерпан лимит — статья ждёт ключ, а не повторяет каждые 90 с */
+  keyProblem?: string;
 };
 
 const NOT_CONFIGURED_STATUS = new Set([404, 409]);
 const isTransientStatus = (status: number) => status === 0 || status === 408 || status === 429 || status >= 500;
+/** Ответы провайдеров поиска «нет денег / ключ отклонён» (SerpApi отдаёт «run out of searches» с HTTP 429). */
+const KEY_PROBLEM_RE = /run out of searches|out of credits|insufficient (?:funds|credits|balance)|not enough (?:funds|credits|balance)|payment required|invalid api key|unauthori[sz]ed|account (?:is )?(?:disabled|suspended|blocked)|исчерпал месячный лимит/i;
+
+function httpKeyProblem(status: number, error: string): string | undefined {
+  if (status === 401 || status === 402 || status === 403 || KEY_PROBLEM_RE.test(error)) return error.slice(0, 200) || `HTTP ${status}`;
+  return undefined;
+}
+
+/**
+ * Код задачи DataForSEO (status_code в tasks[0] или в корне ответа):
+ *  20000 — ок; 40102 — «нет результатов» (не ошибка); 40100/40101/40104 — доступ, 40200/40210 — оплата → ключ;
+ *  40202/40209 — лимит частоты, 50000+ — сбой у них → повтор; остальные 4xxxx — ошибка запроса, повтор не поможет.
+ */
+export function dfsTaskVerdict(code: number): "ok" | "empty" | "key" | "transient" | "permanent" {
+  if (!code || code < 40000) return "ok";
+  if (code === 40102) return "empty";
+  if (code === 40100 || code === 40101 || code === 40104 || code === 40200 || code === 40210) return "key";
+  if (code === 40202 || code === 40209 || code >= 50000) return "transient";
+  return "permanent";
+}
 
 /** SerpApi Google Images, пагинация по ijn: до 3 страниц по 100 (photoSearch.ts:386-438). */
 export async function searchSerpApi(ctx: AiCtx, query: string, cfg: SearchCfg, limit: number): Promise<SearchResult> {
@@ -278,7 +300,8 @@ export async function searchSerpApi(ctx: AiCtx, query: string, cfg: SearchCfg, l
       requests++;
       if (!res.ok) {
         if (NOT_CONFIGURED_STATUS.has(res.status) && requests === 1 && !res.data) return { items, error: `SerpApi не подключён: ${res.error || ""}`.trim(), requests: 0, notConfigured: true };
-        return { items, error: `SerpApi HTTP ${res.status}: ${String(res.error || "").slice(0, 200)}`, requests, transient: isTransientStatus(res.status) };
+        const keyProblem = httpKeyProblem(res.status, String(res.error || ""));
+        return { items, error: `SerpApi HTTP ${res.status}: ${String(res.error || "").slice(0, 200)}`, requests, transient: !keyProblem && isTransientStatus(res.status), keyProblem: keyProblem ? `SerpApi: ${keyProblem}` : undefined };
       }
       const json = res.data as { images_results?: Array<Record<string, unknown>> } | null;
       const results = json?.images_results || [];
@@ -332,7 +355,8 @@ export async function searchDataForSeo(ctx: AiCtx, query: string, cfg: SearchCfg
     const res = await dfsRequest(ctx, DFS_IMAGES_ENDPOINT, body, 130_000);
     if (!res.ok) {
       if (NOT_CONFIGURED_STATUS.has(res.status) && !res.data) return { items: [], error: `DataForSEO не подключён: ${res.error || ""}`.trim(), requests: 0, notConfigured: true };
-      return { items: [], error: `DataForSEO HTTP ${res.status}: ${String(res.error || "").slice(0, 200)}`, requests: 1, transient: isTransientStatus(res.status) };
+      const keyProblem = httpKeyProblem(res.status, String(res.error || ""));
+      return { items: [], error: `DataForSEO HTTP ${res.status}: ${String(res.error || "").slice(0, 200)}`, requests: 1, transient: !keyProblem && isTransientStatus(res.status), keyProblem: keyProblem ? `DataForSEO: ${keyProblem}` : undefined };
     }
     const json = (res.data || {}) as DfsBody;
     const task = json.tasks?.[0];
@@ -357,8 +381,15 @@ export async function searchDataForSeo(ctx: AiCtx, query: string, cfg: SearchCfg
       });
       if (items.length >= limit) break;
     }
-    const taskErr = Number(task?.status_code) >= 40000 ? `DataForSEO ${task?.status_message || "task error"}` : undefined;
-    return { items, requests: 1, error: taskErr, transient: !!taskErr && !items.length };
+    // Раньше любой код ≥ 40000 при пустой выдаче считался временным, и поиск повторялся каждые 90 с бесконечно
+    // (аудит 2026-10-14 stability §2.2): «нет результатов», ошибка запроса и «нет оплаты» так не лечатся.
+    const rootCode = Number((json as { status_code?: number }).status_code) || 0;
+    const code = Number(task?.status_code) >= 40000 ? Number(task?.status_code) : rootCode >= 40000 ? rootCode : 0;
+    const message = String(task?.status_message || (json as { status_message?: string }).status_message || "task error");
+    const verdict = dfsTaskVerdict(code);
+    if (verdict === "ok" || verdict === "empty" || items.length) return { items, requests: 1, error: verdict === "ok" || verdict === "empty" ? undefined : `DataForSEO ${code}: ${message}` };
+    const taskErr = `DataForSEO ${code}: ${message}`;
+    return { items, requests: 1, error: taskErr, transient: verdict === "transient", keyProblem: verdict === "key" ? taskErr : undefined };
   } finally {
     release();
   }
@@ -373,6 +404,7 @@ export async function searchImagesWithFallback(ctx: AiCtx, query: string, cfg: S
   let requests = 0;
   let notConfigured = 0;
   let transient = false;
+  let keyProblem: string | undefined;
 
   if (cfg.source !== "dataforseo") {
     const r = await searchSerpApi(ctx, query, cfg, limit);
@@ -380,6 +412,7 @@ export async function searchImagesWithFallback(ctx: AiCtx, query: string, cfg: S
     if (r.items.length) return { ...r, engine: "serpapi", requests };
     if (r.notConfigured) notConfigured++;
     transient ||= !!r.transient;
+    keyProblem ||= r.keyProblem;
     errors.push(r.error || "SerpApi: 0 результатов");
   }
 
@@ -388,6 +421,7 @@ export async function searchImagesWithFallback(ctx: AiCtx, query: string, cfg: S
   if (d.items.length) return { items: d.items, error: errors.length ? `фолбэк DataForSEO (${errors.join("; ")})` : d.error, requests, engine: "dataforseo" };
   if (d.notConfigured) notConfigured++;
   transient ||= !!d.transient;
+  keyProblem ||= d.keyProblem;
   if (d.error) errors.push(d.error);
 
   if (cfg.source === "dataforseo") {
@@ -396,6 +430,7 @@ export async function searchImagesWithFallback(ctx: AiCtx, query: string, cfg: S
     if (r.items.length) return { items: r.items, error: `фолбэк SerpApi (${errors.join("; ")})`, requests, engine: "serpapi" };
     if (r.notConfigured) notConfigured++;
     transient ||= !!r.transient;
+    keyProblem ||= r.keyProblem;
     if (r.error) errors.push(r.error);
   }
   return {
@@ -405,5 +440,6 @@ export async function searchImagesWithFallback(ctx: AiCtx, query: string, cfg: S
     engine: "none",
     notConfigured: notConfigured >= 2,
     transient,
+    keyProblem,
   };
 }

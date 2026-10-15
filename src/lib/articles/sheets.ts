@@ -376,9 +376,10 @@ export async function writeArticleResult(articleId: string, kind: "draft" | "pub
 
 /** Статус в строку статьи (падение → «ошибка»). Не бросает; на состояние обратной записи отчёта не влияет. */
 export async function markArticleStatus(articleId: string, status: SheetStatusKey): Promise<{ ok: boolean; skipped?: boolean; error?: string }> {
-  const a = await articleSheet(articleId);
-  if (!a || !a.sheetUrl) return { ok: true, skipped: true };
   try {
+    // Чтение строки статьи — внутри try: функцию зовут без await из раннера, сбой базы не должен стать необработанным отказом.
+    const a = await articleSheet(articleId);
+    if (!a || !a.sheetUrl) return { ok: true, skipped: true };
     const spreadsheetId = spreadsheetIdOf(a.sheetUrl);
     const tab = a.tab || (await resolveTab(spreadsheetId, a.site));
     const idx = await tabHeader(spreadsheetId, tab);

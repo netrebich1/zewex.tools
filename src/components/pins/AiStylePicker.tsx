@@ -19,14 +19,16 @@ type Group = { key: string; name: string; category: string; type: string; concep
  * Галерея ИИ-стилей, сгруппированная по стилям: у стиля до 5 вариантов (цветовых подач).
  * В набор можно взять весь стиль («Выбрать все») или отдельные варианты.
  */
-export function AiStylePicker({ siteId, teamId, styles, categories, types, sets }: { siteId: string; teamId: string; styles: StyleRow[]; categories: CategoryRow[]; types: TypeRow[]; sets: SetRow[] }) {
+export function AiStylePicker({ siteId, teamId, styles, categories, types, sets, initialEdit }: { siteId: string; teamId: string; styles: StyleRow[]; categories: CategoryRow[]; types: TypeRow[]; sets: SetRow[]; initialEdit?: string }) {
   const [cat, setCat] = useState<string>("");
   const [type, setType] = useState<string>("");
   const [q, setQ] = useState("");
   const [onlyExamples, setOnlyExamples] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [editSet, setEditSet] = useState<string>("");
+  const [selected, setSelected] = useState<Set<string>>(new Set(sets.find((x) => x.id === initialEdit)?.styleIds ?? []));
+  const [editSet, setEditSet] = useState<string>(initialEdit ?? "");
+  // При редактировании набора сразу показываем только его стили — их удобно проверить и убрать лишнее.
+  const [onlySelected, setOnlySelected] = useState<boolean>(!!initialEdit);
   const [open, setOpen] = useState<string | null>(null);
 
   const groups = useMemo<Group[]>(() => {
@@ -47,11 +49,12 @@ export function AiStylePicker({ siteId, teamId, styles, categories, types, sets 
       .filter((g) => g.variants.length > 0)
       .filter((g) => (!cat || g.category === cat) && (!type || g.type === type))
       .filter((g) => !onlyExamples || g.examples.length > 0)
+      .filter((g) => !onlySelected || g.variants.some((v) => selected.has(v.id)))
       .filter((g) => !needle || g.name.toLowerCase().includes(needle) || g.key.includes(needle) || g.variants.some((v) => v.variantLabel.toLowerCase().includes(needle)));
-  }, [groups, cat, type, q, onlyExamples, showHidden]);
+  }, [groups, cat, type, q, onlyExamples, showHidden, onlySelected, selected]);
 
   const typeOf = (id: string) => types.find((t) => t.id === id);
-  const loadSet = (id: string) => { setEditSet(id); setSelected(new Set(sets.find((x) => x.id === id)?.styleIds ?? [])); };
+  const loadSet = (id: string) => { setEditSet(id); setSelected(new Set(sets.find((x) => x.id === id)?.styleIds ?? [])); setOnlySelected(!!id); };
   const toggle = (id: string) => setSelected((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const setMany = (ids: string[], on: boolean) => setSelected((p) => { const n = new Set(p); for (const id of ids) { if (on) n.add(id); else n.delete(id); } return n; });
   const visibleIds = list.flatMap((g) => g.variants.map((v) => v.id));
@@ -59,11 +62,13 @@ export function AiStylePicker({ siteId, teamId, styles, categories, types, sets 
   const catNote = categories.find((c) => c.id === cat)?.note;
 
   return (
-    <Card title="Галерея ИИ-стилей" description="Стиль — это идея оформления, у него до 5 вариантов (цвет, подача). Возьмите в набор весь стиль или отдельные варианты.">
+    <section id="gallery" className="scroll-mt-20">
+    <Card title={current ? `Редактирование набора «${current.name}»` : "Галерея ИИ-стилей"} description={current ? "Отмеченные стили входят в набор. Снимите лишние, добавьте новые (снимите «только выбранные», чтобы видеть все стили) и нажмите «Сохранить набор» внизу." : "Стиль — это идея оформления, у него до 5 вариантов (цвет, подача). Возьмите в набор весь стиль или отдельные варианты."}>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <input className="input max-w-xs py-1.5" placeholder="Поиск стиля…" value={q} onChange={(e) => setQ(e.target.value)} />
         <label className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" checked={onlyExamples} onChange={(e) => setOnlyExamples(e.target.checked)} /> только с примерами</label>
         <label className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} /> показывать скрытые</label>
+        <label className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" checked={onlySelected} onChange={(e) => setOnlySelected(e.target.checked)} /> только выбранные ({selected.size})</label>
         <select className="input max-w-xs py-1.5 ml-auto" value={editSet} onChange={(e) => loadSet(e.target.value)}>
           <option value="">Новый набор</option>
           {sets.map((s) => <option key={s.id} value={s.id}>Изменить: {s.name}</option>)}
@@ -162,5 +167,6 @@ export function AiStylePicker({ siteId, teamId, styles, categories, types, sets 
         </ActionForm>
       </div>
     </Card>
+    </section>
   );
 }

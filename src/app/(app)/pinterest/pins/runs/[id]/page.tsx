@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { getRunForUser } from "@/lib/pins/runs/actions";
+import { deleteConfirmText, getRunForUser, runDeleteImpact } from "@/lib/pins/runs/actions";
 import { runStatus } from "@/lib/pins/runs/status";
 import { Card, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
@@ -30,6 +30,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
   const r = mergeRecipe(run.settings);
   const busy = view.job != null && ["PENDING", "RUNNING", "STOPPING"].includes(view.job.status);
   const live = ["QUEUED", "RUNNING"].includes(run.status);
+  const impact = await runDeleteImpact(id);
   const sets = run.siteId ? await prisma.pinSet.findMany({ where: { siteId: run.siteId }, orderBy: { name: "asc" } }) : [];
   const fieldsData = await recipeFieldsData(sets);
 
@@ -60,8 +61,9 @@ export default async function RunPage({ params, searchParams }: { params: Promis
             </ActionForm>
             {run.status === "WAITING_MODERATION" && <Link href={`/pinterest/pins/moderation?run=${id}`} className="btn-brand">Модерация этого прогона</Link>}
             {run.status === "DONE" && <Link href={`/pinterest/pins/export?site=${run.siteId ?? ""}`} className="btn-ghost">Выгрузка CSV</Link>}
+            {run.siteId && view.total.scheduled > 0 && <a href={`/api/pins/export/all?site=${run.siteId}`} className="btn-ghost">Выгрузить все сформированные для {run.site?.name}</a>}
             <ActionForm action={deleteRunAction} className="inline ml-auto" hidden={{ id }}>
-              <SubmitButton className="btn-danger" confirm="Удалить прогон вместе со всеми пинами и картинками?" pendingText="…">Удалить</SubmitButton>
+              <SubmitButton className="btn-danger" confirm={deleteConfirmText(run.name || id.slice(0, 8), impact)} pendingText="Удаляю…">Удалить прогон</SubmitButton>
             </ActionForm>
           </div>
         </Card>

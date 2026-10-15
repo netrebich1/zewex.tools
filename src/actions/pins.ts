@@ -29,6 +29,8 @@ export async function launchRun(_p: FormState, f: FormData): Promise<FormState> 
     // Настройки этого прогона: рецепт сайта как основа, поля формы — поверх.
     const recipe = recipeFromForm(f, site.recipe, { allowedSetIds: new Set(site.sets.map((x) => x.id)) });
     // Ссылки не вставлены, источник — WordPress: подтягиваем статьи по фильтру рецепта прямо при запуске.
+    // Список статей был показан, но ничего не выбрано — не подбираем молча по фильтру.
+    if (!urls.length && f.get("urlsExplicit") === "1") return { error: "Не выбрано ни одной статьи: отметьте статьи в списке или нажмите «Сбросить выбор»." };
     if (!urls.length && recipe.pages.source === "wp") {
       const got = await sitePostsBySource(me, siteId, recipe.pages);
       if (!got.urls.length) {
@@ -103,7 +105,10 @@ export async function deleteRunAction(_p: FormState, f: FormData): Promise<FormS
   const me = await requireUser();
   const id = str(f, "id");
   try { await deleteRun(me, id); } catch (e) { return fail(e); }
-  redirect("/pinterest/pins");
+  // Запас по дням, выгрузка и списки считаются из пинов — после удаления их нужно перечитать.
+  for (const p of ["/pinterest/pins", "/pinterest/pins/runs", "/pinterest/pins/export", "/pinterest/pins/moderation", "/pinterest/pins/sites"]) revalidatePath(p);
+  const back = str(f, "back");
+  redirect(back.startsWith("/pinterest/pins") ? back : "/pinterest/pins/runs");
 }
 
 /* ---------- Сайт: рецепт, доски ---------- */

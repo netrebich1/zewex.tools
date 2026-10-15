@@ -18,7 +18,7 @@ export default async function NewRunPage({ searchParams }: { searchParams: Promi
   });
   // Настройки прогона подставляются из последнего прогона каждого сайта (сайт хранит только стили, язык, доски).
   const lastRuns = await prisma.pinRun.findMany({
-    where: { siteId: { in: sites.map((s) => s.id) }, NOT: { name: { startsWith: "__" } } },
+    where: { siteId: { in: sites.map((s) => s.id) }, NOT: { name: "__system__" } },
     orderBy: { createdAt: "desc" }, distinct: ["siteId"], select: { siteId: true, settings: true, name: true, createdAt: true },
   });
   const rows = await Promise.all(sites.map(async (s) => {

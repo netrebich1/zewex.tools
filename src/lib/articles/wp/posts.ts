@@ -192,46 +192,75 @@ export function slugVariants(slug: string): string[] {
   return [...out];
 }
 
-function normTitle(s: string): string {
-  return stripHtml(s).toLowerCase().replace(/[^a-zа-яё0-9]+/gi, " ").trim();
+/**
+ * Метка статьи в тексте записи (HTML-комментарий в начале content). По ней — и только по ней или по сохранённому
+ * Article.wpPostId — запись считается нашей. Комментарии WordPress сохраняет (kses их пропускает), читателю не видны.
+ */
+export function articleMarker(articleId: string): string {
+  return `<!-- zewex-article:${articleId} -->`;
 }
 
+/** Свободный адрес: slug-2, slug-3 … (первый, которого нет среди занятых). */
+export function pickFreeSlug(slug: string, taken: Set<string>): string {
+  for (let i = 2; i < 100; i++) {
+    const s = `${slug}-${i}`;
+    if (!taken.has(s)) return s;
+  }
+  return `${slug}-${Date.now().toString(36)}`;
+}
+
+export type WpSlugLookup = {
+  /** Запись этой статьи (с её меткой в тексте) среди вариантов адреса */
+  own: WpFoundPost | null;
+  /** Все занятые адреса из проверенных вариантов (любой статус) */
+  taken: Set<string>;
+  /** Кто занимает точный адрес, если это не наша запись */
+  foreign: WpFoundPost | null;
+};
+
 /**
- * Запись по slug (любой статус). Точное совпадение — всегда наша; вариант с суффиксом/годом — только если совпал
- * заголовок (чтобы не перезаписать чужую статью с похожим адресом). Ошибку запроса не глушим (аудит 04 §10 п.3):
- * этап повторит публикацию позже, вместо того чтобы создать дубль.
+ * Поиск записи по адресу перед созданием (защита от дублей, аудит 04 §10 п.3) БЕЗ перезаписи чужого: раньше точное
+ * совпадение slug считалось «всегда нашим» и пост, написанный человеком, затирался (аудит 2026-10-14, stability §1.1).
+ * Теперь своя — только запись с меткой articleMarker(articleId). Варианты: slug, -2…-9, с годом/без.
+ * Ошибку запроса не глушим: этап повторит публикацию позже, вместо того чтобы создать дубль.
  */
-export async function findPostBySlug(creds: WpCreds, slug: string, opts: { title?: string | null; signal?: AbortSignal } = {}): Promise<WpFoundPost | null> {
-  const variants = slugVariants(slug);
-  if (!variants.length) return null;
-  const path = (status: string) => `/posts?slug=${variants.join(",")}&status=${status}&per_page=20&_fields=id,slug,status,link,title`;
+export async function lookupPostSlug(creds: WpCreds, slug: string, articleId: string, opts: { signal?: AbortSignal } = {}): Promise<WpSlugLookup> {
+  const base = slug.trim().toLowerCase();
+  const variants = [...new Set([...slugVariants(base), ...Array.from({ length: 8 }, (_, i) => `${base}-${i + 2}`)])];
+  if (!variants.length) return { own: null, taken: new Set(), foreign: null };
+  const fields = "id,slug,status,link,title,content";
+  const path = (status: string, context: string) => `/posts?slug=${variants.join(",")}&status=${status}&per_page=50&context=${context}&_fields=${fields}`;
   const reqOpts: RequestOpts = { signal: opts.signal, timeoutMs: LOOKUP_TIMEOUT_MS, maxRetries: 1 };
+  // context=edit отдаёт сырой текст (метку видно наверняка); без права edit — обычный вид, метка в rendered.
   // оригинал (:358): status=publish,draft,pending,future; `any` короче и включает private — при отказе (400) откатываемся к списку
-  let res = await wpFetch(creds, path("any"), {}, reqOpts);
-  if (res.status === 400) res = await wpFetch(creds, path("publish,draft,pending,future,private"), {}, reqOpts);
+  let res = await wpFetch(creds, path("any", "edit"), {}, reqOpts);
+  if (res.status === 400) res = await wpFetch(creds, path("publish,draft,pending,future,private", "edit"), {}, reqOpts);
+  if (res.status === 401 || res.status === 403) res = await wpFetch(creds, path("publish,draft,pending,future,private", "view"), {}, reqOpts);
   if (res.status < 200 || res.status >= 300) {
     const err = parseWpError(res.text);
     throw new WpError(`WP ${res.status} при поиске записи по адресу: ${err.message}`, res.status, err.code);
   }
   const arr = parseJson(res.text);
-  if (!Array.isArray(arr)) return null;
-  const found: WpFoundPost[] = [];
-  for (const raw of arr) {
-    if (!isRecord(raw)) continue;
-    const id = num(raw.id);
-    if (!id) continue;
-    const t = raw.title;
-    found.push({ id, slug: str(raw.slug), status: str(raw.status), url: str(raw.link), title: stripHtml(isRecord(t) ? str(t.rendered) : str(t)) });
+  const marker = articleMarker(articleId);
+  const taken = new Set<string>();
+  let own: WpFoundPost | null = null;
+  let foreign: WpFoundPost | null = null;
+  if (Array.isArray(arr)) {
+    for (const raw of arr) {
+      if (!isRecord(raw)) continue;
+      const id = num(raw.id);
+      if (!id) continue;
+      const t = raw.title;
+      const c = raw.content;
+      const content = isRecord(c) ? `${str(c.raw)} ${str(c.rendered)}` : str(c);
+      const post: WpFoundPost = { id, slug: str(raw.slug), status: str(raw.status), url: str(raw.link), title: stripHtml(isRecord(t) ? str(t.rendered) : str(t)) };
+      if (post.slug) taken.add(post.slug);
+      const mine = content.includes(marker);
+      if (mine && !own) own = post;
+      if (!mine && post.slug === base && !foreign) foreign = post;
+    }
   }
-  const exact = variants[0];
-  const direct = found.find((p) => p.slug === exact);
-  if (direct) return direct;
-  const want = opts.title ? normTitle(opts.title) : "";
-  if (want) {
-    const byTitle = found.find((p) => normTitle(p.title) === want);
-    if (byTitle) return byTitle;
-  }
-  return null;
+  return { own, taken, foreign: own && own.slug === base ? null : foreign };
 }
 
 /* ------------------------------ записи ------------------------------ */

@@ -25,9 +25,9 @@ export default async function SitePage({ params, searchParams }: { params: Promi
   if (!site || !(await canAccessPinSite(me, site))) notFound();
   const r = mergeRecipe(site.recipe);
   const [runs, stock, lastRun, wps] = await Promise.all([
-    prisma.pinRun.findMany({ where: { siteId: id, NOT: { name: { startsWith: "__" } } }, orderBy: { createdAt: "desc" }, take: 50 }),
+    prisma.pinRun.findMany({ where: { siteId: id, NOT: { name: "__system__" } }, orderBy: { createdAt: "desc" }, take: 50 }),
     siteStock(id, 35),
-    prisma.pinRun.findFirst({ where: { siteId: id, NOT: { name: { startsWith: "__" } } }, orderBy: { createdAt: "desc" }, select: { settings: true } }),
+    prisma.pinRun.findFirst({ where: { siteId: id, NOT: { name: "__system__" } }, orderBy: { createdAt: "desc" }, select: { settings: true } }),
     site.wpConnectionId ? Promise.resolve([]) : prisma.siteAccess.findMany({ where: { ...(await siteAccessWhere(me)), kind: "wordpress" }, orderBy: { name: "asc" }, select: { id: true, name: true, projects: true } })
       .then((rows) => rows.filter((w) => { const pr = (w.projects as string[] | null) ?? []; return !pr.length || pr.includes(PROJECT_SLUG); })),
   ]);
@@ -37,7 +37,7 @@ export default async function SitePage({ params, searchParams }: { params: Promi
 
   return (
     <>
-      <PageHeader back={{ href: "/pinterest/pins/sites", label: "Сайты" }} title={site.name} subtitle={`${site.team.name} · досок ${site.boards.length} · ${styles} · язык ${r.text.language}${site.isActive ? "" : " · в архиве"}`} actions={<>{site.wpConnectionId && <Link href={`/sites/${site.wpConnectionId}`} className="btn-ghost">Доступ и команды</Link>}<Link href={`/pinterest/pins/runs/new?site=${id}`} className="btn-brand">Новый прогон</Link></>} />
+      <PageHeader back={{ href: "/pinterest/pins/sites", label: "Сайты" }} title={site.name} subtitle={`${site.team.name} · досок ${site.boards.length} · ${styles} · язык ${r.text.language}${site.isActive ? "" : " · в архиве"}`} actions={<>{site.wpConnectionId && <Link href={`/sites/${site.wpConnectionId}`} className="btn-ghost">Доступ и команды</Link>}<a href={`/api/pins/export/all?site=${id}`} className="btn-ghost">Выгрузить все пины</a><Link href={`/pinterest/pins/runs/new?site=${id}`} className="btn-brand">Новый прогон</Link></>} />
       <div className="mb-4 flex gap-2">
         {tabs.map(([k, l]) => <Link key={k} href={`/pinterest/pins/sites/${id}?tab=${k}`} className={`badge px-3 py-1 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}
       </div>

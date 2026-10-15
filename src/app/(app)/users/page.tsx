@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { canViewUsers, describePermissions, describeTools, parsePermissions } from "@/lib/permissions";
+import { canViewUsers, describePermissions, describeTools, parsePermissions, publicToolWhere } from "@/lib/permissions";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { NewUserForm } from "@/components/users/NewUserForm";
 import { fmtDate } from "@/lib/utils";
@@ -16,7 +16,7 @@ export default async function UsersPage() {
   const [users, teams, projects] = await Promise.all([
     prisma.user.findMany({ orderBy: { createdAt: "asc" }, include: { memberships: { include: { team: { select: { name: true } } } }, _count: { select: { apiKeys: true } } } }),
     prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.project.findMany({ orderBy: [{ section: { order: "asc" } }, { order: "asc" }, { name: "asc" }], select: { slug: true, name: true, section: { select: { name: true } } } }),
+    prisma.project.findMany({ where: publicToolWhere, orderBy: [{ section: { order: "asc" } }, { order: "asc" }, { name: "asc" }], select: { slug: true, name: true, section: { select: { name: true } } } }),
   ]);
   const appUrl = process.env.APP_URL ?? "";
   return (

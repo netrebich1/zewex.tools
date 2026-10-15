@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Badge, Card } from "@/components/ui";
 import type { RunStatusView } from "@/lib/pins/runs/status";
+import { ProblemsDetails } from "@/components/pins/ProblemsDetails";
 import { ENGINE_LABELS, RUN_STATUS_LABELS, STAGE_LABELS, runStatusTone } from "./labels";
 
 const LIVE = new Set(["QUEUED", "RUNNING"]);
@@ -51,7 +52,7 @@ export function RunStatus({ initial }: { initial: RunStatusView }) {
           </div>
         )}
         {err && <p className="help mt-2">{err}</p>}
-        {v.run.blockedReason && <div className="mt-3"><Alert tone="danger">{v.run.blockedReason}</Alert></div>}
+        {v.problems.length > 0 && <div className="mt-3"><ProblemsDetails problems={v.problems} runStatus={v.run.status} open /></div>}
         {v.run.status === "WAITING_MODERATION" && <div className="mt-3"><Alert tone="warn">Прогон ждёт модерации. <a className="underline" href={`/pinterest/pins/moderation?run=${v.run.id}`}>Открыть модерацию этого прогона →</a> После проверки всех пинов прогон продолжится сам.</Alert></div>}
 
         <ol className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-12">
@@ -73,7 +74,7 @@ export function RunStatus({ initial }: { initial: RunStatusView }) {
                 <tr key={c.engine} className={c.engine === "ALL" ? "font-semibold" : ""}>
                   <td>{ENGINE_LABELS[c.engine] ?? c.engine}</td>
                   <td>{c.planned}</td><td>{c.withPrompt}</td><td>{c.withImage}</td><td>{c.approved}</td><td>{c.rejected}</td><td>{c.withText}</td><td>{c.uploaded}</td><td>{c.scheduled}</td>
-                  <td className={c.errors ? "text-danger" : ""}>{c.errors}</td>
+                  <td className={c.errors ? (v.health === "critical" ? "text-danger" : "text-warn") : ""}>{c.errors}</td>
                 </tr>
               ))}
             </tbody>
@@ -81,15 +82,6 @@ export function RunStatus({ initial }: { initial: RunStatusView }) {
         </div>
       </Card>
 
-      {v.problems.length > 0 && (
-        <Card title="Проблемы">
-          <ul className="space-y-1.5 text-[14px]">
-            {v.problems.map((p, i) => (
-              <li key={i}><Badge tone="danger">{p.count}</Badge> <span className="text-muted">{STAGE_LABELS[p.stage as keyof typeof STAGE_LABELS] ?? p.stage}:</span> {p.message || p.kind}</li>
-            ))}
-          </ul>
-        </Card>
-      )}
     </div>
   );
 }

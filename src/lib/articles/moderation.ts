@@ -7,6 +7,8 @@
  *  - статус меняется только CAS-обновлением (`updateMany` с ожидаемым статусом) — гонка с воркером/другим
  *    модератором даёт ошибку `stale` (оригинал: 200 {stale:true});
  *  - каждое действие пишет `ArtModerationEvent` (статистика сотрудников, undo);
+ *  - закрепление продлевается каждым действием и пингом открытой страницы (`extendClaim`), снимается при уходе;
+ *  - захват `aiRunId` действует только пока запуск ИИ идёт (`liveAiRunIds`) — завершённый запуск статьи не прячет;
  *  - исключённое фото остаётся в `ArtPhoto` с `excluded=true` до одобрения (для «Отменить»), удаляется при одобрении.
  */
 import { createHash, randomUUID } from "crypto";
@@ -73,6 +75,22 @@ function expectStatus(a: { status: ArtStatus }, allowed: ArtStatus[]) {
 
 /* ───────────────────────── Закрепление и конвейер ───────────────────────── */
 
+/** Идущие запуски ИИ-модерации: только они держат статьи (Article.aiRunId завершённого запуска — пустой захват). */
+export async function liveAiRunIds(): Promise<string[]> {
+  const rows = await prisma.artAiModerationRun.findMany({ where: { status: "running" }, select: { id: true } });
+  return rows.map((r) => r.id);
+}
+
+async function aiRunAlive(runId: string): Promise<boolean> {
+  const run = await prisma.artAiModerationRun.findUnique({ where: { id: runId }, select: { status: true } });
+  return run?.status === "running";
+}
+
+/** Условие «статью не держит идущий запуск ИИ» (для where статей). */
+export function notHeldByAi(live: string[]): Prisma.ArticleWhereInput {
+  return live.length ? { OR: [{ aiRunId: null }, { aiRunId: { notIn: live } }] } : {};
+}
+
 export type ClaimResult = { claimed: true } | { claimed: false; by: string };
 
 /** Закрепить статью за модератором на CLAIM_TTL_MIN минут, если она свободна, своя или закрепление протухло (оригинал :75-91). */
@@ -81,7 +99,11 @@ export async function claimArticle(me: CurrentUser, id: string, expect: ArtStatu
   expectStatus(a, expect);
   const stale = staleBefore();
   // Статью держит запуск ИИ-модерации (Article.aiRunId) — сотрудникам она недоступна до решения ИИ.
-  if (a.aiRunId) return { claimed: false, by: "ИИ-модерация (идёт проверка)" };
+  // Захват завершённого/остановленного запуска пустой (тест-режим, autoApply=false, сбой) — снимаем его и работаем.
+  if (a.aiRunId) {
+    if (await aiRunAlive(a.aiRunId)) return { claimed: false, by: "ИИ-модерация (идёт проверка)" };
+    await prisma.article.updateMany({ where: { id, aiRunId: a.aiRunId }, data: { aiRunId: null } });
+  }
   const mine = a.claimedById === me.id;
   const free = !a.claimedById || !a.claimedAt || a.claimedAt < stale;
   if (!mine && !free) {
@@ -95,6 +117,11 @@ export async function claimArticle(me: CurrentUser, id: string, expect: ArtStatu
   if (!r.count) return { claimed: false, by: "другой сотрудник" };
   if (!mine) await event(id, me, "claim");
   return { claimed: true };
+}
+
+/** Продлить своё закрепление: любое действие модератора и пинг открытой страницы (раз в минуту). */
+export async function extendClaim(me: CurrentUser, id: string): Promise<void> {
+  await prisma.article.updateMany({ where: { id, claimedById: me.id }, data: { claimedAt: new Date() } });
 }
 
 /** Снять своё закрепление (оригинал: release). */
@@ -117,6 +144,7 @@ export async function nextForReview(me: CurrentUser, opts: { siteId?: string; st
   const statuses = opts.statuses ?? ["PHOTO_REVIEW"];
   const where = await articleWhere(me);
   const stale = staleBefore();
+  const live = await liveAiRunIds();
   const skips = await prisma.artModerationEvent.findMany({ where: { userId: me.id, action: "skip", createdAt: { gte: new Date(Date.now() - SKIP_WINDOW_MS) } }, select: { articleId: true } });
   const skipped = new Set(skips.map((s) => s.articleId));
   const exclude = new Set(opts.exclude ?? []);
@@ -124,9 +152,11 @@ export async function nextForReview(me: CurrentUser, opts: { siteId?: string; st
     ...where,
     status: { in: statuses },
     ...(opts.siteId ? { siteId: opts.siteId } : {}),
-    // Захваченные ИИ-модерацией статьи людям не раздаём.
-    aiRunId: null,
-    OR: [{ claimedById: null }, { claimedById: me.id }, { claimedAt: { lt: stale } }],
+    AND: [
+      // Захваченные идущим запуском ИИ-модерации статьи людям не раздаём; захват завершённого запуска не считается.
+      notHeldByAi(live),
+      { OR: [{ claimedById: null }, { claimedById: me.id }, { claimedAt: { lt: stale } }] },
+    ],
   };
   for (const pass of [0, 1]) {
     const notIn = pass === 0 ? [...exclude, ...skipped] : [...exclude];
@@ -152,15 +182,155 @@ export async function activeClaims(me: CurrentUser): Promise<Array<{ articleId: 
   return rows.map((r) => ({ articleId: r.id, keyword: r.keyword, siteName: r.site.name, userId: r.claimedById!, userName: users.find((u) => u.id === r.claimedById)?.name ?? "—", status: r.status }));
 }
 
-/** Сколько статей ждёт по сайтам в данных статусах (табы сайтов). */
+/**
+ * Сколько статей ждёт по сайтам в данных статусах (табы сайтов). Статьи на проверке у идущего запуска ИИ не считаются:
+ * цифра совпадает с тем, что конвейер может выдать людям (закреплённые коллегами считаются — они видны в списке с замком).
+ */
 export async function waitingCounts(me: CurrentUser, statuses: ArtStatus[]): Promise<{ total: number; sites: Array<{ siteId: string; siteName: string; count: number }> }> {
-  const rows = await prisma.article.groupBy({ by: ["siteId"], where: { ...(await articleWhere(me)), status: { in: statuses } }, _count: { _all: true } });
+  const live = await liveAiRunIds();
+  const rows = await prisma.article.groupBy({ by: ["siteId"], where: { ...(await articleWhere(me)), status: { in: statuses }, ...notHeldByAi(live) }, _count: { _all: true } });
   const ids = rows.map((r) => r.siteId);
   const sites = ids.length ? await prisma.artSite.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, sortOrder: true } }) : [];
   const list = rows
     .map((r) => ({ siteId: r.siteId, siteName: sites.find((s) => s.id === r.siteId)?.name ?? "—", count: r._count._all, order: sites.find((s) => s.id === r.siteId)?.sortOrder ?? 0 }))
     .sort((a, b) => a.order - b.order || a.siteName.localeCompare(b.siteName, "ru"));
   return { total: list.reduce((a, b) => a + b.count, 0), sites: list.map((s) => ({ siteId: s.siteId, siteName: s.siteName, count: s.count })) };
+}
+
+/* ───────────────────────── Очередь модерации фото списком ───────────────────────── */
+
+/** Группы очереди: от ИИ (ИИ проверил и отдал людям / предложил в тесте), новые (ИИ не смотрел), мало фото. */
+export type PhotoQueueGroup = "ai" | "new" | "low";
+
+export type PhotoQueueItem = {
+  id: string;
+  keyword: string;
+  keywordRu: string;
+  siteId: string;
+  siteName: string;
+  status: ArtStatus;
+  group: PhotoQueueGroup;
+  /** С какого момента ждёт (решение ИИ или конец последнего этапа воркера), ISO */
+  waitingSince: string;
+  photos: number;
+  norm: number;
+  claimedByName: string | null;
+  claimedMine: boolean;
+  /** Кратко, что сказал ИИ (причины «людям», «предложение теста», «ошибка проверки») */
+  aiNote: string | null;
+  aiConfidence: number | null;
+  /** «Мало фото»: причина и кто поставил */
+  lowReason: string | null;
+  lowByAi: boolean;
+};
+
+export type PhotoQueue = {
+  items: PhotoQueueItem[];
+  counts: { ai: number; new: number; low: number; aiBusy: number; claimedByOthers: number };
+};
+
+const QUEUE_STATUSES: ArtStatus[] = ["PHOTO_REVIEW", "INSUFFICIENT_PHOTOS", "WAITING_FOR_PHOTOS"];
+/** Решения ИИ, которые показываем людям (superseded — заменено перепроверкой, processing — ещё идёт). */
+const AI_SHOWN_STATUSES = ["sent_to_human", "proposed", "applying", "applied", "excluded", "failed"];
+
+/** Короткая подпись решения ИИ для списка и шапки. */
+function aiNoteOf(r: { status: string; decision: string | null; confidence: number | null; review: unknown; error: string | null }, runMode: string): string {
+  const reasons = (((r.review ?? {}) as { humanReasons?: unknown }).humanReasons ?? []) as unknown[];
+  const why = Array.isArray(reasons) ? reasons.map(String).filter(Boolean).join("; ") : "";
+  if (r.status === "failed") return `ИИ не смог проверить${r.error ? `: ${r.error}` : ""}`;
+  if (r.status === "excluded") return "ИИ: отдано людям без правок";
+  if (r.status === "proposed" || r.status === "applying") {
+    const d = r.decision === "approve" ? "одобрить" : r.decision === "insufficient" ? "мало фото" : "людям";
+    return `Предложение ИИ${runMode === "test" ? " (тест)" : ""}, правки не применены: ${d}${why ? ` — ${why}` : ""}`;
+  }
+  if (r.decision === "approve") return `ИИ за одобрение, но не уверен${why ? `: ${why}` : ""}`;
+  return why ? `Отдано людям: ${why}` : "Отдано людям";
+}
+
+/**
+ * Очередь модерации фото для списка: PHOTO_REVIEW (группы «От ИИ» / «Новые») и «Мало фото»
+ * (INSUFFICIENT_PHOTOS / WAITING_FOR_PHOTOS). Ничего не закрепляет. Статьи на проверке у идущего запуска ИИ
+ * в список не входят, только в счётчик aiBusy.
+ */
+export async function photoQueue(me: CurrentUser, opts: { siteId?: string } = {}): Promise<PhotoQueue> {
+  const live = await liveAiRunIds();
+  const rows = await prisma.article.findMany({
+    where: { ...(await articleWhere(me)), status: { in: QUEUE_STATUSES }, ...(opts.siteId ? { siteId: opts.siteId } : {}) },
+    orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
+    take: 500,
+    select: {
+      id: true, keyword: true, keywordRu: true, facts: true, siteId: true, status: true, photoCount: true, createdAt: true,
+      claimedById: true, claimedAt: true, aiRunId: true, insufficientReason: true, insufficientByAi: true,
+      site: { select: { name: true } },
+      _count: { select: { photos: { where: { excluded: false } } } },
+    },
+  });
+  const liveSet = new Set(live);
+  const busy = rows.filter((r) => r.status === "PHOTO_REVIEW" && r.aiRunId && liveSet.has(r.aiRunId));
+  const list = rows.filter((r) => !busy.includes(r));
+  const ids = list.map((r) => r.id);
+  const results = ids.length
+    ? await prisma.artAiModerationResult.findMany({
+        where: { articleId: { in: ids }, status: { in: AI_SHOWN_STATUSES } },
+        orderBy: { createdAt: "desc" },
+        select: { articleId: true, status: true, decision: true, confidence: true, review: true, error: true, updatedAt: true, run: { select: { mode: true } } },
+      })
+    : [];
+  const logs = ids.length ? await prisma.artStageLog.groupBy({ by: ["articleId"], where: { articleId: { in: ids } }, _max: { finishedAt: true } }) : [];
+  const lastResult = new Map<string, (typeof results)[number]>();
+  for (const r of results) if (!lastResult.has(r.articleId)) lastResult.set(r.articleId, r);
+  const lastLog = new Map(logs.map((l) => [l.articleId, l._max.finishedAt]));
+  const stale = staleBefore().getTime();
+  const claimers = [...new Set(list.map((r) => r.claimedById).filter((x): x is string => !!x && x !== me.id))];
+  const users = claimers.length ? await prisma.user.findMany({ where: { id: { in: claimers } }, select: { id: true, name: true } }) : [];
+
+  const items: PhotoQueueItem[] = list.map((r) => {
+    const res = lastResult.get(r.id);
+    const low = r.status !== "PHOTO_REVIEW";
+    const fromAi = !low && !!res && res.status !== "failed";
+    const fresh = !!r.claimedById && !!r.claimedAt && r.claimedAt.getTime() > stale;
+    const since = (fromAi && res ? res.updatedAt : null) ?? lastLog.get(r.id) ?? r.createdAt;
+    return {
+      id: r.id,
+      keyword: r.keyword,
+      keywordRu: r.keywordRu || ((r.facts as ArticleFacts | null)?.keywordRu ?? ""),
+      siteId: r.siteId,
+      siteName: r.site.name,
+      status: r.status,
+      group: low ? "low" : fromAi ? "ai" : "new",
+      waitingSince: since.toISOString(),
+      photos: r._count.photos,
+      norm: r.photoCount,
+      claimedByName: fresh ? (r.claimedById === me.id ? "вы" : users.find((u) => u.id === r.claimedById)?.name ?? "другой сотрудник") : null,
+      claimedMine: fresh && r.claimedById === me.id,
+      aiNote: res ? aiNoteOf(res, res.run.mode) : null,
+      aiConfidence: res?.confidence ?? null,
+      lowReason: low ? r.insufficientReason || (r.status === "WAITING_FOR_PHOTOS" ? "Воркер не набрал нужного числа фото" : null) : null,
+      lowByAi: low && r.insufficientByAi,
+    };
+  });
+  // «От ИИ» — сначала самые давние решения; остальные — в порядке конвейера (приоритет, возраст).
+  const ai = items.filter((i) => i.group === "ai").sort((a, b) => a.waitingSince.localeCompare(b.waitingSince));
+  const ordered = [...ai, ...items.filter((i) => i.group !== "ai")];
+  const counts = {
+    ai: ai.length,
+    new: items.filter((i) => i.group === "new").length,
+    low: items.filter((i) => i.group === "low").length,
+    aiBusy: busy.length,
+    claimedByOthers: items.filter((i) => i.group !== "low" && i.claimedByName && !i.claimedMine).length,
+  };
+  return { items: ordered, counts };
+}
+
+/** Почему конвейер ничего не выдал: сколько статей у идущего запуска ИИ и у коллег (для пустого состояния). */
+export async function queueBlockers(me: CurrentUser, siteId?: string): Promise<{ aiBusy: number; claimedByOthers: number }> {
+  const live = await liveAiRunIds();
+  const base: Prisma.ArticleWhereInput = { ...(await articleWhere(me)), status: "PHOTO_REVIEW", ...(siteId ? { siteId } : {}) };
+  const [aiBusy, claimedByOthers] = await Promise.all([
+    live.length ? prisma.article.count({ where: { ...base, aiRunId: { in: live } } }) : Promise.resolve(0),
+    prisma.article.count({ where: { ...base, ...notHeldByAi(live), claimedById: { not: me.id }, claimedAt: { gte: staleBefore() } } }),
+  ]);
+  return { aiBusy, claimedByOthers };
 }
 
 /* ───────────────────────── Состояние фото для сетки ───────────────────────── */
@@ -221,7 +391,125 @@ export type PhotoModerationState = {
   reserve: ModCandidate[];
   rejected: ModCandidate[];
   counts: { active: number; excluded: number; reserve: number; rejected: number; needMin: number; canApprove: boolean; missing: number };
+  /** Последнее решение ИИ-модерации по статье (не заменённое перепроверкой); null — ИИ статью не смотрел. */
+  ai: ModAiContext | null;
 };
+
+/** Решение ИИ для шапки и пометок в сетке модерации фото. */
+export type ModAiContext = {
+  resultId: string;
+  status: string;
+  decision: string | null;
+  confidence: number | null;
+  /** Подпись для шапки: «Отдано людям: …», «Предложение ИИ (тест)…» */
+  note: string;
+  reasons: string[];
+  summary: string;
+  /** Норма фото, которую видел ИИ (план статьи) */
+  norm: number;
+  removedCount: number;
+  addedCount: number;
+  /** Правки ИИ внесены в статью (sent_to_human/applied); false — только предложение (тест, autoApply выкл.) */
+  applied: boolean;
+  /** photoId → причина: снятые ИИ (applied) или предложенные к снятию (не applied) */
+  removed: Record<string, string>;
+  /** photoId → причина: кадры, которые ИИ добавил из резерва и которые сейчас в статье */
+  added: Record<string, string>;
+  /** candidateId → причина: предложено добавить (только пока правки не применены) */
+  proposedAdds: Record<string, string>;
+  /** Есть что откатить кнопкой «Отменить правки ИИ» */
+  canUndo: boolean;
+  at: string;
+};
+
+type AiResultRow = {
+  id: string; status: string; decision: string | null; confidence: number | null; summary: string | null; error: string | null;
+  review: unknown; removed: unknown; added: unknown; originalIds: unknown; updatedAt: Date; run: { mode: string };
+};
+
+async function latestAiResult(articleId: string): Promise<AiResultRow | null> {
+  return prisma.artAiModerationResult.findFirst({
+    where: { articleId, status: { in: AI_SHOWN_STATUSES } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, status: true, decision: true, confidence: true, summary: true, error: true, review: true, removed: true, added: true, originalIds: true, updatedAt: true, run: { select: { mode: true } } },
+  });
+}
+
+const jsonArr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+
+/** Коды причин снятия ИИ (aiModerationRules.REMOVE_REASONS) → по-русски для сотрудника. */
+const AI_REASON_RU: Record<string, string> = {
+  off_topic: "не по теме",
+  wrong_detail: "не та деталь из ключа",
+  ai_fake: "похоже на ИИ-картинку",
+  watermark_logo: "водяной знак / логотип / текст",
+  collage_text: "коллаж или скриншот",
+  catalogue: "карточка магазина",
+  wrong_audience: "не та аудитория",
+  duplicate: "дубль",
+  weak_pin: "слабый пин",
+};
+
+/** «collage_text: » → «коллаж или скриншот»; «off_topic: другой фасон» → «не по теме: другой фасон». */
+function reasonRu(raw: string): string {
+  const t = raw.trim();
+  const m = /^([a-z_]+)\s*:?\s*(.*)$/.exec(t);
+  if (m && AI_REASON_RU[m[1]]) return m[2] ? `${AI_REASON_RU[m[1]]}: ${m[2]}` : AI_REASON_RU[m[1]];
+  return t.replace(/:\s*$/, "");
+}
+
+/** Что ИИ сделал с фото статьи: снятые (с причинами из решения или событий), добавленные из резерва, исходный порядок. */
+async function aiEditsOf(articleId: string, res: AiResultRow, photos: Array<{ id: string; candidateId: string | null; excluded: boolean; excludedByAi: boolean }>) {
+  const original = new Set(jsonArr<string>(res.originalIds).map(String));
+  const removedReason = new Map(jsonArr<{ photoId: string; reason?: string }>(res.removed).map((r) => [String(r.photoId), String(r.reason ?? "")]));
+  const addedReason = new Map(jsonArr<{ candidateId: string; reason?: string | null }>(res.added).map((r) => [String(r.candidateId), String(r.reason ?? "")]));
+  // Причина снятия ИИ без строки в решении (старые решения) — из события exclude с byAi.
+  const missing = photos.filter((p) => p.excluded && p.excludedByAi && !removedReason.has(p.id)).map((p) => p.id);
+  if (missing.length) {
+    const evs = await prisma.artModerationEvent.findMany({ where: { articleId, byAi: true, action: "exclude" }, select: { payload: true } });
+    for (const e of evs) {
+      const pl = (e.payload ?? {}) as { photoId?: string; reason?: string | null };
+      if (pl.photoId && missing.includes(pl.photoId)) removedReason.set(pl.photoId, String(pl.reason ?? ""));
+    }
+  }
+  const aiRemoved = photos.filter((p) => p.excluded && p.excludedByAi);
+  const aiAdded = photos.filter((p) => !original.has(p.id) && !!p.candidateId && addedReason.has(p.candidateId));
+  return { original, removedReason, addedReason, aiRemoved, aiAdded };
+}
+
+async function aiContext(articleId: string, photos: Array<{ id: string; candidateId: string | null; excluded: boolean; excludedByAi: boolean }>): Promise<ModAiContext | null> {
+  const res = await latestAiResult(articleId);
+  if (!res) return null;
+  const review = (res.review ?? {}) as { humanReasons?: unknown; needed?: unknown };
+  const reasons = jsonArr<unknown>(review.humanReasons).map(String).filter(Boolean);
+  const applied = res.status === "sent_to_human" || res.status === "applied";
+  const e = await aiEditsOf(articleId, res, photos);
+  const removed: Record<string, string> = {};
+  if (applied) for (const p of e.aiRemoved) removed[p.id] = reasonRu(e.removedReason.get(p.id) || "") || "снято ИИ";
+  else for (const [id, why] of e.removedReason) if (photos.some((p) => p.id === id && !p.excluded)) removed[id] = reasonRu(why) || "ИИ предлагает убрать";
+  const added: Record<string, string> = {};
+  if (applied) for (const p of e.aiAdded) added[p.id] = e.addedReason.get(p.candidateId!) || "";
+  const proposedAdds: Record<string, string> = {};
+  if (!applied) for (const [id, why] of e.addedReason) proposedAdds[id] = why;
+  return {
+    resultId: res.id,
+    status: res.status,
+    decision: res.decision,
+    confidence: res.confidence,
+    note: aiNoteOf(res, res.run.mode),
+    reasons,
+    summary: res.summary ?? "",
+    norm: typeof review.needed === "number" ? review.needed : 0,
+    removedCount: jsonArr(res.removed).length,
+    addedCount: jsonArr(res.added).length,
+    applied,
+    removed,
+    added,
+    proposedAdds,
+    canUndo: applied && (e.aiRemoved.length > 0 || e.aiAdded.length > 0),
+    at: res.updatedAt.toISOString(),
+  };
+}
 
 function trendFromFacts(facts: unknown): { in: string[]; out: string[] } | null {
   const f = (facts ?? {}) as ArticleFacts;
@@ -308,7 +596,37 @@ export async function photoState(me: Actor, articleId: string): Promise<PhotoMod
     reserve,
     rejected,
     counts: { active, excluded: photos.length - active, reserve: reserve.length, rejected: rejected.length, needMin, canApprove: active >= needMin, missing: Math.max(0, needMin - active) },
+    ai: a.status === "PHOTO_REVIEW" ? await aiContext(articleId, photos) : null,
   };
+}
+
+/**
+ * «Отменить правки ИИ»: вернуть снятые ИИ кадры, убрать добавленные ИИ из резерва и восстановить порядок до решения ИИ
+ * (кадры, добавленные людьми после ИИ, остаются в конце). Только PHOTO_REVIEW, статью не держит другой модератор.
+ * Работает через restorePhoto/removePhoto/reorderPhotos (их события тоже пишутся) + итоговое событие ai_undo.
+ */
+export async function undoAiEdits(me: CurrentUser, articleId: string): Promise<{ restored: number; removed: number; message: string }> {
+  const a = await load(me, articleId);
+  expectStatus(a, ["PHOTO_REVIEW"]);
+  if (a.aiRunId && (await aiRunAlive(a.aiRunId))) throw new ModerationError("Статью сейчас проверяет ИИ — дождитесь решения", 409);
+  if (a.claimedById && a.claimedById !== me.id && a.claimedAt && a.claimedAt >= staleBefore()) {
+    const u = await prisma.user.findUnique({ where: { id: a.claimedById }, select: { name: true } });
+    throw new ModerationError(`Статью сейчас модерирует ${u?.name || "другой сотрудник"}`, 409);
+  }
+  const res = await latestAiResult(articleId);
+  if (!res) throw new ModerationError("ИИ эту статью не проверял — отменять нечего", 400);
+  if (res.status !== "sent_to_human" && res.status !== "applied") throw new ModerationError("Правки ИИ к статье не применялись (только предложение) — отменять нечего", 400);
+  const photos = await prisma.artPhoto.findMany({ where: { articleId }, orderBy: { position: "asc" }, select: { id: true, candidateId: true, excluded: true, excludedByAi: true } });
+  const e = await aiEditsOf(articleId, res, photos);
+  if (!e.aiRemoved.length && !e.aiAdded.length) throw new ModerationError("Правок ИИ в статье уже нет", 400);
+  for (const p of e.aiRemoved) await restorePhoto(me, articleId, p.id);
+  for (const p of e.aiAdded) await removePhoto(me, articleId, p.id);
+  const left = new Set(photos.map((p) => p.id));
+  const order = [...e.original].filter((id) => left.has(id));
+  if (order.length) await reorderPhotos(me, articleId, order);
+  await extendClaim(me, articleId);
+  await event(articleId, me, "ai_undo", { resultId: res.id, restored: e.aiRemoved.length, removed: e.aiAdded.length });
+  return { restored: e.aiRemoved.length, removed: e.aiAdded.length, message: `Правки ИИ отменены: возвращено ${e.aiRemoved.length}, убрано ${e.aiAdded.length}, порядок как до проверки` };
 }
 
 /* ───────────────────────── Действия с фото ───────────────────────── */

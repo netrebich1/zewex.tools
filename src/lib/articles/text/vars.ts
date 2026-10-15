@@ -29,13 +29,17 @@ export type VarsCtx = { article: Article; recipe: ArticleRecipeSnapshot; facts: 
 
 // ───────────────────────── углы и заходы плана секций (оригинал: stage-photo-section-plan:31-46, 311-312) ─────────────────────────
 
-/** Возможные углы подачи секции (универсальные/ногтевые). */
+/**
+ * Возможные углы подачи секции (универсальные/ногтевые). Аудит text-v2: «personal_story» и «skeptic» заказывали
+ * выдуманный опыт («I wore these…», «I was skeptical») — заменены на «how_to_ask» (что сказать мастеру) и
+ * «honest_take» (кому не подойдёт). Старые значения в уже сохранённых рецептах секций понимает sections.ts.
+ */
 export const ANGLES = [
-  "photo_read", "personal_story", "mistake", "comparison", "who_suits", "wear_reality",
-  "cost_time", "seasonal", "technique", "diy_howto", "skeptic",
+  "photo_read", "how_to_ask", "mistake", "comparison", "who_suits", "wear_reality",
+  "cost_time", "seasonal", "technique", "diy_howto", "honest_take",
 ] as const;
-/** Заходы первой фразы. */
-export const OPENERS = ["reaction", "opinion", "observation", "question", "confession", "scene"] as const;
+/** Заходы первой фразы (без «confession»/«reaction» — они тянули первое лицо и выдумки). */
+export const OPENERS = ["observation", "verdict", "question", "fact", "rule", "contrast"] as const;
 export const FASHION_ANGLES = ["proportion", "layering", "wearability", "seasonality", "formality", "comfort_tradeoff", "closet_vs_buy", "styling_variation"];
 export const INTERIOR_ANGLES = ["layout", "palette", "materials", "lighting", "storage", "budget_swap", "renter_friendly", "styling_variation", "durability", "scale_and_proportion"];
 
@@ -353,8 +357,8 @@ export async function buildPromptVars(ctx: VarsCtx, input: PromptVarsInput = {})
     forbidden_phrases: forbidden,
     p1_draft: extractDraft(introPlan.p1_hook, introPlan.hook),
     p2_draft: extractDraft(introPlan.p2_answer, introPlan.answer),
-    p3_draft: extractDraft(introPlan.p3_personal, introPlan.personal),
-    p1_pattern: s((introPlan.p1_hook as JsonRecord | undefined)?.pattern, "Personal observation → trend validation → opinion."),
+    p3_draft: extractDraft(introPlan.p3_reader ?? introPlan.p3_personal, introPlan.personal),
+    p1_pattern: s((introPlan.p1_hook as JsonRecord | undefined)?.pattern, "Concrete trend fact → who it suits → what the reader gets."),
     p1_must_include: "none",
     p3_must_include: "none",
     price_range: "none",

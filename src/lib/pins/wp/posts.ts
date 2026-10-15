@@ -6,7 +6,7 @@
 import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { decryptSecret } from "@/lib/crypto";
-import { mergeRecipe, pagesDateWindow, type PagesSource } from "../types";
+import { MAX_RUN_PAGES, mergeRecipe, pagesDateWindow, type PagesSource } from "../types";
 import { canAccessPinSite, canAccessSiteAccess } from "@/lib/sites/access";
 import { listAllPosts, listTaxonomies, type WpCreds, type WpPost, type WpTerm } from "./client";
 
@@ -30,7 +30,7 @@ export async function siteTaxonomies(me: CurrentUser, siteId: string): Promise<{
 
 export async function sitePosts(me: CurrentUser, siteId: string, f: SitePostsFilter): Promise<{ posts: SitePost[]; total: number }> {
   const { creds } = await siteCreds(me, siteId);
-  const limit = Math.min(Math.max(f.limit ?? 100, 1), 1000);
+  const limit = Math.min(Math.max(f.limit ?? 100, 1), MAX_RUN_PAGES);
   const posts = await listAllPosts(creds, { categories: f.categories, excludeCategories: f.excludeCategories, after: f.after, before: f.before, search: f.search, postType: f.postType, limit, perPage: 100 }, { timeoutMs: 40_000, maxRetries: 1 });
   const used = new Set((await prisma.pinUrlHistory.findMany({ where: { siteId, url: { in: posts.map((p) => p.url) } }, select: { url: true } })).map((u) => u.url));
   return { posts: posts.map((p) => ({ ...p, used: used.has(p.url) })), total: posts.length };

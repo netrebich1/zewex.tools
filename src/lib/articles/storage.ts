@@ -6,6 +6,7 @@
  *   articles/<articleId>/photos/<photoId>.thumb.webp     миниатюра для модерации
  *   articles/<articleId>/gen/<n>.png                      сгенерированные картинки (формат «ИИ-фото»)
  */
+import { readdir } from "node:fs/promises";
 import sharp from "sharp";
 import { absPath, ensureDir, exists, publicUrl, removePath, writeFileAtomic } from "@/lib/pins/storage";
 
@@ -43,6 +44,23 @@ export async function toWpJpeg(src: Buffer): Promise<{ bytes: Buffer; width: num
 /** Удалить все файлы статьи (после публикации с wpUrl или при удалении статьи). */
 export async function purgeArticleFiles(articleId: string): Promise<void> {
   await removePath(articleDir(articleId));
+}
+
+/**
+ * Очистка после публикации без потери истории ИИ-модерации: удаляются все файлы статьи, кроме миниатюр фото статьи
+ * (включая исключённые) и миниатюр кандидатов из `keepCandIds` (добавленные ИИ из резерва). Миниатюры ~20 КБ —
+ * экран решений ИИ показывает по ним «убрано / добавлено» и после публикации (аудит 2026-10-14).
+ */
+export async function purgeArticleFilesKeepThumbs(articleId: string, keepCandIds: Set<string>): Promise<void> {
+  const dir = articleDir(articleId);
+  for (const sub of ["photos", "cand", "gen"]) {
+    let names: string[] = [];
+    try { names = await readdir(absPath(`${dir}/${sub}`)); } catch { continue; }
+    for (const name of names) {
+      const keep = name.endsWith(".thumb.webp") && (sub === "photos" || (sub === "cand" && keepCandIds.has(name.slice(0, -".thumb.webp".length))));
+      if (!keep) await removePath(`${dir}/${sub}/${name}`).catch(() => {});
+    }
+  }
 }
 
 /** Удалить только оригиналы кандидатов (после отбора; миниатюры остаются для резерва в модерации). */

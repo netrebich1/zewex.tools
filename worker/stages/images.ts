@@ -5,7 +5,8 @@ import { itemImageRel, itemThumbRel, writeFileAtomic } from "@/lib/pins/storage"
 import type { StageHandler } from "./index";
 import { failItem, loadRunCtx, notRetryYet, okPatch, runQueue, type ItemOutcome } from "./_shared";
 
-const CONCURRENCY = Number(process.env.PINS_IMAGE_CONCURRENCY || 6);
+// Картинки ИИ большую часть времени ждут провайдера; 15 одновременно = общий лимит на один ключ (DEFAULT_LIMITS.IMAGE).
+const CONCURRENCY = Number(process.env.PINS_IMAGE_CONCURRENCY || 15);
 
 /** Этап images: картинки по готовым промтам (OpenAI gpt-image-2 через слот image_main). */
 export const images: StageHandler = async (ctx) => {

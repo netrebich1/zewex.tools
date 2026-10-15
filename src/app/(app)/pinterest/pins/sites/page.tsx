@@ -13,7 +13,7 @@ export default async function PinsSitesPage() {
   const me = await requireUser();
   const sites = await prisma.pinSite.findMany({
     where: await pinSiteWhere(me), orderBy: [{ isActive: "desc" }, { name: "asc" }],
-    include: { team: { select: { name: true } }, _count: { select: { boards: true } }, runs: { where: { NOT: { name: { startsWith: "__" } } }, orderBy: { createdAt: "desc" }, take: 1, select: { id: true, name: true, createdAt: true, status: true } } },
+    include: { team: { select: { name: true } }, _count: { select: { boards: true } }, runs: { where: { NOT: { name: "__system__" } }, orderBy: { createdAt: "desc" }, take: 1, select: { id: true, name: true, createdAt: true, status: true } } },
   });
 
   return (

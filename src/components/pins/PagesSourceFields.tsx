@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Alert, Field } from "@/components/ui";
-import type { PagesSource } from "@/lib/pins/types";
+import { MAX_RUN_PAGES, type PagesSource } from "@/lib/pins/types";
 
 export type WpCategory = { id: number; name: string; count: number };
 
@@ -92,8 +92,8 @@ export function PagesSourceFields({ siteId, p, hasWp, categories, onChange, comp
                 <Field label="по"><input name="pagesBefore" type="date" className="input py-1.5" value={v.before} onChange={(e) => set("before", e.target.value)} /></Field>
               </>
             )}
-            <Field label="Не больше статей" hint="До 500 за прогон">
-              <input name="pagesLimit" type="number" min={1} max={500} className="input py-1.5" value={v.limit} onChange={(e) => set("limit", Math.min(500, Math.max(1, Number(e.target.value) || 1)))} />
+            <Field label="Не больше статей" hint={`До ${MAX_RUN_PAGES} за прогон`}>
+              <input name="pagesLimit" type="number" min={1} max={MAX_RUN_PAGES} className="input py-1.5" value={v.limit} onChange={(e) => set("limit", Math.min(MAX_RUN_PAGES, Math.max(1, Number(e.target.value) || 1)))} />
             </Field>
           </div>
 

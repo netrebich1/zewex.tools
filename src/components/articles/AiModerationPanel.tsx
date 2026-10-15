@@ -257,7 +257,7 @@ function ResultsTab({ data, busy, act, notify }: { data: AiOverview; busy: strin
               <th className="w-8">
                 <input type="checkbox" aria-label="Отметить все ждущие решения" checked={selectable.length > 0 && selectable.every((r) => sel.has(r.id))} disabled={!selectable.length} onChange={(e) => setSel(e.target.checked ? new Set(selectable.map((r) => r.id)) : new Set())} />
               </th>
-              <th>Ключ</th><th>Сайт</th><th>Решение ИИ</th><th>Уверенность</th><th>Фото</th><th>−/+</th><th>Причина</th><th>Статус</th>{data.canSeeCosts && <th>$</th>}
+              <th>Ключ</th><th>Сайт</th><th>Решение ИИ</th><th>Уверенность</th><th>Фото</th><th>−/+</th><th>Причина</th><th>Статус</th><th>Аудит</th>{data.canSeeCosts && <th>$</th>}
             </tr>
           </thead>
           <tbody>
@@ -279,11 +279,12 @@ function ResultsTab({ data, busy, act, notify }: { data: AiOverview; busy: strin
                   <td className="tabular-nums whitespace-nowrap">−{r.removed.length} / +{r.added.length}</td>
                   <td className="max-w-md text-muted"><span className="line-clamp-2" title={r.error || r.summary || ""}>{r.error || r.summary || "—"}</span></td>
                   <td className="whitespace-nowrap">{STATUS[r.status] ?? r.status}</td>
+                  <td className="whitespace-nowrap">{r.review?.audit ? <Badge tone={auditTone(r.review.audit.score)}>{r.review.audit.score}/10</Badge> : <span className="text-muted">—</span>}</td>
                   {data.canSeeCosts && <td className="tabular-nums text-muted">{r.costUsd ? usd(r.costUsd) : "—"}</td>}
                 </tr>
               );
             })}
-            {!shown.length && <tr><td colSpan={10} className="p-6 text-center help">Нет результатов</td></tr>}
+            {!shown.length && <tr><td colSpan={11}className="p-6 text-center help">Нет результатов</td></tr>}
           </tbody>
         </table>
       </div>
@@ -323,6 +324,9 @@ function ResultDialog({ r, canSeeCosts, busy, onClose, onResolve, onRerun, siteN
   const d = r.decision ? DECISION[r.decision] : null;
   const sc = r.review?.scores ?? null;
   const addedBy = new Map(r.added.map((a) => [a.candidateId, a]));
+  const audit = r.review?.audit;
+  const ap = audit?.photos ?? {};
+  const auditStats = audit ? { ok: Object.values(ap).filter((x) => x.ok).length, total: Object.keys(ap).length } : null;
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4 sm:p-8" onClick={onClose} role="dialog" aria-modal="true">
       <div className="card w-full max-w-6xl p-5 space-y-4 text-[14px]" onClick={(e) => e.stopPropagation()}>
@@ -338,6 +342,17 @@ function ResultDialog({ r, canSeeCosts, busy, onClose, onResolve, onRerun, siteN
         </div>
         {r.summary && <p>{r.summary}</p>}
         {r.error && <Alert tone="danger">{r.error}</Alert>}
+        {audit && (
+          <section className="rounded-lg border border-line bg-surface-2 p-3 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-medium">Аудит решения</h3>
+              <Badge tone={auditTone(audit.score)}>{audit.score}/10 · {audit.verdict}</Badge>
+              <span className="help">{audit.by} · {fmt(audit.at)}</span>
+              {auditStats && <span className="help">верных решений по фото {auditStats.ok} из {auditStats.total}</span>}
+            </div>
+            <p>{audit.summary}</p>
+          </section>
+        )}
         <div className="flex flex-wrap gap-2">
           {sc && <>
             <Badge tone="neutral">Ключ: {sc.relevance ?? "—"}</Badge>
@@ -354,7 +369,7 @@ function ResultDialog({ r, canSeeCosts, busy, onClose, onResolve, onRerun, siteN
           {r.finalOrder.length ? (
             <div className="grid grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
               {r.finalOrder.map((f, i) => (
-                <Thumb key={f.id + i} url={f.url} fallback={f.kind === "R" ? addedBy.get(f.id)?.sourceUrl : undefined} tone={f.kind === "R" ? "add" : undefined} note={`${i + 1}${f.kind === "R" ? ` · добавлено (${f.src === "reject" ? "отклонённые ИИ" : "одобренные ИИ"})` : ""}`} />
+                <Thumb key={f.id + i} url={f.url} fallback={f.kind === "R" ? addedBy.get(f.id)?.sourceUrl : undefined} tone={f.kind === "R" ? "add" : undefined} audit={ap[f.id]} note={`${i + 1}${f.kind === "R" ? ` · добавлено (${f.src === "reject" ? "отклонённые ИИ" : "одобренные ИИ"})` : ""}`} />
               ))}
             </div>
           ) : <p className="help">—</p>}
@@ -363,7 +378,7 @@ function ResultDialog({ r, canSeeCosts, busy, onClose, onResolve, onRerun, siteN
           <section>
             <h3 className="mb-2 font-medium">Удалено ({r.removed.length})</h3>
             <div className="grid grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
-              {r.removed.map((x) => <Thumb key={x.photoId} url={x.url} fallback={x.sourceUrl} tone="bad" note={x.reason} />)}
+              {r.removed.map((x) => <Thumb key={x.photoId} url={x.url} fallback={x.sourceUrl} tone="bad" audit={ap[x.photoId]} note={x.reason} />)}
             </div>
           </section>
         )}
@@ -371,7 +386,7 @@ function ResultDialog({ r, canSeeCosts, busy, onClose, onResolve, onRerun, siteN
           <section>
             <h3 className="mb-2 font-medium">Добавлено из резерва ({r.added.length})</h3>
             <div className="grid grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
-              {r.added.map((x) => <Thumb key={x.candidateId} url={x.url} fallback={x.sourceUrl} tone="add" note={`${x.src === "reject" ? "Отклонённые ИИ" : "Одобренные ИИ"}${x.reason ? ` · ${x.reason}` : ""}`} />)}
+              {r.added.map((x) => <Thumb key={x.candidateId} url={x.url} fallback={x.sourceUrl} tone="add" audit={ap[x.candidateId]} note={`${x.src === "reject" ? "Отклонённые ИИ" : "Одобренные ИИ"}${x.reason ? ` · ${x.reason}` : ""}`} />)}
             </div>
           </section>
         )}
@@ -403,7 +418,7 @@ function ResultDialog({ r, canSeeCosts, busy, onClose, onResolve, onRerun, siteN
 }
 
 /** Миниатюра: наш файл, при ошибке — внешний источник (фото могли удалить после одобрения), затем ссылка. */
-function Thumb({ url, fallback, note, tone }: { url: string; fallback?: string; note?: string | null; tone?: "bad" | "add" }) {
+function Thumb({ url, fallback, note, tone, audit }: { url: string; fallback?: string; note?: string | null; tone?: "bad" | "add"; audit?: { ok: boolean; note: string } }) {
   const [step, setStep] = useState(0);
   const srcs = [url, fallback].filter((x): x is string => !!x);
   const src = srcs[step];
@@ -416,9 +431,12 @@ function Thumb({ url, fallback, note, tone }: { url: string; fallback?: string; 
         <a href={fallback || url} target="_blank" rel="noreferrer" className="flex aspect-[3/4] w-full items-center justify-center bg-surface-2 p-2 text-center text-[11px] text-muted">Фото не открылось — открыть</a>
       )}
       {note && <div className="p-1 text-[11px] leading-tight text-muted">{note}</div>}
+      {audit && <div className={`px-1 pb-1 text-[11px] font-medium leading-tight ${audit.ok ? "text-ok" : "text-danger"}`}>{audit.ok ? "✓" : "✗"} {audit.note}</div>}
     </div>
   );
 }
+
+const auditTone = (score: number): "ok" | "warn" | "danger" => (score >= 8 ? "ok" : score >= 5 ? "warn" : "danger");
 
 /* ───────────────────────── Вкладка «Мало фото» ───────────────────────── */
 

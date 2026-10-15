@@ -82,6 +82,8 @@ model User {
   usage         UsageLog[]
   siteViews     SiteAccessViewer[]
   favorites     FavoriteTool[]
+  toolAccess    ToolAccess[]
+  gaAccounts    GaAccount[]
 }
 
 model Session {
@@ -612,6 +614,8 @@ model PinRunItem {
   status          PinItemStatus @default(PENDING)
   moderation      PinModeration @default(NONE)
   rejectReason    String?
+  /// Пост-модерация: одобренный пин просмотрен повторно (очередь пост-модерации его больше не показывает)
+  postReviewedAt  DateTime?
   error           String?       @db.Text
   errorStage      String?
   errorKind       String?
@@ -1287,4 +1291,431 @@ model ArtAiModerationResult {
   @@unique([runId, articleId])
   @@index([articleId, createdAt])
   @@index([runId, status])
+}
+
+/* ---------- Закрытые инструменты ---------- */
+
+/// Доступ к закрытому инструменту (`PRIVATE_TOOLS` в src/lib/permissions.ts). Роль не важна: админ без записи инструмент не видит.
+/// Владелец портала видит закрытые инструменты всегда; выдаёт доступ только он (страница пользователя).
+model ToolAccess {
+  userId      String
+  slug        String
+  grantedById String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, slug])
+}
+
+/* ---------- Финансы Wexora (проект `finance`, закрытый) ---------- */
+
+enum FinOpType {
+  EXPENSE
+  INCOME
+  SETTLEMENT
+}
+
+enum FinCategoryKind {
+  EXPENSE
+  INCOME
+  ANY
+}
+
+/// Строка отчёта P&L, к которой относится категория. Из неё же выводится `FinCategory.kind` (где категорию предлагать).
+enum FinPnlLine {
+  /// Выручка
+  REVENUE
+  /// Прямые расходы (себестоимость): то, без чего нет выручки направления — контент, ИИ, домены, фриланс
+  COGS
+  /// Операционные расходы: сервисы, серверы, реклама, общие траты
+  OPEX
+  /// Налоги, комиссии банков и бирж
+  TAX
+  /// Прочее: вне операционной деятельности, курсовые разницы, разовое
+  OTHER
+}
+
+/// Направление бизнеса: два уровня (Пинтерест → Кулинария).
+model FinDirection {
+  id       String         @id @default(cuid())
+  parentId String?
+  name     String
+  order    Int            @default(0)
+  archived Boolean        @default(false)
+  parent   FinDirection?  @relation("FinDirTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children FinDirection[] @relation("FinDirTree")
+  ops      FinOp[]
+}
+
+model FinCategory {
+  id       String          @id @default(cuid())
+  name     String
+  kind     FinCategoryKind @default(ANY)
+  pnl      FinPnlLine      @default(OPEX)
+  order    Int             @default(0)
+  archived Boolean         @default(false)
+  ops      FinOp[]
+  counterparties FinCounterpartyCategory[]
+}
+
+/// Контрагент: кому платим (Ahrefs, Hetzner, фрилансер) или от кого получаем. Может быть в нескольких категориях.
+model FinCounterparty {
+  id         String   @id @default(cuid())
+  name       String   @unique @db.VarChar(120)
+  archived   Boolean  @default(false)
+  createdById String?
+  createdAt  DateTime @default(now())
+  ops        FinOp[]
+  categories FinCounterpartyCategory[]
+}
+
+model FinCounterpartyCategory {
+  counterpartyId String
+  categoryId     String
+  counterparty   FinCounterparty @relation(fields: [counterpartyId], references: [id], onDelete: Cascade)
+  category       FinCategory     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([counterpartyId, categoryId])
+  @@index([categoryId])
+}
+
+/// Партнёр (кто платит и получает деньги). Доли в процентах, по умолчанию 50/50.
+model FinPartner {
+  id       String  @id @default(cuid())
+  name     String
+  userId   String? @unique
+  sharePct Decimal @default(50) @db.Decimal(6, 2)
+  order    Int     @default(0)
+  ops      FinOp[] @relation("FinOpPartner")
+  received FinOp[] @relation("FinOpToPartner")
+}
+
+/// Операция. Сумма в валюте операции + курс к EUR на дату; `amountEur` фиксируется при сохранении и дальше не плывёт.
+model FinOp {
+  id          String       @id @default(cuid())
+  type        FinOpType
+  date        DateTime     @db.Date
+  amount      Decimal      @db.Decimal(18, 4)
+  currency    String       @db.VarChar(10)
+  /// 1 единица валюты = rate EUR
+  rate        Decimal      @db.Decimal(20, 10)
+  rateManual  Boolean      @default(false)
+  amountEur   Decimal      @db.Decimal(18, 2)
+  directionId String?
+  categoryId  String?
+  counterpartyId String?
+  /// Расход — кто платил, доход — кто получил, возврат — кто отдал.
+  partnerId   String
+  /// Возврат — кому отдал.
+  toPartnerId String?
+  /// Карта / кошелёк / счёт, свободный текст.
+  account     String?      @db.VarChar(120)
+  note        String?      @db.Text
+  createdById String
+  updatedById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  /// Удалённая операция не стирается: не входит в итоги, но остаётся для истории (кто и когда удалил).
+  deletedAt   DateTime?
+  deletedById String?
+  direction   FinDirection? @relation(fields: [directionId], references: [id], onDelete: SetNull)
+  category    FinCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  counterparty FinCounterparty? @relation(fields: [counterpartyId], references: [id], onDelete: SetNull)
+  partner     FinPartner    @relation("FinOpPartner", fields: [partnerId], references: [id], onDelete: Restrict)
+  toPartner   FinPartner?   @relation("FinOpToPartner", fields: [toPartnerId], references: [id], onDelete: Restrict)
+
+  @@index([date])
+  @@index([directionId])
+  @@index([counterpartyId])
+  @@index([deletedAt])
+}
+
+/// Курсы на дату: 1 EUR = rates[cur] единиц валюты (источник @fawazahmed0/currency-api, середина рынка как в Google).
+model FinRate {
+  date      String   @id @db.VarChar(10)
+  rates     Json
+  fetchedAt DateTime @default(now())
+}
+
+// ───────────────────────── DeepL Articler (раздел Discovery, проект `deepl`) ─────────────────────────
+// Пакетная адаптация статей WordPress: цепочка переводов DeepL → H2 → постредактура → добор ключей → публикация.
+
+enum DeeplJobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  STOPPED
+}
+
+/// Ключ DeepL уровня инструмента: пул с ротацией по sortOrder, лимит и расход символов из /v2/usage
+model DeeplKey {
+  id        String    @id @default(uuid()) @db.Char(36)
+  label     String
+  secretEnc String    @db.Text
+  hint      String    @default("")
+  isActive  Boolean   @default(true)
+  /// Лимит символов за период (null — без лимита)
+  charLimit Float?
+  /// Лимит задан вручную: «Обновить расход из DeepL» его не перезаписывает
+  limitManual Boolean @default(false)
+  charUsed  Float     @default(0)
+  sortOrder Int       @default(0)
+  lastError String?   @db.Text
+  usageAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+/// Промт этапа: headings (H2) | post_edit (постредактура) | any
+model DeeplPrompt {
+  id        String   @id @default(uuid()) @db.Char(36)
+  name      String
+  purpose   String   @default("any")
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Сценарий: сохранённый набор настроек прогона (DeeplSettings)
+model DeeplScenario {
+  id        String   @id @default(uuid()) @db.Char(36)
+  name      String
+  settings  Json
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Прогон: партия статей одного сайта с одними настройками
+model DeeplJob {
+  id            String         @id @default(uuid()) @db.Char(36)
+  teamId        String?
+  createdById   String
+  accessId      String?        @db.Char(36)
+  siteName      String         @default("")
+  name          String         @default("")
+  status        DeeplJobStatus @default(QUEUED)
+  /// DeeplSettings (src/lib/deepl/types.ts) с текстами промтов на момент запуска
+  settings      Json
+  total         Int            @default(0)
+  stopRequested Boolean        @default(false)
+  error         String?        @db.Text
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  items         DeeplItem[]
+
+  @@index([createdById, createdAt])
+  @@index([teamId, createdAt])
+  @@index([status])
+}
+
+/// Статья прогона: исходник, снимки этапов, итог, публикация
+model DeeplItem {
+  id               String    @id @default(uuid()) @db.Char(36)
+  jobId            String    @db.Char(36)
+  position         Int
+  wpPostId         Int?
+  sourceUrl        String?   @db.Text
+  title            String    @default("") @db.Text
+  wpStatus         String?
+  wpDate           String?
+  sourceHtml       String?   @db.LongText
+  finalHtml        String?   @db.LongText
+  /// Снимки этапов [{key,label,html,chars,changedWords,status}]
+  stages           Json?
+  warnings         Json?
+  keywordReport    Json?
+  /// pending | processing | done | warning | error | stopped
+  status           String    @default("pending")
+  stage            String    @default("pending")
+  error            String?   @db.Text
+  workerId         String?
+  leaseUntil       DateTime?
+  attempts         Int       @default(0)
+  costUsd          Float     @default(0)
+  deeplChars       Float     @default(0)
+  publishedUrl     String?   @db.Text
+  publishedPostId  Int?
+  publishMode      String?
+  publishedAt      DateTime?
+  originalWpHtml   String?   @db.LongText
+  originalWpStatus String?
+  originalWpTitle  String?   @db.Text
+  revertedAt       DateTime?
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  job              DeeplJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, position])
+  @@index([status, createdAt])
+}
+
+/// Кэш переводов: sha256(source>target + фрагмент) → результат; один фрагмент не оплачивается дважды
+model DeeplCache {
+  hash       String   @id @db.Char(64)
+  sourceLang String?
+  targetLang String
+  srcChars   Int
+  result     String   @db.LongText
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/* ---------- Трафик сайтов: Google Analytics 4 (проект `analytics`) ---------- */
+
+/// Подключённый Google-аккаунт: OAuth (refresh token) или сервисный аккаунт (JSON-ключ). Все GA-свойства, доступные этому аккаунту, попадают в GaProperty.
+model GaAccount {
+  id                 String       @id @default(uuid()) @db.Char(36)
+  /// Кто подключил; видит сам и админы
+  userId             String
+  /// oauth | service
+  kind               String       @default("oauth") @db.VarChar(16)
+  /// Почта Google или client_email сервисного аккаунта
+  email              String
+  label              String       @default("")
+  refreshTokenEnc    String?      @db.Text
+  saKeyEnc           String?      @db.Text
+  accessTokenEnc     String?      @db.Text
+  accessExpires      DateTime?
+  /// OK | ERROR (нужно переподключить)
+  status             String       @default("OK") @db.VarChar(16)
+  lastError          String?      @db.Text
+  propertiesSyncedAt DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  properties         GaProperty[]
+
+  @@index([userId])
+}
+
+/// GA4-свойство (сайт). Данные тянутся только для enabled; syncState хранит, до какой даты загружена история по каждому виду данных.
+model GaProperty {
+  id            String    @id @default(uuid()) @db.Char(36)
+  accountId     String    @db.Char(36)
+  /// Числовой id свойства GA4 («properties/123» → «123»)
+  propertyId    String    @db.VarChar(32)
+  name          String
+  gaAccountName String    @default("")
+  gaAccountId   String    @default("") @db.VarChar(32)
+  /// Адрес сайта из веб-потока (defaultUri)
+  url           String?
+  host          String?   @db.VarChar(255)
+  timezone      String    @default("UTC") @db.VarChar(64)
+  currency      String    @default("USD") @db.VarChar(8)
+  enabled       Boolean   @default(false)
+  /// Свойство пропало из списка GA при обновлении
+  removed       Boolean   @default(false)
+  /// Порядок в списках (как в GA при подключении)
+  order         Int       @default(0)
+  /// { dailyFrom, hourlyFrom, pagesFrom, dimsFrom: "YYYY-MM-DD" — самая ранняя загруженная дата }
+  syncState     Json?
+  nextSyncAt    DateTime?
+  syncLockedAt  DateTime?
+  syncLockedBy  String?
+  lastSyncAt    DateTime?
+  lastSyncError String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  account       GaAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  groups        GaGroupProperty[]
+  daily         GaDaily[]
+  hourly        GaHourly[]
+  pages         GaPageDaily[]
+  dims          GaDimDaily[]
+
+  @@unique([accountId, propertyId])
+  @@index([enabled, nextSyncAt])
+}
+
+/// Группа сайтов (как метки): сайт может быть в нескольких группах.
+model GaGroup {
+  id         String            @id @default(uuid()) @db.Char(36)
+  userId     String
+  name       String
+  color      String            @default("#2a78d6") @db.VarChar(16)
+  order      Int               @default(0)
+  createdAt  DateTime          @default(now())
+  properties GaGroupProperty[]
+
+  @@index([userId])
+}
+
+model GaGroupProperty {
+  groupId    String     @db.Char(36)
+  propertyId String     @db.Char(36)
+  group      GaGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  property   GaProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, propertyId])
+  @@index([propertyId])
+}
+
+/// Итоги сайта за день (в часовом поясе свойства). Отказы = 1 − engaged/sessions, время = engagementSec/sessions.
+model GaDaily {
+  propertyId    String     @db.Char(36)
+  date          DateTime   @db.Date
+  sessions      Int        @default(0)
+  users         Int        @default(0)
+  newUsers      Int        @default(0)
+  pageviews     Int        @default(0)
+  engaged       Int        @default(0)
+  engagementSec Float      @default(0)
+  keyEvents     Float      @default(0)
+  events        Int        @default(0)
+  property      GaProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, date])
+  @@index([date])
+}
+
+/// Визиты по часам.
+model GaHourly {
+  propertyId String     @db.Char(36)
+  date       DateTime   @db.Date
+  hour       Int        @db.TinyInt
+  sessions   Int        @default(0)
+  users      Int        @default(0)
+  pageviews  Int        @default(0)
+  property   GaProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, date, hour])
+  @@index([date])
+}
+
+/// Страницы за день: топ по просмотрам (PAGES_PER_DAY), ключ — sha1 пути.
+model GaPageDaily {
+  propertyId    String     @db.Char(36)
+  date          DateTime   @db.Date
+  pathHash      String     @db.Char(40)
+  path          String     @db.VarChar(1000)
+  title         String     @default("") @db.VarChar(500)
+  pageviews     Int        @default(0)
+  users         Int        @default(0)
+  sessions      Int        @default(0)
+  engagementSec Float      @default(0)
+  property      GaProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, date, pathHash])
+  @@index([date])
+}
+
+/// Разрезы за день: kind = channel | source | country | device | referrer.
+model GaDimDaily {
+  propertyId String     @db.Char(36)
+  date       DateTime   @db.Date
+  kind       String     @db.VarChar(16)
+  value      String     @db.VarChar(190)
+  sessions   Int        @default(0)
+  users      Int        @default(0)
+  property   GaProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, date, kind, value])
+  @@index([kind, date])
 }

@@ -5,7 +5,7 @@
  * Один источник правды о фото — ArtPhoto (URL, размеры, источник); текст автора хранится отдельно
  * от собранного HTML (аудит 03, §8).
  */
-import { stripEmphasis } from "./textGuards";
+import { balanceParagraphs, stripEmphasis } from "./textGuards";
 import { patchCount } from "./countToken";
 
 // ───────────────────────── подпись источника (оригинал: _shared/photoCaption.ts) ─────────────────────────
@@ -258,7 +258,8 @@ export function assembleArticleHtml(input: AssembleInput): AssembleOutput {
   let words = 0;
   const countWords = (h: string) => h.replace(/<[^>]*>/g, " ").split(/\s+/).filter(Boolean).length;
 
-  const intro = textToHtml(fix(input.introHtml));
+  // Парность <p> на каждом блоке и на итоговом HTML: никаких </p></p> (аудит text-v2, bubble bob).
+  const intro = balanceParagraphs(textToHtml(fix(input.introHtml)));
   words += countWords(intro);
   parts.push(intro);
 
@@ -266,7 +267,7 @@ export function assembleArticleHtml(input: AssembleInput): AssembleOutput {
     const anchor = `outfit-${s.position}`;
     const h2 = fix(s.heading) || `${s.position}. Idea`;
     let writerText = stripMarkdown(fix(s.html));
-    writerText = stripImageArtifacts(writerText).trim();
+    writerText = balanceParagraphs(stripImageArtifacts(writerText).trim());
     toc.push({ heading: h2, anchor, level: 2 });
     let block = `<h2 id="${anchor}">${escapeHtml(h2)}</h2>\n`;
     if (s.photo?.url) block += buildImageBlock(s.photo, { heading: h2, keyword: input.keyword, caption: input.caption });
@@ -275,11 +276,11 @@ export function assembleArticleHtml(input: AssembleInput): AssembleOutput {
     parts.push(block);
   }
 
-  const outro = textToHtml(fix(input.outroHtml));
+  const outro = balanceParagraphs(textToHtml(fix(input.outroHtml)));
   words += countWords(outro);
   toc.push({ heading: OUTRO_HEADING, anchor: "conclusion", level: 2 });
   parts.push(`<h2 id="conclusion">${OUTRO_HEADING}</h2>\n${outro}`);
 
-  const html = dedupeImageBlocks(normalizeArticleHtml(parts.join("\n\n")));
+  const html = dedupeImageBlocks(normalizeArticleHtml(parts.join("\n\n"))).replace(/<\/p>(\s*)<\/p>/gi, "</p>$1");
   return { html, toc, wordCount: words };
 }

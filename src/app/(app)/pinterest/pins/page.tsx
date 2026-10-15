@@ -17,7 +17,7 @@ export default async function PinsHome() {
   const [overview, stock, lastRuns] = await Promise.all([
     runsOverview(await pinRunWhere(me)),
     sitesStock(sites.map((s) => s.id), 92),
-    prisma.pinRun.findMany({ where: { siteId: { in: sites.map((s) => s.id) }, NOT: { name: { startsWith: "__" } } }, orderBy: { createdAt: "desc" }, distinct: ["siteId"], select: { siteId: true, settings: true } }),
+    prisma.pinRun.findMany({ where: { siteId: { in: sites.map((s) => s.id) }, NOT: { name: "__system__" } }, orderBy: { createdAt: "desc" }, distinct: ["siteId"], select: { siteId: true, settings: true } }),
   ]);
   // Ориентир «пинов в день» — из последнего прогона сайта.
   const calendarSites = sites

@@ -63,7 +63,7 @@ export function NewArticlesRunForm({ sites, recipes, presetSiteId, sheets }: { s
             {sites.map((s) => <option key={s.id} value={s.id}>{s.name}{s.nicheName ? ` — ${s.nicheName}` : ""}</option>)}
           </select>
         )}
-        {site && <p className="help">Ниша: {site.nicheName ?? "не задана"} · модерация фото до текста: {site.settings.photoReview ? "включена" : "выключена"} · публикация: {PUBLISH_MODES.find((m) => m.value === site.settings.publishMode)?.label} · <Link href={`/pinterest/articles/sites/${site.id}?tab=settings`} className="underline">настройки сайта</Link></p>}
+        {site && <p className="help">Ниша: {site.nicheName ?? "не задана"} · модерация фото до текста: {site.settings.aiModeration.enabled ? "проверяет ИИ" : site.settings.photoReview ? "включена" : "выключена"} · публикация: {PUBLISH_MODES.find((m) => m.value === site.settings.publishMode)?.label} · <Link href={`/pinterest/articles/sites/${site.id}?tab=settings`} className="underline">настройки сайта</Link></p>}
         {warnings.map((w) => <Alert key={w} tone="warn">{w}</Alert>)}
       </section>
 
@@ -112,10 +112,10 @@ export function NewArticlesRunForm({ sites, recipes, presetSiteId, sheets }: { s
       <section className="space-y-2">
         <div className="font-medium">4. Параметры запуска</div>
         <p className="help">Заполнено из настроек сайта. Меняется только для этого запуска: сохраняется в запуске и в снимке каждой статьи.</p>
-        {fromSheet && <Alert tone="neutral">Из таблицы: колонка «Режим» решает для каждой статьи, нужна ли модерация фото до текста (галочка ниже не действует); «Год в URL», «Гео», «Язык» и «Свежесть», если заполнены в строке, важнее значений ниже.</Alert>}
+        {fromSheet && <Alert tone="neutral">Из таблицы: колонка «Режим» решает для каждой статьи, нужна ли модерация фото до текста (галочка ниже не действует{site?.settings.aiModeration.enabled ? "; при включённой ИИ-модерации сайта фото всех статей проверяет ИИ" : ""}); «Год в URL», «Гео», «Язык» и «Свежесть», если заполнены в строке, важнее значений ниже.</Alert>}
         {site && (
           <div key={site.id} className="rounded-xl border border-line p-3 sm:p-4">
-            <RunParamsFields s={site.settings} />
+            <RunParamsFields s={site.settings} aiModOn={site.settings.aiModeration.enabled} />
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Field label="Название запуска (необязательно)"><input name="name" className="input" placeholder="Октябрь · ногти · 30 ключей" /></Field>
               <Field label="Тестовая метка" hint="Служебная пометка для тестовых прогонов, в тексты статьи не попадает."><input name="testLabel" className="input" placeholder="например, test-oct" /></Field>

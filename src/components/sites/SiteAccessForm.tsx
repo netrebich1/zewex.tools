@@ -19,7 +19,7 @@ const chip = "inline-flex items-center gap-1.5 rounded-full border border-line p
 
 /**
  * Уровень системы: доступ к сайту по REST API WordPress, команда-владелец и дополнительные команды,
- * инструменты, в которые сайт интегрирован, и видимость (все участники команд или только отмеченные сотрудники).
+ * инструменты, в которые сайт интегрирован, и видимость (только отмеченные сотрудники; лидеры и админы видят всё — не «все участники команд или только отмеченные сотрудники).
  * Настройки инструментов (доски, стили пинов и т. п.) здесь не живут — они внутри каждого инструмента.
  */
 export function SiteAccessForm({ row, teams, projects, members }: Props) {
@@ -60,7 +60,7 @@ export function SiteAccessForm({ row, teams, projects, members }: Props) {
 
       <div className="rounded-xl border border-line p-3 sm:p-4">
         <div className="font-medium mb-1">Кто видит сайт</div>
-        <p className="help mb-3">Ничего не отмечено — все участники команд сайта. Отметьте сотрудников, чтобы показывать сайт только им (администраторы и лидеры команды-владельца видят всегда).</p>
+        <p className="help mb-3">Сайт видят только отмеченные сотрудники. Администраторы и лидеры команды-владельца видят всегда. Ничего не отмечено — сайт видят только они. Тот, кто добавляет сайт, отмечается сам.</p>
         <div className="space-y-2">
           {byTeam.map(({ team, members: ms }) => (
             <div key={team.id} className="flex flex-wrap items-center gap-1.5">

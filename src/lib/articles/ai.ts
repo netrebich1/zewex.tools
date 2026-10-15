@@ -3,10 +3,16 @@
  * Ключ выбирается правилами портала для пользователя, запустившего статью; модель — из рецепта (`provider:model`),
  * если она совпадает по провайдеру с ключом, иначе модель правила. Расход пишется с refId = id статьи.
  * Один вызов = одна попытка на один ключ; повторы и фолбэки — по классу ошибки (transient → backoff в этапе).
+ *
+ * Нет средств / ключ отклонён / нет правила — ошибка класса fatal_run (ArticleAiError с провайдером и ключом): раннер
+ * не роняет статью, а ставит её ждать рабочий ключ (src/lib/articles/errors.ts). Ключ при «нет средств» НЕ выключается
+ * во всём портале: после пополнения статьи продолжат сами. Чтобы десятки ждущих статей не стучались к провайдеру,
+ * отказ «нет средств» запоминается на ключ на NO_CREDITS_COOLDOWN_MS и следующие вызовы падают сразу, без запроса.
+ * Ключ, отклонённый провайдером (401/403), по-прежнему выключается: дальше сработает запасное правило, если оно есть.
  */
 import { prisma } from "@/lib/db";
 import { resolveSlot, runSlot, disableKey, type ResolvedSlot } from "@/lib/run";
-import { AiError, classifyAiError } from "@/lib/pins/ai/errors";
+import { AiError, classifyAiError, type ClassifiedError } from "@/lib/pins/ai/errors";
 import { acquire, DEFAULT_LIMITS } from "@/lib/pins/ai/limiter";
 import { parseJsonLenient } from "@/lib/pins/ai/json";
 import { PROJECT_SLUG, SLOTS, type SlotKey } from "./types";
@@ -35,19 +41,47 @@ export type ChatRequest = {
 
 export type ChatResult = { text: string; json: unknown; costUsd: number | null; model: string | null; inputTokens: number; outputTokens: number; durationMs: number };
 
+/** Ошибка вызова ИИ сервиса статей: класс как у AiError плюс провайдер и подпись ключа (для понятной заметки статьи). */
+export class ArticleAiError extends AiError {
+  constructor(cls: ClassifiedError, status: number, public readonly provider?: string, public readonly keyLabel?: string) {
+    super(cls, status);
+    this.name = "ArticleAiError";
+  }
+}
+
+/** Сколько помним «нет средств» на ключе: ждущие статьи не дёргают провайдера каждый раз. */
+const NO_CREDITS_COOLDOWN_MS = 5 * 60_000;
+const noCredits = new Map<string, { until: number; err: ArticleAiError }>();
+
 async function resolveOrThrow(userId: string, slotKey: string): Promise<ResolvedSlot> {
   const r = await resolveSlot(userId, PROJECT_SLUG, slotKey);
-  if (!r.ok) throw new AiError({ code: r.status === 409 ? "no_binding" : "resolve", kind: "fatal_run", message: r.error }, r.status);
+  if (!r.ok) throw new ArticleAiError({ code: r.status === 409 ? "no_binding" : "resolve", kind: "fatal_run", message: r.error }, r.status);
   return r.value;
 }
 
-async function handleFailure(res: { status: number; error?: string }, apiKeyId: string, keyLabel: string): Promise<never> {
-  const cls = classifyAiError(res.status, res.error ?? "");
-  if (cls.kind === "fatal_run" && (cls.code === "no_credits" || cls.code === "auth")) {
-    await disableKey(apiKeyId, `Автоотключён: ${cls.code === "no_credits" ? "закончился баланс" : "ключ отклонён провайдером"} (${cls.message.slice(0, 120)})`);
-    cls.message = `Ключ «${keyLabel}»: ${cls.message}`;
+/** Ключ недавно ответил «нет средств» — сразу та же ошибка, без запроса к провайдеру. */
+function checkCooldown(apiKeyId: string): void {
+  const c = noCredits.get(apiKeyId);
+  if (!c) return;
+  if (c.until > Date.now()) throw c.err;
+  noCredits.delete(apiKeyId);
+}
+
+async function handleFailure(res: { status: number; error?: string }, resolved: ResolvedSlot): Promise<never> {
+  const key = resolved.binding.apiKey;
+  const provider = resolved.binding.provider.name;
+  const text = res.error ?? "";
+  let cls: ClassifiedError = classifyAiError(res.status, text);
+  // Отказы самого портала (run.ts) — тоже про ключ, а не временные: месячный лимит ключа, правило без модели/цен.
+  if (/исчерпал месячный лимит/i.test(text)) cls = { code: "month_limit", kind: "fatal_run", message: text.slice(0, 500) };
+  else if (res.status === 409) cls = { code: "config", kind: "fatal_run", message: text.slice(0, 500) };
+  if (cls.kind === "fatal_run" && cls.code === "auth") {
+    await disableKey(key.id, `Автоотключён: ключ отклонён провайдером (${cls.message.slice(0, 120)})`).catch(() => {});
   }
-  throw new AiError(cls, res.status);
+  if (cls.kind === "fatal_run") cls = { ...cls, message: `Ключ «${key.label}»: ${cls.message}` };
+  const err = new ArticleAiError(cls, res.status, provider, key.label);
+  if (cls.code === "no_credits" || cls.code === "month_limit") noCredits.set(key.id, { until: Date.now() + NO_CREDITS_COOLDOWN_MS, err });
+  throw err;
 }
 
 function extractText(data: unknown): string {
@@ -60,6 +94,7 @@ function extractText(data: unknown): string {
 
 export async function aiChat(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> {
   const resolved = await resolveOrThrow(ctx.userId, req.slot);
+  checkCooldown(resolved.binding.apiKey.id);
   const release = await acquire(resolved.binding.apiKey.id, DEFAULT_LIMITS.CHAT);
   try {
     const messages: Array<Record<string, unknown>> = [];
@@ -81,9 +116,9 @@ export async function aiChat(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> 
       meta: { teamId: ctx.teamId, refId: ctx.articleId },
       pre: resolved,
     });
-    if (!res.ok) await handleFailure(res, resolved.binding.apiKey.id, resolved.binding.apiKey.label);
+    if (!res.ok) await handleFailure(res, resolved);
     const text = extractText(res.data);
-    if (!text.trim()) throw new AiError({ code: "empty", kind: "transient", message: "Модель вернула пустой ответ" }, 502);
+    if (!text.trim()) throw new ArticleAiError({ code: "empty", kind: "transient", message: "Модель вернула пустой ответ" }, 502, resolved.binding.provider.name);
     return {
       text,
       json: req.json ? parseJsonLenient(text) : null,
@@ -109,6 +144,7 @@ export type ImageResult = { bytes: Buffer; mime: string; costUsd: number | null;
 /** Генерация картинки (формат «ИИ-фото»). Референсы — multipart /images/edits в адаптере портала, если он их поддерживает. */
 export async function aiImage(ctx: AiCtx, req: ImageRequest): Promise<ImageResult> {
   const resolved = await resolveOrThrow(ctx.userId, SLOTS.image);
+  checkCooldown(resolved.binding.apiKey.id);
   const release = await acquire(resolved.binding.apiKey.id, DEFAULT_LIMITS.IMAGE);
   try {
     const res = await runSlot({
@@ -122,7 +158,7 @@ export async function aiImage(ctx: AiCtx, req: ImageRequest): Promise<ImageResul
       meta: { teamId: ctx.teamId, refId: ctx.articleId },
       pre: resolved,
     });
-    if (!res.ok) await handleFailure(res, resolved.binding.apiKey.id, resolved.binding.apiKey.label);
+    if (!res.ok) await handleFailure(res, resolved);
     const data = res.data as { data?: Array<{ b64_json?: string; url?: string }> };
     const first = data?.data?.[0];
     if (first?.b64_json) return { bytes: Buffer.from(first.b64_json, "base64"), mime: "image/png", costUsd: res.meta?.costUsd ?? null, model: res.meta?.model ?? null };

@@ -26,6 +26,8 @@ fi
 # Schema sync WITHOUT --accept-data-loss: a change that would drop data fails the deploy instead of running.
 # Хранилище файлов сервиса пинов (nginx отдаёт его как /files/)
 install -d -o zewex_tools_usr -g zewex_tools_usr -m 755 /var/www/zewex_tools_usr/data/storage/pins/{runs,photos,examples,previews,fonts}
+install -d -o zewex_tools_usr -g zewex_tools_usr -m 755 /var/www/zewex_tools_usr/data/storage /var/www/zewex_tools_usr/data/storage/articles
+chown zewex_tools_usr:zewex_tools_usr /var/www/zewex_tools_usr/data/storage
 sudo -u zewex_tools_usr -H npx prisma db push --skip-generate
 sudo -u zewex_tools_usr -H npx prisma generate >/dev/null
 sudo -u zewex_tools_usr -H node prisma/seed.mjs

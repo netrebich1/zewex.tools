@@ -14,10 +14,13 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
   const siteId = sp(params, "site");
   const runId = sp(params, "run");
   const engine = sp(params, "engine");
-  const [counts, first] = await Promise.all([moderationCounts(me), moderationBatch(me, { siteId, runId, engine, limit: 60 })]);
+  const view = sp(params, "view") === "post" ? "post" : "pre";
+  const [counts, otherCounts, first] = await Promise.all([moderationCounts(me, view), moderationCounts(me, view === "post" ? "pre" : "post"), moderationBatch(me, { siteId, runId, engine, limit: 60, view })]);
+  const preTotal = view === "pre" ? counts.total : otherCounts.total;
+  const postTotal = view === "post" ? counts.total : otherCounts.total;
   const qs = (patch: Record<string, string | undefined>) => {
     const u = new URLSearchParams();
-    const all = { site: siteId, run: runId, engine, ...patch };
+    const all = { view: view === "post" ? "post" : undefined, site: siteId, run: runId, engine, ...patch };
     for (const [k, v] of Object.entries(all)) if (v) u.set(k, v);
     const s = u.toString();
     return `/pinterest/pins/moderation${s ? `?${s}` : ""}`;
@@ -27,8 +30,13 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
 
   return (
     <>
-      <PageHeader back={currentRun ? { href: `/pinterest/pins/runs/${currentRun.id}`, label: `Прогон «${currentRun.name || currentRun.id.slice(0, 8)}»` } : { href: "/pinterest/pins", label: "Сегодня" }} title="Модерация" subtitle={`Непроверенных пинов: ${counts.total}. Клик по пину помечает его на отклонение, остальные одобряются кнопкой внизу.`} actions={currentRun ? <Link href={`/pinterest/pins/runs/${currentRun.id}`} className="btn-ghost">К прогону</Link> : <Link href="/pinterest/pins/runs" className="btn-ghost">Все прогоны</Link>} />
+      <PageHeader back={currentRun ? { href: `/pinterest/pins/runs/${currentRun.id}`, label: `Прогон «${currentRun.name || currentRun.id.slice(0, 8)}»` } : { href: "/pinterest/pins", label: "Сегодня" }} title="Модерация" subtitle={view === "post" ? `Пост-модерация: одобренные пины, которые ещё не ушли в Pinterest (${counts.total}). Клик помечает пин на отклонение; остальные остаются одобренными.` : `Непроверенных пинов: ${counts.total}. Клик по пину помечает его на отклонение, остальные одобряются кнопкой внизу.`} actions={currentRun ? <Link href={`/pinterest/pins/runs/${currentRun.id}`} className="btn-ghost">К прогону</Link> : <Link href="/pinterest/pins/runs" className="btn-ghost">Все прогоны</Link>} />
       <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <Link href="/pinterest/pins/moderation" className={`tab ${view === "pre" ? "active" : ""}`}>Модерация · {preTotal}</Link>
+          <Link href="/pinterest/pins/moderation?view=post" className={`tab ${view === "post" ? "active" : ""}`}>Пост-модерация · {postTotal}</Link>
+        </div>
+        {view === "post" && <p className="help">Здесь видны одобренные пины, в том числе из прогонов с автоодобрением, с датой сегодня и позже или ещё без даты. Отклонённый пин уходит из выгрузки и освобождает место в своём дне. Если файл за этот день уже скачан или загружен в Pinterest, там пин останется: скачайте файл дня заново.</p>}
         <Card>
           <div className="flex flex-wrap gap-2 items-center">
             <Link href={qs({ site: undefined, run: undefined })} className={`badge px-3 py-1 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты · {counts.total}</Link>
@@ -55,9 +63,10 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
           </div>
         </Card>
         {first.items.length === 0 ? (
-          <Empty title="Всё проверено" hint="Непроверенных пинов по этому фильтру нет." />
+          <Empty title="Всё проверено" hint={view === "post" ? "Одобренных пинов для повторной проверки по этому фильтру нет." : "Непроверенных пинов по этому фильтру нет."} />
         ) : (
-          <ModerationGrid initial={first} filter={{ siteId, runId, engine }} />
+          // key: при смене фильтра сетка создаётся заново — иначе в ней остаются пины прошлого фильтра
+          <ModerationGrid key={`${view}|${siteId ?? ""}|${runId ?? ""}|${engine ?? ""}`} post={view === "post"} initial={first} filter={{ siteId, runId, engine }} showSite={!siteId && counts.sites.length > 1} />
         )}
       </div>
     </>

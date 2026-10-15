@@ -6,6 +6,9 @@ import { Icon } from "@/components/Icons";
 import { ToolsBrowser, type ToolSection } from "@/components/tools/ToolsBrowser";
 import { canViewKeys, canViewProviders, canViewUsage, keyWhere, toolWhere, usageWhere } from "@/lib/permissions";
 
+/** Разделы, где только закрытые инструменты: без доступа их не видно даже пустыми. */
+const privateOnly = new Set(["wexora"]);
+
 export const dynamic = "force-dynamic";
 
 function firstName(name: string) {
@@ -24,9 +27,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     prisma.binding.count(),
     prisma.usageLog.count({ where: { createdAt: { gte: new Date(Date.now() - 7 * 86400000) }, ...usageWhere(me) } }),
   ]);
-  // Сотруднику с ограниченным списком инструментов пустые разделы не показываем.
+  // Сотруднику с ограниченным списком инструментов пустые разделы не показываем; раздел только из закрытых инструментов — никому.
   const restricted = !isAdmin && me.perms.tools !== "all";
-  const data: ToolSection[] = sections.filter((s) => !restricted || s.projects.length > 0).map((s) => ({
+  const data: ToolSection[] = sections.filter((s) => s.projects.length > 0 || (!restricted && !privateOnly.has(s.slug))).map((s) => ({
     id: s.id, slug: s.slug, name: s.name, icon: s.icon,
     projects: s.projects.map((p) => ({ id: p.id, slug: p.slug, name: p.name, description: p.description, url: p.url, status: p.status, slots: p._count.slots })),
   }));

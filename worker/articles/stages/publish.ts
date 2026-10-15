@@ -3,8 +3,11 @@
  * классификация ошибок и расписание повторов (оригинал publish-worker/index.ts:8-24, 258-320 — очередь у нас своя).
  *
  *  - качество / нет доступа WordPress / 401, 403, 4xx (rest_*) → fatal (оригинал classify: permanent);
- *  - 5xx, 429, 408, таймаут, сеть → повтор через 1/3/5/10/15 мин по Article.publishAttempts, после 6 попыток → fatal;
- *  - медиатека сайта сломана (WP_MEDIA_DOWN) → повтор через 20 мин, попытка не тратится (оригинал :284-294).
+ *  - 5xx, 429, 408, таймаут, сеть → повтор через 1/3/5/10/15 мин (серия считается раннером по журналу, вид transient:
+ *    около часа, затем PUBLISH_ERROR); Article.publishAttempts растёт для карточки и обнуляется «Повторить публикацию»;
+ *  - медиатека сайта сломана (WP_MEDIA_DOWN) → повтор через 20 мин, не больше 72 раз подряд (≈ сутки), затем
+ *    PUBLISH_ERROR с понятной причиной (раньше — бесконечно, аудит 2026-10-14 stability §2.2).
+ * Окончательная ошибка этого этапа получает статус PUBLISH_ERROR (раннер), а не FAILED.
  * После успеха — purgePublishedPhotos (файлы статьи больше не нужны, фото уже на сайте); статус COMPLETED ставит раннер.
  * Статье из Google Таблицы после успеха пишется отчёт в её строку (lib/articles/sheets.writeArticleResult).
  */
@@ -16,7 +19,7 @@ import { purgePublishedPhotos } from "@/lib/articles/wp/cleanup";
 import { writeArticleResult } from "@/lib/articles/sheets";
 import type { ArtStageHandler } from "./index";
 
-/** оригинал publish-worker/index.ts:8 */
+/** оригинал publish-worker/index.ts:8 (у нас потолок задаёт окно временных сбоев раннера, см. src/lib/articles/errors.ts) */
 export const MAX_PUBLISH_ATTEMPTS = 6;
 /** Минуты между попытками (оригинал :12) */
 export const PUBLISH_BACKOFF_MIN = [1, 3, 5, 10, 15] as const;
@@ -56,21 +59,30 @@ export const publish: ArtStageHandler = async (ctx) => {
   } catch (e) {
     // Остановка пользователем / потеря lease — отдаём раннеру (без импорта класса из ./index: он импортирует этот файл)
     if (ctx.signal.aborted || (e instanceof Error && e.name === "StopRequested")) throw e;
+    // Нет средств / ключ ИИ отклонён — раннер поставит статью ждать рабочий ключ, а не в ошибку публикации.
+    if (e instanceof AiError && e.cls.kind === "fatal_run") throw e;
     if (e instanceof MediaDownError) {
-      return { retryInMs: MEDIA_DOWN_RETRY_MS, summary: e.message, details: { code: e.code, publishAttempts: article.publishAttempts } };
+      return {
+        retryInMs: MEDIA_DOWN_RETRY_MS,
+        retryKind: "planned",
+        summary: e.message,
+        giveUp: "Медиатека WordPress не принимает фото уже около суток (ошибка сервера 500 на каждое фото). Исправьте на хостинге (место на диске, права папки uploads, лимиты PHP) и нажмите «Повторить публикацию».",
+        details: { code: e.code, publishAttempts: article.publishAttempts },
+      };
     }
     const v = classify(e);
     if (v.kind === "fatal") return { fatal: v.message, details: e instanceof QualityError ? { problems: e.problems } : undefined };
 
     const attempt = article.publishAttempts + 1;
     await prisma.article.update({ where: { id: article.id }, data: { publishAttempts: attempt } });
-    if (attempt >= MAX_PUBLISH_ATTEMPTS) {
-      return { fatal: `Публикация не удалась после ${attempt} попыток: ${v.message}`, details: { publishAttempts: attempt } };
-    }
-    const minutes = PUBLISH_BACKOFF_MIN[Math.min(attempt - 1, PUBLISH_BACKOFF_MIN.length - 1)];
+    // Пауза — по номеру повтора в текущей серии (ручной повтор начинает её заново), потолок — окно временных сбоев раннера.
+    const n = ctx.retries.transient;
+    const minutes = PUBLISH_BACKOFF_MIN[Math.min(n, PUBLISH_BACKOFF_MIN.length - 1)];
     return {
       retryInMs: minutes * 60_000,
-      summary: `Попытка ${attempt} из ${MAX_PUBLISH_ATTEMPTS} не удалась, повтор через ${minutes} мин: ${v.message.slice(0, 300)}`,
+      retryKind: "transient",
+      summary: `Попытка публикации ${attempt} не удалась, повтор через ${minutes} мин: ${v.message.slice(0, 300)}`,
+      giveUp: `Публикация не удалась после ${attempt} попыток примерно за час: ${v.message}`,
       details: { publishAttempts: attempt, error: v.message },
     };
   }

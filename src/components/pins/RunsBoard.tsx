@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui";
 import type { RunOverview } from "@/lib/pins/runs/status";
+import { ProblemsDetails } from "@/components/pins/ProblemsDetails";
 import { RUN_STATUS_LABELS, STAGE_LABELS, runStatusTone } from "./labels";
 
 const LIVE = new Set(["QUEUED", "RUNNING"]);
@@ -46,7 +47,7 @@ export function RunsBoard({ initial }: { initial: RunOverview[] }) {
     const pct = r.job && r.job.total > 0 ? Math.round((r.job.done / r.job.total) * 100) : 0;
     const hint = nextHint(r);
     return (
-      <div key={r.id} className={`rounded-xl border p-3 space-y-2 ${r.status === "BLOCKED" ? "border-danger/40" : r.status === "WAITING_MODERATION" ? "border-warn/50" : "border-line"}`}>
+      <div key={r.id} className={`rounded-xl border p-3 space-y-2 ${r.health === "critical" ? "border-danger/40" : r.status === "WAITING_MODERATION" || r.health === "warning" ? "border-warn/50" : "border-line"}`}>
         <div className="flex flex-wrap items-center gap-2">
           <Link href={`/pinterest/pins/runs/${r.id}`} className="font-semibold hover:underline truncate max-w-[360px]">{r.name || r.id.slice(0, 8)}</Link>
           <span className="help">{r.siteName}</span>
@@ -67,10 +68,9 @@ export function RunsBoard({ initial }: { initial: RunOverview[] }) {
         )}
         <div className="flex flex-wrap items-center gap-2 text-[12px]">
           <span className="text-muted">страниц {r.pages} · пинов {r.pins}</span>
-          {r.errors > 0 && <span className="text-danger">ошибок {r.errors}{r.topProblem ? `: ${r.topProblem}` : ""}</span>}
-          {r.blockedReason && <span className="text-danger">{r.blockedReason}</span>}
           {hint && <Link href={hint.href} className={`ml-auto btn-sm ${hint.tone === "warn" ? "btn-brand" : hint.tone === "danger" ? "btn-danger" : "btn-ghost"}`}>{hint.text} →</Link>}
         </div>
+        <ProblemsDetails problems={r.problems} runStatus={r.status} />
       </div>
     );
   };

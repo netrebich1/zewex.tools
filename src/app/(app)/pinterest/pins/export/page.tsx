@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { pinSiteWhere } from "@/lib/sites/access";
 import { requireUser } from "@/lib/auth";
 import { Badge, Card, Empty, Field, PageHeader, type SearchParams, sp } from "@/components/ui";
-import { exportOverview } from "@/lib/pins/export/service";
+import { exportOverview, futureReadyBySite } from "@/lib/pins/export/service";
 import { addDays, todayKey, formatRu } from "@/lib/pins/schedule/math";
 import { TZ } from "@/lib/pins/runs/stats";
 import { fmtDate } from "@/lib/utils";
@@ -21,12 +21,30 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   const days: string[] = [];
   for (let d = from, i = 0; d <= to && i < 31; d = addDays(d, 1), i++) days.push(d);
   const files = await exportOverview(me, selected, days);
+  const todayFiles = from === today && to === today && selected.length === sites.length ? files : await exportOverview(me, sites.map((s) => s.id), [today]);
+  const todayPins = todayFiles.reduce((n, f) => n + f.count, 0);
+  const ready = await futureReadyBySite(sites.map((s) => s.id));
+  const readySites = sites.filter((s) => ready.has(s.id));
   const quick = (f: string, t: string, label: string) => <Link href={`/pinterest/pins/export?from=${f}&to=${t}`} className={`badge px-3 py-1 ${from === f && to === t ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{label}</Link>;
 
   return (
     <>
       <PageHeader title="Выгрузка" subtitle="Файл CSV для Pinterest на каждый день и сайт. Сегодняшний файл пересчитывает пропущенные слоты на оставшееся время дня." />
       <div className="space-y-4">
+        <section id="today" className="card p-4 sm:p-5 border-brand/50">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="h2">Файлы на сегодня, {formatRu(today)}</h2>
+              <p className="help">{todayFiles.length ? `Сайтов: ${todayFiles.length}, пинов: ${todayPins}. Один файл на сайт: в нём пины всех прогонов сайта на этот день.` : "На сегодня готовых пинов нет ни у одного сайта."}</p>
+            </div>
+            {todayFiles.length > 0 && <a href="/api/pins/export/today" className="btn-brand">Скачать все файлы на сегодня</a>}
+          </div>
+          {todayFiles.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {todayFiles.map((f) => <a key={f.siteId} href={`/api/pins/export?site=${f.siteId}&day=${today}`} className="btn-ghost btn-sm" title={f.fileName}>{f.siteName} <span className="help">· {f.count}{f.downloadedAt ? " · скачан" : ""}</span></a>)}
+            </div>
+          )}
+        </section>
         <Card>
           <div className="flex flex-wrap gap-2 mb-3">
             {quick(today, today, "Сегодня")}
@@ -44,6 +62,15 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
             </div>
             <button className="btn-primary">Показать</button>
           </form>
+        </Card>
+        <Card title="Выгрузить все сформированные пины сайта" description="Один архив на сайт: по CSV на каждый день с сегодняшнего до последней даты. В конце имени каждого файла — сколько пинов в этом дне.">
+          {readySites.length === 0 ? <p className="help">Готовых пинов с датами на сегодня и позже пока нет.</p> : (
+            <div className="flex flex-wrap gap-2">
+              {readySites.map((s) => { const r = ready.get(s.id)!; return (
+                <a key={s.id} href={`/api/pins/export/all?site=${s.id}`} className="btn-ghost" title={`до ${formatRu(r.lastDay)}`}>Выгрузить все для {s.name} <span className="help">· {r.pins} пинов, {r.days} дн.</span></a>
+              ); })}
+            </div>
+          )}
         </Card>
         {files.length === 0 ? (
           <Empty title="На выбранные дни готовых пинов нет" hint="Готовые пины: одобрены, с текстом, загружены в WordPress и получили дату." />

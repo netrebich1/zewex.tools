@@ -23,7 +23,8 @@ type Body =
 /**
  * PATCH {siteId, patch} — настройки одного сайта; {all: true, patch} — всех видимых сайтов;
  * {global: {...}} — мастер-выключатели и общий потолок (только админ или лидер команды).
- * patch = {autostart?: {...}, aiModeration?: {...}} — только присланные поля. В ответе — свежие данные как в GET.
+ * patch = {autostart?: {...}, aiModeration?: {...}} — только присланные поля (пределы — SITE_LIMITS, как в форме настроек сайта;
+ * устаревшее autoRestart игнорируется). Запись — patchSiteAutomation со сравнением по updatedAt. В ответе — свежие данные как в GET.
  */
 export async function PATCH(req: Request) {
   const me = await getCurrentUser();

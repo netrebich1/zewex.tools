@@ -440,6 +440,35 @@ function featuredFromEmbedded(p: Record<string, unknown>): string | undefined {
 }
 
 /**
+ * Миниатюра записи (featured image) из WordPress по адресу статьи: ищем запись по slug среди posts, затем pages,
+ * сверяем ссылку. null — запись не найдена или миниатюра не задана. Ошибки сети/доступа пробрасываются.
+ */
+export async function featuredImageByUrl(creds: WpCreds, pageUrl: string, opts: WpRequestOptions = {}): Promise<string | null> {
+  let slug = "";
+  let path = "";
+  try {
+    const u = new URL(pageUrl);
+    path = u.pathname.replace(/\/+$/, "");
+    slug = decodeURIComponent(path.split("/").filter(Boolean).pop() ?? "");
+  } catch { return null; }
+  if (!slug) return null;
+  for (const type of ["posts", "pages"] as const) {
+    const qs = new URLSearchParams({ slug, per_page: "5", _embed: "wp:featuredmedia", _fields: "id,link,featured_media,_links,_embedded" });
+    const res = await wpRequest(creds, `/${type}?${qs.toString()}`, {}, opts);
+    if (res.status < 200 || res.status >= 300) {
+      const err = parseWpError(res.text);
+      throw new WpError(`WP ${res.status}: ${err.message}`, res.status, err.code);
+    }
+    const json = parseJson(res.text);
+    const arr = (Array.isArray(json) ? json : []).filter(isRecord);
+    if (!arr.length) continue;
+    const samePath = arr.find((r) => { try { return new URL(str(r.link)).pathname.replace(/\/+$/, "") === path; } catch { return false; } });
+    return featuredFromEmbedded(samePath ?? arr[0]) ?? null;
+  }
+  return null;
+}
+
+/**
  * Одна страница списка постов/страниц (порт bulk-wp-posts, action "posts"),
  * с `_embed=wp:featuredmedia` для главной картинки. Страница за пределами
  * диапазона (rest_post_invalid_page_number) возвращает пустой список, а не ошибку.

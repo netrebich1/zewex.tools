@@ -4,7 +4,7 @@ import { cache } from "react";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
 import { randomToken } from "./crypto";
-import { canManageTeam as permCanManageTeam, canUseTool, parsePermissions, resolvePermissions, type Permissions } from "./permissions";
+import { canManageTeam as permCanManageTeam, canUseTool, isPrivateTool, parsePermissions, PRIVATE_TOOLS, resolvePermissions, type Permissions } from "./permissions";
 import { PATH_HEADER } from "./requestPath";
 
 export const SESSION_COOKIE = "zx_session";
@@ -64,6 +64,8 @@ export type CurrentUser = {
   memberView: boolean;
   /** Главный админ, который вошёл в этот кабинет. Есть только в его собственной сессии — вернуться может только он. */
   impersonator: { id: string; name: string; email: string } | null;
+  /** Открытые этому человеку закрытые инструменты (`PRIVATE_TOOLS`): владелец — все, остальные — по `ToolAccess`. */
+  privateTools: string[];
 };
 
 /** Владелец портала (почта из ALLOWED_REGISTRATION_EMAILS) — главный админ всегда; остальным админам флаг ставит владелец. */
@@ -79,7 +81,13 @@ function memberViewPermissions(raw: unknown): Permissions {
   return raw == null ? { ...parsePermissions(null), tools: "all" } : parsePermissions(raw);
 }
 
-const withTeams = { memberships: { select: { teamId: true, role: true } } } as const;
+const withTeams = { memberships: { select: { teamId: true, role: true } }, toolAccess: { select: { slug: true } } } as const;
+
+/** Закрытые инструменты человека: владелец портала видит все, остальные — только выданные (роль не важна). */
+function privateToolsOf(u: { email: string; toolAccess: { slug: string }[] }): string[] {
+  if (isOwnerEmail(u.email)) return [...PRIVATE_TOOLS];
+  return u.toolAccess.map((a) => a.slug).filter(isPrivateTool);
+}
 
 /** Сессия как есть: настоящий вошедший пользователь, без режима сотрудника и чужого кабинета. */
 export const realSession = cache(async () => {
@@ -106,6 +114,7 @@ const sessionUser = cache(async (): Promise<CurrentUser | null> => {
         perms: resolvePermissions(t.role, t.permissions),
         superAdmin: false, memberView: false,
         impersonator: { id: real.id, name: real.name, email: real.email },
+        privateTools: privateToolsOf(t),
       };
     }
   }
@@ -117,6 +126,7 @@ const sessionUser = cache(async (): Promise<CurrentUser | null> => {
     leadTeamIds: real.memberships.filter((m) => m.role === "LEAD").map((m) => m.teamId),
     perms: memberView ? memberViewPermissions(real.permissions) : resolvePermissions(real.role, real.permissions),
     superAdmin: session.superAdmin, memberView, impersonator: null,
+    privateTools: privateToolsOf(real),
   };
 });
 
@@ -133,11 +143,11 @@ async function toolForPath(pathname: string): Promise<string | null> {
   return toolPaths.list.find((t) => t.prefixes.some((pre) => pathname === pre || pathname.startsWith(`${pre}/`)))?.slug ?? null;
 }
 
-/** Запрос идёт в инструмент, который сотруднику не выдан (см. `Permissions.tools`). */
+/** Запрос идёт в инструмент, который сотруднику не выдан (см. `Permissions.tools`). Закрытые инструменты проверяются и у админа. */
 async function toolDenied(u: CurrentUser): Promise<boolean> {
-  if (u.role === "ADMIN" || u.perms.tools === "all") return false;
   const path = (await headers()).get(PATH_HEADER);
-  const slug = path ? await toolForPath(path) : null;
+  if (!path) return false;
+  const slug = await toolForPath(path);
   return !!slug && !canUseTool(u, slug);
 }
 

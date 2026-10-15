@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { allowedRegistrationEmails, isOwnerEmail, realSession, requireAdmin } from "@/lib/auth";
-import { parsePermissions } from "@/lib/permissions";
+import { parsePermissions, publicToolWhere } from "@/lib/permissions";
 import { Alert, Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -12,6 +12,7 @@ import { ToolsAccessFields } from "@/components/users/ToolsAccessFields";
 import { fmtDate } from "@/lib/utils";
 import { setSuperAdmin } from "@/actions/viewAs";
 import { EnterCabinetButton } from "@/components/ViewAs";
+import { setToolAccess } from "@/actions/toolAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
   const [u, teams, projects] = await Promise.all([
     prisma.user.findUnique({ where: { id }, include: { memberships: { include: { team: { select: { id: true, name: true, slug: true } } }, orderBy: { createdAt: "asc" } }, apiKeys: { select: { id: true, label: true, provider: { select: { name: true } } } } } }),
     prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.project.findMany({ orderBy: [{ section: { order: "asc" } }, { order: "asc" }, { name: "asc" }], select: { slug: true, name: true, section: { select: { name: true } } } }),
+    prisma.project.findMany({ where: publicToolWhere, orderBy: [{ section: { order: "asc" } }, { order: "asc" }, { name: "asc" }], select: { slug: true, name: true, section: { select: { name: true } } } }),
   ]);
   if (!u) notFound();
   const perms = parsePermissions(u.permissions);
@@ -35,12 +36,25 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
   const isOwner = isOwnerEmail(u.email);
   const isSuper = u.role === "ADMIN" && (u.superAdmin || isOwner);
   const canEnter = me.superAdmin && !isSelf && u.isActive && !isSuper;
+  // Закрытый инструмент «Финансы»: выдаёт только владелец, сам владелец видит его всегда.
+  const financeOn = iAmOwner && !isOwner ? !!(await prisma.toolAccess.findUnique({ where: { userId_slug: { userId: u.id, slug: "finance" } } })) : false;
 
   return (
     <>
       <PageHeader back={{ href: "/users", label: "Пользователи" }} title={u.name} subtitle={`${u.email} · с ${fmtDate(u.createdAt)}`} actions={<div className="flex gap-1.5"><Badge tone={u.role === "ADMIN" ? "ink" : "neutral"}>{u.role === "ADMIN" ? (isSuper ? "главный админ" : "админ") : "сотрудник"}</Badge>{!u.isActive && <Badge tone="danger">отключён</Badge>}{pending && <Badge tone="warn">пароль не задан</Badge>}</div>} />
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div className="space-y-4">
+          {iAmOwner && !isOwner && (
+            <Card title="Закрытые инструменты" description="Видны только тем, кому вы выдали доступ здесь, — даже админы без галочки их не видят. Выдавать может только владелец.">
+              <ActionForm action={setToolAccess} className="flex flex-wrap items-center justify-between gap-3" hidden={{ userId: u.id, slug: "finance", on: financeOn ? "0" : "1" }}>
+                <div>
+                  <span className="font-medium">Финансы Wexora</span> {financeOn ? <Badge tone="ok">доступ есть</Badge> : <Badge>нет доступа</Badge>}
+                  <p className="help mt-0.5">Доходы, расходы, кто кому должен.</p>
+                </div>
+                <SubmitButton className={financeOn ? "btn-ghost btn-sm" : "btn-primary btn-sm"} confirm={financeOn ? `Закрыть ${u.name} доступ к финансам?` : `Открыть ${u.name} доступ к финансам?`} pendingText="…">{financeOn ? "Закрыть доступ" : "Открыть доступ"}</SubmitButton>
+              </ActionForm>
+            </Card>
+          )}
           <Card title="Права" description={u.role === "ADMIN" ? (isSuper ? "Админ может всё. Эти права работают, когда главный админ переключается в режим «Сотрудник» у аватарки: тогда он видит только свои команды, сайты и отмеченные инструменты. Если права не сохранять, в режиме сотрудника открыты все инструменты." : "Админ может всё: эти настройки не ограничивают его. Они вступят в силу, если сменить роль на «сотрудник».") : "Отметьте инструменты, которые видит сотрудник, затем выберите готовый профиль или настройте каждое право отдельно. Лидер команды дополнительно получает уровень «команда» в своей команде."}>
             <ActionForm action={updateUserPermissions} hidden={{ id: u.id }}>
               <div>

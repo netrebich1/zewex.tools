@@ -145,7 +145,7 @@ export const sectionPlan: ArtStageHandler = async (ctx) => {
   // К system дописывается контракт и список углов для одежды/интерьера (оригинал: 333-337).
   let system = filled.system;
   if (fashion) {
-    system += `\n\n${fashionContractPrompt(fashion)}\nFor fashion, use only these angles: ${FASHION_ANGLES.join(", ")}. Never invent brands, prices, fabrics, personal testing, or fit claims. Every section must keep the piece/look intent central and add a distinct practical takeaway.`;
+    system += `\n\n${fashionContractPrompt(fashion)}\nFor fashion, use only these angles: ${FASHION_ANGLES.join(", ")}. Never invent brands, prices, fabric composition, comfort claims or personal testing; visible fit, length and proportion are welcome. Every section must keep the piece/look intent central and add a distinct practical takeaway (fit of the main piece, shoe and length pairing, who it suits and how to adapt it, what to look for to recreate it).`;
   }
   if (interior) {
     system += `\n\n${interiorContractPrompt(interior)}\nFor home decor, use only these angles: ${INTERIOR_ANGLES.join(", ")}. Never invent prices, brands, room dimensions, renovation cost or personal testing. Every section must keep the room/element intent central and add a distinct practical takeaway (layout, materials, lighting, storage, budget swap or renter-friendly note).`;
@@ -181,7 +181,7 @@ export const sectionPlan: ArtStageHandler = async (ctx) => {
     const b = briefOf(s);
     const base = String(recipes[i]?.h2 || s.heading || b.h2_draft || b.h2 || "").trim();
     const clean = sanitizeTopic(base) || base || fallbackHeading;
-    const unique = uniqueHeading(clean, usedHeadings, { facts: photo?.facts, description: photo?.description });
+    const unique = uniqueHeading(clean, usedHeadings, { facts: photo?.facts, description: photo?.description, keyword: [article.keyword, article.focusKeyword, article.seoKeyword].filter(Boolean).join(" ") });
     if (unique !== clean) ctx.log(`секция ${s.position}: дубль заголовка «${clean}» → «${unique}»`);
     return unique;
   });

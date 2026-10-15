@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import type { ArtPhoto, ArtSection } from "@prisma/client";
 import { AiError, backoffMs } from "@/lib/pins/ai/errors";
 import { aiChat } from "@/lib/articles/ai";
+import { MalformedAiOutput } from "@/lib/articles/errors";
 import { SLOTS, type ArticlePlan } from "@/lib/articles/types";
 import { resolvePrompt, fillPrompt, stageModel } from "@/lib/articles/prompts";
 import { sanitizeTopic, stripInternalLabels, uniqueHeading } from "@/lib/articles/text/textGuards";
@@ -63,35 +64,51 @@ export type PlannerCall = {
 };
 
 /**
- * Две попытки планировщика: не-JSON или пустой список → повтор с меньшей температурой и жёсткой инструкцией;
- * временная ошибка провайдера → пауза и повтор, вторая — наверх (раннер вернёт статью в очередь).
+ * Попытки планировщика (не меньше PLANNER_TRIES): не-JSON или пустой список → повтор с меньшей температурой
+ * и поправкой, где названо, что не так с прошлым ответом; временная ошибка провайдера → пауза и повтор, на последней
+ * попытке — наверх (раннер повторит этап с растущей паузой). Все попытки дали ответ не того формата →
+ * MalformedAiOutput: раннер отложит этап и попробует ещё (до 3 раз), а не уронит статью с первого плохого ответа
+ * (прод: «В ответе модели нет списка секций (ключ sections)»).
  * Цепочки провайдеров и дедлайн 105 с оригинала не переносим (правило 3).
  */
+const PLANNER_TRIES = 3;
+
 export async function callPlanner(ctx: ArtStageCtx, call: PlannerCall): Promise<{ out: JsonRecord; list: JsonRecord[]; model: string | null }> {
+  const temps = [...call.temps];
+  while (temps.length < PLANNER_TRIES) temps.push(temps[temps.length - 1] ?? 0.3);
   let lastWhy = "";
-  for (let i = 0; i < call.temps.length; i++) {
-    await ctx.tick(`Запрос к модели (${i + 1}/${call.temps.length})`);
+  let lastFormat = "";
+  for (let i = 0; i < temps.length; i++) {
+    await ctx.tick(`Запрос к модели (${i + 1}/${temps.length})`);
     try {
       const r = await aiChat(ctx.ai, {
         slot: call.slot,
         model: stageModel(ctx.recipe, call.stageKey),
         system: call.system,
-        user: call.user + (lastWhy ? '\n\nReturn ONLY one valid JSON object with key "sections". No prose, no markdown.' : ""),
+        user:
+          call.user +
+          (lastFormat
+            ? `\n\nIMPORTANT: your previous answer was rejected (${lastFormat}). Return ONLY one valid JSON object with key "sections" holding a non-empty array — one entry per section. No prose, no markdown.`
+            : ""),
         json: true,
-        temperature: call.temps[i],
+        temperature: temps[i],
         maxTokens: call.maxTokens,
         timeoutMs: 240_000,
       });
       const out = (r.json && typeof r.json === "object" ? r.json : parseModelJsonSafe(r.text)) as JsonRecord | null;
       if (!out) {
         lastWhy = "Модель вернула не-JSON ответ";
+        lastFormat = "it was not valid JSON";
+        ctx.log(`попытка ${i + 1}: ${lastWhy}`);
         continue;
       }
       const list = call.pickList(out);
       if (list.length) return { out, list, model: r.model };
       lastWhy = "В ответе модели нет списка секций (ключ sections)";
+      lastFormat = `the "sections" array was missing or empty; keys present: ${Object.keys(out).slice(0, 8).join(", ") || "none"}`;
+      ctx.log(`попытка ${i + 1}: ${lastWhy}`);
     } catch (e) {
-      if (e instanceof AiError && e.cls.kind === "transient" && i + 1 < call.temps.length) {
+      if (e instanceof AiError && e.cls.kind === "transient" && i + 1 < temps.length) {
         lastWhy = `Временная ошибка провайдера: ${e.message}`;
         ctx.log(lastWhy);
         await new Promise((r) => setTimeout(r, backoffMs(i)));
@@ -100,7 +117,7 @@ export async function callPlanner(ctx: ArtStageCtx, call: PlannerCall): Promise<
       throw e;
     }
   }
-  throw new Error(lastWhy || "План не получен");
+  throw new MalformedAiOutput(`${lastWhy || "План не получен"} (после ${temps.length} попыток)`);
 }
 
 /** Детали образа/интерьера для брифа секции из фактов фото и контракта (оригинал: stage-photo-plan:409-444). */
@@ -197,10 +214,12 @@ export const plan: ArtStageHandler = async (ctx) => {
 
   // Уникальные заголовки: ни одного повтора и почти-дубля (оригинал: 261-274).
   const usedHeadings = new Set<string>();
+  // Слова ключа не считаются отличительными при сравнении заголовков (аудит 2026-10-14).
+  const headingKw = [article.keyword, article.focusKeyword, article.seoKeyword].filter(Boolean).join(" ");
   const fallbackHeading = isOutfitsNiche(recipe.nicheCode) ? "Outfit Idea" : isInteriorNiche(recipe.nicheCode, recipe.subnicheCode) ? "Room Idea" : "Visual Idea";
   for (const m of mapped) {
     const raw = sanitizeTopic(String(m.plan.h2 || m.plan.name || "").trim());
-    const unique = uniqueHeading(raw || fallbackHeading, usedHeadings, { facts: m.photo.facts, description: m.photo.description });
+    const unique = uniqueHeading(raw || fallbackHeading, usedHeadings, { facts: m.photo.facts, description: m.photo.description, keyword: headingKw });
     if (unique !== raw) ctx.log(`секция ${m.order}: заголовок уникализирован «${raw}» → «${unique}»`);
     m.plan.h2 = unique;
     m.plan.name = unique;

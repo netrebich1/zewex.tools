@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { canUseTool } from "@/lib/permissions";
 
 /** Поставить или снять звёздочку с инструмента. Возвращает новое состояние. */
 export async function toggleFavorite(projectId: string): Promise<{ favorite: boolean }> {
@@ -11,8 +12,8 @@ export async function toggleFavorite(projectId: string): Promise<{ favorite: boo
   if (existing) {
     await prisma.favoriteTool.delete({ where: key });
   } else {
-    const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
-    if (!project) throw new Error("Инструмент не найден");
+    const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, slug: true } });
+    if (!project || !canUseTool(me, project.slug)) throw new Error("Инструмент не найден");
     await prisma.favoriteTool.create({ data: { userId: me.id, projectId } });
   }
   revalidatePath("/");

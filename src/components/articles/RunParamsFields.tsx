@@ -12,8 +12,12 @@ type Src = Pick<ArtSiteSettings, "photoCount" | "photoReview" | "publishMode" | 
 /**
  * Общие поля «фото / модерация / публикация / поиск / год в URL» — в настройках сайта (значения по умолчанию)
  * и в параметрах запуска. Имена полей разбирают settingsFromForm и runSettingsFromForm в actions/articles.ts.
+ * aiModOn — у сайта включена ИИ-модерация фото: модерация фото до текста включается для статей с реальными фото сама
+ * (lib/articles/launch.ts): в запуске галочка показывается включённой и заблокированной; в настройках сайта остаётся
+ * редактируемой (это значение по умолчанию на случай, когда ИИ-модерацию выключат), с пояснением.
  */
-export function RunParamsFields({ s, siteLevel = false }: { s: Src; siteLevel?: boolean }) {
+export function RunParamsFields({ s, siteLevel = false, aiModOn = false }: { s: Src; siteLevel?: boolean; aiModOn?: boolean }) {
+  const forced = aiModOn && !siteLevel;
   const [mode, setMode] = useState<"exact" | "range">(s.photoCount.mode);
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -30,9 +34,16 @@ export function RunParamsFields({ s, siteLevel = false }: { s: Src; siteLevel?: 
           {mode === "range" ? <Field label="До"><input name="photoMax" type="number" min={1} max={60} className="input py-1.5" defaultValue={Math.max(s.photoCount.min, s.photoCount.max)} /></Field> : <div />}
         </div>
         <p className="help">Одно фото = одна секция статьи. Минимум для публикации — 15 подходящих кадров; если найдётся меньше, статья встанет в «Не хватило фото». В строке ключа можно задать своё число (4-я колонка).</p>
-        <label className="flex items-start gap-2 rounded-lg border border-line px-3 py-2 text-[13.5px]">
-          <input type="checkbox" name="photoReview" defaultChecked={s.photoReview} className="mt-0.5 h-4 w-4" />
-          <span><b>Модерация фото до текста</b><span className="help block">Включено: после отбора статья ждёт одобрения кадров человеком в «Модерации фото», и только потом пишется текст. Выключено: текст пишется сразу, проверяется готовая статья перед публикацией.</span></span>
+        <label className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[13.5px] ${aiModOn ? "border-brand/40 bg-brand-soft/40" : "border-line"}`}>
+          {/* key: при смене сайта в форме запуска галочка перерисовывается с новым состоянием */}
+          <input key={forced ? "ai" : "manual"} type="checkbox" name="photoReview" defaultChecked={forced || s.photoReview} disabled={forced} className="mt-0.5 h-4 w-4" />
+          {forced && <input type="hidden" name="photoReview" value="on" />}
+          <span>
+            <b>Модерация фото до текста</b>
+            {aiModOn
+              ? <span className="help block">{siteLevel ? "Пока включена ИИ-модерация фото (блок ниже), фото каждой статьи с реальными фото проверяет ИИ до текста — эта галочка действует только при выключенной ИИ-модерации." : "Включена ИИ-модерацией фото сайта: фото каждой статьи (реальные фото) после отбора проверит ИИ, и только потом пишется текст. Сомнительные статьи ИИ отдаёт сотруднику. Выключить — в настройках сайта, блок «ИИ-модерация фото»."}</span>
+              : <span className="help block">Включено: после отбора статья ждёт одобрения кадров человеком в «Модерации фото», и только потом пишется текст. Выключено: текст пишется сразу, проверяется готовая статья перед публикацией.</span>}
+          </span>
         </label>
       </section>
 

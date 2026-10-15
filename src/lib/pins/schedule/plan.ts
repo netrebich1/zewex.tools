@@ -15,6 +15,7 @@ import {
   MINUTES_IN_DAY,
   addDays,
   compareKeys,
+  daysBetween,
   dayKey,
   isDayKey,
   minuteOfDay,
@@ -56,7 +57,19 @@ export type ScheduleInput = {
   stepMaxDays?: number;
   /** Сегодняшние слоты не раньше `now + minLeadMinutes` (Pinterest требует ≥ 15 мин). */
   minLeadMinutes?: number;
+  /**
+   * fixed — «строго N в день»: каждый день наполняется ровно до pinsPerDay (с учётом чужих пинов), окно растёт само;
+   * dates — «от даты до даты»: все пины размазываются равномерно до lastDate (дневной потолок 100), остаток — после lastDate.
+   * Шаг между пинами статьи, первый пин и «со статьи в день» — мягкие предпочтения: задают порядок, но не ломают норму дня.
+   */
+  mode?: "fixed" | "dates";
+  lastDate?: string;
+  /** Служебное: посчитать раскладку без общего лимита сайта (для отчёта «сколько пинов пришлось перенести»). */
+  ignoreSiteLimit?: boolean;
 };
+
+/** Что пришлось изменить из-за общего лимита 100 пинов в день на сайт. */
+export type LimitReport = { moved: number; days: string[]; limit: number };
 
 export type ScheduleOutput = {
   /** Новые даты только для перепланированных пинов (закреплённые сюда не попадают). */
@@ -73,6 +86,10 @@ export type ScheduleOutput = {
   windowEnd: string;
   /** Сколько пинов оставлено с прежней датой. */
   kept: number;
+  /** Новые пины этого прогона по дням. */
+  newPerDay: Map<string, number>;
+  /** Заполнено, если общий лимит сайта заставил перенести пины на другие дни. */
+  limitReport: LimitReport | null;
 };
 
 type Task = { id: string; pageId: string; want: number; seq: number; order: number };
@@ -82,7 +99,7 @@ const MAX_START_SEARCH_DAYS = 400;
 export function scheduleItems(input: ScheduleInput): ScheduleOutput {
   const tz = input.tz;
   const cap = Math.min(MAX_PINS_PER_DAY, Math.max(0, Math.floor(input.pinsPerDay)));
-  const windowDays = Math.max(1, Math.floor(input.windowDays ?? SCHEDULE.windowDays));
+  const windowDaysPref = Math.max(1, Math.floor(input.windowDays ?? SCHEDULE.windowDays));
   const perPageCap = Math.max(0, Math.floor(input.perPagePerDay ?? SCHEDULE.perPagePerDay));
   const firstWindow = Math.max(1, Math.floor(input.firstPinWindowDays ?? SCHEDULE.firstPinWindowDays));
   const stepMin = Math.max(1, Math.floor(input.stepMinDays ?? SCHEDULE.stepMinDays));
@@ -98,6 +115,9 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
   for (const [key, n] of input.existingLoad) load.set(key, Math.max(0, Math.floor(n)));
   const pageLoad = new Map<string, number>();
   const usedMinutes = new Map<string, Set<number>>();
+  /** Пины этого прогона по дням (закреплённые + новые): норма «N в день» считается по ним, а не по всему сайту. */
+  const own = new Map<string, number>();
+  const HARD = input.ignoreSiteLimit ? Number.POSITIVE_INFINITY : MAX_PINS_PER_DAY;
   const bump = (map: Map<string, number>, key: string): void => {
     map.set(key, (map.get(key) ?? 0) + 1);
   };
@@ -112,6 +132,7 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
       if (keep && at) {
         const key = dayKey(at, tz);
         bump(load, key);
+        bump(own, key);
         bump(pageLoad, `${key}|${pageId}`);
         let set = usedMinutes.get(key);
         if (!set) {
@@ -133,15 +154,40 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
   let start: string;
   if (input.startFrom === "next_free_day") {
     start = earliest;
-    for (let i = 0; i < MAX_START_SEARCH_DAYS && (load.get(start) ?? 0) >= cap; i++) start = addDays(start, 1);
+    // Ближайший день, где у сайта ещё есть место под общим лимитом (пины других прогонов плюсуются).
+    for (let i = 0; i < MAX_START_SEARCH_DAYS && (load.get(start) ?? 0) >= HARD; i++) start = addDays(start, 1);
   } else {
     if (!isDayKey(input.startFrom)) throw new Error(`startFrom: ожидается next_free_day или YYYY-MM-DD, получено «${input.startFrom}»`);
     start = compareKeys(input.startFrom, earliest) < 0 ? earliest : input.startFrom;
   }
+  const mode: "fixed" | "dates" = input.mode === "dates" ? "dates" : "fixed";
+  const flexibleCount = [...flexible.values()].reduce((n, l) => n + l.length, 0);
+  // Окно: fixed — столько дней, сколько нужно при норме cap в день (с запасом на чужую нагрузку);
+  // dates — от start до lastDate включительно (не раньше start), остаток уходит в дни после lastDate.
+  let windowDays: number;
+  let datesDays = 0;
+  if (mode === "dates") {
+    const last = input.lastDate && isDayKey(input.lastDate) && compareKeys(input.lastDate, start) >= 0 ? input.lastDate : start;
+    datesDays = Math.min(MAX_START_SEARCH_DAYS, daysBetween(start, last) + 1);
+    windowDays = Math.min(MAX_START_SEARCH_DAYS, datesDays + Math.ceil(flexibleCount / Math.max(1, MAX_PINS_PER_DAY)) + 31);
+  } else {
+    // с запасом: часть дней может быть занята другими прогонами до общего лимита
+    windowDays = Math.min(MAX_START_SEARCH_DAYS, Math.max(windowDaysPref, Math.ceil(flexibleCount / Math.max(1, cap)) + 62));
+  }
   const lastOffset = windowDays - 1;
   const keys: string[] = [];
   for (let off = 0; off <= lastOffset; off++) keys.push(addDays(start, off));
-  const windowEnd = keys[lastOffset];
+  const windowEnd = keys[mode === "dates" ? Math.max(0, datesDays - 1) : lastOffset];
+  // Норма пинов ЭТОГО прогона на день: fixed — cap; dates — равномерная доля (дефицит переносится на следующий день).
+  // Пины других прогонов сайта на те же даты плюсуются; общий потолок сайта — HARD (100) в день.
+  const evenQuota = (off: number): number => {
+    if (mode !== "dates") return Number.POSITIVE_INFINITY;
+    if (off >= datesDays) return Number.POSITIVE_INFINITY; // после lastDate — остаток, сколько влезет
+    const base = Math.floor(flexibleCount / datesDays), extra = flexibleCount % datesDays;
+    // «лишние» пины распределяем по окну равномерно, а не подряд в первые дни
+    const bonus = extra > 0 && Math.floor(((off + 1) * extra) / datesDays) > Math.floor((off * extra) / datesDays) ? 1 : 0;
+    return base + bonus;
+  };
 
   /* ---- детерминированная случайность ---- */
   const seedStr = [input.seed, start, windowDays, cap, perPageCap, firstWindow, stepMin, stepMax].join("|");
@@ -166,50 +212,57 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
   // По возрастанию желаемой даты — дни наполняются равномерно; порядок страниц не зависит от порядка Map.
   tasks.sort((a, b) => a.want - b.want || a.seq - b.seq || a.order - b.order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-  /* ---- 2) размещение с дневным и постраничным лимитами ---- */
-  const dayFree = (off: number): boolean => (load.get(keys[off]) ?? 0) < cap;
+  /* ---- 2) размещение: день за днём добиваем норму, порядок — по желаемым датам ----
+   * Главное правило — норма дня (fixed: ровно cap; dates: равная доля). Предпочтения статьи
+   * (первый пин, шаг, «со статьи в день») мягкие: сначала берём пины, которым они не мешают,
+   * если нормы не хватает — ослабляем «со статьи в день»; порядок пинов внутри статьи не нарушается. */
+  const dayFree = (off: number): number => {
+    const siteRoom = HARD - (load.get(keys[off]) ?? 0);
+    const ownRoom = mode === "dates" ? Number.POSITIVE_INFINITY : cap - (own.get(keys[off]) ?? 0);
+    return Math.max(0, Math.min(siteRoom, ownRoom));
+  };
   const pageFree = (off: number, pageId: string): boolean =>
     perPageCap === 0 || (pageLoad.get(`${keys[off]}|${pageId}`) ?? 0) < perPageCap;
-  const free = (off: number, pageId: string): boolean => dayFree(off) && pageFree(off, pageId);
-
-  let cursor = 0;
-  const advanceCursor = (): void => {
-    while (cursor <= lastOffset && !dayFree(cursor)) cursor++;
-  };
   /** Последний день, куда уже поставлен пин страницы — более поздние пины страницы раньше него не уходят. */
   const lastByPage = new Map<string, number>();
-
-  const placeDay = (t: Task): number => {
-    advanceCursor();
-    const floor = Math.max(cursor, lastByPage.get(t.pageId) ?? 0);
-    const wanted = Math.min(t.want, lastOffset);
-    for (let off = Math.max(floor, wanted); off <= lastOffset; off++) if (free(off, t.pageId)) return off;
-    for (let off = wanted - 1; off >= floor; off--) if (free(off, t.pageId)) return off;
-    return -1;
-  };
-
+  const pending: Task[] = cap === 0 ? [] : [...tasks];
+  const unscheduled: string[] = cap === 0 ? tasks.map((t) => t.id) : [];
   const placed = new Map<number, string[]>();
-  const unscheduled: string[] = [];
   let lastUsed = 0;
-  for (const t of tasks) {
-    if (cap === 0) {
-      unscheduled.push(t.id);
-      continue;
-    }
-    const off = placeDay(t);
-    if (off < 0) {
-      unscheduled.push(t.id);
-      continue;
-    }
+  let carry = 0; // недобор прошлых дней в режиме dates
+  const put = (t: Task, off: number): void => {
     bump(load, keys[off]);
+    bump(own, keys[off]);
     bump(pageLoad, `${keys[off]}|${t.pageId}`);
     lastByPage.set(t.pageId, Math.max(lastByPage.get(t.pageId) ?? 0, off));
     if (off > lastUsed) lastUsed = off;
     const ids = placed.get(off);
-    if (ids) ids.push(t.id);
-    else placed.set(off, [t.id]);
+    if (ids) ids.push(t.id); else placed.set(off, [t.id]);
+  };
+  for (let off = 0; off <= lastOffset && pending.length; off++) {
+    const quota = evenQuota(off);
+    const target = Number.isFinite(quota) ? quota + carry : Number.POSITIVE_INFINITY;
+    let want = Math.min(dayFree(off), target);
+    const initialWant = want;
+    const floorOk = (t: Task) => (lastByPage.get(t.pageId) ?? 0) <= off;
+    // проход 1: желаемая дата уже наступила и предпочтения статьи соблюдены
+    for (let pass = 0; pass < 3 && want > 0; pass++) {
+      for (let i = 0; i < pending.length && want > 0; i++) {
+        const t = pending[i];
+        if (!floorOk(t)) continue;
+        if (pass === 0 && (t.want > off || !pageFree(off, t.pageId))) continue;
+        if (pass === 1 && !pageFree(off, t.pageId)) continue; // будущие даты подтягиваем вперёд, лимит статьи держим
+        // pass 2: ослабляем «со статьи в день» — норма дня важнее
+        put(t, off);
+        pending.splice(i, 1);
+        i--;
+        want--;
+      }
+    }
+    // Недобор дня (лимит 100 или нечем заполнить) переносится на следующие дни окна.
+    if (Number.isFinite(target)) carry = Math.max(0, target - (initialWant - want));
   }
-
+  for (const t of pending) unscheduled.push(t.id);
   /* ---- 3) времена внутри дня: 08:00–21:00, разброс по сиду, без повторов минут ---- */
   const assignments = new Map<string, Date>();
   for (const [off, ids] of placed) {
@@ -229,6 +282,21 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
 
   const perDay = new Map<string, number>();
   for (const key of keys) perDay.set(key, load.get(key) ?? 0);
+  const newPerDay = new Map<string, number>();
+  for (const [off, ids] of placed) newPerDay.set(keys[off], ids.length);
+
+  // Отчёт: сравниваем с раскладкой без общего лимита сайта. Пины, которым не хватило места в «своём» дне, считаются перенесёнными.
+  let limitReport: LimitReport | null = null;
+  if (!input.ignoreSiteLimit && flexibleCount > 0) {
+    const ideal = scheduleItems({ ...input, ignoreSiteLimit: true });
+    let moved = 0;
+    const days: string[] = [];
+    for (const [day, want] of ideal.newPerDay) {
+      const got = newPerDay.get(day) ?? 0;
+      if (want > got) { moved += want - got; days.push(day); }
+    }
+    if (moved > 0) limitReport = { moved, days: days.sort(), limit: MAX_PINS_PER_DAY };
+  }
 
   return {
     assignments,
@@ -238,5 +306,7 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
     lastDay: keys[lastUsed],
     windowEnd,
     kept,
+    newPerDay,
+    limitReport,
   };
 }

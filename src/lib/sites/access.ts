@@ -10,12 +10,16 @@ import { seesAllSites } from "@/lib/permissions";
 
 type AccessRow = { id: string; teamId: string; teams: { teamId: string }[]; viewers: { userId: string }[] };
 
-/** Видит ли пользователь доступ: админ и право «все сайты» — всё; иначе одна из его команд + (список сотрудников пуст, или он в нём, или он лидер команды-владельца). */
+/**
+ * Видит ли пользователь сайт. Правило владельца: в команде каждый видит только СВОИ сайты, а не все сайты команды.
+ * Админ и право «все сайты» — всё; лидер команды-владельца — все сайты своей команды;
+ * обычный сотрудник — только сайты, где он отмечен в «Кто видит сайт» (создатель сайта отмечается сам).
+ * Пустой список сотрудников больше НЕ означает «вся команда».
+ */
 export function canSeeAccess(me: CurrentUser, a: Omit<AccessRow, "id">): boolean {
   if (seesAllSites(me)) return true;
   const inTeam = me.teamIds.includes(a.teamId) || a.teams.some((t) => me.teamIds.includes(t.teamId));
   if (!inTeam) return false;
-  if (!a.viewers.length) return true;
   return a.viewers.some((v) => v.userId === me.id) || me.leadTeamIds.includes(a.teamId);
 }
 
@@ -36,18 +40,21 @@ export async function siteAccessWhere(me: CurrentUser): Promise<Prisma.SiteAcces
   return ids === null ? {} : { id: { in: ids } };
 }
 
-/** Условие для PinSite.findMany: сайты видимых доступов плюс сайты без доступа из своих команд. */
+/** Условие для PinSite.findMany: сайты видимых доступов; сайты без доступа (старые) видят только лидеры их команды. */
 export async function pinSiteWhere(me: CurrentUser): Promise<Prisma.PinSiteWhereInput> {
   const ids = await visibleAccessIds(me);
   if (ids === null) return {};
-  return { OR: [{ wpConnectionId: { in: ids } }, { wpConnectionId: null, teamId: { in: me.teamIds } }] };
+  return { OR: [{ wpConnectionId: { in: ids } }, { wpConnectionId: null, teamId: { in: me.leadTeamIds } }] };
 }
 
-/** Условие для PinRun.findMany: прогоны видимых сайтов плюс прогоны без сайта из своих команд. */
+/** Условие для PinRun.findMany: прогоны видимых сайтов; прогоны без сайта — свои, а лидеру — всей команды. */
 export async function pinRunWhere(me: CurrentUser): Promise<Prisma.PinRunWhereInput> {
   const ids = await visibleAccessIds(me);
   if (ids === null) return {};
-  return { OR: [{ site: { OR: [{ wpConnectionId: { in: ids } }, { wpConnectionId: null, teamId: { in: me.teamIds } }] } }, { siteId: null, teamId: { in: me.teamIds } }] };
+  return { OR: [
+    { site: { OR: [{ wpConnectionId: { in: ids } }, { wpConnectionId: null, teamId: { in: me.leadTeamIds } }] } },
+    { siteId: null, OR: [{ createdById: me.id }, { teamId: { in: me.leadTeamIds } }] },
+  ] };
 }
 
 export async function canAccessSiteAccess(me: CurrentUser, accessId: string): Promise<boolean> {
@@ -64,14 +71,14 @@ export async function canAccessPinSite(me: CurrentUser, site: { teamId: string; 
     // Доступ удалён/недоступен, но сайт в своей команде — пусть остаётся виден команде.
     if (ok) return true;
   }
-  return !site.wpConnectionId && me.teamIds.includes(site.teamId);
+  return !site.wpConnectionId && me.leadTeamIds.includes(site.teamId);
 }
 
 /** Прогон виден, если виден его сайт; прогон без сайта — по команде. */
-export async function canAccessRun(me: CurrentUser, run: { teamId: string; site: { teamId: string; wpConnectionId: string | null } | null }): Promise<boolean> {
+export async function canAccessRun(me: CurrentUser, run: { teamId: string; createdById?: string | null; site: { teamId: string; wpConnectionId: string | null } | null }): Promise<boolean> {
   if (seesAllSites(me)) return true;
   if (run.site) return canAccessPinSite(me, run.site);
-  return me.teamIds.includes(run.teamId);
+  return run.createdById === me.id || me.leadTeamIds.includes(run.teamId);
 }
 
 /** Команды, которым доступен сайт (владелец первым). */

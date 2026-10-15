@@ -145,3 +145,8 @@ input[type="checkbox"] { accent-color: var(--color-ink); }
 .h2 { @apply text-[17px] font-semibold tracking-[-0.01em]; }
 .help { @apply text-[13px] text-muted leading-snug; }
 .mono { @apply font-mono text-[12.5px]; }
+
+/* ───────── Графики (Трафик сайтов): текущий период и сравнение; тёмная тема — свои ступени тех же оттенков ───────── */
+:root { --viz-1: #2a78d6; --viz-prev: #9ea3ad; }
+:root[data-theme="dark"] { --viz-1: #3987e5; --viz-prev: #6b7080; }
+:root[data-theme="neutral"] { --viz-1: #2f5fb3; --viz-prev: #9a948a; }

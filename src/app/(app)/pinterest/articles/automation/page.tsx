@@ -6,7 +6,7 @@ import { AutomationTable } from "@/components/articles/AutomationTable";
 
 export const dynamic = "force-dynamic";
 
-/** Автозапуск сайтов: счётчики по шагам, переключатели и лимиты цепочек по сайтам, мастер-выключатели, диагностика. */
+/** Автозапуск сайтов: счётчики по шагам, переключатели и лимиты цепочек и ИИ-проверки фото по сайтам, мастер-выключатели, диагностика. */
 export default async function ArticlesAutomationPage() {
   const me = await requireUser();
   const payload = await automationPayload(me);
@@ -14,7 +14,7 @@ export default async function ArticlesAutomationPage() {
     <>
       <PageHeader
         title="Автозапуск сайтов"
-        subtitle="Путь статьи: поиск фото → ручная проверка фото → написание → публикация. Обновляется каждые 30 секунд."
+        subtitle="Путь статьи: поиск фото → проверка фото (ИИ или сотрудник) → написание → публикация. Этапы работают, пока включены. Обновляется каждые 30 секунд."
         actions={
           <>
             <Link href="/pinterest/articles/sites" className="btn-ghost">Настройки сайтов</Link>

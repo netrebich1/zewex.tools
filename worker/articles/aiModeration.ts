@@ -6,7 +6,8 @@
  * Каждые 20 с для всех запусков status=running: heartbeat; сторож (processing старше 6 мин удаляется — статья снова в пуле,
  * applying без движения 3 мин → proposed); в режиме auto с autoApply сайта — применение proposed (op по уверенности);
  * пул статей размером concurrency (атомарная вставка результата processing); запуск done, когда нет непроверенных
- * статей и нет processing/applying (и proposed для авто). Раз в минуту — aiAutostartTick (пачки по сайтам).
+ * статей и нет processing/applying (и proposed для авто). Каждый проход (20 с) перед этим — aiAutostartTick: новые статьи
+ * на проверке фото сразу уходят ИИ (новый запуск сайта или добавление к идущему).
  * Вся логика — в src/lib/articles/aiModeration.ts; здесь только планирование и учёт параллельности.
  */
 import { prisma } from "@/lib/db";
@@ -26,7 +27,8 @@ import {
 import { log } from "../log";
 
 const TICK_MS = 20_000;
-const AUTOSTART_EVERY_MS = 60_000;
+/** Автозапуск ИИ-проверки — каждый проход: статья ждёт ИИ не дольше ~20 с (раньше — минута и пачки). */
+const AUTOSTART_EVERY_MS = TICK_MS;
 
 /** Все задачи ИИ-модерации в полёте (для graceful shutdown воркера). */
 const inflight = new Set<Promise<void>>();
@@ -133,7 +135,7 @@ async function pause(ms: number, shouldStop: () => boolean): Promise<void> {
 }
 
 /**
- * Главный цикл: раз в 20 с — проход по запускам, раз в минуту — автозапуск пачек по сайтам.
+ * Главный цикл: раз в 20 с — автозапуск по сайтам (новые статьи → ИИ), затем проход по запускам.
  * При остановке воркера текущие проверки доводятся (inflight ждёт worker/index.ts), новые не берутся;
  * недоведённые processing подберёт сторож после рестарта (6 мин) — статьи вернутся в пул того же запуска.
  */
@@ -145,7 +147,7 @@ export async function aiModerationLoop(workerId: string, shouldStop: () => boole
       if (Date.now() - lastAutostart >= AUTOSTART_EVERY_MS) {
         lastAutostart = Date.now();
         const r = await aiAutostartTick();
-        if (r.started) log.info(`ai-moderation autostart: запущено ${r.started} пачек`);
+        if (r.started || r.attached) log.info(`ai-moderation autostart: новых запусков ${r.started}, добавлено статей к идущим ${r.attached}`);
       }
       await tick();
     } catch (e) {

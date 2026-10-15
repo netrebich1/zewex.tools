@@ -15,6 +15,7 @@ export async function GET(req: Request) {
     engine: u.searchParams.get("engine") || undefined,
     cursor: u.searchParams.get("cursor") || undefined,
     limit: Math.min(200, Math.max(1, Number(u.searchParams.get("limit")) || 60)),
+    view: u.searchParams.get("view") === "post" ? "post" : "pre",
   });
   return NextResponse.json(r, { headers: { "Cache-Control": "no-store" } });
 }
@@ -23,13 +24,13 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const me = await getCurrentUser();
   if (!me) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
-  let body: { decisions?: Decision[] };
+  let body: { decisions?: Decision[]; post?: boolean };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Нужен JSON" }, { status: 400 });
   }
   const decisions = (body.decisions ?? []).filter((d) => typeof d?.id === "string" && (d.moderation === "APPROVED" || d.moderation === "REJECTED"));
-  const r = await applyDecisions(me, decisions);
+  const r = await applyDecisions(me, decisions, { post: body.post === true });
   return NextResponse.json(r);
 }

@@ -14,6 +14,13 @@ export interface IntroOutroPayload {
   parse_mode: "json" | "repaired" | "fields";
 }
 
+/**
+ * Единые нижние пороги объёма вступления и заключения: этап intro_outro принимает по ним ответ модели, проверка качества
+ * (wp/qualityCheck.ts) проверяет по ним же — раньше было 30 / 25 / 40 в трёх местах (аудит 2026-10-14).
+ */
+export const INTRO_MIN_WORDS = 60;
+export const OUTRO_MIN_WORDS = 30;
+
 const INTRO_KEYS = ["intro_html", "intro_text", "intro", "html", "text", "content"];
 const OUTRO_KEYS = ["outro_html", "outro_text", "outro", "conclusion_html", "conclusion"];
 const FAQ_KEYS = ["faq_html", "faq", "faq_section_html"];

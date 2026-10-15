@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import type { PinRunStatus } from "@prisma/client";
 import { PIN_STAGES, type PinStage } from "../types";
+import { explainBlocked, explainItemError, explainPageErrors, explainSchedule, healthOf, type Health, type Problem, type ScheduleReport } from "./problems";
 
 /** Счётчики по типу пина, одним запросом GROUP BY (без выгрузки элементов). */
 export type KindCounters = {
@@ -23,7 +24,9 @@ export type RunStatusView = {
   counters: KindCounters[];
   total: KindCounters;
   pages: { total: number; withKeyword: number; errors: number };
-  problems: Array<{ stage: string; kind: string; message: string; count: number }>;
+  /** Проблемы с объяснением: критичные (прогон стоит) первыми, затем предупреждения. */
+  problems: Problem[];
+  health: Health;
   stages: Array<{ key: PinStage; state: "done" | "active" | "waiting" | "problem" | "todo" }>;
 };
 
@@ -50,10 +53,11 @@ export async function runStatus(runId: string): Promise<RunStatusView | null> {
     prisma.pinRunPage.count({ where: { runId } }),
     prisma.pinRunPage.count({ where: { runId, keyword: { not: "" } } }),
     prisma.pinRunPage.count({ where: { runId, status: "error" } }),
+    // одна строка на вид ошибки и этап (тексты провайдера различаются номером запроса — берём образец)
     prisma.$queryRaw<Array<{ errorStage: string | null; errorKind: string | null; error: string | null; cnt: bigint }>>`
-      SELECT errorStage, errorKind, SUBSTRING(error, 1, 160) AS error, COUNT(*) AS cnt
+      SELECT errorStage, errorKind, SUBSTRING(MAX(error), 1, 300) AS error, COUNT(*) AS cnt
       FROM PinRunItem WHERE runId = ${runId} AND status = 'ERROR'
-      GROUP BY errorStage, errorKind, SUBSTRING(error, 1, 160) ORDER BY cnt DESC LIMIT 10`,
+      GROUP BY errorStage, errorKind ORDER BY cnt DESC LIMIT 10`,
     // расход прогона — по журналу портала (воркер дублирует сумму в PinRun.costUsd после каждой задачи)
     prisma.usageLog.aggregate({ _sum: { costUsd: true }, where: { refId: runId } }),
   ]);
@@ -74,15 +78,47 @@ export async function runStatus(runId: string): Promise<RunStatusView | null> {
     return { key, state };
   });
 
+  const problems = buildProblems(run, problemRows.map((p) => ({ stage: p.errorStage ?? "", kind: p.errorKind ?? "", raw: p.error ?? "", count: n(p.cnt) })), pagesErr);
+
   return {
     run: { id: run.id, name: run.name, status: run.status, stage: run.stage, blockedReason: run.blockedReason, costUsd: cost._sum.costUsd ?? run.costUsd, stopRequested: run.stopRequested, updatedAt: run.updatedAt.toISOString(), stepByStep: run.stepByStep },
     job: job ? { stage: job.stage, status: job.status, done: job.done, total: job.total, label: job.label, error: job.error } : null,
     counters,
     total,
     pages: { total: pagesAgg, withKeyword: pagesKw, errors: pagesErr },
-    problems: problemRows.map((p) => ({ stage: p.errorStage ?? "", kind: p.errorKind ?? "", message: p.error ?? "", count: n(p.cnt) })),
+    problems,
+    health: healthOf(problems),
     stages,
   };
+}
+
+type ProblemRow = { stage: string; kind: string; raw: string; count: number };
+
+/** Собирает список проблем прогона: остановка прогона → ошибки пинов → неоткрывшиеся статьи. */
+function buildProblems(run: { status: PinRunStatus; stage: string; blockedReason: string | null; settings?: unknown }, rows: ProblemRow[], pageErrors: number): Problem[] {
+  const out: Problem[] = [];
+  if (run.status === "BLOCKED" || run.status === "FAILED") out.push(explainBlocked(run.blockedReason || (run.status === "FAILED" ? "Прогон завершился с ошибкой" : "Прогон остановлен из-за ошибки"), run.stage));
+  for (const r of rows) out.push(explainItemError(r.kind, r.stage, r.raw, r.count));
+  if (pageErrors > 0) out.push(explainPageErrors(pageErrors));
+  const rep = (run.settings as { scheduleReport?: ScheduleReport | null } | null | undefined)?.scheduleReport;
+  if (rep && typeof rep === "object") out.push(...explainSchedule({ moved: Number(rep.moved) || 0, days: Array.isArray(rep.days) ? rep.days.map(String) : [], limit: Number(rep.limit) || 100, unscheduled: Number(rep.unscheduled) || 0, lastDay: rep.lastDay }));
+  return out.sort((a, b) => (a.severity === b.severity ? b.count - a.count : a.severity === "critical" ? -1 : 1));
+}
+
+/** Проблемы сразу для списка прогонов (история): два запроса на весь список. */
+export async function problemsForRuns(runs: Array<{ id: string; status: PinRunStatus; stage: string; blockedReason: string | null; settings?: unknown }>): Promise<Map<string, Problem[]>> {
+  const out = new Map<string, Problem[]>();
+  if (!runs.length) return out;
+  const ids = runs.map((r) => r.id);
+  const [items, pages] = await Promise.all([
+    prisma.pinRunItem.groupBy({ by: ["runId", "errorStage", "errorKind"], where: { runId: { in: ids }, status: "ERROR" }, _count: { _all: true }, _max: { error: true } }),
+    prisma.pinRunPage.groupBy({ by: ["runId"], where: { runId: { in: ids }, status: "error" }, _count: { _all: true } }),
+  ]);
+  for (const r of runs) {
+    const rows = items.filter((i) => i.runId === r.id).map((i) => ({ stage: i.errorStage ?? "", kind: i.errorKind ?? "", raw: (i._max.error ?? "").slice(0, 300), count: i._count._all }));
+    out.set(r.id, buildProblems(r, rows, pages.find((p) => p.runId === r.id)?._count._all ?? 0));
+  }
+  return out;
 }
 
 /** Карточка прогона для доски на «Сегодня»: статус, этапы, прогресс задачи, проблемы. */
@@ -92,12 +128,12 @@ export type RunOverview = {
   job: { stage: string; status: string; done: number; total: number; label: string } | null;
   stages: RunStatusView["stages"];
   pages: number; pins: number; errors: number; pendingModeration: number;
-  topProblem: string | null;
+  problems: Problem[]; health: Health;
 };
 
 export async function runsOverview(where: Prisma.PinRunWhereInput, limit = 20): Promise<RunOverview[]> {
   const runs = await prisma.pinRun.findMany({
-    where: { ...where, NOT: { name: { startsWith: "__" } } },
+    where: { ...where, NOT: { name: "__system__" } },
     orderBy: { updatedAt: "desc" }, take: limit,
     include: { site: { select: { name: true } } },
   });
@@ -114,7 +150,7 @@ export async function runsOverview(where: Prisma.PinRunWhereInput, limit = 20): 
       job: view.job ? { stage: view.job.stage, status: view.job.status, done: view.job.done, total: view.job.total, label: view.job.label } : null,
       stages: view.stages,
       pages: view.pages.total, pins: view.total.planned, errors: view.total.errors, pendingModeration,
-      topProblem: view.problems[0]?.message ?? null,
+      problems: view.problems, health: view.health,
     });
   }
   return out;

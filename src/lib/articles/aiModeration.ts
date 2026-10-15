@@ -14,6 +14,11 @@
  *  - в режиме «людям» снятые ИИ фото не удаляются, а помечаются `ArtPhoto.excluded/excludedByAi` — модератор видит
  *    пометки ✕ и может вернуть кадр («Отменить»); при одобрении человеком они удаляются как обычно;
  *  - ключи ИИ — через `aiChat` (слот vision) от имени пользователя, запустившего проверку (авто — владелец сайта).
+ *
+ * mix3.3 (аудит круга 2, docs/articles-migration/audit-2026-10-14/ai-moderation-fixes-v3.md): третий дешёвый проход
+ * «крупно» (водяные знаки и признаки ИИ на увеличенных половинах кадра), фотореалистичный ИИ в `ai_fake`, аудитория —
+ * только главный герой, спор видит уже убранные фото и перепроверяет оставленные «по аналогии».
+ * passCosts = [lite, flash, спор, смысл ключа, крупно].
  */
 import { readFile } from "fs/promises";
 import sharp from "sharp";
@@ -31,6 +36,7 @@ import { absPath, publicUrl } from "./storage";
 import { loadArtSettings } from "./automation";
 import { addFromReserve, aiActor, approvePhotos, closeArticle, excludePhoto, markInsufficient, ModerationError, reorderPhotos, requestTopup, returnToReview, type AiActor } from "./moderation";
 import { CLAIM_TTL_MIN, MIN_PHOTOS, mergeSiteSettings, SLOTS, type ArticleFacts, type ArticleRecipeSnapshot } from "./types";
+import { classifyArticlePhotos, CONSISTENCY_REASONS, judgementsOf, KEYWORD_VISUAL_SYSTEM, KEYWORD_VISUAL_VERSION, keywordVisualRule, knownVisual, mergeDetailFlags, orderFinal, parseDetailFlags, parseDispute, parseKeywordVisual, pickAdds, removalsNeedConfirm, resolveDisputes, scoreOf, verdictFrom, type DetailFlags, type DisputeAnswer, type Judgements } from "./aiModerationRules";
 
 /* ───────────────────────── Константы (оригинал: ai-photo-moderate/index.ts:13-18, 248, 270) ───────────────────────── */
 
@@ -41,17 +47,30 @@ export const AUTO_CONFIDENCE = 75;
 /** Резерв для модели: ≤25 одобренных оценкой + ≤15 отклонённых без жёстких причин (оригинал :17). */
 export const RESERVE_KEEP = 25;
 export const RESERVE_REJECT = 15;
+/** Предел добавлений за проверку; фактический предел — норма + 30% (`overNormCap` в ./aiModerationRules.ts). */
 export const MAX_ADDS = 12;
-/** Причины отклонения, с которыми кандидат не предлагается резервом (оригинал :18). */
-export const HARD_REJECT = /фигур|комплекц|body type|slim|ai[- ]?generat|render|cgi|illustrat|cartoon|drawing|audience|gender|\bmen\b|male|child|kid|off[- ]?topic|не по теме|аудитор|мужск|детск/i;
+/** Причины отклонения, с которыми кандидат не предлагается резервом (оригинал :18 + водяные знаки/логотипы). */
+export const HARD_REJECT = /фигур|комплекц|body type|slim|ai[- ]?generat|render|cgi|illustrat|cartoon|drawing|audience|gender|\bmen\b|male|child|kid|off[- ]?topic|не по теме|аудитор|мужск|детск|watermark|logo|водян|логотип/i;
 /** Зависшая обработка (упавший воркер) возвращается в пул (оригинал :270). */
 export const STALE_PROCESSING_MS = 6 * 60_000;
 /** Применение без heartbeat дольше 3 мин → снова proposed (оригинал watchdog :50-56). */
 export const STALE_APPLYING_MS = 3 * 60_000;
-/** Неполная пачка автозапуска уходит, если самая старая статья ждёт дольше (оригинал :81). */
+/** «Запуск от» > 1: неполная пачка всё равно уходит, если самая старая статья ждёт дольше (оригинал :81). При «Запуск от» = 1 не ждём. */
 export const AUTO_WAIT_MS = 30 * 60_000;
 /** Миниатюра для модели: ≤512 px по длинной стороне (бриф; оригинал — weserv 256 px). */
 export const AI_THUMB_SIDE = 512;
+/**
+ * Проход «крупно» (аудит круга 2: мелкие водяные знаки и фотореалистичный ИИ не видны на превью 512 px с detail low):
+ * кадр приводится к 1152 px по длинной стороне и режется на две половины с перекрытием (55% каждая), каждая ≤768 px —
+ * одна плитка Gemini (~258 токенов), то есть вдвое больше деталей на тот же токен. Только дешёвая модель (lite).
+ */
+export const AI_DETAIL_SIDE = 1152;
+export const AI_DETAIL_PART = 768;
+export const AI_DETAIL_SHARE = 0.55;
+/** Перепроверка «по аналогии»: сколько оставленных фото показываем спору (цена ~280 токенов flash за фото). */
+export const RECHECK_MAX = 18;
+/** Сколько уже убранных обеими моделями фото показываем спору как образец. */
+export const DECIDED_REF_MAX = 4;
 /** Параллельность запуска по умолчанию (оригинал PARALLEL=20; у нас дефолт сайта 5 — ключи общие на портал). */
 export const DEFAULT_CONCURRENCY = 5;
 
@@ -78,6 +97,18 @@ export type AiReviewInfo = {
   passCosts: number[];
   v3?: Record<string, unknown>;
   empty?: boolean;
+  /** Ручной аудит решения (проверка человеком или Claude): итог и вердикт по каждому фото (ключ — photoId или candidateId). */
+  audit?: AiAudit;
+};
+
+export type AiAudit = {
+  by: string;
+  at: string;
+  /** 1..10 — насколько верно ИИ отмодерировал статью */
+  score: number;
+  verdict: string;
+  summary: string;
+  photos: Record<string, { ok: boolean; note: string }>;
 };
 
 export class AiModerationError extends Error {
@@ -181,6 +212,39 @@ export async function releaseUnprocessed(runId: string): Promise<number> {
   return r.count;
 }
 
+/**
+ * Снять захват со всех статей завершённого/остановленного запуска. Без этого статьи с решением `proposed`
+ * (режим «Тест» или autoApply=false) и `failed` оставались у ИИ навсегда: людям не выдавались, но были в счётчиках.
+ * Статьи, которые ещё проверяются (processing/applying свежее STALE_PROCESSING_MS), не трогаем — их отпустит
+ * следующий проход `releaseFinishedHolds`.
+ */
+export async function releaseRunHolds(runId: string, now = new Date()): Promise<number> {
+  const r = await prisma.article.updateMany({
+    where: {
+      aiRunId: runId,
+      NOT: { aiResults: { some: { runId, status: { in: ["processing", "applying"] }, updatedAt: { gte: new Date(now.getTime() - STALE_PROCESSING_MS) } } } },
+    },
+    data: { aiRunId: null },
+  });
+  return r.count;
+}
+
+/** Самолечение (каждый проход автозапуска): статьи, которые держат уже не идущие запуски, отпускаются людям. */
+export async function releaseFinishedHolds(): Promise<number> {
+  const held = await prisma.article.findMany({ where: { aiRunId: { not: null } }, distinct: ["aiRunId"], select: { aiRunId: true }, take: 500 });
+  const ids = held.map((h) => h.aiRunId!).filter(Boolean);
+  if (!ids.length) return 0;
+  // Только запуски в конечном статусе: завершённый запуск не возвращается в running, гонки с createRun нет.
+  const dead = await prisma.artAiModerationRun.findMany({ where: { id: { in: ids }, status: { in: ["done", "stopped", "failed"] } }, select: { id: true } });
+  let n = 0;
+  for (const d of dead) n += await releaseRunHolds(d.id);
+  // Статьи с захватом на удалённый запуск (каскад удаляет результаты, но не Article.aiRunId).
+  const known = new Set((await prisma.artAiModerationRun.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((r) => r.id));
+  const orphan = ids.filter((id) => !known.has(id));
+  if (orphan.length) n += (await prisma.article.updateMany({ where: { aiRunId: { in: orphan } }, data: { aiRunId: null } })).count;
+  return n;
+}
+
 /** Остановить запуск (оригинал action=stop :166-172): статус stopped, захваты с ещё не проверенных статей снимаются. */
 export async function stopAiRun(me: CurrentUser, runId: string): Promise<void> {
   const run = await prisma.artAiModerationRun.findUnique({ where: { id: runId }, include: { site: { select: { teamId: true, accessId: true } } } });
@@ -188,6 +252,8 @@ export async function stopAiRun(me: CurrentUser, runId: string): Promise<void> {
   if (run.status !== "running") throw new AiModerationError("Запуск уже завершён", 409);
   await prisma.artAiModerationRun.update({ where: { id: runId }, data: { status: "stopped", finishedAt: new Date() } });
   await releaseUnprocessed(runId);
+  // Проверенные, но не применённые (proposed/failed) — тоже людям: решение остаётся на экране «ИИ-модерация».
+  await releaseRunHolds(runId);
 }
 
 /**
@@ -198,6 +264,12 @@ export async function resolveResult(me: CurrentUser, resultId: string, op: AiRes
   const res = await prisma.artAiModerationResult.findUnique({ where: { id: resultId }, include: { run: { include: { site: { select: { teamId: true, accessId: true } } } } } });
   if (!res || !(await canAccessArtSite(me, res.run.site))) throw new AiModerationError("Решение не найдено", 404);
   if (res.status !== "proposed") throw new AiModerationError("Уже обработано", 409);
+  // Запуск завершён — статья уже у людей; если её сейчас правит сотрудник, правки ИИ поверх не накатываем.
+  const art = await prisma.article.findUnique({ where: { id: res.articleId }, select: { claimedById: true, claimedAt: true } });
+  if (art?.claimedById && art.claimedById !== me.id && art.claimedAt && art.claimedAt >= staleClaimBefore()) {
+    const u = await prisma.user.findUnique({ where: { id: art.claimedById }, select: { name: true } });
+    throw new AiModerationError(`Статью сейчас модерирует ${u?.name || "другой сотрудник"} («Модерация фото») — дождитесь, пока он закончит`, 409);
+  }
   const cas = await prisma.artAiModerationResult.updateMany({ where: { id: resultId, status: "proposed" }, data: { status: "applying", resolvedById: me.id } });
   if (!cas.count) throw new AiModerationError("Уже обработано", 409);
   return applyResult(resultId, op, me.id);
@@ -241,45 +313,84 @@ export async function insufficientAction(me: CurrentUser, articleId: string, op:
 
 /* ───────────────────────── Автозапуск (оригинал watchdog :59-103, 04 §2.3) ───────────────────────── */
 
-export type AiAutostartResult = { started: number; skipped: string[] };
+export type AiAutostartResult = { started: number; attached: number; skipped: string[] };
 
 /**
- * Раз в минуту из воркера: для сайтов с aiModeration.enabled (и включённым мастером) — свободные PHOTO_REVIEW без решения ИИ;
- * пачка `batchFrom` (1..200; 0/пусто → глобальная aiModAutoBatch), неполная уходит, если самая старая ждёт > 30 мин;
- * не стартуем при бегущем запуске сайта или бэклоге публикации ≥ backlogThreshold (0 — не ждать).
- * Возраст ожидания считаем по `updatedAt` статьи (момент входа в PHOTO_REVIEW; закрепления сотрудников его сдвигают — допустимо).
+ * Каждые 20 с из воркера: для сайтов с aiModeration.enabled (и включённым мастером) — свободные PHOTO_REVIEW без решения ИИ.
+ * Владелец: «если включён режим модерации ИИ фото, фотки должны модерироваться ИИ» — поэтому без пачек по 20 и 30 минут ожидания:
+ *  - у сайта уже идёт авто-запуск → новые статьи ДОБАВЛЯЮТСЯ к нему (aiRunId, total += n, concurrency — текущая из настроек),
+ *    запуск течёт непрерывно; воркер берёт их следующим проходом (claimNextForRun), а finishRunIfIdle не завершит запуск,
+ *    пока у него есть непроверенные статьи;
+ *  - запуска нет → новый, как только ждёт ≥ batchFrom («Запуск от», по умолчанию 1); при batchFrom > 1 неполная пачка
+ *    всё равно уходит через 30 мин ожидания самой старой статьи;
+ *  - backlogThreshold > 0: не проверяем впрок, пока в публикации столько статей и больше (0 — не ждать).
+ * Ручные запуски (кнопка) не мешают: авто-запуск сайта идёт рядом с ними.
+ * Возраст ожидания — по `updatedAt` статьи (момент входа в PHOTO_REVIEW; закрепления сотрудников его сдвигают — допустимо).
  */
 export async function aiAutostartTick(now = new Date()): Promise<AiAutostartResult> {
-  const out: AiAutostartResult = { started: 0, skipped: [] };
+  const out: AiAutostartResult = { started: 0, attached: 0, skipped: [] };
+  await releaseFinishedHolds().catch(() => 0);
   const settings = await loadArtSettings();
   if (!settings.aiModMaster) return out;
   const sites = await prisma.artSite.findMany({ where: { isActive: true }, select: { id: true, name: true, teamId: true, createdById: true, settings: true } });
   const enabled = sites.filter((s) => mergeSiteSettings(s.settings).aiModeration.enabled);
   if (!enabled.length) return out;
-  const running = await prisma.artAiModerationRun.findMany({ where: { status: "running", siteId: { in: enabled.map((s) => s.id) } }, select: { siteId: true }, distinct: ["siteId"] });
-  const busy = new Set(running.map((r) => r.siteId));
+  const autoRuns = await prisma.artAiModerationRun.findMany({
+    where: { status: "running", source: "auto", mode: "auto", siteId: { in: enabled.map((s) => s.id) } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, siteId: true },
+  });
+  const runOf = new Map<string, string>();
+  for (const r of autoRuns) if (!runOf.has(r.siteId)) runOf.set(r.siteId, r.id);
   for (const site of enabled) {
-    if (busy.has(site.id)) continue;
     const cfg = mergeSiteSettings(site.settings).aiModeration;
-    const batch = Math.max(1, Math.min(200, cfg.batchFrom || settings.aiModAutoBatch || 20));
     const free = await freePhotoReviewIds(site.id);
     if (!free.length) continue;
     // Статьи, по которым ИИ уже решил (отдал людям и т.п.), не берём — иначе они занимают запуск впустую (оригинал :76-77).
     const ids0 = await undecidedArticleIds(free.map((f) => f.id));
     if (!ids0.length) continue;
-    const set0 = new Set(ids0);
-    const waitCut = now.getTime() - AUTO_WAIT_MS;
-    const oldWaiting = free.some((f) => set0.has(f.id) && f.updatedAt.getTime() < waitCut);
-    if (ids0.length < batch && !oldWaiting) { out.skipped.push(`${site.name}: ждёт пачку ${ids0.length}/${batch}`); continue; }
     // Не модерируем впрок: если у сайта копится очередь на публикацию — ждём, пока она разойдётся (оригинал :85-89).
     if (cfg.backlogThreshold > 0) {
       const backlog = await prisma.article.count({ where: { siteId: site.id, status: { in: ["PUBLISH_QUEUED", "PUBLISHING", "REVIEW_PENDING"] satisfies ArtStatus[] } } });
       if (backlog >= cfg.backlogThreshold) { out.skipped.push(`${site.name}: бэклог публикации ${backlog} ≥ ${cfg.backlogThreshold}`); continue; }
     }
-    const r = await createRun({ teamId: site.teamId, siteId: site.id, mode: "auto", source: "auto", concurrency: cfg.concurrency || DEFAULT_CONCURRENCY, startedById: site.createdById, articleIds: ids0.slice(0, batch) });
+    const conc = cfg.concurrency || DEFAULT_CONCURRENCY;
+    const runId = runOf.get(site.id);
+    if (runId) {
+      const n = await attachToRun(runId, ids0, conc);
+      if (n > 0) out.attached += n;
+      continue;
+    }
+    const batch = Math.max(1, Math.min(200, cfg.batchFrom || 1));
+    if (ids0.length < batch) {
+      const set0 = new Set(ids0);
+      const waitCut = now.getTime() - AUTO_WAIT_MS;
+      const oldWaiting = free.some((f) => set0.has(f.id) && f.updatedAt.getTime() < waitCut);
+      if (!oldWaiting) { out.skipped.push(`${site.name}: ждёт ${ids0.length}/${batch} для запуска`); continue; }
+    }
+    // Берём всех ждущих сразу: параллельность ограничивает concurrency запуска, а не размер пачки.
+    const r = await createRun({ teamId: site.teamId, siteId: site.id, mode: "auto", source: "auto", concurrency: conc, startedById: site.createdById, articleIds: ids0 });
     if (r.count > 0) out.started++;
   }
   return out;
+}
+
+/**
+ * Добавить свободные статьи к идущему запуску. Если запуск успел завершиться между выбором и захватом —
+ * захват снимается (статьи снова свободны и уйдут в следующий запуск). Парная защита — в finishRunIfIdle.
+ */
+async function attachToRun(runId: string, articleIds: string[], concurrency: number): Promise<number> {
+  const r = await prisma.article.updateMany({ where: { id: { in: articleIds }, status: "PHOTO_REVIEW", aiRunId: null }, data: { aiRunId: runId } });
+  if (!r.count) return 0;
+  const upd = await prisma.artAiModerationRun.updateMany({
+    where: { id: runId, status: "running" },
+    data: { total: { increment: r.count }, concurrency: Math.max(1, Math.min(50, concurrency)), heartbeatAt: new Date() },
+  });
+  if (!upd.count) {
+    await releaseUnprocessed(runId);
+    return 0;
+  }
+  return r.count;
 }
 
 /* ───────────────────────── Служебные операции запуска (вызывает воркер) ───────────────────────── */
@@ -358,6 +469,14 @@ export async function finishRunIfIdle(run: AiRunRecord): Promise<boolean> {
   const waitingAuto = runAutoApplies(run) ? c.proposed : 0;
   if (unprocessed > 0 || c.busy > 0 || waitingAuto > 0) return false;
   const r = await prisma.artAiModerationRun.updateMany({ where: { id: run.id, status: "running" }, data: { status: "done", finishedAt: new Date() } });
+  // Автозапуск мог добавить статьи между подсчётом и завершением — отпускаем их, следующий проход заберёт в новый запуск.
+  if (r.count > 0) {
+    const released = await releaseUnprocessed(run.id);
+    if (released) await prisma.artAiModerationRun.update({ where: { id: run.id }, data: { total: { decrement: released } } }).catch(() => {});
+    // Тест-режим и autoApply=false: предложения (proposed) и неудачи остаются на экране «ИИ-модерация»,
+    // но статьи больше не держатся запуском — сотрудники видят их в «Модерации фото» (группа «От ИИ»).
+    await releaseRunHolds(run.id);
+  }
   return r.count > 0;
 }
 
@@ -484,6 +603,8 @@ export function focusRules(keyword: string, niche?: string | null, motif?: strin
   if (age) out.push(age.replace("Reject any photo", "FLAG any photo"));
   const aud = audienceRule(keyword, niche);
   if (aud) out.push(aud.rule.replace("Reject the photo", "FLAG the photo").replace("→ reject, do not guess", "→ FLAG it"));
+  // Аудит круга 2 (mary jane: убраны 2 женских стрит-стайла из-за мужчины на фоне): аудиторию судим только по главному герою.
+  if (g.allow !== "any" || age || aud) out.push(`AUDIENCE: judge gender/age/body only of the MAIN subject (the person wearing or showing the item). Passers-by, people in the background or a companion next to the subject are never a reason to flag.`);
   const m = String(motif || "").trim();
   if (m && !/^(none|n\/a|unknown|null|-)$/i.test(m)) out.push(`MOTIF (hard): the design must visibly contain "${m}" (painted/printed/shaped). FLAG photos where the motif is absent or only hinted by colour.`);
   out.push(`DETAILS (hard): every concrete detail named in the keyword (motif, colour, shape, length, material, room, feature, audience, age, body type) must be visible in the photo. FLAG photos that contradict or miss such a named detail. Generic words (ideas, trends, 2027, cute, aesthetic) are not details.`);
@@ -507,46 +628,58 @@ export function focusRules(keyword: string, niche?: string | null, motif?: strin
   if (/dress|outfit|look|wear|style/.test(k) && !/wedding|bride|bridal|prom|gala|evening|formal|ball|cocktail/.test(k)) {
     out.push(`OCCASION (hard): the keyword does not ask for wedding, bridal, prom or evening wear. FLAG wedding gowns, bridal dresses, ball gowns, prom/sequinned floor-length evening gowns.`);
   }
+  // Аудит круга 2 (mary jane: сверх нормы добавлен кадр одних ног без образа): в статье про образы нужен образ.
+  if (/outfits?\b|\blooks?\b/.test(k)) out.push(`OUTFIT: the keyword asks for outfits — a photo should show a styled look on a person. A tight close-up of only the item (just shoes on feet, a jacket on a hanger, a flat product shot) is at best "weak_pin" with a score below 60.`);
   if (/wedding guest|guest of wedding/.test(k) && !/nail|manicure|makeup/.test(k)) out.push(`OCCASION (hard): this is WEDDING GUEST wear — FLAG bridal gowns, white wedding dresses and veils.`);
   return out.length ? out.join("\n") + "\n" : "";
 }
 
 /* ───────────────────────── Промты mix3 (оригинал :705-706, 831-934, дословно) ───────────────────────── */
 
-// оригинал: ai-photo-moderate/index.ts:705
-const V2_HARD = new Set(["off_topic", "wrong_detail", "ai_fake", "collage_text", "catalogue", "wrong_audience", "duplicate"]);
-// оригинал: ai-photo-moderate/index.ts:706
-export const V2_REASONS = `"ok" | "off_topic" (different item/style/occasion) | "wrong_detail" (contradicts or misses a detail NAMED in the keyword) | "ai_fake" (clear AI render/illustration with visible artifacts) | "collage_text" (collage, screenshot, text-heavy graphic) | "catalogue" (retail product card; white background alone is fine) | "wrong_audience" (wrong gender/age/body type/ethnicity required by keyword) | "duplicate" (near-copy of another photo, give dup_of) | "weak_pin" (on-topic but clearly unattractive)`;
-// оригинал: ai-photo-moderate/index.ts:861
-const SEVERE = new Set(["off_topic", "wrong_detail", "ai_fake", "wrong_audience", "collage_text", "catalogue"]);
+// оригинал: ai-photo-moderate/index.ts:706 + аудит 2026-10-14: водяные знаки/логотипы, дубль = и тот же человек/фотосессия
+export const V2_REASONS = `"ok" | "off_topic" (different item/style/occasion) | "wrong_detail" (contradicts or misses a detail NAMED in the keyword or in KEYWORD MEANING) | "ai_fake" (AI-generated or illustrated image — obvious renders AND photorealistic AI: too-perfect poreless skin or nails, plastic/airbrushed look, impossible symmetry, melted or fused fingers/nails/jewellery, wrong finger count, inconsistent reflections or shadows, warped background, gibberish lettering, generic glossy "AI stock" look; flag it even without one obvious artifact when several signs add up) | "watermark_logo" (visible watermark, @handle/username, site or brand logo, caption or text overlay on the photo, brand advertising shot) | "collage_text" (collage, screenshot, text-heavy graphic) | "catalogue" (retail product card; white background alone is fine) | "wrong_audience" (the MAIN subject — the person wearing/showing the item — is the wrong gender/age/body type/ethnicity required by keyword; people in the background, passers-by, a partner or friend next to the subject are NOT a reason) | "duplicate" (near-copy of another photo, OR the same person in the same photoshoot / same outfit set as another photo, OR the 3rd+ photo of the same person/celebrity — mark only the extra one, never both, and give dup_of with the other photo id) | "weak_pin" (on-topic but clearly unattractive)`;
 
-// оригинал: ai-photo-moderate/index.ts:506-507
-const commonRules = (focus: string) => `${focus}IMPORTANT: you see small compressed PREVIEWS (320px). Every photo already passed technical resolution filters — the original size is next to each label. NEVER flag "low resolution", "blurry" or "pixelated" unless obvious out-of-focus at preview scale.
+// оригинал: ai-photo-moderate/index.ts:506-507; «MUST show» ключа — в focus (keywordVisualRule)
+const commonRules = (focus: string) => `${focus}IMPORTANT: you see small compressed PREVIEWS (up to 512px). Every photo already passed technical resolution filters — the original size is next to each label. NEVER flag "low resolution", "blurry" or "pixelated" unless obvious out-of-focus at preview scale.
 Flag a photo ONLY for a concrete, visible fact. When in doubt, do NOT flag. Returning no flags is a perfectly good answer. All "why" texts in Russian, max 8 words.`;
 
 // оригинал: ai-photo-moderate/index.ts:845-848 (sysA mix3 — дешёвая: тема/подлинность по S и R)
 const sysTopic = (keyword: string, common: string) => `You check ONLY topic relevance and authenticity of photos for a Pinterest article about "${keyword}".
 ${common}
-For EVERY S and R photo return a reason from: ${V2_REASONS}, and for R photos a pin score 0-100.
+For EVERY S and R photo return a reason from: ${V2_REASONS}, and for R photos a pin score 0-100. Give dup_of for duplicates.
 Return ONLY JSON: {"photos":[{"id":"S1","reason":"ok"},{"id":"R2","reason":"ok","score":70}]}`;
 
-// оригинал: ai-photo-moderate/index.ts:849-854 (sysM mix3 — средняя: собственное мнение по каждому фото)
+// оригинал: ai-photo-moderate/index.ts:849-854 (sysM mix3 — средняя: собственное мнение по каждому фото).
+// Аудит: фраза «A slightly weaker but on-topic photo is valuable» давала 80–95 почти всем — заменена шкалой оценок.
 const sysOpinion = (keyword: string, needed: number, minOk: number, trend: string, common: string) => `You are a senior Pinterest editor judging photos for an article about "${keyword}". Form your OWN opinion for EVERY photo, S and R.
 ${trend ? trend + "\n" : ""}${common}
-The article needs ${needed} photos (minimum ${minOk}). A slightly weaker but on-topic photo is valuable — remove only for a concrete reason.
+The article needs ${needed} photos (minimum ${minOk}). Remove only for a concrete reason.
 "Dated", nail length or shape are NOT reasons unless the keyword or trend notes explicitly require something else.
-For EVERY photo return reason from: ${V2_REASONS}, pin score 0-100, dup_of for duplicates (R may duplicate S).
-Return ONLY JSON: {"photos":[{"id":"S1","reason":"ok","score":78},{"id":"R3","reason":"ok","score":82}],"summary":"2 sentences in Russian"}`;
+SCORE must be calibrated, use the whole range: 90-100 = exceptional, would be a top pin (rare, at most 1-2 per set); 75-89 = good; 60-74 = ordinary/acceptable; 40-59 = weak; below 40 = should not be used. A typical set averages about 70-75, not 90. Score the photo itself, not the topic.
+For EVERY photo return reason from: ${V2_REASONS}, pin score 0-100, dup_of for duplicates (R may duplicate S or another R).
+Return ONLY JSON: {"photos":[{"id":"S1","reason":"ok","score":74},{"id":"R3","reason":"duplicate","score":70,"dup_of":"S2"}],"summary":"2 sentences in Russian"}`;
 
 // оригинал: ai-photo-moderate/index.ts:885-887 (sysF mix3 — средняя: только спорные фото)
+// Аудит круга 2: спор видит уже убранные фото (образец) и при «не по теме» — оставленные, чтобы похожие решались одинаково.
 const sysDispute = (keyword: string, common: string) => `You are the final editor for "${keyword}". ${common}
-For every photo shown decide KEEP or DROP. Drop only for: off_topic, wrong_detail, ai_fake, collage_text, catalogue, wrong_audience, duplicate, or a truly weak pin. Photos marked [removal needs confirmation] are dropped unless you keep them.
-Return ONLY JSON: {"keep":["S3"],"drop":[{"id":"S7","why":"..."}]}`;
+For every photo under review decide KEEP or DROP. Drop only for: off_topic, wrong_detail, ai_fake, watermark_logo, collage_text, catalogue, wrong_audience, duplicate, or a truly weak pin. Two checkers disagreed on each photo — judge it yourself, do not just follow either.
+"ai_fake" includes photorealistic AI images (see the reason list): if you see such signs, drop. A "zoom check" note means a zoomed crop showed a watermark/text or AI signs — the crop is shown next to the photo; verify it yourself.
+Photos marked [removal needs confirmation] are dropped unless you keep them. Photos marked [reference] are shown only for duplicate comparison — do not list them.
+Photos marked [already removed] were removed by both checkers — do not list them; they are precedent: decide similar photos the SAME way (same item type, same problem → same decision).
+Photos marked [kept — recheck] were accepted by both checkers: list one in "drop" ONLY if it has exactly the same problem as a photo that is removed (already or by you now), and give "same_as" with that photo id; otherwise do not list it at all.
+Return ONLY JSON: {"keep":["S3"],"drop":[{"id":"S7","why":"..."},{"id":"S12","why":"...","same_as":"S7"}]}`;
+
+// Проход «крупно» (дешёвая модель): только водяные знаки/подписи и признаки ИИ на увеличенных половинах кадра.
+const sysDetail = (keyword: string) => `You inspect ZOOMED crops of photos for a Pinterest article about "${keyword}". Each photo id is shown as two crops: part 1 (top or left half) and part 2 (bottom or right half).
+Report ONLY photos with one of these problems:
+- "watermark": an overlaid watermark, @handle/username, website or domain, brand/salon logo, signature, caption or text overlay added on top of the photo — often small, semi-transparent, in a corner or along an edge, sometimes written across the nails or hand. Put the text you read (or "logo") in "text". Text that is a natural part of the scene (print on clothing, shop signs, product labels, book covers) is NOT a watermark.
+- "ai": the image is AI-generated: melted/fused fingers, nails or jewellery, wrong number of fingers, warped or merged objects, gibberish lettering, inconsistent reflections or shadows, impossible symmetry, poreless plastic skin, unnaturally perfect hair strands. Put the sign in "text" (Russian, max 8 words).
+Give "part" (1 or 2) where you saw it. When unsure, do not report: most photos are clean and an empty list is the usual answer.
+Return ONLY JSON: {"photos":[{"id":"S3","flag":"watermark","text":"@nickname","part":2}]}`;
 
 /* ───────────────────────── Проверка статьи (оригинал reviewArticle :372-633 + mixV3 :831-934) ───────────────────────── */
 
 type ModelOut = { out: Record<string, unknown>; cost: number; model: string };
-type PhotoJudgement = { id?: string; reason?: string; score?: number; why?: string; dup_of?: string };
 
 /** Миниатюра для модели из наших файлов: thumbPath (webp) или path; null — файлов нет. */
 async function loadThumbPart(files: { thumbPath: string; path: string }): Promise<ContentPart | null> {
@@ -564,8 +697,50 @@ async function loadThumbPart(files: { thumbPath: string; path: string }): Promis
   return null;
 }
 
-const cat = (x: unknown) => String(x || "ok").toLowerCase().replace(/[^a-z_]/g, "");
-const photosMap = (out: Record<string, unknown>) => new Map<string, PhotoJudgement>(((out?.photos as PhotoJudgement[] | undefined) ?? []).map((p) => [String(p?.id || "").toUpperCase(), p]));
+/**
+ * Две увеличенные половины кадра для прохода «крупно»: сначала оригинал (path), затем миниатюра. Портрет режется
+ * на верх/низ, альбом — на лево/право, с перекрытием, чтобы подпись на стыке попала целиком хотя бы в одну половину.
+ */
+async function loadDetailParts(files: { thumbPath: string; path: string }): Promise<[ContentPart, ContentPart] | null> {
+  for (const rel of [files.path, files.thumbPath]) {
+    if (!rel) continue;
+    try {
+      const buf = await readFile(absPath(rel));
+      if (!buf.length) continue;
+      const { data, info } = await sharp(buf).rotate().resize({ width: AI_DETAIL_SIDE, height: AI_DETAIL_SIDE, fit: "inside", withoutEnlargement: true }).toBuffer({ resolveWithObject: true });
+      const w = info.width, h = info.height;
+      if (!w || !h) continue;
+      const tall = h >= w;
+      const len = Math.max(1, Math.round((tall ? h : w) * AI_DETAIL_SHARE));
+      const boxes = tall
+        ? [{ left: 0, top: 0, width: w, height: len }, { left: 0, top: h - len, width: w, height: len }]
+        : [{ left: 0, top: 0, width: len, height: h }, { left: w - len, top: 0, width: len, height: h }];
+      const parts = await Promise.all(boxes.map(async (b) => {
+        const out = await sharp(data).extract(b).resize({ width: AI_DETAIL_PART, height: AI_DETAIL_PART, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer();
+        return imagePart(out, "image/jpeg", "low");
+      }));
+      return [parts[0], parts[1]];
+    } catch {
+      /* следующий файл */
+    }
+  }
+  return null;
+}
+
+/**
+ * Текст модели пишется до наших проверок: убираем фразы про удаления, которых не было (аудит круга 2: «удалены фото
+ * с ИИ-генерацией» в pleated, «с водяными знаками» в micro french при нуле таких удалений).
+ */
+function cleanModelSummary(text: string, removedReasons: string[]): string {
+  const has = (re: RegExp) => removedReasons.some((r) => re.test(r));
+  const drop: RegExp[] = [];
+  if (!removedReasons.length) drop.push(/удал|исключ|убран/i);
+  if (!has(/^ai_fake/)) drop.push(/ИИ|сгенерир|генерац|нейросет/i);
+  if (!has(/^watermark_logo/)) drop.push(/водян|логотип|подпис|надпис/i);
+  if (!has(/^duplicate/)) drop.push(/дубл|повтор/i);
+  return text.split(/(?<=[.!?])\s+/).filter((x) => x && !drop.some((re) => re.test(x) && /удал|исключ|убран|убрал/i.test(x))).join(" ").trim();
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -589,6 +764,35 @@ async function callModel(ctx: AiCtx, spent: { usd: number }, system: string, par
     }
   }
   throw new Error(lastErr || `${pass}: модель не ответила`);
+}
+
+/**
+ * Смысл ключа для правила «MUST show» (аудит: milk bath без цветов, обычная чёлка вместо baby bangs).
+ * Порядок: словарь известных трендов (бесплатно) → кэш `Article.facts.keywordVisual` для того же ключа →
+ * одно дешёвое обращение text_fast (~$0.0001) с записью в кэш. Сбой — без правила, проверка идёт дальше;
+ * стоимость любого обращения учитывается в `spent`.
+ */
+async function keywordVisual(ctx: AiCtx, spent: { usd: number }, articleId: string, keyword: string, facts: ArticleFacts | null): Promise<{ text: string; source: "dict" | "cache" | "model" | "none"; cost: number }> {
+  const known = knownVisual(keyword);
+  if (known) return { text: known, source: "dict", cost: 0 };
+  if (!keyword.trim()) return { text: "", source: "none", cost: 0 };
+  const cached = (facts as (ArticleFacts & { keywordVisual?: { keyword?: string; text?: string } }) | null)?.keywordVisual;
+  // Кэш прежней версии (v1 сужал ключ) не используем — определение спрашиваем заново.
+  if (cached && cached.keyword === keyword && typeof cached.text === "string" && (cached as { v?: number }).v === KEYWORD_VISUAL_VERSION) return { text: cached.text, source: "cache", cost: 0 };
+  let cost = 0;
+  try {
+    const r = await aiChat(ctx, { slot: SLOTS.textFast, system: KEYWORD_VISUAL_SYSTEM, user: `Keyword: "${keyword}"`, json: true, temperature: 0.1, maxTokens: 300, timeoutMs: 30_000 });
+    cost = r.costUsd ?? 0;
+    spent.usd += cost;
+    const text = parseKeywordVisual(r.json ?? parseJsonLenient(r.text));
+    // Кэш пишем в свежие facts (не затираем то, что могли дописать этапы), пустое определение тоже кэшируем.
+    const fresh = await prisma.article.findUnique({ where: { id: articleId }, select: { facts: true } });
+    const base = fresh?.facts && typeof fresh.facts === "object" && !Array.isArray(fresh.facts) ? (fresh.facts as Record<string, unknown>) : {};
+    await prisma.article.update({ where: { id: articleId }, data: { facts: { ...base, keywordVisual: { keyword, text, v: KEYWORD_VISUAL_VERSION, at: new Date().toISOString() } } as Prisma.InputJsonValue } }).catch(() => {});
+    return { text, source: "model", cost };
+  } catch {
+    return { text: "", source: "none", cost };
+  }
 }
 
 type CurrentPhoto = { id: string; thumbPath: string; path: string; publicUrl: string; sourceUrl: string; width: number | null; height: number | null };
@@ -662,13 +866,22 @@ export async function reviewArticle(run: AiRunRecord, articleId: string): Promis
   const reserveParts0 = await Promise.all(reserveAll.slice(0, 15).map((c) => loadThumbPart(c)));
   const reserve = reserveAll.slice(0, 15).filter((_, i) => reserveParts0[i]); // оригинал mixV3 :833 — одна порция лучших
   const reserveParts = reserveParts0.filter((p): p is ContentPart => !!p);
+  // Проход «крупно»: две увеличенные половины каждого фото (S и R) — водяные знаки и признаки ИИ.
+  const [curDetail, resDetail] = await Promise.all([Promise.all(current.map((p) => loadDetailParts(p))), Promise.all(reserve.map((c) => loadDetailParts(c)))]);
+  const detailOf = (id: string): [ContentPart, ContentPart] | null => {
+    const m = /^([SR])(\d+)$/.exec(id);
+    if (!m) return null;
+    return (m[1] === "S" ? curDetail : resDetail)[Number(m[2]) - 1] ?? null;
+  };
 
   const ctx: AiCtx = { userId: run.startedById ?? run.site.createdById ?? "", teamId: run.teamId, articleId, siteId: run.siteId };
   if (!ctx.userId) throw new Error("У запуска нет пользователя для ключей ИИ: укажите владельца сайта");
   const spent = { usd: 0 };
   try {
     const sz = (x: { width: number | null; height: number | null }) => (x.width && x.height ? ` (original ${x.width}x${x.height}px)` : "");
-    const focus = focusRules(keyword, niche, motif);
+    // Смысл ключа («MUST show») — в правила обеих моделей и спора (аудит: не тот вариант ключа).
+    const kv = await keywordVisual(ctx, spent, articleId, keyword, facts);
+    const focus = focusRules(keyword, niche, motif) + keywordVisualRule(keyword, kv.text);
     const common = commonRules(focus);
 
     // оригинал :836-843
@@ -683,106 +896,97 @@ export async function reviewArticle(run: AiRunRecord, articleId: string): Promis
     reserve.forEach((c, i) => { rBlocks.push({ type: "text", text: `R${i + 1}${sz(c)}` }); rBlocks.push(reserveParts[i]); });
     // Эталонов (QUALITY BAR) нет — см. шапку файла.
 
-    // оригинал :855-858
-    const [pa, pm] = await Promise.all([
+    const dBlocks: ContentPart[] = [{ type: "text", text: `ARTICLE KEYWORD: "${keyword}". Zoomed crops, two per photo:` }];
+    for (const id of [...current.map((_, i) => `S${i + 1}`), ...reserve.map((_, i) => `R${i + 1}`)]) {
+      const d = detailOf(id);
+      if (!d) continue;
+      dBlocks.push({ type: "text", text: `${id} part 1` }, d[0], { type: "text", text: `${id} part 2` }, d[1]);
+    }
+
+    // оригинал :855-858 + проход «крупно» параллельно; его сбой не роняет проверку (тогда без третьего сигнала).
+    let detailError: string | null = null;
+    const noDetail: ModelOut = { out: { photos: [] }, cost: 0, model: AI_MOD_MODELS.lite };
+    const [pa, pm, pd] = await Promise.all([
       callModel(ctx, spent, sysTopic(keyword, common), [...sBlocks, ...rBlocks], "v3 тема (lite)", false),
       callModel(ctx, spent, sysOpinion(keyword, needed, minOk, trend, common), [...sBlocks, ...rBlocks], "v3 мнение (flash)", true),
+      dBlocks.length > 1
+        ? callModel(ctx, spent, sysDetail(keyword), dBlocks, "v3 крупно (lite)", false).catch((e) => { detailError = (e instanceof Error ? e.message : String(e)).slice(0, 200); return noDetail; })
+        : Promise.resolve(noDetail),
     ]);
     // Отметка «живы» для сторожа (см. watchdogRun): следующий проход может занять ещё до 150 с.
     await prisma.artAiModerationResult.updateMany({ where: { runId: run.id, articleId, status: "processing" }, data: { error: null } }).catch(() => {});
-    const A = photosMap(pa.out);
-    const M = photosMap(pm.out);
+    const W: DetailFlags = parseDetailFlags(pd.out);
+    // Находки «крупно» — сигнал на стороне дешёвой модели (там, где она сказала «ок»), см. mergeDetailFlags.
+    const A: Judgements = mergeDetailFlags(judgementsOf(pa.out), W);
+    const M = judgementsOf(pm.out);
     const sIds = current.map((_, i) => `S${i + 1}`);
-    const score = (id: string) => Number(M.get(id)?.score ?? 60);
-    const drops = new Map<string, string>();
-    const disputed: string[] = [];
-    const autoKept: string[] = [];
-    // оригинал :865-873
-    for (const id of sIds) {
-      const a1 = cat(A.get(id)?.reason), m1 = cat(M.get(id)?.reason);
-      const why = `${m1}: ${String(M.get(id)?.why || A.get(id)?.why || m1)}`;
-      if (m1 === "ok") { if (SEVERE.has(a1) && a1 !== "wrong_detail" && a1 !== "off_topic") disputed.push(id); else if (a1 !== "ok") autoKept.push(id); continue; }
-      if (m1 === "duplicate") { drops.set(id, why); continue; }
-      if (V2_HARD.has(m1)) { if (a1 !== "ok") drops.set(id, why); else disputed.push(id); continue; }
-      // weak_pin: решаем по оценке без второго запроса
-      if (score(id) < 35) drops.set(id, why); else if (score(id) >= 50) autoKept.push(id); else disputed.push(id);
-    }
-    // оригинал :874-889
-    const confirm = drops.size / Math.max(1, current.length) > 0.35 ? [...drops.keys()] : [];
-    const look = [...new Set([...disputed, ...confirm])];
+    const score = (id: string) => scoreOf(M, id);
+
+    // Фото статьи (правила — ./aiModerationRules.ts): обе модели за удаление → убрать; одна против «ок» другой → спор.
+    const sv = classifyArticlePhotos(sIds, A, M);
+    const confirm = removalsNeedConfirm(sv, current.length);
+    const look = [...new Set([...sv.disputed, ...confirm])];
+    // Причина замечания по фото (та сторона, что за удаление) — для перепроверки «по аналогии».
+    const flagReason = (id: string) => [M.get(id), A.get(id)].find((j) => j && j.reason !== "ok" && j.reason !== "weak_pin")?.reason ?? "";
+    const decidedDrops = [...sv.drops.keys()].filter((id) => !confirm.includes(id));
+    const topicIssue = [...decidedDrops, ...look].some((id) => CONSISTENCY_REASONS.test(flagReason(id)));
+    // Оставленные обеими моделями фото показываем спору, только если что-то убирается по теме/аудитории/ИИ.
+    const recheck = topicIssue ? sIds.filter((id) => !look.includes(id) && !sv.drops.has(id) && curParts[Number(id.slice(1)) - 1]).slice(0, RECHECK_MAX) : [];
     let pf: ModelOut = { out: { keep: [], drop: [] }, cost: 0, model: pm.model };
     let finalUsed = false;
-    if (disputed.length > 2 || confirm.length) {
+    let dispute: DisputeAnswer = parseDispute(null, true);
+    let disputeError: string | null = null;
+    if (look.length || (recheck.length && decidedDrops.length)) {
       finalUsed = true;
-      const fb: ContentPart[] = [{ type: "text", text: `ARTICLE KEYWORD: "${keyword}". Disputed photos only:` }];
+      const fb: ContentPart[] = [{ type: "text", text: `ARTICLE KEYWORD: "${keyword}". Photos under review:` }];
+      const shown = new Set<string>();
+      const pushPhoto = (id: string, label: string) => {
+        const m = /^([SR])(\d+)$/.exec(id);
+        if (!m || shown.has(id)) return;
+        const idx = Number(m[2]) - 1;
+        const part = m[1] === "S" ? curParts[idx] : reserveParts[idx];
+        if (!part) return;
+        shown.add(id);
+        fb.push({ type: "text", text: label });
+        fb.push(part);
+      };
       for (const id of look) {
-        const idx = Number(id.slice(1)) - 1;
-        fb.push({ type: "text", text: `${id} — check A: ${cat(A.get(id)?.reason)} ${A.get(id)?.why || ""}; editor: ${cat(M.get(id)?.reason)} ${M.get(id)?.why || ""}${confirm.includes(id) ? " [removal needs confirmation]" : ""}` });
-        const part = curParts[idx];
-        if (part) fb.push(part);
+        const a1 = A.get(id), m1 = M.get(id);
+        const w = W.get(id);
+        pushPhoto(id, `${id} — check A: ${a1?.reason ?? "ok"} ${a1?.why || ""}; editor: ${m1?.reason ?? "ok"} ${m1?.why || ""}${m1?.dupOf || a1?.dupOf ? ` (dup_of ${m1?.dupOf || a1?.dupOf})` : ""}${w ? `; zoom check: ${w.kind} "${w.text}"` : ""}${confirm.includes(id) ? " [removal needs confirmation]" : ""}`);
+        // Увеличенная половина, где проход «крупно» нашёл подпись/признак ИИ, — рядом с фото.
+        const d = w ? detailOf(id) : null;
+        if (d) fb.push({ type: "text", text: `${id} zoomed part ${w?.part === 1 ? 2 : 1}` }, d[w?.part === 1 ? 1 : 0]);
       }
-      pf = await callModel(ctx, spent, sysDispute(keyword, common), fb, "v3 спор (flash)", true);
-    }
-    // оригинал :890-902
-    const fDrop = new Map<string, string>(((pf.out.drop as Array<{ id?: string; why?: string }> | undefined) ?? []).map((d) => [String(d?.id || "").toUpperCase(), String(d?.why || "")]));
-    const fKeep = new Set<string>(((pf.out.keep as unknown[] | undefined) ?? []).map((x) => String(x || "").toUpperCase()));
-    const overturned: Array<{ id: string; why: string }> = autoKept.map((id) => ({ id, why: "средняя модель не подтвердила замечание" }));
-    for (const id of look) {
-      if (finalUsed) {
-        if (fDrop.has(id)) drops.set(id, fDrop.get(id) || drops.get(id) || "финал");
-        else if (fKeep.has(id) || !confirm.includes(id)) { if (drops.delete(id) || disputed.includes(id)) overturned.push({ id, why: "оставлено после спора" }); }
-      } else {
-        // без второго запроса: тяжёлое замечание средней модели — убрать, иначе оставить
-        const m1 = cat(M.get(id)?.reason);
-        if (m1 !== "ok" && (V2_HARD.has(m1) || score(id) < 45)) drops.set(id, `${m1}: ${M.get(id)?.why || ""}`); else overturned.push({ id, why: "оставлено по мнению средней модели" });
+      // Образец: уже убранные обеими моделями (последовательность решений), текстом — все, картинками — первые 4.
+      if (decidedDrops.length) {
+        fb.push({ type: "text", text: `Already removed by both checkers: ${decidedDrops.map((id) => `${id} (${(sv.drops.get(id) || "").slice(0, 70)})`).join("; ")}` });
+        for (const id of decidedDrops.slice(0, DECIDED_REF_MAX)) pushPhoto(id, `${id} [already removed] — ${(sv.drops.get(id) || "").slice(0, 90)}`);
+      }
+      for (const id of recheck) pushPhoto(id, `${id} [kept — recheck]`);
+      // Для дублей показываем и «оригинал», иначе спор не может проверить повтор.
+      for (const id of look) {
+        const ref = M.get(id)?.dupOf || A.get(id)?.dupOf;
+        if (ref && !look.includes(ref)) pushPhoto(ref, `${ref} [reference] — the photo ${id} may duplicate`);
+      }
+      try {
+        pf = await callModel(ctx, spent, sysDispute(keyword, common), fb, "v3 спор (flash)", true);
+        dispute = parseDispute(pf.out, true);
+      } catch (e) {
+        // Спор не ответил: спорные фото оставляем, решение — людям (verdictFrom), стоимость попыток уже в spent.
+        disputeError = (e instanceof Error ? e.message : String(e)).slice(0, 200);
+        dispute = parseDispute(null, false);
       }
     }
-    // Резерв: добавляем то, что одобрили обе модели; обязательно добираем до нужного количества (оригинал :903-915).
-    const keptS = sIds.filter((id) => !drops.has(id));
-    const avg = keptS.length ? keptS.reduce((t, id) => t + score(id), 0) / keptS.length : 60;
-    const rIds = reserve.map((_, i) => `R${i + 1}`);
-    const resOk = rIds.filter((id) => cat(M.get(id)?.reason) === "ok" && !SEVERE.has(cat(A.get(id)?.reason)) && cat(A.get(id)?.reason) !== "duplicate").sort((x, y) => score(y) - score(x));
-    const rejectedByCode = rIds.filter((id) => !resOk.includes(id)).map((id) => ({ id, why: `${cat(M.get(id)?.reason)}/${cat(A.get(id)?.reason)}` }));
-    const adds: Array<{ id: string; why: string }> = [];
-    for (const id of resOk) {
-      if (adds.length >= MAX_ADDS) break;
-      const must = keptS.length + adds.length < needed;
-      if (must ? score(id) >= 50 : score(id) >= Math.max(70, avg)) adds.push({ id, why: must ? `добор до ${needed}, оценка ${score(id)}` : `сильнее среднего (${score(id)})` });
-    }
-    // Порядок: 5 сильнейших первыми, дальше чередуем сильные/обычные (оригинал :916-918).
-    const poolS = [...keptS.map((id) => ({ id, s: score(id) })), ...adds.map((x) => ({ id: x.id, s: score(x.id) }))].sort((x, y) => y.s - x.s);
-    const top = poolS.slice(0, 5), rest = poolS.slice(5);
-    const strong = rest.slice(0, Math.ceil(rest.length / 2)), weak = rest.slice(Math.ceil(rest.length / 2));
-    const ordered = [...top];
-    for (let i = 0; i < Math.max(strong.length, weak.length); i++) { if (strong[i]) ordered.push(strong[i]); if (weak[i]) ordered.push(weak[i]); }
-    const total = keptS.length + adds.length;
-    // оригинал :920-923
-    const parsed = {
-      final: ordered.map((x) => x.id),
-      drop: [...drops].map(([id, why]) => ({ id, why })),
-      add: adds,
-      overturned,
-      verdict: total >= minOk ? "approve" : "insufficient",
-      confidence: 85,
-      scores: null as Record<string, number> | null,
-      summary: String((pm.out?.summary as string | undefined) || ""),
-    };
-    const flagged = new Set([...drops.keys(), ...disputed, ...autoKept]);
-    const okReserve = new Set(adds.map((x) => x.id));
-    const flagOf = (id: string) => [drops.get(id) || ""].filter(Boolean);
-    const passCosts = [pa.cost, pm.cost, pf.cost];
-    const v3Log = { version: "mix3", lite_topic: pa.out, flash_opinion: pm.out, final_pass: finalUsed ? pf.out : null, final_used: finalUsed, disputed, confirm, auto_kept: autoKept, reserve_candidates: resOk, rejected_by_code: rejectedByCode, reserve_total: reserve.length };
+    const res = resolveDisputes(sv, confirm, M, A, dispute, recheck);
+    const drops = res.drops;
 
-    // Правило согласия (оригинал :563-574): убрать неотмеченное фото можно только как дубль или по hardRe; добавить — только okReserve.
-    const dupRe = /дубл|похож|повтор|duplicate|similar/i;
-    const dropList = parsed.drop.map((d) => ({ id: String(d.id || "").toUpperCase(), why: String(d.why || "") }));
-    // оригинал :567
-    const hardRe = /аудитор|этнич|black|african|latina|asian|plus|фигур|стандартн|худая|худые|худой|slim|комплекц|мужчин|мужск|male|\bmen\b|детск|дети|ребён|ребен|child|kid|\bai\b|ии-|генерац|невест|свадебн|bride|возраст|молод|older|young/i;
-    const lateHard = dropList.filter((d) => !flagged.has(d.id) && !dupRe.test(d.why) && hardRe.test(d.why));
-    const allowedDrop = new Set(dropList.filter((d) => flagged.has(d.id) || dupRe.test(d.why) || hardRe.test(d.why)).map((d) => d.id));
-    const finalIds: string[] = parsed.final.map((x) => String(x || "").toUpperCase()).filter((id) => (id.startsWith("S") ? true : okReserve.has(id)));
-    const inFinal = new Set(finalIds);
-    current.forEach((_, i) => { const id = `S${i + 1}`; if (!inFinal.has(id) && !allowedDrop.has(id)) finalIds.push(id); });
+    // Резерв: добор до нормы и не больше +30% сверх неё, без повторов человека/фотосессии (./aiModerationRules.ts).
+    const keptS = sIds.filter((id) => !drops.has(id));
+    const rIds = reserve.map((_, i) => `R${i + 1}`);
+    const pick = pickAdds({ rIds, keptS, needed, minOk, maxAdds: MAX_ADDS, A, M });
+    const adds = pick.adds;
+    const finalIds = orderFinal(keptS, adds, M);
 
     // оригинал :576-599
     const resolveRef = (id: string): AiFinalItem | null => {
@@ -793,52 +997,47 @@ export async function reviewArticle(run: AiRunRecord, articleId: string): Promis
       const c = reserve[n];
       return c ? { kind: "R", id: c.id, url: c.url, src: c.src } : null;
     };
-    const dropWhy = new Map<string, string>(dropList.map((d) => [d.id, (d.why || flagOf(d.id).join("; ")).slice(0, 120)]));
-    const addWhy = new Map<string, string>(parsed.add.map((d) => [String(d.id || "").toUpperCase(), String(d.why || "").slice(0, 120)]));
+    const addWhy = new Map<string, string>(adds.map((d) => [d.id, d.why.slice(0, 120)]));
     const seen = new Set<string>();
     const final: Array<AiFinalItem & { why: string | null }> = [];
-    let addsN = 0;
-    for (const raw of finalIds) {
-      const key = String(raw || "").toUpperCase();
+    for (const key of finalIds) {
       const ref = resolveRef(key);
       if (!ref || seen.has(ref.id)) continue;
-      if (ref.kind === "R") { if (addsN >= MAX_ADDS) continue; addsN++; }
       seen.add(ref.id);
       final.push({ ...ref, why: ref.kind === "R" ? addWhy.get(key) || null : null });
     }
     if (!final.length) throw new Error("ИИ не вернул итоговую подборку");
     const removed: AiRemovedItem[] = current.map((p, i) => ({ p, key: `S${i + 1}` })).filter(({ p }) => !seen.has(p.id))
-      .map(({ p, key }) => ({ photoId: p.id, url: p.publicUrl, sourceUrl: p.sourceUrl, reason: dropWhy.get(key) || "не вошло в итог" }));
+      .map(({ p, key }) => ({ photoId: p.id, url: p.publicUrl, sourceUrl: p.sourceUrl, reason: (drops.get(key) || "не вошло в итог").slice(0, 120) }));
     const added: AiAddedItem[] = final.filter((f) => f.kind === "R").map((f) => {
       const c = reserve.find((r) => r.id === f.id)!;
       return { candidateId: f.id, url: f.url, sourceUrl: c.thumbUrl || "", src: c.src, reason: f.why };
     });
 
-    // Решение считаем по фактам, а не по словам модели (оригинал :601-621).
-    const modelVerdict = ["approve", "insufficient", "human"].includes(parsed.verdict) ? parsed.verdict : "human";
-    const dropShare = current.length ? removed.length / current.length : 0;
-    const overturnedN = parsed.overturned.length;
-    let decision: AiDecision = final.length >= minOk ? "approve" : "insufficient";
-    const reasons: string[] = [];
-    if (modelVerdict === "human") reasons.push("ревизор не уверен");
-    if (decision === "insufficient" && current.length && final.length < current.length / 2) reasons.push(`удалено больше половины (${removed.length}/${current.length})`);
-    if (decision === "approve" && modelVerdict === "insufficient") reasons.push("ревизор считает, что хороших фото мало");
-    let confidence = Math.max(0, Math.min(100, Number(parsed.confidence) || 0));
-    if (dropShare > 0.3) confidence = Math.min(confidence, 70);
-    if (flagged.size && overturnedN / flagged.size > 0.5) confidence = Math.min(confidence, 70); // проверки сильно расходятся
-    if (final.length < minOk + 3 && decision === "approve") confidence = Math.min(confidence, 74); // впритык к минимуму
-    if (lateHard.length >= 3) { confidence = Math.min(confidence, 70); reasons.push(`ревизор нашёл ${lateHard.length} нарушений, пропущенных первой проверкой`); }
-    if (dropShare > 0.3) reasons.push(`удалено ${Math.round(dropShare * 100)}% подборки`);
-    if (flagged.size && overturnedN / flagged.size > 0.5) reasons.push("проверки сильно расходятся");
-    if (reasons.some((r) => /не уверен|больше половины|мало|подборки/.test(r))) decision = "human";
-    const factLine = `Итог: ${final.length} фото из ${current.length} (убрано ${removed.length}, добавлено ${added.length}, минимум ${minOk}).${decision === "human" && reasons.length ? " Людям: " + reasons.join(", ") + "." : ""}`;
+    // Решение и уверенность — из согласия моделей и фактов (оригинал :601-621, правила — verdictFrom).
+    const removedReasons = [...drops.values()];
+    const vd = verdictFrom({ total: current.length, final: final.length, needed, minOk, agreed: sv.agreed, disputed: sv.disputed.length, flags: sv.flags.length, res, removedReasons }, AUTO_CONFIDENCE);
+    const decision: AiDecision = vd.decision;
+    const confidence = vd.confidence;
+    const reasons = vd.reasons;
+    const modelVerdict = final.length >= minOk ? "approve" : "insufficient";
+    const passCosts = [pa.cost, pm.cost, pf.cost, kv.cost, pd.cost];
+    const v3Log = {
+      version: "mix3.3", lite_topic: pa.out, detail_pass: pd.out, detail_flags: Object.fromEntries(W), detail_error: detailError, recheck, consistency_drops: res.consistencyDrops, flash_opinion: pm.out, final_pass: finalUsed ? pf.out : null, final_used: finalUsed, final_error: disputeError,
+      disputed: sv.disputed, disputed_by: sv.disputedBy, confirm, auto_kept: sv.autoKept.map((x) => x.id), agreed: sv.agreed, flags: sv.flags,
+      kept_after_dispute: res.keptAfterDispute, dropped_after_dispute: res.droppedAfterDispute, agree_share: Math.round(vd.agreeShare * 100) / 100,
+      reserve_candidates: pick.candidates, rejected_by_code: pick.rejected, reserve_total: reserve.length,
+      adds: adds.map((x) => ({ id: x.id, kind: x.kind, score: score(x.id) })), extra_threshold: pick.extraThreshold, cap: pick.cap,
+      keyword_visual: { text: kv.text, source: kv.source, cost: kv.cost },
+    };
+    const factLine = `Итог: ${final.length} фото из ${current.length} (убрано ${removed.length}, добавлено ${added.length}, норма ${needed}, минимум ${minOk}).${decision === "human" && reasons.length ? " Людям: " + reasons.join(", ") + "." : ""}`;
     // Текст модели пишется до наших проверок — если он описывает удаления, которых нет, не показываем его.
-    const modelSum = String(parsed.summary || "").replace(/(Одобрено|Отобраны?|Подборка из|Оставлено|Оставлены?) \d+[^.]*\./gi, "").trim();
+    const modelSum = cleanModelSummary(String((pm.out?.summary as string | undefined) || "").replace(/(Одобрено|Отобраны?|Подборка из|Оставлено|Оставлены?) \d+[^.]*\./gi, "").trim(), removedReasons);
     const summary = removed.length === 0 && /удален|исключен/i.test(modelSum) ? `${factLine} Все фото прошли проверку.` : `${factLine} ${modelSum}`;
 
     const review: AiReviewInfo = {
-      humanReasons: reasons, modelVerdict, scores: parsed.scores, needed, minOk,
-      model: `mix3: ${pa.model} + ${pm.model}`, passes: finalUsed ? 3 : 2, flagged: flagged.size, overturned: parsed.overturned, passCosts, v3: v3Log,
+      humanReasons: reasons, modelVerdict, scores: null, needed, minOk,
+      model: `mix3: ${pa.model} + ${pm.model}`, passes: 2 + (finalUsed ? 1 : 0) + (dBlocks.length > 1 && !detailError ? 1 : 0), flagged: sv.flags.length, overturned: res.overturned, passCosts, v3: v3Log,
     };
     await save({
       status: "proposed", decision, confidence,

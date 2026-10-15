@@ -11,7 +11,7 @@ export const RUN_RETENTION_DAYS = 90;
 export async function purgeOldRuns(days = RUN_RETENTION_DAYS, now = new Date()): Promise<{ deleted: string[] }> {
   const cutoff = new Date(now.getTime() - days * 86_400_000);
   const candidates = await prisma.pinRun.findMany({
-    where: { status: { notIn: ["QUEUED", "RUNNING"] }, NOT: { name: { startsWith: "__" } } },
+    where: { status: { notIn: ["QUEUED", "RUNNING"] }, NOT: { name: "__system__" } },
     select: { id: true, updatedAt: true },
   });
   const deleted: string[] = [];

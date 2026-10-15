@@ -119,9 +119,12 @@ export type ArtSiteSettings = {
     writingEnabled: boolean;
     writingLimit: number;
     publishLimit: number;
-    /** Включать выключенные цепочки при появлении новых статей */
-    autoRestart: boolean;
-    /** Служебные пометки автозапуска (worker/articles/autostart.ts): почему и когда цепочка выключена, с какого момента простаивает (ISO). */
+    /**
+     * Устаревшие поля (до 2026-10-15: автовыключение цепочки после 15 мин простоя и автовключение). Цепочки теперь
+     * включает и выключает только владелец; старые значения читаются один раз миграцией worker/articles/autostart.ts
+     * и удаляются. mergeSiteSettings их не возвращает.
+     */
+    autoRestart?: boolean;
     photoOffReason?: "idle" | "manual";
     photoOffAt?: string;
     photoIdleSince?: string;
@@ -129,6 +132,11 @@ export type ArtSiteSettings = {
     writingOffAt?: string;
     writingIdleSince?: string;
   };
+  /**
+   * ИИ-модерация фото сайта. enabled (и мастер-выключатель aiModMaster) — каждая статья сайта с реальными фото после отбора
+   * ждёт проверки фото (photoReview принудительно), воркер сразу отдаёт её ИИ. batchFrom — «Запуск от (статей)»: новый запуск
+   * ИИ стартует, когда ждут столько статей (1 — сразу); к уже идущему запуску новые статьи добавляются без ожидания.
+   */
   aiModeration: { enabled: boolean; batchFrom: number; concurrency: number; backlogThreshold: number; autoApply: boolean };
   /** Переопределения поиска для сайта (пусто — из рецепта) */
   search: { country: string; language: string; freshness: string };
@@ -142,27 +150,63 @@ export const DEFAULT_SITE_SETTINGS: ArtSiteSettings = {
   photoReview: true,
   publishMode: "publish_then_edit",
   categories: { defaultId: null, rules: [], useAi: true },
-  autostart: { photoEnabled: true, photoLimit: 3, writingEnabled: true, writingLimit: 3, publishLimit: 2, autoRestart: true },
-  aiModeration: { enabled: false, batchFrom: 20, concurrency: 5, backlogThreshold: 0, autoApply: true },
+  autostart: { photoEnabled: true, photoLimit: 3, writingEnabled: true, writingLimit: 3, publishLimit: 2 },
+  aiModeration: { enabled: false, batchFrom: 1, concurrency: 5, backlogThreshold: 0, autoApply: true },
   search: { country: "", language: "", freshness: "" },
   yearInUrlPercent: null,
   sheetUrl: "",
 };
 
+/** Пределы чисел автозапуска и ИИ-модерации — одни для формы настроек сайта и экрана «Автозапуск». */
+export const SITE_LIMITS = {
+  photoLimit: [1, 50], writingLimit: [1, 50], publishLimit: [1, 50],
+  batchFrom: [1, 200], concurrency: [1, 50], backlogThreshold: [0, 1000],
+} as const satisfies Record<string, readonly [number, number]>;
+
+const clampTo = (v: unknown, [min, max]: readonly [number, number], def: number): number => {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN;
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, Math.round(n))) : def;
+};
+
 export function mergeSiteSettings(raw: unknown): ArtSiteSettings {
   const r = (raw ?? {}) as Partial<ArtSiteSettings>;
   const d = DEFAULT_SITE_SETTINGS;
+  const a = { ...d.autostart, ...(r.autostart ?? {}) };
+  const m = { ...d.aiModeration, ...(r.aiModeration ?? {}) };
+  const L = SITE_LIMITS;
   return {
     photoCount: { ...d.photoCount, ...(r.photoCount ?? {}) },
     photoReview: r.photoReview ?? d.photoReview,
     publishMode: r.publishMode ?? d.publishMode,
     categories: { ...d.categories, ...(r.categories ?? {}), rules: r.categories?.rules ?? [] },
-    autostart: { ...d.autostart, ...(r.autostart ?? {}) },
-    aiModeration: { ...d.aiModeration, ...(r.aiModeration ?? {}) },
+    // Только действующие поля: устаревшие пометки простоя (autoRestart, *OffReason, *IdleSince…) сюда не попадают.
+    autostart: {
+      photoEnabled: a.photoEnabled !== false, photoLimit: clampTo(a.photoLimit, L.photoLimit, d.autostart.photoLimit),
+      writingEnabled: a.writingEnabled !== false, writingLimit: clampTo(a.writingLimit, L.writingLimit, d.autostart.writingLimit),
+      publishLimit: clampTo(a.publishLimit, L.publishLimit, d.autostart.publishLimit),
+    },
+    aiModeration: {
+      enabled: m.enabled === true,
+      // 0/пусто в старых данных — «без ожидания»
+      batchFrom: clampTo(m.batchFrom || 1, L.batchFrom, 1),
+      concurrency: clampTo(m.concurrency, L.concurrency, d.aiModeration.concurrency),
+      backlogThreshold: clampTo(m.backlogThreshold, L.backlogThreshold, 0),
+      autoApply: m.autoApply !== false,
+    },
     search: { ...d.search, ...(r.search ?? {}) },
     yearInUrlPercent: r.yearInUrlPercent ?? d.yearInUrlPercent,
     sheetUrl: r.sheetUrl ?? d.sheetUrl,
   };
+}
+
+/**
+ * ИИ-модерация фото действует на сайте: включена в настройках сайта и (если передан) мастер-выключатель aiModMaster включён.
+ * Тогда статья с реальными фото после отбора ждёт проверки фото (PHOTO_REVIEW) — её сразу берёт ИИ.
+ * siteSettings — сырое ArtSite.settings или уже собранное mergeSiteSettings.
+ */
+export function aiModerationOn(siteSettings: unknown, global?: { aiModMaster: boolean }): boolean {
+  if (global && !global.aiModMaster) return false;
+  return mergeSiteSettings(siteSettings).aiModeration.enabled;
 }
 
 /** Настройки запуска (ArtRun.settings): что выбрал пользователь на странице «Новый запуск». */

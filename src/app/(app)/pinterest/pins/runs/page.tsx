@@ -5,6 +5,12 @@ import { pinRunWhere, pinSiteWhere } from "@/lib/sites/access";
 import { Badge, Card, Empty, PageHeader, type SearchParams, sp } from "@/components/ui";
 import { RUN_STATUS_LABELS, STAGE_LABELS, runStatusTone } from "@/components/pins/labels";
 import { RUN_RETENTION_DAYS } from "@/lib/pins/runs/cleanup";
+import { problemsForRuns } from "@/lib/pins/runs/status";
+import { deleteConfirmText, runDeleteImpact } from "@/lib/pins/runs/actions";
+import { ActionForm } from "@/components/ActionForm";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { deleteRunAction } from "@/actions/pins";
+import { ProblemsDetails } from "@/components/pins/ProblemsDetails";
 import { fmtDate } from "@/lib/utils";
 import type { PinRunStatus } from "@prisma/client";
 import type { PinStage } from "@/lib/pins/types";
@@ -20,7 +26,7 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
   const siteId = sp(p, "site");
   const status = STATUSES.find((s) => s === sp(p, "status"));
   const page = Math.max(1, Number(sp(p, "page")) || 1);
-  const where = { ...(await pinRunWhere(me)), NOT: { name: { startsWith: "__" } }, ...(siteId ? { siteId } : {}), ...(status ? { status } : {}) };
+  const where = { ...(await pinRunWhere(me)), NOT: { name: "__system__" }, ...(siteId ? { siteId } : {}), ...(status ? { status } : {}) };
   const [sites, total, runs] = await Promise.all([
     prisma.pinSite.findMany({ where: await pinSiteWhere(me), orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.pinRun.count({ where }),
@@ -29,6 +35,8 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
       include: { site: { select: { name: true } }, _count: { select: { pages: true, items: { where: { kind: "pin", status: { not: "REMOVED" } } } } } },
     }),
   ]);
+  const problems = await problemsForRuns(runs);
+  const impacts = new Map(await Promise.all(runs.map(async (r) => [r.id, await runDeleteImpact(r.id)] as const)));
   const lastPins = runs.length ? await prisma.pinRunItem.groupBy({ by: ["runId"], where: { runId: { in: runs.map((r) => r.id) }, scheduledAt: { not: null } }, _max: { scheduledAt: true }, _min: { scheduledAt: true } }) : [];
   const span = (id: string) => { const x = lastPins.find((l) => l.runId === id); return x?._min.scheduledAt && x?._max.scheduledAt ? `${fmtDate(x._min.scheduledAt).slice(0, 10)} — ${fmtDate(x._max.scheduledAt).slice(0, 10)}` : "—"; };
   const qs = (patch: Record<string, string | undefined>) => {
@@ -56,18 +64,24 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
         {runs.length === 0 ? <Empty title="Прогонов нет" hint="По выбранному фильтру ничего не найдено." /> : (
           <Card>
             <div className="table-wrap"><table className="table">
-              <thead><tr><th>Прогон</th><th>Сайт</th><th>Статус</th><th>Этап</th><th>Статей</th><th>Пинов</th><th>Даты пинов</th><th>Расход</th><th>Создан</th></tr></thead>
+              <thead><tr><th>Прогон</th><th>Сайт</th><th>Статус</th><th>Проблемы</th><th>Этап</th><th>Статей</th><th>Пинов</th><th>Даты пинов</th><th>Расход</th><th>Создан</th><th></th></tr></thead>
               <tbody>{runs.map((r) => (
                 <tr key={r.id}>
                   <td><Link href={`/pinterest/pins/runs/${r.id}`} className="font-medium hover:underline">{r.name || r.id.slice(0, 8)}</Link>{r.stepByStep && <span className="help ml-1">пошаговый</span>}</td>
                   <td className="text-muted">{r.site?.name ?? "—"}</td>
                   <td><Badge tone={runStatusTone(r.status)}>{RUN_STATUS_LABELS[r.status]}</Badge></td>
+                  <td className="max-w-[420px]">{problems.get(r.id)?.length ? <ProblemsDetails problems={problems.get(r.id)!} runStatus={r.status} /> : <span className="text-muted">нет</span>}</td>
                   <td className="text-muted">{STAGE_LABELS[r.stage as PinStage] ?? r.stage}</td>
                   <td>{r._count.pages}</td>
                   <td>{r._count.items}</td>
                   <td className="text-muted whitespace-nowrap">{span(r.id)}</td>
                   <td className="text-muted">${r.costUsd.toFixed(2)}</td>
                   <td className="text-muted whitespace-nowrap">{fmtDate(r.createdAt)}</td>
+                  <td className="text-right">
+                    <ActionForm action={deleteRunAction} className="inline" hidden={{ id: r.id, back: qs({}) }}>
+                      <SubmitButton className="btn-ghost btn-sm text-danger" confirm={deleteConfirmText(r.name || r.id.slice(0, 8), impacts.get(r.id)!)} pendingText="…">Удалить</SubmitButton>
+                    </ActionForm>
+                  </td>
                 </tr>
               ))}</tbody>
             </table></div>

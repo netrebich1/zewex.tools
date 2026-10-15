@@ -1,104 +1,90 @@
 /**
- * Автозапуск цепочек сайта (сервис «Статьи»): раз в минуту из worker/cron.ts.
+ * Автозапуск цепочек сайта (сервис «Статьи») — с 2026-10-15 только разовая миграция старых настроек.
  *
- * Для сайтов с autostart.autoRestart = true:
- *  - auto-restart (оригинал: триггер auto_enable_site_phase, db/schema.sql:95-115): цепочка выключена автоматически
- *    при простое (offReason = "idle"; без причины — тоже), а в её фазе появились PENDING → включить. Выключенную
- *    вручную (offReason = "manual", переключатель на экране «Автозапуск») не трогаем — как в оригинале;
- *  - idle auto-off (оригинал: queue-orchestrator/index.ts:807-840): цепочка включена, а работы по фазе нет 15 минут →
- *    выключить с пометкой offReason = "idle" и временем. Для «написания» PHOTO_REVIEW и INSUFFICIENT_PHOTOS считаются
- *    будущей работой, этап publish — частью написания. Отсчёт простоя — поле *IdleSince в настройках сайта.
+ * Раньше (оригинал: auto_enable_site_phase + idle auto-off queue-orchestrator) цепочка «поиск фото» / «написание»
+ * выключалась сама после 15 минут без статей и включалась при новых. Владелец: «пауза 15 минут сбоила очень часто
+ * все процессы» — автовыключение убрано совсем. Цепочки включает и выключает только владелец (переключатели сайта
+ * и мастер-выключатели). Этот модуль НИЧЕГО не выключает.
  *
- * Дедупликация по ключу среди бегущих статей здесь не делается (она на постановке в очередь).
- * В лог воркера пишутся только изменения.
+ * Что делает autostartTick (вызывается из worker/cron.ts раз в минуту; работает, только пока на сайтах есть старые поля):
+ *  - цепочку, выключенную автоматически при простое (offReason = "idle", или без причины при старом autoRestart ≠ false),
+ *    включает обратно; выключенную вручную не трогает;
+ *  - удаляет служебные поля autoRestart, *IdleSince, *OffReason, *OffAt;
+ *  - старое значение «Запуск от» ИИ-модерации 20 (прежний дефолт: ждать пачку) меняет на 1 — проверять сразу.
+ * Пишет только подобъекты autostart / aiModeration через updateSiteSettings (сравнение по updatedAt), не затирая
+ * то, что владелец сохранил в форме в ту же секунду. В лог — только изменения.
  */
 import { prisma } from "@/lib/db";
-import type { ArtStatus, Prisma } from "@prisma/client";
-import { mergeSiteSettings, type ArtSiteSettings } from "@/lib/articles/types";
-import { phaseOf } from "@/lib/articles/stages";
+import { updateSiteSettings } from "@/lib/articles/automation";
 import { log } from "../log";
 
-/** Через сколько простоя цепочка выключается сама (оригинал: 15 мин). */
-export const IDLE_OFF_MS = 15 * 60_000;
+/** Устаревшие ключи autostart, по которым узнаём неперенесённые настройки. */
+const LEGACY_KEYS = ["autoRestart", "photoOffReason", "photoOffAt", "photoIdleSince", "writingOffReason", "writingOffAt", "writingIdleSince"] as const;
 
-/** Статусы, которые считаются работой или будущей работой для цепочек. */
-const WORK_STATUSES: ArtStatus[] = ["PENDING", "RUNNING", "PHOTO_REVIEW", "INSUFFICIENT_PHOTOS"];
+/** Прежнее значение «Запуск от» по умолчанию — ждать пачку из 20 статей. */
+const OLD_DEFAULT_BATCH = 20;
 
-type Chain = "photo" | "writing";
-type SiteWork = { pending: Record<Chain, number>; busy: Record<Chain, boolean> };
+export type AutostartTickResult = { enabled: number; disabled: number; idleStarted: number; migrated: number };
 
-export type AutostartTickResult = { enabled: number; disabled: number; idleStarted: number };
+type Raw = Record<string, unknown>;
+const obj = (v: unknown): Raw => (v && typeof v === "object" && !Array.isArray(v) ? (v as Raw) : {});
 
-/** Один проход: включить цепочки с ожидающими статьями, выключить простаивающие. */
-export async function autostartTick(now = new Date()): Promise<AutostartTickResult> {
-  const result: AutostartTickResult = { enabled: 0, disabled: 0, idleStarted: 0 };
-  const sites = await prisma.artSite.findMany({ where: { isActive: true }, select: { id: true, name: true, settings: true } });
-  if (!sites.length) return result;
-  const ids = sites.map((s) => s.id);
-  const groups = await prisma.article.groupBy({ by: ["siteId", "status", "stage"], where: { siteId: { in: ids }, status: { in: WORK_STATUSES } }, _count: { _all: true } });
+/** Нужна ли сайту миграция (есть ли старые поля). */
+function needsMigration(settings: unknown): boolean {
+  const a = obj(obj(settings).autostart);
+  return LEGACY_KEYS.some((k) => k in a);
+}
 
-  const work = new Map<string, SiteWork>();
-  const emptyWork = (): SiteWork => ({ pending: { photo: 0, writing: 0 }, busy: { photo: false, writing: false } });
-  for (const g of groups) {
-    const w = work.get(g.siteId) ?? emptyWork();
-    const chain: Chain = g.status === "PHOTO_REVIEW" || g.status === "INSUFFICIENT_PHOTOS" ? "writing" : phaseOf(g.stage) === "photos" ? "photo" : "writing";
-    w.busy[chain] = true;
-    if (g.status === "PENDING") w.pending[chain] += g._count._all;
-    work.set(g.siteId, w);
-  }
-
-  for (const site of sites) {
-    const settings = mergeSiteSettings(site.settings);
-    const a = settings.autostart;
-    if (!a.autoRestart) continue;
-    const w = work.get(site.id) ?? emptyWork();
-    const changes: string[] = [];
-    const next: ArtSiteSettings["autostart"] = { ...a };
-
-    for (const chain of ["photo", "writing"] as const) {
-      const f = FIELDS[chain];
-      const enabled = next[f.enabled];
-      if (!enabled) {
-        // auto-restart: выключенную при простое цепочку включаем, когда в её фазе ждут статьи.
-        if (w.pending[chain] > 0 && next[f.offReason] !== "manual") {
-          next[f.enabled] = true;
-          delete next[f.offReason];
-          delete next[f.offAt];
-          delete next[f.idleSince];
-          changes.push(`${f.label} включено: ждут ${w.pending[chain]}`);
-          result.enabled++;
-        }
-        continue;
-      }
-      // idle auto-off
-      if (w.busy[chain]) {
-        if (next[f.idleSince]) { delete next[f.idleSince]; changes.push(`${f.label}: простой прерван`); }
-        continue;
-      }
-      const since = next[f.idleSince] ? Date.parse(next[f.idleSince]!) : NaN;
-      if (!Number.isFinite(since)) {
-        next[f.idleSince] = now.toISOString();
-        result.idleStarted++;
-        continue; // начало отсчёта — не логируем, это не изменение поведения
-      }
-      if (now.getTime() - since >= IDLE_OFF_MS) {
-        next[f.enabled] = false;
-        next[f.offReason] = "idle";
-        next[f.offAt] = now.toISOString();
-        delete next[f.idleSince];
-        changes.push(`${f.label} выключено: нет статей ${Math.round(IDLE_OFF_MS / 60_000)} мин`);
-        result.disabled++;
-      }
+/**
+ * Перенос одного набора настроек. Чистая функция (для проверки без базы): возвращает новый JSON и список изменений
+ * или null, если переносить нечего.
+ */
+export function migrateLegacyAutostart(raw: Raw): { next: Raw; changes: string[]; enabled: number } | null {
+  const a = { ...obj(raw.autostart) };
+  if (!LEGACY_KEYS.some((k) => k in a)) return null;
+  const changes: string[] = [];
+  let enabled = 0;
+  const hadAutoRestart = a.autoRestart !== false;
+  for (const [chain, label] of [["photo", "Поиск фото"], ["writing", "Написание"]] as const) {
+    const on = `${chain}Enabled`;
+    const reason = a[`${chain}OffReason`];
+    // Выключена простоем (или без причины при включённом автовключении — так её выключал старый автозапуск) → включаем.
+    if (a[on] === false && (reason === "idle" || (reason === undefined && hadAutoRestart))) {
+      a[on] = true;
+      enabled++;
+      changes.push(`${label} включено снова (было выключено простоем)`);
     }
+    for (const k of ["OffReason", "OffAt", "IdleSince"]) delete a[`${chain}${k}`];
+  }
+  delete a.autoRestart;
+  const next: Raw = { ...raw, autostart: a };
+  const m = obj(raw.aiModeration);
+  if ("aiModeration" in raw && m.batchFrom === OLD_DEFAULT_BATCH) {
+    next.aiModeration = { ...m, batchFrom: 1 };
+    changes.push("ИИ-проверка: «Запуск от» 20 → 1 (проверять сразу)");
+  }
+  return { next, changes, enabled };
+}
 
-    if (JSON.stringify(next) === JSON.stringify(a)) continue;
-    await prisma.artSite.update({ where: { id: site.id }, data: { settings: { ...settings, autostart: next } as unknown as Prisma.InputJsonValue } });
-    if (changes.length) log.info(`articles autostart [${site.name}]: ${changes.join("; ")}`);
+/** Один проход миграции по всем сайтам. Ничего не выключает. */
+export async function autostartTick(): Promise<AutostartTickResult> {
+  const result: AutostartTickResult = { enabled: 0, disabled: 0, idleStarted: 0, migrated: 0 };
+  const sites = await prisma.artSite.findMany({ select: { id: true, name: true, settings: true } });
+  for (const site of sites) {
+    if (!needsMigration(site.settings)) continue;
+    let changes: string[] = [];
+    let enabled = 0;
+    const wrote = await updateSiteSettings(site.id, (raw) => {
+      const m = migrateLegacyAutostart(raw);
+      if (!m) return null;
+      changes = m.changes;
+      enabled = m.enabled;
+      return m.next;
+    });
+    if (!wrote) continue;
+    result.migrated++;
+    result.enabled += enabled;
+    log.info(`articles autostart [${site.name}]: старые настройки автовыключения убраны${changes.length ? `; ${changes.join("; ")}` : ""}`);
   }
   return result;
 }
-
-const FIELDS = {
-  photo: { label: "Поиск фото", enabled: "photoEnabled", offReason: "photoOffReason", offAt: "photoOffAt", idleSince: "photoIdleSince" },
-  writing: { label: "Написание", enabled: "writingEnabled", offReason: "writingOffReason", offAt: "writingOffAt", idleSince: "writingIdleSince" },
-} as const satisfies Record<Chain, { label: string; enabled: "photoEnabled" | "writingEnabled"; offReason: "photoOffReason" | "writingOffReason"; offAt: "photoOffAt" | "writingOffAt"; idleSince: "photoIdleSince" | "writingIdleSince" }>;

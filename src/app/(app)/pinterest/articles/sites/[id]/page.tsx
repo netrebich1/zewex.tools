@@ -14,7 +14,13 @@ import { SiteFunnel } from "@/components/articles/SiteFunnel";
 import { SiteSettingsForm, type WpCategoryOption } from "@/components/articles/SiteSettingsForm";
 import { SheetsCard } from "@/components/articles/SheetsCard";
 import { sheetsConnection, siteDomains } from "@/lib/articles/sheets";
-import { fmtDate } from "@/lib/utils";
+import { fmtDate, fmtMoney } from "@/lib/utils";
+import type { CurrentUser } from "@/lib/auth";
+import { seesTeamCosts } from "@/lib/permissions";
+import { costBreakdown } from "@/lib/articles/costs";
+import { errorsSummary } from "@/lib/articles/errorsView";
+import { CostDays, CostMatrix, CostSummary } from "@/components/articles/CostBreakdown";
+import { ErrorGroups, RetryGroups } from "@/components/articles/ErrorsTable";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +83,7 @@ export default async function ArticlesSitePage({ params, searchParams }: { param
         </div>
       )}
 
-      {tab === "stats" && <StatsTab siteId={id} />}
+      {tab === "stats" && <StatsTab siteId={id} me={me} days={[7, 30, 90].includes(Number(sp(q, "days"))) ? Number(sp(q, "days")) : 30} />}
     </>
   );
 }
@@ -117,16 +123,24 @@ async function QueueTab({ siteId, q }: { siteId: string; q: SearchParams }) {
   );
 }
 
-async function StatsTab({ siteId }: { siteId: string }) {
-  const s = await siteStats(siteId, 30);
+async function StatsTab({ siteId, me, days }: { siteId: string; me: CurrentUser; days: number }) {
+  const canCosts = seesTeamCosts(me);
+  const since = new Date(Date.now() - days * 86400_000);
+  const [s, costs, errs] = await Promise.all([
+    siteStats(siteId, 30),
+    canCosts ? costBreakdown({ siteIds: [siteId], since }) : null,
+    errorsSummary(me, { siteId, since }, { siteId }),
+  ]);
+  const runs = costs?.byRun.length ? await prisma.artRun.findMany({ where: { id: { in: costs.byRun.map((r) => r.id) } }, select: { id: true, name: true, createdAt: true } }) : [];
   const max = Math.max(1, ...s.days.map((d) => d.count));
+  const periodLink = (d: number) => `/pinterest/articles/sites/${siteId}?tab=stats${d === 30 ? "" : `&days=${d}`}`;
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className={`grid gap-3 ${canCosts ? "sm:grid-cols-4" : "sm:grid-cols-2"}`}>
         <div className="kpi"><span className="help">Опубликовано за 30 дней</span><span className="kpi-value">{s.completed30}</span></div>
         <div className="kpi"><span className="help">Опубликовано всего</span><span className="kpi-value">{s.completed}</span></div>
-        <div className="kpi"><span className="help">Средняя стоимость статьи</span><span className="kpi-value">{s.avgCost == null ? "—" : `$${s.avgCost.toFixed(2)}`}</span></div>
-        <div className="kpi"><span className="help">Расход на опубликованные</span><span className="kpi-value">${s.totalCost.toFixed(2)}</span></div>
+        {canCosts && <div className="kpi"><span className="help">Средняя стоимость статьи</span><span className="kpi-value">{s.avgCost == null ? "—" : fmtMoney(s.avgCost)}</span></div>}
+        {canCosts && <div className="kpi"><span className="help">Расход на опубликованные</span><span className="kpi-value">{fmtMoney(s.totalCost)}</span></div>}
       </div>
       <Card title="Опубликовано по дням" description="Последние 30 дней. Высота столбика — статей за день.">
         <div className="flex h-32 items-end gap-[3px]">
@@ -139,14 +153,39 @@ async function StatsTab({ siteId }: { siteId: string }) {
         </div>
         <div className="mt-1 flex justify-between help"><span>{s.days[0]?.day}</span><span>{s.days[s.days.length - 1]?.day}</span></div>
       </Card>
-      <Card title="Ошибки сайта за 30 дней" description="Сгруппированы по похожему тексту. Клик по статье в очереди покажет подробности.">
-        {s.errors.length === 0 ? <p className="help">Ошибок не было.</p> : (
-          <div className="table-wrap"><table className="table">
-            <thead><tr><th>Раз</th><th>Этап</th><th>Сообщение</th><th className="hidden md:table-cell">Последняя</th></tr></thead>
-            <tbody>{s.errors.map((e) => (
-              <tr key={e.signature}><td className="tabular-nums"><Badge tone={e.unresolved ? "danger" : "neutral"}>{e.count}</Badge></td><td className="text-muted">{e.stage}</td><td className="max-w-[520px]"><div className="truncate" title={e.message}>{e.message}</div></td><td className="hidden md:table-cell text-muted whitespace-nowrap">{fmtDate(e.last)}</td></tr>
-            ))}</tbody>
-          </table></div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="help">Период расходов и ошибок:</span>
+        {[7, 30, 90].map((d) => <Link key={d} href={periodLink(d)} className={`badge px-3 py-1 ${days === d ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{d} дн.</Link>)}
+      </div>
+      {costs && (
+        <>
+          <Card title={`Расходы за ${days} дн. · ${fmtMoney(costs.total)}`} description="Всё, что потрачено на статьи сайта за период (по времени вызова), по фазам. «Одна опубликованная» и «потеряно» — по статьям, на которые тратили в этот период."
+            actions={<Link href={`/pinterest/articles/journal?tab=costs&site=${siteId}&days=${days}`} className="btn-ghost btn-sm">В журнале</Link>}>
+            <CostSummary c={costs} periodNote={`за ${days} дн.`} />
+          </Card>
+          {costs.total > 0 && (
+            <Card title="Расход по дням" description="Высота — расход за день (UTC), цвет — фаза.">
+              <CostDays c={costs} days={days} />
+            </Card>
+          )}
+          <Card title="Расход по запускам" description={`Сколько за ${days} дн. ушло на статьи каждого запуска.`}>
+            <CostMatrix firstCol="Запуск" rows={costs.byRun.map((r) => { const run = runs.find((x) => x.id === r.id); return { id: r.id, name: run?.name || `Запуск ${r.id.slice(0, 8)}`, sub: run ? fmtDate(run.createdAt) : undefined, href: `/pinterest/articles/runs/${r.id}`, articles: r.articles, total: r.total, phases: r.phases }; })} empty="Запусков с расходом за период нет." />
+          </Card>
+        </>
+      )}
+      <Card title={`Ошибки за ${days} дн.${errs.open ? ` · открытых ${errs.open}` : ""}`} description="Сгруппированы по похожему тексту: когда впервые и последний раз, какие статьи затронуты и в каком они статусе сейчас."
+        actions={<Link href={`/pinterest/articles/journal?tab=errors&site=${siteId}&days=${days}&state=all`} className="btn-ghost btn-sm">В журнале</Link>}>
+        {errs.groups.length === 0 && errs.retries.length === 0 ? <p className="help">Ошибок и повторов не было.</p> : (
+          <div className="space-y-4">
+            {errs.groups.length > 0 && <ErrorGroups groups={errs.groups.slice(0, 10)} scope={{ siteId, days }} showSites={false} />}
+            {errs.groups.length > 10 && <p className="help">Показаны 10 групп из {errs.groups.length} — остальные в журнале.</p>}
+            {errs.retries.length > 0 && (
+              <details>
+                <summary className="help cursor-pointer">Временные сбои: {errs.retryCount} повторов</summary>
+                <div className="mt-2"><RetryGroups retries={errs.retries} limit={10} /></div>
+              </details>
+            )}
+          </div>
         )}
       </Card>
     </div>

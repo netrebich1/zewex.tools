@@ -243,6 +243,11 @@ export const rate: ArtStageHandler = async (ctx) => {
   let rescued = 0;
 
   const countKeep = () => prisma.artPhotoCandidate.count({ where: { articleId: article.id, status: { in: KEEP_STATUSES } } });
+  /** «Одобрено 41 из 66, нужно 13»: одобренные из всех проверенных оценкой и сколько нужно статье (было «41 из 13»). */
+  const approvedText = async (keep: number) => {
+    const rejectedTotal = await prisma.artPhotoCandidate.count({ where: { articleId: article.id, status: "rejected", rejectStage: "rate" } });
+    return `Одобрено ${keep} из ${keep + rejectedTotal}, нужно ${needed}`;
+  };
   const saveCursor = async (patch: Record<string, unknown>) => ctx.save({ cursor: { ...ctx.cursor, ...patch } });
 
   /** Порог балла: при втором проходе или нехватке после всех доборов — на балл ниже, не меньше 6 (оригинал: :217-236). */
@@ -470,7 +475,7 @@ export const rate: ArtStageHandler = async (ctx) => {
       await saveCursor({ filterCycles: filterCycles + 1, filterPending: true });
       return {
         next: "filter",
-        summary: `Одобрено ${keep} из ${needed}; ${found} кандидатов ещё не проверены — возврат к фильтру (круг ${filterCycles + 1})`,
+        summary: `${await approvedText(keep)}; ${found} кандидатов ещё не проверены — возврат к фильтру (круг ${filterCycles + 1})`,
         details: { kept, rejected, keep, needed, found, batches, costUsd: round6(cost) },
       };
     }
@@ -504,7 +509,7 @@ export const rate: ArtStageHandler = async (ctx) => {
   if (needsMore && rateTopups < PHOTO_LOOPS.rateTopups) {
     const reason = `после оценки одобрено ${keep} из ${needed}`;
     await saveCursor({ rateTopups: rateTopups + 1, topup: { from: "rate", needed: needed - keep, reason } });
-    return { next: "search", summary: `Одобрено ${keep} из ${needed} — добор фото (круг ${rateTopups + 1}/${PHOTO_LOOPS.rateTopups})`, details };
+    return { next: "search", summary: `${await approvedText(keep)} — добор фото (круг ${rateTopups + 1}/${PHOTO_LOOPS.rateTopups})`, details };
   }
 
   const shortage = keep === 0
@@ -512,7 +517,7 @@ export const rate: ArtStageHandler = async (ctx) => {
     : `После всех разрешённых доборов AI одобрил ${keep} из ${needed} фото; для безопасной статьи нужно минимум ${minAcceptable}`;
 
   if (keep >= minAcceptable) {
-    return { summary: `Одобрено ${keep} из ${needed} фото (отклонено ${rejected}${promoted ? `, промо ${promoted}` : ""})`, details };
+    return { summary: `${await approvedText(keep)} (отклонено за этот проход ${rejected}${promoted ? `, промо ${promoted}` : ""})`, details };
   }
   // Режим модерации фото: есть что показать — отбор сохранит кадры и остановится на PHOTO_REVIEW с пометкой «Мало фото»
   // (оригинал: direct-pipeline.waitForPhotos → photo_review при pipeline_mode=2).

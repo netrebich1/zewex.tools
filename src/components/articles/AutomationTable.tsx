@@ -4,11 +4,13 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Alert } from "@/components/ui";
 import { WorkerPill } from "./ArticlesBoard";
 import type { AutomationPayload, AutostartCounts, SiteAutomationPatch, SiteAutostartRow, ArtGlobalSettings } from "@/lib/articles/automation";
+import { SITE_LIMITS as L } from "@/lib/articles/types";
 
 /**
  * Экран «Автозапуск сайтов»: 8 плиток-счётчиков по шагам пути статьи, легенда, таблица сайтов с переключателями
  * и лимитами (сохраняются сразу: переключатели — по клику, числа — по blur/Enter), строка «Все сайты» с панелью
  * подтверждения, диагностика «что мешает сейчас». Данные обновляются каждые 30 с из /api/articles/automation.
+ * Те же поля и пределы (SITE_LIMITS), что в форме настроек сайта. Цепочки сами не выключаются (с 2026-10-15).
  * Оригинал: src/pages/SitesAutostartPage.tsx.
  */
 export function AutomationTable({ initial }: { initial: AutomationPayload }) {
@@ -82,11 +84,12 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
   const { sites, totals, global, worker, canEditGlobal } = data;
   const n = sites.length;
   const every = (f: (s: SiteAutostartRow) => boolean) => n > 0 && sites.every(f);
+  const aiTotals = sites.reduce((acc, s) => ({ checking: acc.checking + (s.ai?.checking ?? 0), waiting: acc.waiting + (s.ai?.waiting ?? 0), staff: acc.staff + (s.ai?.staff ?? s.counts.review) }), { checking: 0, waiting: 0, staff: 0 });
 
   const tiles: Array<{ step: string; label: string; value: number; detail: string; problem?: boolean; href?: string }> = [
     { step: "1", label: "Ждут поиска фото", value: totals.photoWait, detail: "Ещё не запущены" },
     { step: "1", label: "Фото ищутся сейчас", value: totals.photoRun, detail: "Обрабатываются" },
-    { step: "2", label: "Ждут ручной проверки фото", value: totals.review, detail: "Фото уже подобраны", href: "/pinterest/articles/moderation/photos" },
+    { step: "2", label: "Ждут проверки фото", value: totals.review, detail: aiTotals.checking + aiTotals.waiting > 0 ? `ИИ: ${aiTotals.checking} проверяет, ${aiTotals.waiting} ждёт` : "ИИ или сотрудник", href: "/pinterest/articles/moderation/photos" },
     { step: "2", label: "Недостаточно фото", value: totals.few, detail: "Нужен добор или решение", problem: true, href: "/pinterest/articles/moderation/photos" },
     { step: "3", label: "Ждут написания", value: totals.writeWait, detail: "Фото уже одобрены" },
     { step: "3", label: "Пишутся сейчас", value: totals.writeRun, detail: "Текст создаётся" },
@@ -120,7 +123,8 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
         <span className="font-medium text-ink">Как читать таблицу:</span>
         <span><b className="text-ink">Ждут</b> — этап ещё не начался</span>
         <span><b className="text-brand">Сейчас</b> — обрабатываются в данный момент</span>
-        <span><b className="text-ink">Ждут проверки фото</b> — фото уже подобраны, нужен сотрудник</span>
+        <span><b className="text-ink">Ждут проверки фото</b> — фото подобраны; проверяет ИИ (если включена ИИ-проверка) или сотрудник</span>
+        <span>Этапы сами <b className="text-ink">не выключаются</b> — только переключателями</span>
       </div>
 
       {/* Воркер и мастер-выключатели */}
@@ -130,7 +134,7 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
         <MasterSwitch label="Поиск фото" on={global.photoMaster} disabled={!canEditGlobal} saving={saving === "g-photo"} onChange={(v) => saveGlobal({ photoMaster: v }, "g-photo")} />
         <MasterSwitch label="Написание" on={global.writingMaster} disabled={!canEditGlobal} saving={saving === "g-writing"} onChange={(v) => saveGlobal({ writingMaster: v }, "g-writing")} />
         <MasterSwitch label="Публикация" on={global.publishMaster} disabled={!canEditGlobal} saving={saving === "g-publish"} onChange={(v) => saveGlobal({ publishMaster: v }, "g-publish")} />
-        <MasterSwitch label="ИИ-проверка фото" on={global.aiModMaster} disabled={!canEditGlobal} saving={saving === "g-aimod"} onChange={(v) => saveGlobal({ aiModMaster: v }, "g-aimod")} />
+        <MasterSwitch label="ИИ-проверка фото" title="Выключено — ИИ не проверяет фото ни на одном сайте, статьи ждут сотрудника. Включено — ИИ проверяет на сайтах, где включена «ИИ-проверка фото»." on={global.aiModMaster} disabled={!canEditGlobal} saving={saving === "g-aimod"} onChange={(v) => saveGlobal({ aiModMaster: v }, "g-aimod")} />
         <label className="inline-flex items-center gap-1.5 text-[12.5px]" title="Потолок одновременных статей «В работе» на всех сайтах. 0 — только настройка воркера ARTICLES_WORKER_CONCURRENCY.">
           <span className="text-muted">Общий потолок</span>
           <NumInput value={global.maxConcurrent} min={0} max={300} disabled={!canEditGlobal} onSave={(v) => saveGlobal({ maxConcurrent: v }, "g-max")} />
@@ -163,47 +167,47 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
             <tr className="border-b border-line [&>th]:px-2 [&>th]:pt-2.5 [&>th]:pb-1 [&>th]:text-center [&>th]:font-semibold [&>th]:text-ink">
               <th rowSpan={2} className="!text-left min-w-44 pl-3">Сайт</th>
               <th colSpan={4} className="border-l border-line/60">1. Поиск фото</th>
-              <th colSpan={2} className="border-l border-line/60">2. Ручная проверка фото</th>
+              <th colSpan={2} className="border-l border-line/60">2. Проверка фото</th>
               <th colSpan={4} className="border-l border-line/60">3. Написание</th>
               <th colSpan={2} className="border-l border-line/60">4. Публикация</th>
-              <th colSpan={3} className="border-l border-line/60">ИИ-проверка фото</th>
-              <th rowSpan={2} className="border-l border-line/60" title="Включать цепочку снова, если она выключилась сама при простое и появились новые статьи">Автовключение</th>
-              <th colSpan={2} className="border-l border-line/60">Проблемы</th>
+              <th colSpan={4} className="border-l border-line/60">ИИ-проверка фото</th>
+              <th rowSpan={2} className="border-l border-line/60" title="На паузе, остановлены, с ошибкой">Пауза / ошибка</th>
               <th rowSpan={2} className="!text-left min-w-72 border-l border-line/60">Что мешает сейчас</th>
             </tr>
             <tr className="border-b border-line [&>th]:px-2 [&>th]:py-1.5 [&>th]:text-center [&>th]:font-medium [&>th]:whitespace-nowrap">
-              <th className="border-l border-line/60">Включён</th><th title="Одновременно статей сайта в поиске фото (1–50)">Лимит</th><th>Ждут</th><th className="text-brand">Сейчас</th>
-              <th className="border-l border-line/60">Ждут проверки</th><th>Мало фото</th>
-              <th className="border-l border-line/60">Включено</th><th title="Одновременно статей сайта в написании (1–50)">Лимит</th><th>Ждут</th><th className="text-brand">Сейчас</th>
-              <th className="border-l border-line/60" title="Одновременно публикаций (1–50): загрузка фото нагружает хостинг">Лимит</th><th>Ждут</th>
-              <th className="border-l border-line/60">Включена</th><th title="Параллельно статей в ИИ-проверке (1–50)">Лимит</th><th title="Запускать ИИ-проверку, когда накопилось N статей (1–200)">Запуск от</th>
-              <th className="border-l border-line/60" title="ИИ-проверка ждёт, если в публикации столько статей и больше. 0 — не ждать">Ждать, если в публикации ≥</th><th title="На паузе, остановлены, с ошибкой">Пауза / ошибка</th>
+              <th className="border-l border-line/60">Включён</th><th title={`Одновременно статей сайта в поиске фото (${L.photoLimit[0]}–${L.photoLimit[1]})`}>Лимит</th><th>Ждут</th><th className="text-brand">Сейчас</th>
+              <th className="border-l border-line/60" title="Фото подобраны: проверяет ИИ (если включена) или сотрудник">Ждут проверки</th><th>Мало фото</th>
+              <th className="border-l border-line/60">Включено</th><th title={`Одновременно статей сайта в написании (${L.writingLimit[0]}–${L.writingLimit[1]})`}>Лимит</th><th>Ждут</th><th className="text-brand">Сейчас</th>
+              <th className="border-l border-line/60" title={`Одновременно публикаций (${L.publishLimit[0]}–${L.publishLimit[1]}): загрузка фото нагружает хостинг`}>Лимит</th><th>Ждут</th>
+              <th className="border-l border-line/60" title="Включено — фото каждой статьи сайта после отбора проверяет ИИ (в течение ~20 с)">Включена</th>
+              <th title={`Сколько статей ИИ проверяет параллельно (${L.concurrency[0]}–${L.concurrency[1]})`}>Параллельно</th>
+              <th title={`Запуск от (статей): новый запуск ИИ, когда ждут столько статей (${L.batchFrom[0]}–${L.batchFrom[1]}). 1 — сразу. К идущему запуску новые статьи добавляются без ожидания`}>Запуск от</th>
+              <th title={`ИИ-проверка ждёт, если в публикации столько статей и больше (${L.backlogThreshold[0]}–${L.backlogThreshold[1]}). 0 — не ждать`}>Ждать, если в публ. ≥</th>
             </tr>
             {/* Все сайты */}
             <tr className="border-b border-line bg-surface-2/60 [&>th]:px-2 [&>th]:py-2 [&>th]:text-center">
               <th className="!text-left pl-3 text-ink">Все сайты</th>
-              <th className="border-l border-line/60"><Switch label="Поиск фото на всех сайтах" on={every((s) => s.autostart.photoEnabled)} disabled={!n || saving === "all"} onChange={(v) => askAll(`${v ? "Включить" : "Выключить"} поиск фото на всех сайтах?`, v ? "Воркер начнёт брать статьи, ждущие поиска фото, на каждом сайте." : "Новые статьи перестанут уходить в поиск фото; текущие доработают этап.", { autostart: { photoEnabled: v } })} /></th>
+              <th className="border-l border-line/60"><Switch label="Поиск фото на всех сайтах" on={every((s) => s.autostart.photoEnabled)} disabled={!n || saving === "all"} onChange={(v) => askAll(`${v ? "Включить" : "Выключить"} поиск фото на всех сайтах?`, v ? "Воркер начнёт брать статьи, ждущие поиска фото, на каждом сайте." : "Новые статьи перестанут уходить в поиск фото; текущие доработают этап. Сами этапы не включатся — только вручную.", { autostart: { photoEnabled: v } })} /></th>
               <th /><th>{num(totals.photoWait)}</th><th>{num(totals.photoRun, "run")}</th>
               <th className="border-l border-line/60">{num(totals.review)}</th><th>{num(totals.few, "bad")}</th>
-              <th className="border-l border-line/60"><Switch label="Написание на всех сайтах" on={every((s) => s.autostart.writingEnabled)} disabled={!n || saving === "all"} onChange={(v) => askAll(`${v ? "Включить" : "Выключить"} написание на всех сайтах?`, v ? "Статьи с одобренными фото пойдут в текст на каждом сайте." : "Новые статьи перестанут уходить в написание; текущие доработают этап.", { autostart: { writingEnabled: v } })} /></th>
+              <th className="border-l border-line/60"><Switch label="Написание на всех сайтах" on={every((s) => s.autostart.writingEnabled)} disabled={!n || saving === "all"} onChange={(v) => askAll(`${v ? "Включить" : "Выключить"} написание на всех сайтах?`, v ? "Статьи с одобренными фото пойдут в текст на каждом сайте." : "Новые статьи перестанут уходить в написание; текущие доработают этап. Сами этапы не включатся — только вручную.", { autostart: { writingEnabled: v } })} /></th>
               <th /><th>{num(totals.writeWait)}</th><th>{num(totals.writeRun, "run")}</th>
               <th className="border-l border-line/60" /><th>{num(totals.publishWait)}</th>
-              <th className="border-l border-line/60"><Switch label="ИИ-проверка фото на всех сайтах" on={every((s) => s.aiModeration.enabled)} disabled={!n || saving === "all"} onChange={(v) => askAll(`${v ? "Включить" : "Выключить"} ИИ-проверку фото на всех сайтах?`, v ? "ИИ будет проверять отобранные фото пачками вместо сотрудника." : "Все статьи с подобранными фото будут ждать сотрудника.", { aiModeration: { enabled: v } })} /></th>
-              <th /><th />
-              <th className="border-l border-line/60"><Switch label="Автовключение на всех сайтах" on={every((s) => s.autostart.autoRestart)} disabled={!n || saving === "all"} onChange={(v) => askAll(`${v ? "Включить" : "Выключить"} автовключение на всех сайтах?`, v ? "Цепочка без статей 15 минут будет выключаться сама и включаться при новых статьях." : "Цепочки перестанут выключаться и включаться сами.", { autostart: { autoRestart: v } })} /></th>
-              <th className="border-l border-line/60" /><th>{num(totals.problems, "bad")}</th>
+              <th className="border-l border-line/60"><Switch label="ИИ-проверка фото на всех сайтах" on={every((s) => s.aiModeration.enabled)} disabled={!n || saving === "all"} onChange={(v) => askAll(`${v ? "Включить" : "Выключить"} ИИ-проверку фото на всех сайтах?`, v ? "Фото каждой статьи после отбора будет проверять ИИ, сразу, без пачек. Новые запуски получат «модерацию фото до текста» автоматически." : "Все статьи с подобранными фото будут ждать сотрудника.", { aiModeration: { enabled: v } })} /></th>
+              <th /><th /><th />
+              <th className="border-l border-line/60">{num(totals.problems, "bad")}</th>
               <th className="border-l border-line/60" />
             </tr>
           </thead>
           <tbody>
-            {n === 0 && <tr><td colSpan={20} className="p-5 text-center help">Сайтов в сервисе нет. <Link href="/pinterest/articles/sites" className="underline">Подключить сайт</Link></td></tr>}
+            {n === 0 && <tr><td colSpan={19} className="p-5 text-center help">Сайтов в сервисе нет. <Link href="/pinterest/articles/sites" className="underline">Подключить сайт</Link></td></tr>}
             {sites.map((s) => <SiteRow key={s.id} s={s} saving={saving} onSave={(patch, key) => saveSite(s, patch, key)} />)}
           </tbody>
         </table>
       </div>
       <p className="help">
-        Этап без статей 15 минут выключается сам (пометка «очередь была пуста»). «Автовключение» снова запускает его при появлении новых статей; выключенный вручную этап не трогается.
-        Мастер-выключатели сверху останавливают цепочку на всех сайтах сразу, не меняя настроек сайтов. Обновлено: {new Date(data.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.
+        Этапы работают, пока включены: сами они не выключаются и не включаются. Мастер-выключатели сверху останавливают этап на всех сайтах сразу, не меняя настроек сайтов.
+        ИИ-проверка фото: включена на сайте и мастер-выключатель включён — фото каждой новой статьи ИИ берёт в течение ~20 секунд; сомнительные отдаёт сотруднику. Те же настройки — в настройках сайта. Обновлено: {new Date(data.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.
       </p>
     </div>
   );
@@ -215,32 +219,39 @@ function SiteRow({ s, saving, onSave }: { s: SiteAutostartRow; saving: string | 
   const c = s.counts;
   const a = s.autostart;
   const m = s.aiModeration;
+  const ai = s.ai ?? { on: false, checking: 0, waiting: 0, staff: c.review };
   const k = (f: string) => `${s.id}:${f}`;
-  const off = (reason?: "idle" | "manual", at?: string) => (reason ? <span className="block text-[10px] text-muted leading-tight" title={at ? `Выключено ${new Date(at).toLocaleString("ru-RU")}` : undefined}>{reason === "idle" ? "простой" : "вручную"}</span> : null);
+  const sub = (text: string, cls = "text-muted") => <span className={`block text-[10px] leading-tight whitespace-nowrap ${cls}`}>{text}</span>;
   return (
     <tr className={`border-b border-line/70 last:border-b-0 hover:bg-surface-2/70 [&>td]:px-2 [&>td]:py-2 [&>td]:text-center ${s.isActive ? "" : "opacity-60"}`}>
       <td className="!text-left pl-3 whitespace-nowrap">
         <Link href={`/pinterest/articles/sites/${s.id}?tab=settings`} className="font-medium hover:underline">{s.name}</Link>
         {!s.isActive && <span className="block text-[10px] text-muted">в архиве</span>}
       </td>
-      <td className="border-l border-line/60"><Switch label={`Поиск фото: ${s.name}`} on={a.photoEnabled} disabled={saving === k("photoEnabled")} onChange={(v) => onSave({ autostart: { photoEnabled: v } }, k("photoEnabled"))} />{!a.photoEnabled && off(a.photoOffReason, a.photoOffAt)}</td>
-      <td><NumInput value={a.photoLimit} min={1} max={50} onSave={(v) => onSave({ autostart: { photoLimit: v } }, k("photoLimit"))} /></td>
+      <td className="border-l border-line/60"><Switch label={`Поиск фото: ${s.name}`} on={a.photoEnabled} disabled={saving === k("photoEnabled")} onChange={(v) => onSave({ autostart: { photoEnabled: v } }, k("photoEnabled"))} /></td>
+      <td><NumInput value={a.photoLimit} min={L.photoLimit[0]} max={L.photoLimit[1]} onSave={(v) => onSave({ autostart: { photoLimit: v } }, k("photoLimit"))} /></td>
       <td>{num(c.photoWait)}</td>
       <td>{num(c.photoRun, "run")}</td>
-      <td className="border-l border-line/60">{num(c.review)}</td>
+      <td className="border-l border-line/60">
+        {num(c.review)}
+        {c.review > 0 && (ai.on ? sub(`ИИ ${ai.checking + ai.waiting} · сотр. ${ai.staff}`) : sub("сотрудник"))}
+      </td>
       <td>{num(c.few, "bad")}</td>
-      <td className="border-l border-line/60"><Switch label={`Написание: ${s.name}`} on={a.writingEnabled} disabled={saving === k("writingEnabled")} onChange={(v) => onSave({ autostart: { writingEnabled: v } }, k("writingEnabled"))} />{!a.writingEnabled && off(a.writingOffReason, a.writingOffAt)}</td>
-      <td><NumInput value={a.writingLimit} min={1} max={50} onSave={(v) => onSave({ autostart: { writingLimit: v } }, k("writingLimit"))} /></td>
+      <td className="border-l border-line/60"><Switch label={`Написание: ${s.name}`} on={a.writingEnabled} disabled={saving === k("writingEnabled")} onChange={(v) => onSave({ autostart: { writingEnabled: v } }, k("writingEnabled"))} /></td>
+      <td><NumInput value={a.writingLimit} min={L.writingLimit[0]} max={L.writingLimit[1]} onSave={(v) => onSave({ autostart: { writingLimit: v } }, k("writingLimit"))} /></td>
       <td>{num(c.writeWait)}</td>
       <td>{num(c.writeRun, "run")}</td>
-      <td className="border-l border-line/60"><NumInput value={a.publishLimit} min={1} max={50} onSave={(v) => onSave({ autostart: { publishLimit: v } }, k("publishLimit"))} /></td>
-      <td>{num(c.publishWait)}{c.publishRun > 0 && <span className="block text-[10px] text-brand leading-tight">сейчас {c.publishRun}</span>}</td>
-      <td className="border-l border-line/60"><Switch label={`ИИ-проверка фото: ${s.name}`} on={m.enabled} disabled={saving === k("aiEnabled")} onChange={(v) => onSave({ aiModeration: { enabled: v } }, k("aiEnabled"))} /></td>
-      <td><NumInput value={m.concurrency} min={1} max={50} onSave={(v) => onSave({ aiModeration: { concurrency: v } }, k("aiConc"))} /></td>
-      <td><NumInput value={m.batchFrom} min={1} max={200} onSave={(v) => onSave({ aiModeration: { batchFrom: v } }, k("aiBatch"))} /></td>
-      <td className="border-l border-line/60"><Switch label={`Автовключение: ${s.name}`} on={a.autoRestart} disabled={saving === k("autoRestart")} onChange={(v) => onSave({ autostart: { autoRestart: v } }, k("autoRestart"))} /></td>
-      <td className="border-l border-line/60"><NumInput value={m.backlogThreshold} min={0} max={1000} onSave={(v) => onSave({ aiModeration: { backlogThreshold: v } }, k("aiBacklog"))} /></td>
-      <td>{num(c.problems, "bad")}</td>
+      <td className="border-l border-line/60"><NumInput value={a.publishLimit} min={L.publishLimit[0]} max={L.publishLimit[1]} onSave={(v) => onSave({ autostart: { publishLimit: v } }, k("publishLimit"))} /></td>
+      <td>{num(c.publishWait)}{c.publishRun > 0 && sub(`сейчас ${c.publishRun}`, "text-brand")}</td>
+      <td className="border-l border-line/60">
+        <Switch label={`ИИ-проверка фото: ${s.name}`} on={m.enabled} disabled={saving === k("aiEnabled")} onChange={(v) => onSave({ aiModeration: { enabled: v } }, k("aiEnabled"))} />
+        {m.enabled && !ai.on && sub("мастер выкл.", "text-danger")}
+        {ai.on && (ai.checking > 0 || ai.waiting > 0) && sub(`проверяет ${ai.checking} · ждёт ${ai.waiting}`, "text-brand")}
+      </td>
+      <td><NumInput value={m.concurrency} min={L.concurrency[0]} max={L.concurrency[1]} onSave={(v) => onSave({ aiModeration: { concurrency: v } }, k("aiConc"))} /></td>
+      <td><NumInput value={m.batchFrom} min={L.batchFrom[0]} max={L.batchFrom[1]} onSave={(v) => onSave({ aiModeration: { batchFrom: v } }, k("aiBatch"))} /></td>
+      <td><NumInput value={m.backlogThreshold} min={L.backlogThreshold[0]} max={L.backlogThreshold[1]} onSave={(v) => onSave({ aiModeration: { backlogThreshold: v } }, k("aiBacklog"))} /></td>
+      <td className="border-l border-line/60">{num(c.problems, "bad")}</td>
       <td className="!text-left border-l border-line/60 text-[11.5px] leading-snug">
         {s.blockers.map((b, i) => <p key={i} className={b.bad ? "text-danger" : "text-muted"}>{b.text}</p>)}
       </td>
@@ -268,9 +279,9 @@ function Switch({ on, onChange, label, disabled }: { on: boolean; onChange: (v: 
   );
 }
 
-function MasterSwitch({ label, on, onChange, disabled, saving }: { label: string; on: boolean; onChange: (v: boolean) => void; disabled?: boolean; saving?: boolean }) {
+function MasterSwitch({ label, on, onChange, disabled, saving, title }: { label: string; on: boolean; onChange: (v: boolean) => void; disabled?: boolean; saving?: boolean; title?: string }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] ${on ? "border-line" : "border-danger/40 bg-danger-soft"}`}>
+    <span title={title} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] ${on ? "border-line" : "border-danger/40 bg-danger-soft"}`}>
       <Switch label={`Мастер-выключатель: ${label}`} on={on} onChange={onChange} disabled={disabled || saving} />
       <span className={on ? "" : "text-danger"}>{label}</span>
     </span>

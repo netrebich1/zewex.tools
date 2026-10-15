@@ -79,7 +79,7 @@ export function buildDayFiles(input: DayExportInput): DayExportResult {
   const csv = buildPinterestCsv(titled.rows, tz);
 
   return {
-    fileName: fileName(day, input.siteName, input.isToday && retimed > 0),
+    fileName: fileName(day, input.siteName, input.isToday && retimed > 0, titled.rows.length),
     csv,
     rows: titled.rows,
     issues: report.issues,

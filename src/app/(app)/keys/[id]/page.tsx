@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { assignScope, canAssignGlobal, canAssignKey, canCreatePersonalKey, canCreateSharedKey, canManageKey, canViewKey, keyTeamScope } from "@/lib/permissions";
+import { assignScope, canAssignGlobal, canAssignKey, canCreatePersonalKey, canCreateSharedKey, canManageKey, canViewKey, keyTeamScope, publicToolWhere } from "@/lib/permissions";
 import type { KeyOwnerOption } from "@/components/KeyOwnerFields";
 import { Alert, Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
@@ -32,7 +32,7 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
   const tracksBalance = manualBalanceProvider(key.provider);
   const balance = tracksBalance ? (await manualBalances([key])).get(key.id) ?? null : null;
   const [projects, teams] = await Promise.all([
-    prisma.project.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }], select: { id: true, name: true, _count: { select: { slots: true } } } }),
+    prisma.project.findMany({ where: publicToolWhere, orderBy: [{ order: "asc" }, { name: "asc" }], select: { id: true, name: true, _count: { select: { slots: true } } } }),
     prisma.team.findMany({
       where: keyTeams === "all" && assignTeams === "all" ? {} : { id: { in: [...(keyTeams === "all" ? [] : keyTeams), ...(assignTeams === "all" ? [] : assignTeams)] } },
       orderBy: { name: "asc" }, select: { id: true, name: true },

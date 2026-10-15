@@ -7,12 +7,15 @@ import {
   approveArticle,
   approvePhotos,
   claimArticle,
+  closeArticle,
   excludePhoto,
+  extendClaim,
   markInsufficient,
   markOutdated,
   ModerationError,
   nextForReview,
   photoState,
+  queueBlockers,
   releaseClaim,
   removePhoto,
   reorderPhotos,
@@ -23,8 +26,10 @@ import {
   reviewState,
   reworkArticle,
   skipArticle,
+  undoAiEdits,
   updateReviewFields,
 } from "@/lib/articles/moderation";
+import { moderationCounts } from "@/lib/articles/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +57,8 @@ async function stateFor(me: CurrentUser, articleId: string, review: boolean) {
  *  ?article=<id>[&review=1]           — состояние фото (и секций/мета при review=1)
  *  ?next=1&mode=photos|articles|rework[&site=<id>][&exclude=a,b] — следующая свободная статья (закрепляется)
  *  ?claims=1                           — кто сейчас модерирует
+ *  ?counts=1                           — счётчики для меню сервиса (как на Обзоре)
+ * Пустой ответ next для фото несёт blockers: сколько статей у ИИ и у коллег (объяснение «почему пусто»).
  */
 export async function GET(req: Request) {
   const me = await getCurrentUser();
@@ -59,13 +66,17 @@ export async function GET(req: Request) {
   const u = new URL(req.url);
   try {
     if (u.searchParams.get("claims")) return NextResponse.json({ claims: await activeClaims(me) }, noStore);
+    if (u.searchParams.get("counts")) return NextResponse.json({ counts: await moderationCounts(me) }, noStore);
     const review = u.searchParams.get("review") === "1" || (u.searchParams.get("mode") ?? "photos") !== "photos";
     if (u.searchParams.get("next")) {
       const mode = u.searchParams.get("mode") ?? "photos";
       const statuses = MODES[mode] ?? MODES.photos;
       const exclude = (u.searchParams.get("exclude") ?? "").split(",").filter(Boolean);
       const articleId = await nextForReview(me, { siteId: u.searchParams.get("site") || undefined, statuses, exclude });
-      if (!articleId) return NextResponse.json({ articleId: null, state: null }, noStore);
+      if (!articleId) {
+        const blockers = mode === "photos" ? await queueBlockers(me, u.searchParams.get("site") || undefined) : null;
+        return NextResponse.json({ articleId: null, state: null, blockers }, noStore);
+      }
       return NextResponse.json({ articleId, state: await stateFor(me, articleId, review) }, noStore);
     }
     const articleId = u.searchParams.get("article");
@@ -92,6 +103,8 @@ type Body = {
 /**
  * POST { action, articleId, … } — одно действие модерации. В ответе — свежее состояние статьи,
  * если она ещё редактируется (иначе state=null: статья ушла дальше по конвейеру).
+ * Любое редактирующее действие продлевает закрепление; heartbeat — пинг открытой страницы (закрепить/продлить, без состояния);
+ * release приходит и через navigator.sendBeacon при уходе со страницы (тело — JSON строкой).
  */
 export async function POST(req: Request) {
   const me = await getCurrentUser();
@@ -109,6 +122,9 @@ export async function POST(req: Request) {
   try {
     switch (b.action) {
       case "claim":
+        result = await claimArticle(me, id, MODES[b.mode ?? "photos"] ?? MODES.photos);
+        break;
+      case "heartbeat":
         result = await claimArticle(me, id, MODES[b.mode ?? "photos"] ?? MODES.photos);
         break;
       case "release":
@@ -147,6 +163,12 @@ export async function POST(req: Request) {
       case "return_review":
         await returnToReview(me, id);
         break;
+      case "close":
+        await closeArticle(me, id);
+        break;
+      case "undo_ai":
+        result = await undoAiEdits(me, id);
+        break;
       case "save_meta":
         await updateReviewFields(me, id, b.fields ?? {});
         break;
@@ -165,7 +187,8 @@ export async function POST(req: Request) {
   } catch (e) {
     return fail(e);
   }
-  const final = ["approve", "topup", "insufficient", "review_approve", "rework", "retry_publish", "skip", "release", "return_review"].includes(b.action);
+  const final = ["approve", "topup", "insufficient", "review_approve", "rework", "retry_publish", "skip", "release", "return_review", "close", "heartbeat"].includes(b.action);
+  if (!final && b.action !== "claim") await extendClaim(me, id).catch(() => {});
   const state = final ? null : await stateFor(me, id, review);
   return NextResponse.json({ ok: true, result, state }, noStore);
 }

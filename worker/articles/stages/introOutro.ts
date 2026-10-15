@@ -9,12 +9,14 @@
 import { prisma } from "@/lib/db";
 import { AiError, backoffMs } from "@/lib/pins/ai/errors";
 import { aiChat } from "@/lib/articles/ai";
+import { MalformedAiOutput } from "@/lib/articles/errors";
 import { SLOTS } from "@/lib/articles/types";
 import { resolvePrompt, resolvePromptOptional, fillPrompt, stageModel } from "@/lib/articles/prompts";
 import { countTokenPromptBlock } from "@/lib/articles/text/countToken";
 import { cleanLabelsAndEmphasis } from "@/lib/articles/text/textGuards";
-import { countWords, looksLikeModelThinking, normalizeIntroParagraphs, parseIntroOutroResponse } from "@/lib/articles/text/introOutroParse";
+import { countWords, INTRO_MIN_WORDS, looksLikeModelThinking, normalizeIntroParagraphs, OUTRO_MIN_WORDS, parseIntroOutroResponse } from "@/lib/articles/text/introOutroParse";
 import { cleanArticleHtml, OUTRO_HEADING } from "@/lib/articles/text/html";
+import { BANNED_PROMPT_LINE, polishHtml, usesUsSpelling } from "@/lib/articles/text/polish";
 import { buildPromptVars, loadProfile } from "@/lib/articles/text/vars";
 import type { ArtStageHandler } from "./index";
 import { INTRO_POS, isWritten, loadActivePhotos, loadPhotoSections, OUTRO_POS } from "./plan";
@@ -22,8 +24,11 @@ import { INTRO_POS, isWritten, loadActivePhotos, loadPhotoSections, OUTRO_POS } 
 const STAGE_KEY = "stage_7_intro_outro";
 const MAX_ATTEMPTS = 5; // оригинал: 379
 /** Жёсткие рамки объёма (оригинал: 455-476) */
-const INTRO_MIN = 90, INTRO_MAX = 120, INTRO_SOFT_MIN = 60, INTRO_SOFT_MAX = 160;
-const OUTRO_MIN = 30, OUTRO_MAX = 200;
+// Нижние пороги «приемлемого» вступления и заключения общие с проверкой качества (introOutroParse.ts).
+const INTRO_MIN = 90, INTRO_MAX = 120, INTRO_SOFT_MIN = INTRO_MIN_WORDS, INTRO_SOFT_MAX = 160;
+const OUTRO_MIN = OUTRO_MIN_WORDS, OUTRO_MAX = 200;
+/** Целевой объём заключения в просьбе к модели (внутри жёстких рамок OUTRO_MIN–OUTRO_MAX). */
+const OUTRO_TARGET = "70-120";
 
 export const introOutro: ArtStageHandler = async (ctx) => {
   const { article, recipe } = ctx;
@@ -53,6 +58,8 @@ export const introOutro: ArtStageHandler = async (ctx) => {
   // Количество идей пишется меткой; единое правило объёма поверх всех промтов (оригинал: 355-357).
   system += `\n\n${countTokenPromptBlock()}`;
   system += `\n\nINTRO LENGTH — MANDATORY: Write exactly 2 concise paragraphs totaling ${INTRO_MIN}-${INTRO_MAX} words. Preserve the exact topic, {{COUNT}}, search intent, and a brief statement of what the reader will get. Do not list every section, repeat examples, pad the opening, or add a third paragraph. This rule overrides any longer intro length requested elsewhere in the prompt.`;
+  // Конец заключения и стоп-лист — поверх промта набора (аудит text-v2: «I'm booking», «after writing all of these»).
+  system += `\n\nCONCLUSION LENGTH: ${OUTRO_TARGET} words including any care list. ${BANNED_PROMPT_LINE}`;
   const userPrompt = filled.user;
   const model = stageModel(recipe, STAGE_KEY);
 
@@ -120,8 +127,8 @@ export const introOutro: ArtStageHandler = async (ctx) => {
       if (!outroOk) {
         notes.push(
           outro
-            ? `LENGTH CORRECTION — MANDATORY. Your previous conclusion was ${outroW} words, which is outside the allowed range of ${OUTRO_MIN}-${OUTRO_MAX} words. Rewrite the conclusion so it is 80-140 words.`
-            : "Your previous answer had no conclusion. Return BOTH intro_html and outro_html; the conclusion is mandatory (80-140 words).",
+            ? `LENGTH CORRECTION — MANDATORY. Your previous conclusion was ${outroW} words, which is outside the allowed range of ${OUTRO_MIN}-${OUTRO_MAX} words. Rewrite the conclusion so it is ${OUTRO_TARGET} words.`
+            : `Your previous answer had no conclusion. Return BOTH intro_html and outro_html; the conclusion is mandatory (${OUTRO_TARGET} words).`,
         );
       }
       notes.push(`Keep the other part valid (introduction ${INTRO_MIN}-${INTRO_MAX} words in exactly 2 paragraphs, conclusion ${OUTRO_MIN}-${OUTRO_MAX} words). Return the same JSON structure, no bold, no italic, no asterisks.`);
@@ -138,20 +145,24 @@ export const introOutro: ArtStageHandler = async (ctx) => {
 
   const introRaw = bestIntro ?? softIntro;
   if (!introRaw || !bestOutro) {
-    throw lastError ?? new Error("Не удалось получить вступление и заключение");
+    // Все попытки дали текст не в рамках/не того формата — отложенный повтор этапа раннером (до 3 раз), не FAILED сразу.
+    if (lastError instanceof AiError) throw lastError;
+    throw new MalformedAiOutput(`Вступление и заключение не получены за ${MAX_ATTEMPTS} попыток: ${lastError?.message ?? "модель не вернула текст"}`);
   }
   if (!bestIntro) ctx.log("строгий объём вступления не достигнут — принят ближайший корректный вариант");
 
   // Пост-обработка: без выделений, без служебных пометок, абзацами HTML, без «мыслей» модели (оригинал: 496-519).
   const labels = [article.keyword, article.focusKeyword];
-  const introText = cleanLabelsAndEmphasis(cleanArticleHtml(introRaw), labels);
-  const outroText = cleanLabelsAndEmphasis(cleanArticleHtml(bestOutro), labels);
-  if (!outroText.trim()) throw new Error("Заключение обязательно: модель не вернула его — этап не сохранён");
+  // Тире, американское написание и парность <p> — детерминированно (аудит text-v2, п. 2).
+  const pol = { usSpelling: usesUsSpelling(recipe.photoSearch?.language, recipe.photoSearch?.country) };
+  const introText = polishHtml(cleanLabelsAndEmphasis(cleanArticleHtml(introRaw), labels), pol);
+  const outroText = polishHtml(cleanLabelsAndEmphasis(cleanArticleHtml(bestOutro), labels), pol);
+  if (!outroText.trim()) throw new MalformedAiOutput("Заключение обязательно: модель не вернула его — этап не сохранён");
   if (looksLikeModelThinking(introText) || looksLikeModelThinking(outroText)) {
-    throw new Error("В тексте вступления/заключения черновые размышления модели — этап не сохранён");
+    throw new MalformedAiOutput("В тексте вступления/заключения черновые размышления модели — этап не сохранён");
   }
   if (!/<p[\s>]/i.test(introText) || !/<p[\s>]/i.test(outroText)) {
-    throw new Error("Вступление и заключение должны быть абзацами HTML");
+    throw new MalformedAiOutput("Вступление и заключение должны быть абзацами HTML");
   }
   const introWords = countWords(introText);
   const outroWords = countWords(outroText);

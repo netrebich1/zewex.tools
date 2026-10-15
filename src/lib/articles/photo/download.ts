@@ -72,8 +72,10 @@ export async function downloadImage(urls: Array<string | null | undefined>, opts
       for (let attempt = 0; attempt < 2; attempt++) {
         if (opts.signal?.aborted) throw new Error("aborted");
         try {
-          resp = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), headers: { "User-Agent": DOWNLOAD_UA, Accept: "image/*,*/*;q=0.8" }, redirect: "follow" });
+          const signal = opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
+          resp = await fetch(url, { signal, headers: { "User-Agent": DOWNLOAD_UA, Accept: "image/*,*/*;q=0.8" }, redirect: "follow" });
         } catch (e) {
+          if (opts.signal?.aborted) throw new Error("aborted");
           resp = null;
           lastErr = (e as Error).message.slice(0, 80);
           break;
@@ -92,12 +94,22 @@ export async function downloadImage(urls: Array<string | null | undefined>, opts
         lastErr = `файл больше ${Math.round(maxBytes / 1024 / 1024)} МБ`;
         continue;
       }
-      const buf = Buffer.from(await resp.arrayBuffer());
-      if (!ct.startsWith("image/") && !looksLikeImage(buf)) continue;
-      if (buf.length > maxBytes) {
+      // Тело читается потоком с обрывом на maxBytes: без content-length раньше читалось целиком без предела
+      // (аудит 2026-10-14 stability §2.7), обрыв соединения посреди тела — отказ источника, а не падение этапа.
+      const body = await readCapped(resp, maxBytes).catch((e: Error) => {
+        if (opts.signal?.aborted) throw new Error("aborted");
+        return { error: e.message.slice(0, 80) } as const;
+      });
+      if ("error" in body) {
+        lastErr = body.error;
+        continue;
+      }
+      if (body.tooBig) {
         lastErr = `файл больше ${Math.round(maxBytes / 1024 / 1024)} МБ`;
         continue;
       }
+      const buf = body.bytes;
+      if (!ct.startsWith("image/") && !looksLikeImage(buf)) continue;
       if (buf.length < 2000) {
         lastErr = "файл меньше 2000 байт";
         continue;
@@ -110,6 +122,25 @@ export async function downloadImage(urls: Array<string | null | undefined>, opts
   } finally {
     release();
   }
+}
+
+/** Прочитать тело ответа не больше maxBytes: превышение — tooBig, остаток не скачивается. */
+async function readCapped(resp: Response, maxBytes: number): Promise<{ bytes: Buffer; tooBig: false } | { tooBig: true }> {
+  if (!resp.body) return { bytes: Buffer.from(await resp.arrayBuffer()), tooBig: false };
+  const reader = resp.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return { tooBig: true };
+    }
+    chunks.push(value);
+  }
+  return { bytes: Buffer.concat(chunks), tooBig: false };
 }
 
 /** SHA-256 файла — дубли внутри статьи и между сайтами (photoSearch.ts:613-618). */

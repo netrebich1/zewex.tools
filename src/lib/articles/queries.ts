@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import type { ArtStatus, Prisma } from "@prisma/client";
 import { artSiteWhere, articleWhere } from "./access";
+import { liveAiRunIds, notHeldByAi } from "./moderation";
 import { phaseOf, stageLabel } from "./stages";
 import { STATUS_LABELS, type Tone } from "./labels";
 
@@ -112,13 +113,20 @@ export async function errorsLastHour(siteIds: string[]): Promise<number> {
   return prisma.artError.count({ where: { siteId: { in: siteIds }, createdAt: { gte: new Date(Date.now() - 3_600_000) } } });
 }
 
-export async function moderationCounts(me: CurrentUser): Promise<{ photos: number; articles: number }> {
+/**
+ * Счётчики модерации (Обзор и меню сервиса), совпадают со списком «Модерации фото»:
+ * photos — PHOTO_REVIEW, кроме статей на проверке у идущего запуска ИИ (их людям пока не выдают);
+ * insufficient — «Мало фото» отдельно (INSUFFICIENT_PHOTOS / WAITING_FOR_PHOTOS); articles — REVIEW_PENDING + NEEDS_REWORK.
+ */
+export async function moderationCounts(me: CurrentUser): Promise<{ photos: number; insufficient: number; articles: number }> {
   const where = await articleWhere(me);
-  const [photos, articles] = await Promise.all([
-    prisma.article.count({ where: { ...where, status: { in: ["PHOTO_REVIEW", "INSUFFICIENT_PHOTOS"] } } }),
+  const live = await liveAiRunIds();
+  const [photos, insufficient, articles] = await Promise.all([
+    prisma.article.count({ where: { ...where, status: "PHOTO_REVIEW", ...notHeldByAi(live) } }),
+    prisma.article.count({ where: { ...where, status: { in: ["INSUFFICIENT_PHOTOS", "WAITING_FOR_PHOTOS"] } } }),
     prisma.article.count({ where: { ...where, status: { in: ["REVIEW_PENDING", "NEEDS_REWORK"] } } }),
   ]);
-  return { photos, articles };
+  return { photos, insufficient, articles };
 }
 
 /* ───────── Статьи в работе (живая доска и API) ───────── */
@@ -256,29 +264,21 @@ export async function runProgress(runId: string): Promise<RunProgress> {
 export type SiteStats = {
   days: Array<{ day: string; count: number }>;
   completed: number; avgCost: number | null; totalCost: number; completed30: number;
-  errors: Array<{ signature: string; stage: string; message: string; count: number; last: string; unresolved: number }>;
 };
 
+/** Публикации по дням и средняя цена опубликованной. Ошибки сайта — errorsSummary (errorsView.ts), расходы — costBreakdown (costs.ts). */
 export async function siteStats(siteId: string, days = 30): Promise<SiteStats> {
   const since = new Date(); since.setHours(0, 0, 0, 0); since.setDate(since.getDate() - (days - 1));
-  const [published, agg, errs] = await Promise.all([
+  const [published, agg] = await Promise.all([
     prisma.article.findMany({ where: { siteId, status: "COMPLETED", publishedAt: { gte: since } }, select: { publishedAt: true } }),
     prisma.article.aggregate({ where: { siteId, status: "COMPLETED" }, _count: { _all: true }, _avg: { costUsd: true }, _sum: { costUsd: true } }),
-    prisma.artError.findMany({ where: { siteId, createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 500, select: { signature: true, stage: true, message: true, createdAt: true, resolvedAt: true } }),
   ]);
   const byDay = new Map<string, number>();
   for (let i = 0; i < days; i++) { const d = new Date(since); d.setDate(since.getDate() + i); byDay.set(d.toISOString().slice(0, 10), 0); }
   for (const p of published) { if (!p.publishedAt) continue; const k = p.publishedAt.toISOString().slice(0, 10); byDay.set(k, (byDay.get(k) ?? 0) + 1); }
-  const groups = new Map<string, SiteStats["errors"][number]>();
-  for (const e of errs) {
-    const g = groups.get(e.signature) ?? { signature: e.signature, stage: e.stage, message: e.message, count: 0, last: e.createdAt.toISOString(), unresolved: 0 };
-    g.count++; if (!e.resolvedAt) g.unresolved++;
-    groups.set(e.signature, g);
-  }
   return {
     days: [...byDay.entries()].map(([day, count]) => ({ day, count })),
     completed: agg._count._all, avgCost: agg._avg.costUsd, totalCost: agg._sum.costUsd ?? 0, completed30: published.length,
-    errors: [...groups.values()].sort((a, b) => b.count - a.count).slice(0, 20),
   };
 }
 

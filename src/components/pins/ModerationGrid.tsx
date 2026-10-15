@@ -11,9 +11,10 @@ type Filter = { siteId?: string; runId?: string; engine?: string };
  * Сетка быстрой модерации: клик = пометить на отклонение; «Одобрить остальные» отправляет пачку.
  * Увеличение: ← → листать, Delete отклонить, Enter оставить, Esc закрыть. Черновик — в localStorage.
  */
-export function ModerationGrid({ initial, filter }: { initial: Batch; filter: Filter }) {
+/** post — пост-модерация: одобренные пины; клик помечает на отклонение, остальные остаются одобренными и считаются просмотренными. */
+export function ModerationGrid({ initial, filter, showSite = false, post = false }: { initial: Batch; filter: Filter; showSite?: boolean; post?: boolean }) {
   const router = useRouter();
-  const storageKey = `pins-moderation:${filter.siteId ?? "all"}:${filter.runId ?? "all"}:${filter.engine ?? "all"}`;
+  const storageKey = `pins-moderation${post ? "-post" : ""}:${filter.siteId ?? "all"}:${filter.runId ?? "all"}:${filter.engine ?? "all"}`;
   const [batch, setBatch] = useState<Batch>(initial);
   const [marked, setMarked] = useState<Set<string>>(new Set());
   const [zoomId, setZoomId] = useState<string | null>(null);
@@ -21,6 +22,8 @@ export function ModerationGrid({ initial, filter }: { initial: Batch; filter: Fi
   const [msg, setMsg] = useState("");
   const [size, setSize] = useState<"s" | "m" | "l">("m");
   const nextRef = useRef<Batch | null>(null);
+  // Сервер прислал новую пачку (смена фильтра, обновление страницы) — показываем её, а не то, что осталось в памяти.
+  useEffect(() => { setBatch(initial); }, [initial]);
 
   useEffect(() => {
     try {
@@ -39,9 +42,10 @@ export function ModerationGrid({ initial, filter }: { initial: Batch; filter: Fi
     if (filter.runId) u.set("run", filter.runId);
     if (filter.engine) u.set("engine", filter.engine);
     if (cursor) u.set("cursor", cursor);
+    if (post) u.set("view", "post");
     u.set("limit", "60");
     return `/api/pins/moderation?${u.toString()}`;
-  }, [filter]);
+  }, [filter, post]);
 
   // предзагрузка следующей пачки
   useEffect(() => {
@@ -85,7 +89,7 @@ export function ModerationGrid({ initial, filter }: { initial: Batch; filter: Fi
         .filter((id) => mode === "all" || marked.has(id))
         .map((id) => ({ id, moderation: marked.has(id) ? "REJECTED" : "APPROVED" }));
       for (let i = 0; i < decisions.length; i += 100) {
-        const res = await fetch("/api/pins/moderation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decisions: decisions.slice(i, i + 100) }) });
+        const res = await fetch("/api/pins/moderation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decisions: decisions.slice(i, i + 100), post }) });
         if (!res.ok) throw new Error(`Сервер ответил ${res.status}`);
         const r = (await res.json()) as { applied: number; continued: string[] };
         if (r.continued.length) setMsg(`Прогонов продолжено: ${r.continued.length}`);
@@ -128,7 +132,7 @@ export function ModerationGrid({ initial, filter }: { initial: Batch; filter: Fi
               </button>
               {m && <span className="absolute top-2 left-2 badge bg-danger text-white">отклонить</span>}
               <button type="button" className="absolute top-2 right-2 btn-ghost btn-sm bg-surface/90" onClick={() => setZoomId(it.id)} aria-label="Увеличить">🔍</button>
-              <div className="px-2 py-1.5 text-[11px] text-muted truncate">{ENGINE_LABELS[it.engine] ?? it.engine} · {it.keyword}</div>
+              <div className="px-2 py-1.5 text-[11px] text-muted truncate">{showSite && it.siteName ? <b className="text-ink-2">{it.siteName} · </b> : null}{ENGINE_LABELS[it.engine] ?? it.engine} · {it.keyword}</div>
             </div>
           );
         })}
@@ -140,7 +144,7 @@ export function ModerationGrid({ initial, filter }: { initial: Batch; filter: Fi
           {msg && <span className="help">{msg}</span>}
           <span className="ml-auto inline-flex gap-2">
             <button className="btn-ghost" disabled={busy || !markedHere} onClick={() => finish("marked_only")}>Отклонить помеченные</button>
-            <button className="btn-brand" disabled={busy || !batch.items.length} onClick={() => finish("all")}>{busy ? "Сохраняю…" : "Одобрить остальные и дальше"}</button>
+            <button className="btn-brand" disabled={busy || !batch.items.length} onClick={() => finish("all")}>{busy ? "Сохраняю…" : post ? (markedHere ? `Отклонить ${markedHere}, остальные оставить и дальше` : "Всё в порядке, дальше") : "Одобрить остальные и дальше"}</button>
           </span>
         </div>
       </div>

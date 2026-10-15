@@ -315,9 +315,9 @@ export function siteSlug(name: string): string {
   return name.trim().replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "") || "site";
 }
 
-/** `DD_MM_YYYY_SiteName.csv`, для изменённого сегодняшнего файла — с префиксом `NEW_`. */
-export function fileName(day: string, siteName: string, isNew = false): string {
+/** `DD_MM_YYYY_SiteName_<пинов>.csv` (в конце — сколько пинов в файле), для изменённого сегодняшнего — с префиксом `NEW_`. */
+export function fileName(day: string, siteName: string, isNew = false, count?: number): string {
   const { year, month, day: d } = keyParts(day);
   const pad = (n: number): string => String(n).padStart(2, "0");
-  return `${isNew ? "NEW_" : ""}${pad(d)}_${pad(month)}_${year}_${siteSlug(siteName)}.csv`;
+  return `${isNew ? "NEW_" : ""}${pad(d)}_${pad(month)}_${year}_${siteSlug(siteName)}${count != null ? `_${count}` : ""}.csv`;
 }

@@ -5,9 +5,13 @@ import type { ModCandidate, ModPhoto, PhotoModerationState } from "@/lib/article
 /**
  * Сетка модерации фото статьи (одна для конвейера модерации и вкладки «Фото» карточки статьи).
  * Зона «В статье»: нумерация, перетаскивание порядка (HTML5 drag), двойной клик — лайтбокс с оригиналом,
- * кнопки ✕ и «Устарело», бейджи. Зона «Резерв»: Одобрены ИИ / Отклонены ИИ, кнопка «+».
+ * кнопки ✕ и «Устарело», бейджи. Зона «Резерв»: «Подходящие по оценке» / «Отклонённые оценкой» (оценка кадров
+ * на этапе поиска, не ИИ-модерация), кнопка «+».
+ * Пометки ИИ-модерации (state.ai): «ИИ ✕» с причиной у снятых ИИ, «+ИИ» у добавленных ИИ, «ИИ: убрать?» / «ИИ: добавить?»
+ * у предложений, которые ещё не применены (тест-режим).
  * Клик по фото ничего не удаляет. Все изменения — через /api/articles/moderation, ответ несёт свежее состояние.
- * Undo: стек обратных действий в рамках статьи.
+ * Undo: стек обратных действий в рамках статьи (включая «Добавить» → убрать добавленный кадр).
+ * Сенсорные экраны: кнопки на карточке видны всегда (не только при наведении), стрелки ◀ ▶ вместо перетаскивания.
  *
  * Оригинал: src/pages/PhotoModerationPage.tsx (раскладки, размеры, табы резерва) + 05-data-and-ui.md §7 экран 6.
  */
@@ -23,6 +27,11 @@ const COLS: Record<GridSize, string> = {
 const MIN_SIDE = 550;
 
 type Undo = { label: string; body: Record<string, unknown> };
+/** Обратное действие: готовое тело или функция от ответа сервера (например, id только что добавленного фото). */
+type Inverse = Record<string, unknown> | ((result: unknown) => Record<string, unknown> | null);
+
+/** Кнопки на карточке: на устройствах с мышью — при наведении (и при фокусе с клавиатуры), на сенсорных — всегда. */
+const HOVER_REVEAL = "opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100";
 
 export type ApiResponse = { ok?: boolean; error?: string; stale?: boolean; state?: PhotoModerationState | null; result?: unknown };
 
@@ -180,14 +189,15 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
   );
 
   const act = useCallback(
-    async (label: string, body: Record<string, unknown>, inverse?: Record<string, unknown>) => {
+    async (label: string, body: Record<string, unknown>, inverse?: Inverse) => {
       if (!editable) return;
       setBusy(label);
       setMsg(null);
       try {
         const r = await moderationApi({ articleId: state.article.id, ...body }, mode);
         apply(r.state);
-        if (inverse) setUndo((u) => [...u.slice(-29), { label, body: inverse }]);
+        const inv = typeof inverse === "function" ? inverse(r.result) : inverse;
+        if (inv) setUndo((u) => [...u.slice(-29), { label, body: inv }]);
         const res = r.result as { message?: string } | null;
         if (res?.message) setMsg({ text: res.message, tone: "ok" });
       } catch (e) {
@@ -221,6 +231,19 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
       void act("reorder", { action: "reorder", order: next }, { action: "reorder", order: prev });
     },
     [orderIds, state.photos, act],
+  );
+
+  /** Сдвинуть кадр на одну позицию (сенсорные экраны: перетаскивание там не работает). */
+  const move = useCallback(
+    (id: string, dir: -1 | 1) => {
+      const ids = [...orderIds];
+      const i = ids.indexOf(id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= ids.length) return;
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+      reorderTo(ids);
+    },
+    [orderIds, reorderTo],
   );
 
   const applyLayout = useCallback(
@@ -279,6 +302,8 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
     return () => window.removeEventListener("keydown", onKey);
   }, [zoom, onApprove, onNext, onPrev, undo.length, undoLast]);
 
+  const ai = state.ai;
+  const overNorm = state.article.photoCount > 0 && state.counts.active > state.article.photoCount;
   const reserveList = tab === "reserve" ? state.reserve : state.rejected;
   const filtered = reserveList.filter((c) => shapeFilter === "all" || shape(c.width, c.height) === shapeFilter);
   const aspect = size === "s" ? "aspect-square" : "aspect-[3/4]";
@@ -288,6 +313,11 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
       {/* Панель инструментов */}
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
         <span className="font-semibold">В статье: {state.counts.active}</span>
+        {overNorm && (
+          <span className="badge bg-warn-soft text-warn" title="Фото больше плана статьи: текст будет длиннее задуманного. Снимите лишние или одобрите осознанно.">
+            больше плана ({state.article.photoCount}) на {state.counts.active - state.article.photoCount}
+          </span>
+        )}
         {state.counts.excluded > 0 && <span className="text-muted">снято: {state.counts.excluded}</span>}
         {msg && <span className={msg.tone === "danger" ? "text-danger" : "text-ok"}>{msg.text}</span>}
         {busy && <span className="text-muted">Сохраняю…</span>}
@@ -333,6 +363,10 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
           <div className={`grid gap-2 ${COLS[size]}`}>
             {state.photos.map((p, i) => {
               const small = (p.width ?? 0) < MIN_SIDE || (p.height ?? 0) < MIN_SIDE;
+              // Пометки ИИ-модерации: снято ИИ (причина), добавлено ИИ (причина), предложено убрать (тест, не применено).
+              const aiRemoved = p.excluded && p.excludedByAi ? (ai?.removed[p.id] ?? "снято ИИ") : null;
+              const aiAdded = ai?.added[p.id] ?? null;
+              const aiPropose = !p.excluded && ai && !ai.applied ? (ai.removed[p.id] ?? null) : null;
               const border = p.excluded ? "border-line opacity-50" : !p.hasDescription ? "border-danger ring-1 ring-danger/40" : dragOver === p.id ? "border-brand ring-2 ring-brand/40" : "border-line";
               return (
                 <div key={p.id} className="flex flex-col gap-1">
@@ -361,11 +395,25 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
                     title="Двойной клик — увеличить; перетащите, чтобы поменять порядок"
                   >
                     <img src={p.thumbUrl} alt="" loading="lazy" draggable={false} className={`w-full ${aspect} object-cover ${p.excluded ? "grayscale" : ""}`} />
-                    <span className="absolute top-1.5 left-1.5 badge bg-ink/80 text-bg">{p.excluded ? "снято" : i + 1}</span>
+                    <span className="absolute top-1.5 left-1.5 inline-flex gap-1">
+                      <span className="badge bg-ink/80 text-bg">{p.excluded ? (aiRemoved ? "ИИ ✕" : "снято") : i + 1}</span>
+                      {aiAdded != null && !p.excluded && <span className="badge bg-ok text-white" title={aiAdded || "Добавлено ИИ из резерва"}>+ИИ</span>}
+                      {aiPropose != null && <span className="badge bg-warn text-white" title={aiPropose}>ИИ: убрать?</span>}
+                    </span>
                     {p.aiScore != null && <span className="absolute top-1.5 right-1.5 badge bg-surface/90">★ {Number(p.aiScore).toFixed(1)}</span>}
                     {!p.hasDescription && !p.excluded && <span className="absolute bottom-1.5 left-1.5 badge bg-danger text-white">нет описания</span>}
                     {editable && (
-                      <div className="absolute inset-x-0 bottom-0 flex justify-end gap-1 p-1.5 opacity-0 group-hover:opacity-100 transition bg-gradient-to-t from-ink/60 to-transparent">
+                      <div className={`absolute inset-x-0 bottom-0 flex justify-end gap-1 p-1.5 transition bg-gradient-to-t from-ink/60 to-transparent ${HOVER_REVEAL}`}>
+                        {!p.excluded && (
+                          <span className="mr-auto inline-flex gap-1 [@media(hover:hover)]:hidden">
+                            <button type="button" className="btn-ghost btn-sm bg-surface/90" disabled={!!busy || i === 0} onClick={() => move(p.id, -1)} aria-label="Раньше">
+                              ◀
+                            </button>
+                            <button type="button" className="btn-ghost btn-sm bg-surface/90" disabled={!!busy || i === state.photos.length - 1} onClick={() => move(p.id, 1)} aria-label="Позже">
+                              ▶
+                            </button>
+                          </span>
+                        )}
                         {p.excluded ? (
                           <button type="button" className="btn-ghost btn-sm" disabled={!!busy} onClick={() => act("restore", { action: "restore", photoId: p.id }, { action: "exclude", photoId: p.id })}>
                             Вернуть
@@ -389,6 +437,11 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
                       {p.sourceDomain && <span> · {p.sourceDomain}</span>}
                     </div>
                   )}
+                  {(aiRemoved || aiPropose || aiAdded) && (
+                    <div className={`px-0.5 text-[11px] leading-tight ${aiAdded != null && !aiRemoved && !aiPropose ? "text-ok" : "text-warn"} ${size === "s" ? "line-clamp-2" : ""}`} title={aiRemoved || aiPropose || aiAdded || ""}>
+                      {aiRemoved ? `ИИ снял: ${aiRemoved}` : aiPropose ? `ИИ предлагает убрать: ${aiPropose}` : `ИИ добавил${aiAdded ? `: ${aiAdded}` : ""}`}
+                    </div>
+                  )}
                   {renderUnderPhoto?.(p)}
                 </div>
               );
@@ -403,10 +456,10 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <h3 className="h2">Резерв</h3>
             <button type="button" className={`tab ${tab === "reserve" ? "active" : ""}`} onClick={() => { setTab("reserve"); setShown(60); }}>
-              Одобрены ИИ · {state.counts.reserve}
+              Подходящие по оценке · {state.counts.reserve}
             </button>
             <button type="button" className={`tab ${tab === "rejected" ? "active" : ""}`} onClick={() => { setTab("rejected"); setShown(60); }}>
-              Отклонены ИИ · {state.counts.rejected}
+              Отклонённые оценкой · {state.counts.rejected}
             </button>
             <span className="ml-auto inline-flex gap-1">
               {(["all", "tall", "square"] as const).map((s) => (
@@ -417,12 +470,12 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
             </span>
           </div>
           {filtered.length === 0 ? (
-            <p className="help">{tab === "reserve" ? "Резерв пуст. Нажмите «Добрать фото», чтобы найти ещё." : "Отклонённых ИИ кадров нет."}</p>
+            <p className="help">{tab === "reserve" ? "Резерв пуст. Нажмите «Добрать фото», чтобы найти ещё." : "Отклонённых оценкой кадров нет."}</p>
           ) : (
             <>
               <div className={`grid gap-2 ${COLS[size]}`}>
                 {filtered.slice(0, shown).map((c) => (
-                  <ReserveCard key={c.id} c={c} aspect={aspect} compact={size === "s"} busy={!!busy} editable={editable} onAdd={() => act("add", { action: "add", candidateId: c.id })} onZoom={() => setZoom({ url: c.imageUrl, title: `${c.domain} ${c.width ?? "?"}×${c.height ?? "?"}${c.reason ? ` — ${c.reason}` : ""}` })} />
+                  <ReserveCard key={c.id} c={c} aspect={aspect} compact={size === "s"} busy={!!busy} editable={editable} aiSuggest={ai && !ai.applied ? (ai.proposedAdds[c.id] ?? null) : null} onAdd={() => act("add", { action: "add", candidateId: c.id }, (res) => { const r = res as { photoId?: string; already?: boolean } | null; return r?.photoId && !r.already ? { action: "remove", photoId: r.photoId } : null; })} onZoom={() => setZoom({ url: c.imageUrl, title: `${c.domain} ${c.width ?? "?"}×${c.height ?? "?"}${c.reason ? ` — ${c.reason}` : ""}` })} />
                 ))}
               </div>
               {filtered.length > shown && (
@@ -455,14 +508,17 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
   );
 }
 
-function ReserveCard({ c, aspect, compact, busy, editable, onAdd, onZoom }: { c: ModCandidate; aspect: string; compact: boolean; busy: boolean; editable: boolean; onAdd: () => void; onZoom: () => void }) {
+function ReserveCard({ c, aspect, compact, busy, editable, aiSuggest, onAdd, onZoom }: { c: ModCandidate; aspect: string; compact: boolean; busy: boolean; editable: boolean; aiSuggest: string | null; onAdd: () => void; onZoom: () => void }) {
   const small = (c.width ?? 0) < MIN_SIDE || (c.height ?? 0) < MIN_SIDE;
   return (
     <div className="flex flex-col gap-1">
       <div className="relative rounded-xl overflow-hidden border border-line bg-ink/5 group" onDoubleClick={onZoom} title={c.reason || "Двойной клик — увеличить"}>
         <img src={c.thumbUrl} alt="" loading="lazy" className={`w-full ${aspect} object-cover`} />
         {c.aiScore != null && <span className="absolute top-1.5 right-1.5 badge bg-surface/90">★ {Number(c.aiScore).toFixed(1)}</span>}
-        {c.status === "rejected" && <span className="absolute top-1.5 left-1.5 badge bg-danger text-white">отклонено</span>}
+        <span className="absolute top-1.5 left-1.5 inline-flex gap-1">
+          {c.status === "rejected" && <span className="badge bg-danger text-white">отклонено</span>}
+          {aiSuggest != null && <span className="badge bg-ok text-white" title={aiSuggest || "ИИ предлагает добавить"}>ИИ: добавить?</span>}
+        </span>
         {editable && (
           <button type="button" className="absolute bottom-1.5 right-1.5 btn-brand btn-sm" disabled={busy} onClick={onAdd} title="Добавить в статью">
             +
@@ -486,6 +542,7 @@ function ReserveCard({ c, aspect, compact, busy, editable, onAdd, onZoom }: { c:
             )}
           </div>
           {c.reason && <div className="truncate" title={c.reason}>{c.reason}</div>}
+          {aiSuggest && <div className="truncate text-ok" title={aiSuggest}>ИИ: {aiSuggest}</div>}
         </div>
       )}
     </div>

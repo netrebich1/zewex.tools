@@ -12,7 +12,9 @@
  * оригинал исключал секции с битыми фото и собирал статью короче плана).
  */
 import type { Article, ArtPhoto, ArtSection } from "@prisma/client";
+import { prisma } from "@/lib/db";
 import { headingKey, looksLikeFactDump, stripEmphasis, uniqueHeading } from "@/lib/articles/text/textGuards";
+import { INTRO_MIN_WORDS, OUTRO_MIN_WORDS } from "@/lib/articles/text/introOutroParse";
 import { exists } from "@/lib/articles/storage";
 import type { ArticlePlan } from "@/lib/articles/types";
 import { mapLimited } from "@/lib/pins/wp/client";
@@ -28,7 +30,6 @@ export const MIN_SECTIONS = 5;
 /** Минимальные размеры фото — как у поиска, чтобы миниатюры Google проходили (оригинал :103-104). */
 const MIN_PHOTO_W = 320;
 const MIN_PHOTO_H = 480;
-const MIN_OUTRO_WORDS = 25;
 /** Метка количества идей (оригинал countToken.ts: {{COUNT}}, keepToken нормализует {COUNT}/[COUNT]). */
 const COUNT_RE = /\{\{\s*COUNT\s*\}\}|\{COUNT\}|\[COUNT\]/g;
 const URL_CHECK_CONCURRENCY = 6; // оригинал: 12 (:107) — у нас меньше, хранилище одно
@@ -159,69 +160,91 @@ export async function checkArticleQuality(
   }
 
   // ── 2. Текст секций (оригинал :152-183) ─────────────────────
+  // Вступление (позиция 0) и заключение (9990) хранятся строками ArtSection рядом с фото-секциями: в сообщениях они
+  // называются по-человечески, а их объём проверяется своими порогами в блоке 3 (раньше к заключению применялась норма
+  // обычной секции 40 слов и статья падала с «Секция 9990: всего 38 слов» — аудит 2026-10-14).
+  const isIntroOutro = (pos: number) => pos === 0 || pos >= 9990;
+  const label = (pos: number) => (pos === 0 ? "Вступление" : pos >= 9990 ? "Заключение" : `Секция ${pos}`);
+  const headingKw = [article.keyword, article.focusKeyword, article.seoKeyword].filter(Boolean).join(" ");
   const usedHeadings = new Set<string>();
   const headingOwner = new Map<string, number>();
   for (const s of liveSections) {
     const n = s.position;
+    const L = label(n);
     const html = s.html ?? "";
     if (!html.trim() || s.status === "failed") {
-      problems.push(`Секция ${n}: нет текста${s.error ? ` (${s.error.slice(0, 120)})` : ""}`);
+      problems.push(`${L}: нет текста${s.error ? ` (${s.error.slice(0, 120)})` : ""}`);
       continue;
     }
     let sectionHtml = html;
     const sectionPatch: { id: string; heading?: string; html?: string } = { id: s.id };
-    if (THINKING_RE.test(sectionHtml)) problems.push(`Секция ${n}: в тексте черновые размышления модели`);
+    if (THINKING_RE.test(sectionHtml)) problems.push(`${L}: в тексте черновые размышления модели`);
     if (EMPHASIS_RE.test(sectionHtml)) {
       sectionHtml = stripEmphasis(sectionHtml);
       sectionPatch.html = sectionHtml;
-      fixed.push(`Секция ${n}: убраны выделения жирным/курсивом`);
+      fixed.push(`${L}: убраны выделения жирным/курсивом`);
     }
     const firstParagraph = (sectionHtml.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? sectionHtml).slice(0, 600);
-    if (looksLikeFactDump(firstParagraph)) problems.push(`Секция ${n}: текст начинается со списка признаков фото`);
-    const wc = s.wordCount || wordCount(sectionHtml);
-    if (wc < MIN_SECTION_WORDS) problems.push(`Секция ${n}: всего ${wc} слов`);
+    if (looksLikeFactDump(firstParagraph)) problems.push(`${L}: текст начинается со списка признаков фото`);
 
     // Вступление (0) и заключение (9990) — не фото-секции: у вступления заголовка нет по замыслу,
-    // заголовок заключения фиксированный. Их уникальность/пустоту не проверяем (иначе вступление получало «Idea — …»).
-    if (s.position === 0 || s.position >= 9990) {
+    // заголовок заключения фиксированный. Их уникальность/пустоту не проверяем (иначе вступление получало «Idea — …»),
+    // объём — в блоке 3 по своим порогам.
+    if (isIntroOutro(n)) {
       if (Object.keys(sectionPatch).length > 1) patch.sections.push(sectionPatch);
       continue;
     }
+    const wc = s.wordCount || wordCount(sectionHtml);
+    if (wc < MIN_SECTION_WORDS) problems.push(`${L}: всего ${wc} слов (нужно от ${MIN_SECTION_WORDS})`);
     const heading = s.heading ?? "";
     const key = headingKey(heading);
     const photo = s.photoId ? photoById.get(s.photoId) : undefined;
-    if (!key || usedHeadings.has(key)) {
-      const unique = uniqueHeading(heading || "Idea", usedHeadings, {
-        facts: (photo?.facts ?? undefined) as Record<string, unknown> | undefined,
-        description: photo?.description ?? null,
-      });
+    // Та же логика дублей, что у плана и секций: слова ключа не отличительны, хвост только через тире, ≤ 70 символов.
+    const unique = uniqueHeading(heading || "Idea", usedHeadings, {
+      facts: (photo?.facts ?? undefined) as Record<string, unknown> | undefined,
+      description: photo?.description ?? null,
+      keyword: headingKw,
+    });
+    if (!heading.trim() || unique !== heading) {
       if (unique !== heading) {
         sectionPatch.heading = unique;
-        fixed.push(!key ? `Секция ${n}: заголовок был пуст — поставлен «${unique}»` : `Секция ${n}: заголовок повторял секцию ${headingOwner.get(key)} — заменён на «${unique}»`);
+        const owner = headingOwner.get(key);
+        fixed.push(
+          !heading.trim()
+            ? `${L}: заголовок был пуст — поставлен «${unique}»`
+            : owner !== undefined
+              ? `${L}: заголовок повторял секцию ${owner} — заменён на «${unique}»`
+              : `${L}: заголовок «${heading}» заменён на «${unique}» (повтор или длиннее 70 символов)`,
+        );
         if (article.html && heading) {
           const replaced = replaceHeadingInHtml(patch.article.html ?? article.html, heading, unique);
           if (replaced !== (patch.article.html ?? article.html)) patch.article.html = replaced;
         }
-      } else if (!key) {
-        problems.push(`Секция ${n}: нет заголовка`);
+      } else {
+        problems.push(`${L}: нет заголовка`);
       }
       headingOwner.set(headingKey(unique), n);
     } else {
-      usedHeadings.add(key);
       headingOwner.set(key, n);
     }
     if (sectionPatch.heading !== undefined || sectionPatch.html !== undefined) patch.sections.push(sectionPatch);
   }
-  const sectionsLive = liveSections.filter((s) => (s.html ?? "").trim() && s.status !== "failed").length;
+  const photoSections = liveSections.filter((s) => !isIntroOutro(s.position));
+  const sectionsLive = photoSections.filter((s) => (s.html ?? "").trim() && s.status !== "failed").length;
   if (sectionsLive < MIN_SECTIONS) problems.push(`В статье ${sectionsLive} разделов с текстом — публиковать нечего (нужно не меньше ${MIN_SECTIONS})`);
 
   // ── 3. Вступление, заключение, объём (оригинал :185-200) ────
-  const intro = article.introHtml ?? "";
-  const outro = article.outroHtml ?? "";
+  // Пороги общие с этапом intro_outro (introOutroParse.ts): что этап принял, то проверка и пропускает.
+  const intro = article.introHtml || sections.find((s) => s.position === 0)?.html || "";
+  const outro = article.outroHtml || sections.find((s) => s.position >= 9990)?.html || "";
+  const introWords = wordCount(intro);
+  const outroWords = wordCount(outro);
   if (!intro.trim()) problems.push("Нет вступления");
   else if (THINKING_RE.test(intro)) problems.push("Во вступлении черновые размышления модели");
-  if (wordCount(outro) < MIN_OUTRO_WORDS) problems.push("Нет заключения или оно слишком короткое");
-  const totalWords = liveSections.reduce((sum, s) => sum + (s.wordCount || wordCount(s.html)), 0) + wordCount(intro) + wordCount(outro);
+  else if (introWords < INTRO_MIN_WORDS) problems.push(`Вступление: всего ${introWords} слов (нужно от ${INTRO_MIN_WORDS})`);
+  if (!outro.trim()) problems.push("Нет заключения");
+  else if (outroWords < OUTRO_MIN_WORDS) problems.push(`Заключение: всего ${outroWords} слов (нужно от ${OUTRO_MIN_WORDS})`);
+  const totalWords = photoSections.reduce((sum, s) => sum + (s.wordCount || wordCount(s.html)), 0) + introWords + outroWords;
   if (totalWords < MIN_ARTICLE_WORDS) problems.push(`Статья короткая: ${totalWords} слов`);
 
   // ── 4. Мета: непустая, точечное восстановление из плана (оригинал :203-215 + stage77 при починке) ──
@@ -285,4 +308,17 @@ export async function checkArticleQuality(
   if (!html.trim()) problems.push("Нет собранного HTML статьи");
 
   return { ok: problems.length === 0, problems, fixed, patch, sectionsLive, photosLive: livePhotos.length };
+}
+
+/** Сохранить детерминированные исправления проверки (мета, HTML, заголовки и текст секций). Общая для assemble и publish. */
+export async function applyQualityPatch(articleId: string, patch: QualityPatch): Promise<void> {
+  if (Object.keys(patch.article).length) await prisma.article.update({ where: { id: articleId }, data: patch.article });
+  for (const sp of patch.sections) {
+    await prisma.artSection.update({ where: { id: sp.id }, data: { ...(sp.heading !== undefined ? { heading: sp.heading } : {}), ...(sp.html !== undefined ? { html: sp.html } : {}) } });
+  }
+}
+
+/** Проблема касается только вступления/заключения — её чинит повтор этапа intro_outro. */
+export function isIntroOutroProblem(problem: string): boolean {
+  return /^(Вступление|Заключение|Нет вступления|Нет заключения|Во вступлении)/.test(problem);
 }

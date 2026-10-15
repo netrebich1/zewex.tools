@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { assignScope, canAssignGlobal, canCreateKey, canCreatePersonalKey, canCreateSharedKey, keyTeamScope } from "@/lib/permissions";
+import { assignScope, canAssignGlobal, canCreateKey, canCreatePersonalKey, canCreateSharedKey, keyTeamScope, publicToolWhere } from "@/lib/permissions";
 import { Card, Field, PageHeader, sp, type SearchParams } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
@@ -19,7 +19,7 @@ export default async function NewKeyPage({ searchParams }: { searchParams: Promi
   const keyTeams = keyTeamScope(me);
   const assignTeams = assignScope(me);
   const [projects, teams] = await Promise.all([
-    prisma.project.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }], select: { id: true, name: true, _count: { select: { slots: true } } } }),
+    prisma.project.findMany({ where: publicToolWhere, orderBy: [{ order: "asc" }, { name: "asc" }], select: { id: true, name: true, _count: { select: { slots: true } } } }),
     prisma.team.findMany({
       where: keyTeams === "all" && assignTeams === "all" ? {} : { id: { in: [...(keyTeams === "all" ? [] : keyTeams), ...(assignTeams === "all" ? [] : assignTeams)] } },
       orderBy: { name: "asc" }, select: { id: true, name: true },

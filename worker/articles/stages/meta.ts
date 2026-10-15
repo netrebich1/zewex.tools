@@ -13,8 +13,9 @@ import { SLOTS, type ArticlePlan } from "@/lib/articles/types";
 import { resolvePromptOptional, fillPrompt, stageModel } from "@/lib/articles/prompts";
 import { COUNT_TOKEN, hasCountToken, keepToken, renderCount } from "@/lib/articles/text/countToken";
 import { parseModelJsonSafe } from "@/lib/articles/text/jsonRepair";
-import { applySlugYear, hashPercent, keywordYear, normalizeMetaYear, slugExampleFor, slugify, slugOk, SLUG_SAFE_WORDS, stripYear, yearInSlugFor, yearPercentOf, YEAR_PATTERN } from "@/lib/articles/text/slug";
+import { applySlugYear, hashPercent, keywordYear, normalizeMetaYear, slugExampleFor, slugify, slugOk, stripYear, yearInSlugFor, yearPercentOf, YEAR_PATTERN } from "@/lib/articles/text/slug";
 import { buildPromptVars, focusKeywordOf, loadProfile, topicOf, type JsonRecord } from "@/lib/articles/text/vars";
+import { fixDashesText, polishHeading, stripSlugFiller, toUsSpellingText, usesUsSpelling } from "@/lib/articles/text/polish";
 import type { ArtStageHandler } from "./index";
 import { loadActivePhotos } from "./plan";
 
@@ -48,6 +49,8 @@ WHAT A GOOD TITLE IS
 3. COUNT — OPTIONAL IN THE TITLE, REQUIRED IN H1
    - h1 must state how many ideas the article has, written as the literal placeholder given in the user
      message — never a digit you invent, because the number can change during moderation.
+   - h1 OPENS with the placeholder: "{{COUNT}} Velvet Nails With Cat Eye Shimmer", never a word before it
+     ("Fuzzy {{COUNT}} Velvet Nails" reads unnatural).
    - seo_title may include the count when it genuinely strengthens the hook, and should otherwise skip it.
      Do not open every title with a number.
 
@@ -62,8 +65,8 @@ WHAT A GOOD TITLE IS
    - Any title whose only content after the keyword is filler: Ideas, Looks, Inspo, Inspiration, Trends,
      Amazing, Best, Ultimate, Stunning, Gorgeous, Perfect, Must-Try, You'll Love, Top.
    - No site name, no "|", no ALL CAPS, no quotes, no emoji, no clickbait.
-   - Vary separators: often none at all, sometimes an em dash, sometimes "that", "for", "to try".
-     A colon is allowed at most as one option among many, never the default.
+   - Vary connectors: often none at all, sometimes "with", "that", "for", "to try".
+     Never an em dash or en dash. A colon is allowed at most as one option among many, never the default.
 
 6. SEO TITLE LENGTH
    - HARD LIMIT 60 characters, aim 45-60, Title Case.
@@ -76,23 +79,16 @@ WHAT A GOOD TITLE IS
 
 8. META DESCRIPTION
    - STRICTLY 140-160 characters. Starts with the primary keyword verbatim after year normalization. Contains the count placeholder, the year when provided,
-     2+ grouped related ideas, one concrete value prop and a soft CTA ("see the looks", "save your favourite").
+     2+ grouped related ideas, one concrete value prop and a soft CTA ("see the looks", "save your favorite").
+     No em dashes or en dashes, American spelling.
 
-9. URL SLUG — KEYWORD PLUS 1-3 SAFE EXTRA WORDS
+9. URL SLUG — THE KEYWORD ONLY
    - lowercase, hyphenated, no digits except the keyword year when allowed.
-   - The primary keyword (year removed) must appear in the slug AS ONE UNBROKEN BLOCK, words in the original
-     order. Never insert anything between its words and never drop one of them.
-   - Add 1 to 3 extra words before and/or after that block, following the "Slug shape" line in the user message.
-   - The extra words may only broaden the page, never re-define the subject. ALLOWED: trendy, cute, chic, classy,
-     elegant, pretty, simple, easy, modern, aesthetic, stylish, cool, fresh, bold, soft, best, top, popular,
-     ideas, inspiration, inspo, designs, looks, gallery, guide, examples, picks, to-try, for-women, for-girls,
-     for-her.
-   - FORBIDDEN in the slug: any word that changes the subject itself — length, shape, colour, material,
-     technique, body part, season, occasion or audience words that are not already in the keyword
-     (e.g. keyword "white nails" must never become "short-white-nails", "white-almond-nails",
-     "matte-white-nails", "white-nails-for-brides").
-   - GOOD for "white nails": white-nails-ideas / trendy-white-nails / cute-white-nails-ideas /
-     white-nails-for-women / best-white-nails-ideas / white-nails-inspiration.
+   - The slug is the primary keyword (year removed) AS ONE UNBROKEN BLOCK, words in the original order, plus the
+     year only when the "Year in slug" line asks for it. No extra words: never add cute, trendy, chic, best, top,
+     ideas, looks, designs, inspiration, for-women or similar filler, and never add length, shape, color,
+     season or audience words that are not in the keyword.
+   - GOOD for "white nails": white-nails. BAD: cute-white-nails-ideas, white-nails-for-women, short-white-nails.
 
 10. STAY IN THE NICHE
    - Use the item noun you are given; never borrow nouns from another niche.
@@ -100,7 +96,7 @@ WHAT A GOOD TITLE IS
 EXAMPLES (keyword "winter work outfits", year 2027, related "wool coat outfits", "knit dress work looks")
 GOOD: "Winter Work Outfits 2027 for Freezing Office Mornings"
 GOOD: "Wool Coat Winter Work Outfits That Survive 2027 Commutes"
-GOOD: "Cozy Winter Work Outfits 2027 — Knit Dresses to Blazers"
+GOOD: "Cozy Winter Work Outfits 2027 From Knit Dresses to Blazers"
 BAD:  "Winter Work Outfits 2027: 25 Stunning Ideas"      (banned colon-dump + filler)
 BAD:  "25 Winter Work Outfits 2027: Wool Coat, Knit Dress"  (keyword dump after colon)
 
@@ -118,7 +114,7 @@ Return ONLY valid JSON, no markdown, no commentary:
 const YEAR_SHAPES = [
   "No separator at all: one flowing headline where the keyword sits early and an audience or situation closes it. No count, no colon.",
   "Open with one natural mood/season/texture word, then the keyword, then the year, then a short benefit. No colon.",
-  "Open with the keyword, then an em dash and one grouped related idea; year at the end. No count.",
+  "Open with the keyword, then \"with\" and one grouped related idea; year at the end. No count, no dash.",
   "Open with the count placeholder, then the keyword and the year, then a concrete situation. No colon.",
   "Keyword first, then \"that\" or \"for\" plus a very concrete reader situation; year anywhere. No colon.",
   "Keyword plus \"to Try in <year>\", closing with one texture/occasion word. No count, no colon.",
@@ -126,7 +122,7 @@ const YEAR_SHAPES = [
 const NO_YEAR_SHAPES = [
   "No separator at all: one flowing headline where the keyword sits early and an audience or situation closes it. No count, no colon, no year.",
   "Open with one natural mood/season/texture word, then the keyword, then a short benefit. No colon, no year.",
-  "Open with the keyword, then an em dash and one grouped related idea. No count, no year.",
+  "Open with the keyword, then \"with\" and one grouped related idea. No count, no year, no dash.",
   "Open with the count placeholder, then the keyword and a concrete situation. No colon, no year.",
   "Keyword first, then \"that\" or \"for\" plus a very concrete reader situation. No colon, no year.",
   "Keyword plus \"to Try\", closing with one texture/occasion word. No count, no colon, no year.",
@@ -185,25 +181,119 @@ export function titleCase(s: string): string {
   }).join("");
 }
 
-/** Описание: заглавная буква, откат к законченному предложению, добор мягким CTA до 140, обрезка до 160 (оригинал: 781-800). */
-export function padDescription(d: string): string {
-  let out = d.trim().replace(/^([a-z])/, (c) => c.toUpperCase());
+const DESC_MAX = 158;
+const DESC_MIN_CUT = 100;
+const DANGLING_RE = /\s+(?:and|or|with|for|of|in|on|to|the|a|an|at|by|from|that|plus|&)$/i;
+
+/** Метка количества стоит первой (после возможных пробелов). */
+export function countFirst(text: string): boolean {
+  return /^\s*\{\{COUNT\}\}/.test(keepToken(text));
+}
+
+/**
+ * Число первым в H1/тайтле: метка из середины переносится в начало («Fuzzy {{COUNT}} Velvet Nails» →
+ * «{{COUNT}} Fuzzy Velvet Nails»); висящие после переноса предлоги и двойные пробелы убираются.
+ */
+export function countToFront(text: string): string {
+  const t = keepToken(text).trim();
+  if (!hasCountToken(t) || countFirst(t)) return t;
+  const rest = t
+    .replace(/\s*\{\{COUNT\}\}\s*/g, " ")
+    .replace(/\s+([:,;—–-])/g, "$1")
+    .replace(/\b(in|with|of|for)\s*([:,;—–-]|$)/gi, "$2")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return `${COUNT_TOKEN} ${rest}`;
+}
+
+/**
+ * Описание: заглавная буква, законченное предложение, добор мягким CTA до 140, предел 158 символов (оригинал: 781-800).
+ * Длина считается по тексту с подставленным числом (`count`), а не по метке {{COUNT}} (она на 7 символов длиннее).
+ * Обрезка — по концу предложения; если такого нет после 100 символов — по концу фразы (запятая, точка с запятой, тире)
+ * с точкой на конце; в крайнем случае по границе слова без висящих союзов (раньше резалось посреди фразы — аудит 2026-10-14).
+ */
+export function padDescription(d: string, count = 10): string {
+  const len = (s: string) => renderCount(s, count).length;
+  let out = d.trim().replace(/\s+/g, " ").replace(/^([a-z])/, (c) => c.toUpperCase());
+  if (!out) return out;
   if (!/[.!?]$/.test(out)) {
-    const dot = out.lastIndexOf(".");
-    if (dot >= 100) out = out.slice(0, dot + 1);
-    else out = `${out.replace(/[\s,;:-]+$/, "")}.`;
+    const dot = out.lastIndexOf(". ");
+    if (dot >= DESC_MIN_CUT && len(out.slice(0, dot + 1)) <= DESC_MAX) out = out.slice(0, dot + 1);
+    else out = `${out.replace(/[\s,;:—–-]+$/, "")}.`;
   }
-  const tails = [" See the looks and save your favourite.", " Find the one that fits your style.", " Get the details for each look."];
+  if (len(out) > DESC_MAX) out = fitDescription(out, len);
+  const tails = [" See the looks and save your favorite.", " Find the one that fits your style.", " Get the details for each look."];
   for (const t of tails) {
-    if (out.length >= 140) break;
-    if (out.length + t.length <= 160) out = `${out.replace(/\s+$/, "").replace(/([^.!?])$/, "$1.")}${t}`;
-  }
-  if (out.length > 160) {
-    const cut = out.slice(0, 160);
-    const dot = cut.lastIndexOf(".");
-    out = (dot > 130 ? cut.slice(0, dot + 1) : cut.replace(/\s+\S*$/, "")).trim();
+    if (len(out) >= 140) break;
+    if (len(out) + t.length <= DESC_MAX) out = `${out.replace(/\s+$/, "").replace(/([^.!?])$/, "$1.")}${t}`;
   }
   return out;
+}
+
+/** Укоротить описание до DESC_MAX: конец предложения → конец фразы + точка → граница слова + точка. */
+function fitDescription(out: string, len: (s: string) => number): string {
+  let best = "";
+  for (const m of out.matchAll(/[.!?](?=\s|$)/g)) {
+    const head = out.slice(0, (m.index ?? 0) + 1);
+    if (len(head) <= DESC_MAX) best = head;
+    else break;
+  }
+  if (best && len(best) >= DESC_MIN_CUT) return best.trim();
+  let clause = "";
+  for (const m of out.matchAll(/\s*[,;:—–]\s/g)) {
+    const head = out.slice(0, m.index ?? 0).replace(DANGLING_RE, "");
+    if (len(head) + 1 <= DESC_MAX) clause = head;
+    else break;
+  }
+  if (clause && len(clause) >= DESC_MIN_CUT) return `${clause.trim()}.`;
+  let acc = "";
+  for (const w of out.split(" ")) {
+    const next = acc ? `${acc} ${w}` : w;
+    if (len(next) + 1 > DESC_MAX) break;
+    acc = next;
+  }
+  for (let i = 0; i < 3; i++) acc = acc.replace(/[\s,;:—–-]+$/, "").replace(DANGLING_RE, "");
+  return `${acc.replace(/[.!?]+$/, "")}.`;
+}
+
+/** Висящие на конце связки и знаки: «…for a», «… &», «… with,». */
+const TAIL_SMALL_RE = /[\s,;:&+—–-]+$|\s+(?:a|an|the|for|of|to|with|and|or|in|on|at|by|from|that|your|this|these)$/i;
+export function trimDangling(t: string): string {
+  let s = String(t || "").trim();
+  for (let i = 0; i < 5; i++) {
+    const next = s.replace(TAIL_SMALL_RE, "").trim();
+    if (next === s) break;
+    s = next;
+  }
+  return s;
+}
+
+/** Фраза оборвана: кончается связкой или «артикль + слово(а)» без существительного («for a Soft & Sunny»). */
+export function looksCut(t: string): boolean {
+  const s = String(t || "").trim();
+  if (TAIL_SMALL_RE.test(s)) return true;
+  return /\b(?:a|an|the|your)\s+[\w'-]+(?:\s+(?:&|and)\s+[\w'-]+)?$/i.test(s);
+}
+
+/**
+ * Зачистка шаблона SEO-тайтла: слова-пустышки (Ideas, Looks, Best…) вне ключа вырезаются, но если после этого фраза
+ * обрывается («Butter Yellow Nails for a Soft & Sunny» из «…Sunny Look») — остаётся исходный вариант модели.
+ * Двоеточие перед связкой (for/with/to/that…) → пробел, иначе двоеточие остаётся (тире не ставим).
+ */
+export function deTemplateTitle(raw: string, keywordNoYear: string): string {
+  const orig = String(raw || "").replace(/\s{2,}/g, " ").trim();
+  const kwLow = String(keywordNoYear || "").toLowerCase();
+  let t = orig.replace(/\s*:\s*(?=(?:for|with|to|that|from|in|on|at|by|and|plus)\b)/gi, " ");
+  const stripped = t
+    .replace(FILLER_RE, (w) => (kwLow.includes(String(w).toLowerCase()) ? w : ""))
+    .replace(/\s*&\s*(?=:|$)/g, " ")
+    .replace(/\s*,\s*(?=:|$)/g, " ")
+    .replace(/\s*:\s*$/g, "")
+    .replace(/^\s*:\s*/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (stripped && !looksCut(stripped) && stripped.length >= 25) t = stripped;
+  return t.replace(/\s{2,}/g, " ").trim();
 }
 
 function sanitizeRussianKeyword(value: string, fallbackKeyword: string): string {
@@ -254,26 +344,19 @@ export const meta: ArtStageHandler = async (ctx) => {
     const rawH1 = String(m.h1 || "");
     if (title.length > 60) problems.push(`seo_title is ${title.length} characters — rewrite it to 60 or fewer.`);
     if (title.length < 25) problems.push(`seo_title is only ${title.length} characters — make it 45-58 characters.`);
-    if (desc.length < 140) problems.push(`meta_description is ${desc.length} characters — expand it to 140-160.`);
+    // 130+ хватает: padDescription добирает до 140 мягким CTA без лишней попытки ИИ (аудит text-v2, п. 12).
+    if (desc.length < 130) problems.push(`meta_description is ${desc.length} characters — expand it to 140-160.`);
     if (desc.length > 160) problems.push(`meta_description is ${desc.length} characters — shorten it to 160 or fewer.`);
     if (h1 && title && h1.trim().toLowerCase() === title.trim().toLowerCase()) problems.push("h1 and seo_title are identical — make the H1 longer and more descriptive.");
     if (/\|/.test(title)) problems.push("seo_title must not contain a site name or a | separator.");
-    const slug = String(m.url_slug || "");
-    const emittedYears = [...new Set(`${title} ${h1} ${desc} ${slug}`.match(YEAR_PATTERN) || [])];
+    // URL не проверяем: он собирается детерминированно ниже (блок ключа, год по розыгрышу, без слов-пустышек),
+    // повторная попытка ИИ ради адреса — лишний расход.
+    const emittedYears = [...new Set(`${title} ${h1} ${desc}`.match(YEAR_PATTERN) || [])];
     if (year) {
       const wrongYears = emittedYears.filter((y) => y !== TARGET_SEO_YEAR);
       if (wrongYears.length) problems.push(`Only ${TARGET_SEO_YEAR} may be used in meta tags; replace ${wrongYears.join(", ")} with ${TARGET_SEO_YEAR}.`);
     } else if (emittedYears.length) {
-      problems.push("The Keyword field has no year, so omit all years from seo_title, h1, meta_description and url_slug.");
-    }
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) problems.push("url_slug must be lowercase words separated by single hyphens.");
-    if (slug.split("-").filter(Boolean).length > kwSlug.split("-").length + 3) problems.push("url_slug has too many extra words — keyword block plus 1-3 extra words maximum.");
-    if (kwSlug && !`-${slug}-`.includes(`-${kwSlug}-`)) {
-      problems.push(`url_slug must contain "${kwSlug}" as one unbroken block — do not insert or drop words inside it.`);
-    } else if (kwSlug) {
-      const extras = `-${slug}-`.replace(`-${kwSlug}-`, "-").split("-").filter(Boolean).filter((w) => !(year && w === year));
-      const bad = extras.filter((w) => !SLUG_SAFE_WORDS.has(w));
-      if (bad.length) problems.push(`url_slug contains subject-changing words (${bad.join(", ")}) — only broadening words like trendy, cute, ideas, inspiration, for-women are allowed.`);
+      problems.push("The Keyword field has no year, so omit all years from seo_title, h1 and meta_description.");
     }
 
     const kw = keywordNoYear.toLowerCase();
@@ -301,11 +384,10 @@ export const meta: ArtStageHandler = async (ctx) => {
       if (!title.includes(year)) problems.push(`seo_title must include the year ${year}.`);
       if (!h1.includes(year)) problems.push(`h1 must include the year ${year}.`);
       if (!desc.includes(year)) problems.push(`meta_description must include the year ${year}.`);
-      if (yearInSlug && !slug.includes(year)) problems.push(`url_slug must end with the year ${year}.`);
-      if (!yearInSlug && /\d/.test(slug)) problems.push("url_slug must contain no year and no digits at all.");
     }
     if (!hasCountToken(rawH1)) problems.push(`h1 must state the number of ideas using the literal placeholder ${COUNT_TOKEN} — never a digit.`);
-    for (const [field, value] of [["h1", rawH1], ["seo_title", title], ["meta_description", desc], ["url_slug", slug]] as [string, string][]) {
+    else if (!countFirst(rawH1)) problems.push(`h1 must open with the placeholder ${COUNT_TOKEN} — no word before it.`);
+    for (const [field, value] of [["h1", rawH1], ["seo_title", title], ["meta_description", desc], ["url_slug", String(m.url_slug || "")]] as [string, string][]) {
       if (CYRILLIC.test(String(value || ""))) problems.push(`${field} must be written in the keyword language (English, Latin letters only) — it currently contains Russian text. Russian belongs only in keyword_ru.`);
     }
     if (secondaryKeywords.length >= 2) {
@@ -324,7 +406,7 @@ export const meta: ArtStageHandler = async (ctx) => {
   const fallbackMeta = (): SeoMeta => ({
     h1: `${COUNT_TOKEN} ${keywordNoYear}${yearSuffix}`.replace(/\s{2,}/g, " ").trim(),
     seo_title: `${keywordNoYear}${yearSuffix}`.replace(/\s{2,}/g, " ").trim(),
-    meta_description: `${COUNT_TOKEN} ${keywordNoYear}${yearSuffix} to save and copy, with practical notes on every single one.`.replace(/\s{2,}/g, " ").trim().slice(0, 158),
+    meta_description: `${COUNT_TOKEN} ${keywordNoYear}${yearSuffix} to save and copy, with practical notes on every single one.`.replace(/\s{2,}/g, " ").trim(),
     url_slug: slugExample,
   });
 
@@ -334,9 +416,13 @@ export const meta: ArtStageHandler = async (ctx) => {
     : plan?.title && plan?.h1 && plan?.slug && plan?.metaDescription
       ? { h1: plan.h1, seo_title: plan.title, meta_description: plan.metaDescription, url_slug: plan.slug }
       : null;
+  // Число в начало H1 — детерминированно, без лишнего вызова ИИ ради одной перестановки.
+  if (existing) existing.h1 = countToFront(existing.h1);
   let seoMeta: SeoMeta | null = null;
   let usedAi = false;
   let lastProblems: string[] = [];
+  /** Последняя временная ошибка провайдера, если ни одна попытка не дала ответа (тогда этап повторит раннер). */
+  let transientOnly: AiError | null = null;
   let modelUsed: string | null = null;
   if (existing && validate(existing).length === 0) {
     seoMeta = { ...existing };
@@ -372,12 +458,12 @@ Year policy: ${metaVars.year_policy}
 Year (mandatory in title, h1 and description when present; position free): ${year || "none — omit year entirely"}
 Year in slug: ${metaVars.year_in_slug}
 Keyword block that must stay unbroken inside the slug: ${kwSlug}
-Slug shape for THIS article (keep the keyword block intact; you may swap the extra words for other ALLOWED ones that fit this topic better, but never add subject-changing words): ${slugExample}
+Slug for THIS article (the keyword block only, no extra words; the year is added by the rule above): ${slugExample}
 Count placeholder to write instead of the number of ideas (write it literally, never a digit): ${COUNT_TOKEN}
 Item noun to use: ${itemNoun}
 Related keywords from real search data (merge overlapping ones into natural phrases / semantic groups; 2+ grouped ideas in the meta description, 0-1 in h1, a short one in the title only if it reads naturally): ${secondaryKeywords.join(", ") || "none"}
 
-Title shape for THIS article (follow it so titles across the site do not repeat one pattern): ${titleShape}
+Title shape for THIS article (seo_title only — the h1 always opens with the count placeholder; follow it so titles across the site do not repeat one pattern): ${titleShape}
 
 Generate h1, seo_title, meta_description and url_slug.
 LANGUAGE (STRICT): h1, seo_title, meta_description and url_slug MUST be written in the same language as the PRIMARY KEYWORD (English) — plain Latin letters only, no Cyrillic characters anywhere in these four fields.
@@ -415,7 +501,10 @@ No filler words in the title ("Ideas / Looks / Best / Stunning / Must-Try / Top"
         if (e instanceof AiError && e.cls.kind === "fatal_run") throw e;
         lastProblems = [`AI call failed: ${e instanceof Error ? e.message : String(e)}`];
         ctx.log(`попытка ${attempt}: вызов не удался — ${lastProblems[0]}`);
-        if (e instanceof AiError && e.cls.kind === "transient") await new Promise((res) => setTimeout(res, backoffMs(attempt - 1)));
+        if (e instanceof AiError && e.cls.kind === "transient") {
+          if (!usedAi) transientOnly = e;
+          await new Promise((res) => setTimeout(res, backoffMs(attempt - 1)));
+        }
         continue;
       }
       const parsed = parseModelJsonSafe(raw) as Partial<SeoMeta> | null;
@@ -432,6 +521,9 @@ No filler words in the title ("Ideas / Looks / Best / Stunning / Must-Try / Top"
     }
   }
 
+  // Провайдер не ответил ни разу (429/5xx/сеть), а черновика плана нет — не подменяем мету шаблонной,
+  // а отдаём раннеру: повтор этапа с паузой (окно ~1 ч), потом уже ошибка.
+  if (!seoMeta && !usedAi && transientOnly && !existing) throw transientOnly;
   if (!seoMeta) {
     ctx.log(`все попытки неудачны (${lastProblems.join(" | ")}) — детерминированная запасная мета`);
     seoMeta = existing ?? fallbackMeta();
@@ -446,21 +538,10 @@ No filler words in the title ("Ideas / Looks / Best / Stunning / Must-Try / Top"
     }
   }
 
-  // Детерминированная зачистка шаблона (оригинал: 549-578)
-  const deTemplate = (raw: string): string => {
-    let t = String(raw || "");
-    const kwLow = keywordNoYear.toLowerCase();
-    t = t.replace(FILLER_RE, (w) => (kwLow.includes(String(w).toLowerCase()) ? w : ""));
-    t = t.replace(/\s*:\s*/g, " — ");
-    t = t.replace(/\s*&\s*(?=—|$)/g, " ")
-      .replace(/\s*,\s*(?=—|$)/g, " ")
-      .replace(/\s{2,}/g, " ")
-      .replace(/\s*—\s*$/g, "")
-      .replace(/^\s*—\s*/g, "")
-      .replace(/\s*—\s*—\s*/g, " — ")
-      .trim();
-    return t;
-  };
+  // Детерминированная зачистка шаблона (оригинал: 549-578). Аудит text-v2: «…for a Soft & Sunny Look» без «Look»
+  // давал обрубок «…for a Soft & Sunny», а «:» → « — » — «Mary Jane Shoes Outfits – for Mini Skirts». Теперь
+  // пустышка вырезается, только если фраза после этого не обрывается, а двоеточие перед связкой становится пробелом.
+  const deTemplate = (raw: string): string => deTemplateTitle(raw, keywordNoYear);
   const titleBanned = () => {
     const t = String(seoMeta!.seo_title || "");
     const fillerLeft = (t.match(FILLER_RE) || []).filter((w) => !keywordNoYear.toLowerCase().includes(String(w).toLowerCase()));
@@ -478,16 +559,12 @@ No filler words in the title ("Ideas / Looks / Best / Stunning / Must-Try / Top"
 
   // Мягкая подгонка длины; поля с меткой количества не режем (оригинал: 587-594)
   if (!hasCountToken(seoMeta.seo_title) && seoMeta.seo_title.length > 60) {
-    seoMeta.seo_title = seoMeta.seo_title.slice(0, 60).replace(/[\s\-–—:,]+\S*$/, "").trim();
+    seoMeta.seo_title = trimDangling(seoMeta.seo_title.slice(0, 60).replace(/[\s\-–—:,]+\S*$/, ""));
   }
-  if (!hasCountToken(seoMeta.meta_description) && seoMeta.meta_description.length > 160) {
-    const trimmed = seoMeta.meta_description.slice(0, 160);
-    const lastDot = trimmed.lastIndexOf(".");
-    seoMeta.meta_description = (lastDot > 120 ? trimmed.slice(0, lastDot + 1) : trimmed.replace(/\s+\S*$/, "")).trim();
-  }
+  // Длину описания подгоняет padDescription ниже — по концу предложения и уже с подставленным числом.
 
   // URL: ключ цельным блоком + ≤3 безопасных слова, иначе — заранее выбранная форма (оригинал: 595-612)
-  seoMeta.url_slug = slugify(normalizeMetaYear(slugify(seoMeta.url_slug, 200), year), 200);
+  seoMeta.url_slug = stripSlugFiller(slugify(normalizeMetaYear(slugify(seoMeta.url_slug, 200), year), 200), kwSlug, year);
   if (kwSlug && !slugOk(seoMeta.url_slug, kwSlug, year)) {
     ctx.log(`slug «${seoMeta.url_slug}» отклонён → «${slugExample}»`);
     seoMeta.url_slug = slugExample;
@@ -506,10 +583,14 @@ No filler words in the title ("Ideas / Looks / Best / Stunning / Must-Try / Top"
   }
 
   // Title Case + каноническая метка; H1 без метки — метка в начало (оригинал: 638-643)
-  seoMeta.seo_title = keepToken(titleCase(seoMeta.seo_title));
-  seoMeta.h1 = keepToken(titleCase(seoMeta.h1));
+  // Число всегда первым: «Fuzzy 13 Velvet Nails» → «13 Fuzzy Velvet Nails» (аудит 2026-10-14).
+  // Без длинных тире и с американским написанием (аудит text-v2, п. 2).
+  const us = usesUsSpelling(recipe.photoSearch?.language, recipe.photoSearch?.country);
+  seoMeta.seo_title = countToFront(keepToken(titleCase(polishHeading(seoMeta.seo_title, { usSpelling: us }))));
+  seoMeta.h1 = countToFront(keepToken(titleCase(polishHeading(seoMeta.h1, { usSpelling: us }))));
   if (!hasCountToken(seoMeta.h1)) seoMeta.h1 = `${COUNT_TOKEN} ${seoMeta.h1}`.trim();
-  seoMeta.meta_description = keepToken(padDescription(seoMeta.meta_description));
+  const descClean = fixDashesText(seoMeta.meta_description);
+  seoMeta.meta_description = keepToken(padDescription(us ? toUsSpellingText(descClean) : descClean, outfitCount || 10));
   const keywordRu = sanitizeRussianKeyword(String(seoMeta.keyword_ru || article.keywordRu || ctx.facts.keywordRu || ""), mainKeyword);
 
   // Страховка direct-pipeline:1103-1123 (metaOk): без непустых полей дальше нельзя.
@@ -517,7 +598,7 @@ No filler words in the title ("Ideas / Looks / Best / Stunning / Must-Try / Top"
   if (!okNow) {
     ctx.log("мета после правок неполная — запасной вариант");
     seoMeta = { ...fallbackMeta(), keyword_ru: keywordRu };
-    seoMeta.meta_description = keepToken(padDescription(seoMeta.meta_description));
+    seoMeta.meta_description = keepToken(padDescription(seoMeta.meta_description, outfitCount || 10));
   }
 
   await prisma.article.update({

@@ -27,20 +27,12 @@ export const SLUG_SAFE_WORDS = new Set([
   "guide", "examples", "picks", "to", "try", "for", "women", "girls", "her", "you",
 ]);
 
-/** Варианты формы URL: «{kw}» — блок ключевого слова без года. (оригинал: stage77:116-128) */
-export const SLUG_SHAPES = [
-  "{kw}-ideas",
-  "trendy-{kw}",
-  "cute-{kw}-ideas",
-  "{kw}-for-women",
-  "best-{kw}-ideas",
-  "{kw}-inspiration",
-  "chic-{kw}-looks",
-  "{kw}-ideas-to-try",
-  "{kw}-designs",
-  "simple-{kw}-ideas",
-  "{kw}",
-];
+/**
+ * Форма URL: только блок ключевого слова (без года). Раньше к ключу добавлялись 1–3 «расширяющих» слова
+ * (cute-…-ideas, chic-…-looks, …-for-women) — аудит text-v2: это мусор в адресе, слова-пустышки теперь
+ * вырезаются (polish.ts → stripSlugFiller). Массив оставлен, чтобы форма выбиралась тем же кодом.
+ */
+export const SLUG_SHAPES = ["{kw}"];
 
 /** Стабильное число 0-99 из строки: розыгрыш года в URL не меняется при повторном запуске. (оригинал: stage77:831-838) */
 export function hashPercent(seed: string): number {

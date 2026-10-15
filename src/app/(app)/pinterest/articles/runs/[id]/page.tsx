@@ -9,7 +9,12 @@ import { STATUS_LABELS } from "@/lib/articles/labels";
 import { runArticles, runProgress } from "@/lib/articles/queries";
 import { ArticlesTable } from "@/components/articles/ArticlesTable";
 import { badgeTone } from "@/components/articles/StatusBadge";
-import { fmtDate } from "@/lib/utils";
+import { fmtDate, fmtMoney } from "@/lib/utils";
+import { seesTeamCosts } from "@/lib/permissions";
+import { costBreakdown } from "@/lib/articles/costs";
+import { errorsSummary } from "@/lib/articles/errorsView";
+import { CostArticlesTable, CostSummary } from "@/components/articles/CostBreakdown";
+import { ErrorGroups, RetryGroups } from "@/components/articles/ErrorsTable";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +28,13 @@ export default async function ArticlesRunPage({ params, searchParams }: { params
   const run = await prisma.artRun.findUnique({ where: { id }, include: { site: { select: { id: true, name: true, teamId: true, accessId: true } }, recipe: { select: { id: true, name: true, format: true } } } });
   if (!run || !(await canAccessArtSite(me, run.site))) notFound();
   const s = run.settings as unknown as ArtRunSettings;
-  const [progress, rows, author] = await Promise.all([runProgress(id), runArticles(id), run.createdById ? prisma.user.findUnique({ where: { id: run.createdById }, select: { name: true, email: true } }) : null]);
+  const canCosts = seesTeamCosts(me);
+  const [progress, rows, author, costs, errs] = await Promise.all([
+    runProgress(id), runArticles(id),
+    run.createdById ? prisma.user.findUnique({ where: { id: run.createdById }, select: { name: true, email: true } }) : null,
+    canCosts ? costBreakdown({ siteIds: [run.site.id], runId: id, withArticles: true }) : null,
+    errorsSummary(me, { runId: id }, { runId: id }),
+  ]);
   const pct = progress.total ? Math.round((progress.completed / progress.total) * 100) : 0;
   const search = [s.search?.country && `страна ${s.search.country}`, s.search?.language && `язык ${s.search.language}`, s.search?.freshness && `свежесть ${s.search.freshness}`].filter(Boolean).join(", ");
 
@@ -45,12 +56,42 @@ export default async function ArticlesRunPage({ params, searchParams }: { params
             {progress.live > 0 && <span className="help">в работе и очереди {progress.live}</span>}
             {progress.waiting > 0 && <span className="text-warn text-[13px]">ждут человека {progress.waiting}</span>}
             {progress.errors > 0 && <span className="text-danger text-[13px]">ошибок {progress.errors}</span>}
-            <span className="ml-auto help">расход ${progress.costUsd.toFixed(2)}</span>
+            {canCosts && <span className="ml-auto help">расход {fmtMoney(progress.costUsd)}</span>}
           </div>
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-ink/5"><div className="h-full bg-ok transition-all" style={{ width: `${pct}%` }} /></div>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {progress.byStatus.map((b) => <Badge key={b.status} tone={badgeTone(STATUS_LABELS[b.status].tone)}>{STATUS_LABELS[b.status].label}: {b.count}</Badge>)}
           </div>
+        </Card>
+
+        {costs && (
+          <Card title={`Расходы запуска · ${fmtMoney(costs.total)}`} description="Все платные вызовы статей запуска (ИИ, поиск фото, ИИ-модерация) по фазам. Потеряно — статьи с ошибкой или остановленные.">
+            <CostSummary c={costs} />
+            {costs.articles.length > 0 && (
+              <details className="mt-4">
+                <summary className="help cursor-pointer">Расход по статьям ({costs.articles.length})</summary>
+                <div className="mt-2"><CostArticlesTable c={costs} /></div>
+              </details>
+            )}
+          </Card>
+        )}
+
+        <Card title={`Ошибки запуска${errs.open ? ` · открытых ${errs.open}` : ""}`} description="Ошибки статей этого запуска по группам и временные сбои, которые воркер повторил сам."
+          actions={errs.groups.length > 0 ? <Link href={`/pinterest/articles/journal?tab=errors&site=${run.site.id}&run=${id}&days=0&state=all`} className="btn-ghost btn-sm">В журнале</Link> : null}>
+          {errs.groups.length === 0 && errs.retries.length === 0 ? (
+            <p className="help">Ошибок и повторов не было.</p>
+          ) : (
+            <div className="space-y-4">
+              {errs.groups.length > 0 && <ErrorGroups groups={errs.groups.slice(0, 10)} scope={{ runId: id, siteId: run.site.id }} showSites={false} />}
+              {errs.groups.length > 10 && <p className="help">Показаны 10 групп из {errs.groups.length} — остальные в журнале.</p>}
+              {errs.retries.length > 0 && (
+                <details>
+                  <summary className="help cursor-pointer">Временные сбои: {errs.retryCount} повторов</summary>
+                  <div className="mt-2"><RetryGroups retries={errs.retries} limit={10} /></div>
+                </details>
+              )}
+            </div>
+          )}
         </Card>
 
         <Card title="Параметры запуска" description="Сохранены в снимке каждой статьи: правка рецепта или настроек сайта на эту партию не влияет.">

@@ -9,11 +9,12 @@ import type { CurrentUser } from "@/lib/auth";
 import type { ArtFormat, ArtRecipe, Prisma } from "@prisma/client";
 import { canAccessArtSite } from "./access";
 import { slotAvailable } from "./ai";
+import { loadArtSettings } from "./automation";
 import { innerDuplicates, sanitizeTopic } from "./keywords";
 import { resolvePromptSetId } from "./prompts";
 import { STAGE_INFO, firstStage, stagesFor } from "./stages";
 import {
-  SLOTS, pickPhotoCount, type ArtRunSettings, type ArticleRecipeSnapshot, type KeywordInput, type PhotoSearchConfig, type RecipeImages, type RecipePublish, type RecipeShape, type RecipeText, type SlotKey,
+  SLOTS, aiModerationOn, pickPhotoCount, type ArtRunSettings, type ArticleRecipeSnapshot, type KeywordInput, type PhotoSearchConfig, type RecipeImages, type RecipePublish, type RecipeShape, type RecipeText, type SlotKey,
 } from "./types";
 
 /** Рецепт из строки базы в типизированную форму. */
@@ -114,9 +115,14 @@ export type LaunchInput = { siteId: string; settings: ArtRunSettings; keywords: 
 export type LaunchResult = { runId: string; created: number; skipped: string[]; invalid: string[]; sheetRows: number[] };
 
 export async function launchArticles(me: CurrentUser, input: LaunchInput): Promise<LaunchResult> {
-  const site = await prisma.artSite.findUnique({ where: { id: input.siteId }, select: { id: true, teamId: true, accessId: true, isActive: true, name: true } });
+  const site = await prisma.artSite.findUnique({ where: { id: input.siteId }, select: { id: true, teamId: true, accessId: true, isActive: true, name: true, settings: true } });
   if (!site || !(await canAccessArtSite(me, site))) throw new Error("Сайт не найден");
   if (!site.isActive) throw new Error("Сайт в архиве: верните его из архива на вкладке «Настройки»");
+  // ИИ-модерация фото сайта включена (и мастер-выключатель тоже) → фото каждой статьи с реальными фото проверяются до текста,
+  // какой бы ни была галочка «Модерация фото до текста» в запуске или колонка «Режим» в таблице: проверку делает ИИ.
+  // Для ИИ-картинок не меняем: у них нет отбора фото, а photoReview=true там отключил бы модерацию готовой статьи.
+  const aiMod = aiModerationOn(site.settings, await loadArtSettings());
+  const reviewFor = (k: KeywordInput, recipe: RecipeShape): boolean => (aiMod && recipe.format === "REAL_PHOTO" ? true : k.photoReview ?? input.settings.photoReview);
 
   // Чистим ключи, отбрасываем пустые и повторы внутри списка
   const invalid: string[] = [];
@@ -148,7 +154,7 @@ export async function launchArticles(me: CurrentUser, input: LaunchInput): Promi
     const s: ArtRunSettings = {
       ...input.settings,
       recipeId: recipe.id,
-      photoReview: k.photoReview ?? input.settings.photoReview,
+      photoReview: reviewFor(k, recipe),
       yearInUrlPercent: k.yearInUrlPercent ?? input.settings.yearInUrlPercent,
       search: {
         country: k.search?.country || input.settings.search.country,
@@ -166,12 +172,14 @@ export async function launchArticles(me: CurrentUser, input: LaunchInput): Promi
   const sheet = input.settings.sheet;
   const runName = input.name?.trim() || `${new Date().toLocaleDateString("ru-RU")} · ${sheet ? `Google Таблица «${sheet.tab}»` : first.name} · ${fresh.length} ключей`;
 
+  // В карточке запуска «Модерация фото до текста: да», если её включила ИИ-модерация сайта.
+  const runSettings: ArtRunSettings = aiMod && [...recipes.values()].every((r) => r.format === "REAL_PHOTO") ? { ...input.settings, photoReview: true } : input.settings;
   const run = await prisma.artRun.create({
-    data: { teamId: site.teamId, siteId: site.id, recipeId: recipes.size === 1 ? first.id : null, createdById: me.id, name: runName.slice(0, 190), settings: input.settings as unknown as Prisma.InputJsonValue },
+    data: { teamId: site.teamId, siteId: site.id, recipeId: recipes.size === 1 ? first.id : null, createdById: me.id, name: runName.slice(0, 190), settings: runSettings as unknown as Prisma.InputJsonValue },
   });
   const data: Prisma.ArticleCreateManyInput[] = fresh.map((k) => {
     const recipe = recipeOf(k)!;
-    const photoReview = k.photoReview ?? input.settings.photoReview;
+    const photoReview = reviewFor(k, recipe);
     return {
       teamId: site.teamId, siteId: site.id, runId: run.id, recipeId: recipe.id, createdById: me.id,
       keyword: k.keyword, seoKeyword: k.seoKeyword ?? "", focusKeyword: k.focusKeyword ?? "",

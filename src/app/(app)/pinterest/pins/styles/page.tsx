@@ -12,6 +12,7 @@ import { publicUrl } from "@/lib/pins/storage";
 import { AiStylePicker } from "@/components/pins/AiStylePicker";
 import { CanvasCatalog } from "@/components/pins/CanvasCatalog";
 import { CATALOG_LIB } from "@/lib/pins/canvas/catalog";
+import { StylesSiteSwitch } from "@/components/pins/StylesSiteSwitch";
 
 export const dynamic = "force-dynamic";
 
@@ -30,18 +31,15 @@ export default async function StylesPage({ searchParams }: { searchParams: Promi
       <PageHeader title="Стили" subtitle="Как выглядят пины: наборы ИИ-стилей с примерами, каталог Canvas и типы Pinora. Наборы и скрытия — отдельно для каждого сайта." />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {tabs.map(([k, l]) => <Link key={k} href={qs(k)} className={`badge px-3 py-1 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}
-        <form method="get" className="ml-auto flex items-center gap-2">
-          <input type="hidden" name="tab" value={tab} />
-          <select name="site" className="input py-1.5" defaultValue={site?.id ?? ""}>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-          <button className="btn-ghost btn-sm">Сайт</button>
-        </form>
+        {site && <StylesSiteSwitch tab={tab} siteId={site.id} sites={sites.map((s) => ({ id: s.id, name: s.name }))} />}
       </div>
-      {!site ? <Empty title="Сайтов нет" /> : tab === "ai" ? <AiTab siteId={site.id} teamId={site.teamId} /> : tab === "canvas" ? <CanvasTab siteId={site.id} teamId={site.teamId} canDecide={canManageTeam(me, site.teamId)} /> : <PinoraTab />}
+      {/* key={site.id}: при смене сайта галерея и выбор создаются заново, без остатков от прошлого сайта */}
+      {!site ? <Empty title="Сайтов нет" /> : tab === "ai" ? <AiTab key={site.id} siteId={site.id} siteName={site.name} teamId={site.teamId} edit={sp(p, "edit")} /> : tab === "canvas" ? <CanvasTab key={site.id} siteId={site.id} teamId={site.teamId} canDecide={canManageTeam(me, site.teamId)} /> : <PinoraTab />}
     </>
   );
 }
 
-async function AiTab({ siteId, teamId }: { siteId: string; teamId: string }) {
+async function AiTab({ siteId, siteName, teamId, edit }: { siteId: string; siteName: string; teamId: string; edit?: string }) {
   const [sets, hidden, examples, notes] = await Promise.all([
     prisma.pinSet.findMany({ where: { siteId, setKind: "ai" }, orderBy: { name: "asc" } }),
     prisma.pinStyleExclusion.findMany({ where: { siteId, topic: "", kind: "ai" }, select: { styleId: true } }),
@@ -73,18 +71,18 @@ async function AiTab({ siteId, teamId }: { siteId: string; teamId: string }) {
 
   return (
     <div className="space-y-4">
-      <Card title={`Наборы сайта: ${sets.length}`} description="Набор — список ИИ-стилей с темой. Автопилот берёт набор, подходящий к теме страницы, и распределяет стили поровну.">
+      <Card title={`ИИ-наборы сайта ${siteName}: ${sets.length}`} description="Набор — список ИИ-стилей с темой. Чтобы поменять стили в наборе, нажмите «Изменить»: отмеченные стили подсветятся в галерее ниже, сохраните внизу.">
         {sets.length === 0 ? <p className="help">Наборов нет. Создайте первый ниже: отметьте стили и нажмите «Создать набор».</p> : (
           <div className="table-wrap"><table className="table">
             <thead><tr><th>Набор</th><th>Тема</th><th>Стилей</th><th></th></tr></thead>
             <tbody>{sets.map((s) => (
               <tr key={s.id}><td className="font-medium">{s.name}</td><td className="text-muted">{s.topic || "любая"}</td><td>{(s.styleIds as string[]).length}</td>
-                <td className="text-right"><ActionForm action={deleteSet} className="inline" hidden={{ id: s.id }}><SubmitButton className="btn-ghost btn-sm" confirm="Удалить набор?" pendingText="…">Удалить</SubmitButton></ActionForm></td></tr>
+                <td className="text-right whitespace-nowrap"><Link href={`/pinterest/pins/styles?tab=ai&site=${siteId}&edit=${s.id}#gallery`} className={`btn-sm ${edit === s.id ? "btn-brand" : "btn-ghost"}`}>{edit === s.id ? "Редактируется" : "Изменить"}</Link> <ActionForm action={deleteSet} className="inline" hidden={{ id: s.id }}><SubmitButton className="btn-ghost btn-sm" confirm={`Удалить набор «${s.name}»?`} pendingText="…">Удалить</SubmitButton></ActionForm></td></tr>
             ))}</tbody>
           </table></div>
         )}
       </Card>
-      <AiStylePicker siteId={siteId} teamId={teamId} styles={styles} categories={cats} types={styleTypes} sets={sets.map((s) => ({ id: s.id, name: s.name, topic: s.topic, styleIds: s.styleIds as string[] }))} />
+      <AiStylePicker key={edit ?? "new"} initialEdit={sets.some((s) => s.id === edit) ? edit : undefined} siteId={siteId} teamId={teamId} styles={styles} categories={cats} types={styleTypes} sets={sets.map((s) => ({ id: s.id, name: s.name, topic: s.topic, styleIds: s.styleIds as string[] }))} />
     </div>
   );
 }

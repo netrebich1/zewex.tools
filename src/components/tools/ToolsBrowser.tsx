@@ -22,6 +22,7 @@ const TILE: Record<string, string> = {
   gambling: "bg-info-soft text-info",
   seo: "bg-ok-soft text-ok",
   discovery: "bg-brand-soft text-warn",
+  analytics: "bg-info-soft text-info",
 };
 const TILE_FALLBACK = ["bg-brand-soft text-warn", "bg-info-soft text-info", "bg-ok-soft text-ok", "bg-danger-soft text-danger"];
 

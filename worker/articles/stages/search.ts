@@ -16,7 +16,8 @@ import { fallbackTrendBrief, generateTopupQueries, languageName, translateSearch
 import { buildFashionContract, buildInteriorContract, buildTopicContract, isInteriorNiche } from "@/lib/articles/photo/contracts";
 import { audienceFacts } from "@/lib/articles/photo/audience";
 import { parseKeywordAttributes } from "@/lib/articles/photo/keyword";
-import type { ArtStageHandler, ArtStageCtx } from "./index";
+import { AiError } from "@/lib/pins/ai/errors";
+import type { ArtStageHandler, ArtStageCtx, ArtStageResult } from "./index";
 
 export type TopupRequest = { from: "filter" | "rate" | "select" | "moderation"; needed: number; reason: string };
 
@@ -67,7 +68,7 @@ export function topupAvailable(cursor: PhotoCursor): boolean {
   return !cursor.geoTopupDone;
 }
 
-type RunOutcome = { fetched: number; added: number; error?: string; notConfigured?: boolean; transient?: boolean; engine: string };
+type RunOutcome = { fetched: number; added: number; error?: string; notConfigured?: boolean; transient?: boolean; keyProblem?: string; engine: string };
 
 export const search: ArtStageHandler = async (ctx) => {
   const { article, recipe } = ctx;
@@ -208,14 +209,28 @@ export const search: ArtStageHandler = async (ctx) => {
 
     const c = ctx.cursor as PhotoCursor;
     const entry: SearchLogEntry = { engine: `${label} (${engine})`, query, keywordEn: englishQuery, translated, geo: runCfg.country, language: runCfg.language, freshness: runCfg.freshness, fetched: items.length, added: rows.length, error: result?.error || null, at: new Date().toISOString() };
-    await ctx.save({ cursor: { ...c, usedQueries: [...new Set([...(c.usedQueries ?? []), englishQuery])], searchLog: [...(c.searchLog ?? []), entry].slice(-40) } });
+    // Запрос, который не выполнился из-за провайдера (сбой, нет ключа/денег), не считается использованным:
+    // иначе после повтора этапа он пропускается, и статья падает с «не найдено ни одного фото».
+    const providerFailed = !!result && items.length === 0 && (!!result.transient || !!result.notConfigured || !!result.keyProblem);
+    const usedQueries = providerFailed ? (c.usedQueries ?? []) : [...new Set([...(c.usedQueries ?? []), englishQuery])];
+    await ctx.save({ cursor: { ...c, usedQueries, searchLog: [...(c.searchLog ?? []), entry].slice(-40) } });
     ctx.log(`${label}: «${query}» → fetched ${items.length}, added ${rows.length}${result?.error ? `, ${result.error}` : ""}`);
-    return { fetched: items.length, added: rows.length, error: result?.error, notConfigured: result?.notConfigured, transient: result?.transient, engine };
+    return { fetched: items.length, added: rows.length, error: result?.error, notConfigured: result?.notConfigured, transient: result?.transient, keyProblem: result?.keyProblem, engine };
   };
 
-  const failureResult = (o: RunOutcome, when: string) => {
-    if (o.notConfigured) return { fatal: `Не подключены ключи поиска картинок: нужен DataForSEO (слот «photo_dfs») или SerpAPI («photo_serp») для проекта «Статьи». ${o.error || ""}`.trim() };
-    if (o.transient) return { retryInMs: 90_000, summary: `${when}: поиск картинок временно недоступен — повтор через 90 с (${o.error || "ошибка провайдера"})` };
+  /**
+   * Поиск не выполнился из-за провайдера. Нет ключа / нет денег → статья ждёт рабочий ключ (раннер: проверка раз в
+   * 10–30 мин, продолжит сама); временный сбой → повтор с растущей паузой, около часа, затем ошибка.
+   * Раньше: «нет ключа» — сразу FAILED, временный сбой — повтор каждые 90 с без предела (аудит 2026-10-14).
+   */
+  const failureResult = (o: RunOutcome, when: string): ArtStageResult | null => {
+    if (o.notConfigured) {
+      throw new AiError({ code: "no_binding", kind: "fatal_run", message: `Не подключены ключи поиска картинок: нужен DataForSEO (слот «photo_dfs») или SerpAPI («photo_serp») для проекта «Статьи». ${o.error || ""}`.trim() }, 409);
+    }
+    if (o.keyProblem && !o.transient) {
+      throw new AiError({ code: "no_credits", kind: "fatal_run", message: `Поиск картинок: ${o.keyProblem}` }, 402);
+    }
+    if (o.transient) return { retryInMs: 90_000, retryKind: "transient", summary: `${when}: поиск картинок временно недоступен (${o.error || "ошибка провайдера"})`, giveUp: `Поиск картинок недоступен около часа: ${o.error || "ошибка провайдера"}` };
     return null;
   };
 
@@ -255,8 +270,8 @@ export const search: ArtStageHandler = async (ctx) => {
       return { summary: note, next: { wait: article.photoReview && photos > 0 ? "PHOTO_REVIEW" : "WAITING_FOR_PHOTOS", note } };
     }
 
-    const fail = failureResult(outcome, label);
-    if (fail && outcome.added === 0) return fail;
+    const fail = outcome.added === 0 ? failureResult(outcome, label) : null;
+    if (fail) return fail;
     const c = ctx.cursor as PhotoCursor;
     await ctx.save({ cursor: { ...c, topups: topups + 1, topup: null } });
     return {
@@ -278,7 +293,7 @@ export const search: ArtStageHandler = async (ctx) => {
     const label = i === 0 ? "основной запрос" : `primary ${i}`;
     lastOutcome = await runQuery(q, limit, i, cfg, label);
     ran++;
-    if (lastOutcome.notConfigured) break;
+    if (lastOutcome.notConfigured || (lastOutcome.keyProblem && lastOutcome.fetched === 0)) break;
     if (lastOutcome.transient && lastOutcome.fetched === 0 && candidatesTotal === 0) break;
   }
 

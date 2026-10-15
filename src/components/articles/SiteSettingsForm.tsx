@@ -6,7 +6,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Field } from "@/components/ui";
 import { saveArtSiteSettings } from "@/actions/articles";
-import type { ArtSiteSettings } from "@/lib/articles/types";
+import { SITE_LIMITS, type ArtSiteSettings } from "@/lib/articles/types";
 import { RunParamsFields } from "./RunParamsFields";
 
 export type WpCategoryOption = { id: number; name: string; parent?: number | null };
@@ -25,7 +25,9 @@ const FORMAT: Record<ArtFormat, string> = { REAL_PHOTO: "реальные фот
 
 /**
  * Настройки сайта в сервисе «Статьи» (все поля ArtSiteSettings группами + ниша и рецепт по умолчанию).
- * Значения «Фото / Публикация / Поиск» — по умолчанию для новых запусков; «Автозапуск» и «ИИ-модерация» действуют на весь сайт.
+ * Значения «Фото / Публикация / Поиск» — по умолчанию для новых запусков; «Автозапуск» и «ИИ-модерация» действуют на весь сайт
+ * и те же, что на экране «Автозапуск сайтов» (пределы — SITE_LIMITS). Рядом с каждым таким полем — скрытое исходное значение
+ * orig_<имя>: при сохранении меняются только поля, которые тронули здесь (actions/articles.ts settingsFromForm).
  */
 export function SiteSettingsForm({ site, settings: s, categories, niches, recipes }: Props) {
   const [niche, setNiche] = useState(site.nicheCode ?? "");
@@ -33,11 +35,20 @@ export function SiteSettingsForm({ site, settings: s, categories, niches, recipe
   const recipeList = niche ? recipes.filter((r) => r.nicheCode === niche || r.id === site.defaultRecipeId) : recipes;
   const catName = (id: number | null) => categories.find((c) => c.id === id)?.name ?? (id ? `#${id}` : "");
   const groupBox = "rounded-xl border border-line p-3 space-y-3";
-  const check = (name: string, label: string, help: string, on: boolean) => (
+  const check = (name: string, label: string, help: string, on: boolean, withOrig = false) => (
     <label className="flex items-start gap-2 rounded-lg border border-line px-3 py-2 text-[13.5px]">
       <input type="checkbox" name={name} defaultChecked={on} className="mt-0.5 h-4 w-4" />
+      {withOrig && <input type="hidden" name={`orig_${name}`} value={on ? "1" : "0"} />}
       <span><b>{label}</b><span className="help block">{help}</span></span>
     </label>
+  );
+  const L = SITE_LIMITS;
+  /** Число автозапуска/ИИ с исходным значением для «сохранять только изменённое». */
+  const numField = (name: string, value: number, [min, max]: readonly [number, number]) => (
+    <>
+      <input name={name} type="number" min={min} max={max} className="input py-1.5" defaultValue={value} />
+      <input type="hidden" name={`orig_${name}`} value={String(value)} />
+    </>
   );
 
   return (
@@ -69,7 +80,7 @@ export function SiteSettingsForm({ site, settings: s, categories, niches, recipe
       <section className="space-y-2">
         <div className="text-[13px] font-semibold">По умолчанию для новых запусков</div>
         <p className="help">Эти значения подставляются на странице «Новый запуск», там их можно изменить для конкретной партии.</p>
-        <RunParamsFields s={s} siteLevel />
+        <RunParamsFields s={s} siteLevel aiModOn={s.aiModeration.enabled} />
       </section>
 
       <section className={groupBox}>
@@ -105,23 +116,24 @@ export function SiteSettingsForm({ site, settings: s, categories, niches, recipe
       </section>
 
       <section className={groupBox}>
-        <div className="text-[13px] font-semibold">Автозапуск и лимиты</div>
-        <p className="help">Воркер берёт статьи сайта по двум цепочкам: «фото» (поиск → отбор) и «написание» (план → публикация). Лимит — сколько статей сайта одновременно в цепочке. Выключенная цепочка — статьи ждут в очереди.</p>
+        <div className="flex flex-wrap items-baseline gap-2"><div className="text-[13px] font-semibold">Автозапуск и лимиты</div><Link href="/pinterest/articles/automation" className="help underline">то же на экране «Автозапуск сайтов»</Link></div>
+        <p className="help">Воркер берёт статьи сайта по двум цепочкам: «фото» (поиск → отбор) и «написание» (план → публикация). Лимит — сколько статей сайта одновременно в цепочке ({L.photoLimit[0]}–{L.photoLimit[1]}). Цепочка работает, пока включена: сама она не выключается. Выключенная — статьи ждут в очереди.</p>
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="space-y-2">{check("autoPhotoEnabled", "Цепочка «фото» включена", "Поиск, фильтр, оценка и отбор кадров.", s.autostart.photoEnabled)}<Field label="Одновременно статей в «фото»"><input name="autoPhotoLimit" type="number" min={1} max={20} className="input py-1.5" defaultValue={s.autostart.photoLimit} /></Field></div>
-          <div className="space-y-2">{check("autoWritingEnabled", "Цепочка «написание» включена", "План, тексты секций, мета, сборка.", s.autostart.writingEnabled)}<Field label="Одновременно статей в «написании»"><input name="autoWritingLimit" type="number" min={1} max={20} className="input py-1.5" defaultValue={s.autostart.writingLimit} /></Field></div>
-          <div className="space-y-2">{check("autoRestart", "Включать цепочки при новых статьях", "Если цепочка была выключена, новая партия включит её снова.", s.autostart.autoRestart)}<Field label="Одновременно публикаций" hint="Загрузка фото в медиатеку нагружает хостинг."><input name="autoPublishLimit" type="number" min={1} max={20} className="input py-1.5" defaultValue={s.autostart.publishLimit} /></Field></div>
+          <div className="space-y-2">{check("autoPhotoEnabled", "Цепочка «фото» включена", "Поиск, фильтр, оценка и отбор кадров.", s.autostart.photoEnabled, true)}<Field label="Одновременно статей в «фото»">{numField("autoPhotoLimit", s.autostart.photoLimit, L.photoLimit)}</Field></div>
+          <div className="space-y-2">{check("autoWritingEnabled", "Цепочка «написание» включена", "План, тексты секций, мета, сборка.", s.autostart.writingEnabled, true)}<Field label="Одновременно статей в «написании»">{numField("autoWritingLimit", s.autostart.writingLimit, L.writingLimit)}</Field></div>
+          <div className="space-y-2"><Field label="Одновременно публикаций" hint="Загрузка фото в медиатеку нагружает хостинг.">{numField("autoPublishLimit", s.autostart.publishLimit, L.publishLimit)}</Field></div>
         </div>
       </section>
 
       <section className={groupBox}>
-        <div className="flex flex-wrap items-baseline gap-2"><div className="text-[13px] font-semibold">ИИ-модерация фото</div><span className="help">Появится во второй волне переноса; настройки сохраняются уже сейчас.</span></div>
+        <div className="text-[13px] font-semibold">ИИ-модерация фото</div>
+        <p className="help">Включено: у каждой статьи сайта (реальные фото) после отбора фото сначала проверяет ИИ — галочка «Модерация фото до текста» в запуске включается сама. ИИ берёт статью в течение ~20 секунд. Работает, если на экране «Автозапуск сайтов» включён мастер-выключатель «ИИ-проверка фото».</p>
         <div className="grid gap-3 sm:grid-cols-2">
-          {check("aiModEnabled", "ИИ проверяет отобранные фото", "Вместо человека: модель смотрит кадры и одобряет/исключает. Статья уходит в текст без ручной модерации.", s.aiModeration.enabled)}
-          {check("aiModAutoApply", "Применять решения ИИ автоматически", "Выключено — решения ИИ показываются человеку как подсказка.", s.aiModeration.autoApply)}
-          <Field label="Запускать, когда ждёт от N статей" hint="Пачками дешевле и ровнее по нагрузке."><input name="aiModBatchFrom" type="number" min={1} max={500} className="input py-1.5" defaultValue={s.aiModeration.batchFrom} /></Field>
-          <Field label="Параллельно статей"><input name="aiModConcurrency" type="number" min={1} max={20} className="input py-1.5" defaultValue={s.aiModeration.concurrency} /></Field>
-          <Field label="Ждать, если в публикации ≥ N" hint="0 — не ждать."><input name="aiModBacklog" type="number" min={0} max={1000} className="input py-1.5" defaultValue={s.aiModeration.backlogThreshold} /></Field>
+          {check("aiModEnabled", "ИИ проверяет отобранные фото", "Модель смотрит кадры, убирает неподходящие, добавляет из резерва и одобряет — статья уходит писать текст. Сомнительные отдаёт сотруднику.", s.aiModeration.enabled, true)}
+          {check("aiModAutoApply", "Применять решения ИИ автоматически", "Выключено — решения ИИ показываются человеку как подсказка.", s.aiModeration.autoApply, true)}
+          <Field label="Запуск от (статей)" hint="1 — проверять каждую статью сразу. Больше — ждать, пока накопится столько (не дольше 30 мин). К уже идущей проверке новые статьи добавляются без ожидания.">{numField("aiModBatchFrom", s.aiModeration.batchFrom, L.batchFrom)}</Field>
+          <Field label="Параллельно статей" hint={`${L.concurrency[0]}–${L.concurrency[1]}`}>{numField("aiModConcurrency", s.aiModeration.concurrency, L.concurrency)}</Field>
+          <Field label="Ждать, если в публикации ≥ N" hint="0 — не ждать.">{numField("aiModBacklog", s.aiModeration.backlogThreshold, L.backlogThreshold)}</Field>
         </div>
       </section>
 

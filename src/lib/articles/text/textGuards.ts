@@ -52,12 +52,18 @@ export function sanitizeTopic(input: unknown): string {
   return s.replace(/^[\s—–\-:|]+/, "").replace(/[\s—–\-:|]+$/, "").trim();
 }
 
-// оригинал: textGuards.ts:52-56
+// оригинал: textGuards.ts:52-56 — там были только «ногтевые» слова; добавлены общие слова ниш (одежда, волосы, интерьер),
+// иначе слова ключа (jeans, skirt, cut, bob…) считались отличительными и почти любые два H2 статьи выглядели дублями (аудит 2026-10-14).
 const HEADING_STOPWORDS = new Set([
   "nail", "nails", "manicure", "pedicure", "design", "designs", "look", "looks", "idea", "ideas",
   "style", "styles", "set", "sets", "the", "a", "an", "and", "with", "for", "of", "in", "on",
   "your", "this", "that", "very", "super",
+  "outfit", "outfits", "wear", "wearing", "styling", "hair", "hairstyle", "hairstyles", "haircut", "haircuts",
+  "room", "rooms", "decor", "inspo", "inspiration", "to", "try", "best", "cute", "easy",
 ]);
+
+/** Предел длины H2: длиннее — обрезаем по границе слова (склейки «признак + заголовок» давали 80–100 символов). */
+export const MAX_HEADING_CHARS = 70;
 
 /** «Скелет» заголовка: ловит почти-дубли («Vibrant Glossy Red Almond Nails» = «Glossy Red Almond Nails»). (оригинал: textGuards.ts:59-67) */
 export function headingKey(heading: unknown): string {
@@ -68,6 +74,34 @@ export function headingKey(heading: unknown): string {
     .split(/\s+/)
     .filter((w) => w && !HEADING_STOPWORDS.has(w));
   return [...new Set(words)].sort().join(" ");
+}
+
+/**
+ * Слова ключа статьи как стоп-слова сравнения: «Wolf Cut With Curtain Bangs» и «Wolf Cut For Thick Hair» отличаются
+ * только хвостом, общие «wolf cut» дублем не делают. Передаётся в uniqueHeading через opts.keyword.
+ */
+export function keywordStopwords(keyword: unknown): Set<string> {
+  return new Set(headingKey(keyword).split(" ").filter(Boolean));
+}
+
+/** Слова ключа сравнения без стоп-слов ключа; если не осталось ничего — исходные слова (заголовок из одного ключа тоже уникален). */
+function significantWords(key: string, stop: Set<string>): Set<string> {
+  const all = key.split(" ").filter(Boolean);
+  const rest = all.filter((w) => !stop.has(w));
+  return new Set(rest.length ? rest : all);
+}
+
+/** Обрезать заголовок до `max` символов по границе слова, без висящих союзов/предлогов и тире на конце. */
+export function capHeading(heading: string, max = MAX_HEADING_CHARS): string {
+  let s = String(heading ?? "").replace(/\s+/g, " ").trim();
+  if (s.length <= max) return s;
+  s = s.slice(0, max + 1).replace(/\s+\S*$/, "");
+  for (let i = 0; i < 4; i++) {
+    const next = s.replace(/[\s,;:—–\-&+]+$/, "").replace(/\s+(?:and|or|with|for|of|in|on|to|the|a|an|&)$/i, "");
+    if (next === s) break;
+    s = next;
+  }
+  return s.trim();
 }
 
 // оригинал: textGuards.ts:69-72
@@ -93,62 +127,77 @@ function titleCaseWords(s: string): string {
   return s.replace(/\b([a-zа-яё])/g, (m) => m.toUpperCase());
 }
 
-/** Считаем заголовок повтором, если его слова — подмножество уже занятого (или наоборот). (оригинал: textGuards.ts:91-105) */
-function isTakenHeading(key: string, used: Set<string>): boolean {
+/**
+ * Считаем заголовок повтором, если его слова — подмножество уже занятого (или наоборот). (оригинал: textGuards.ts:91-105)
+ * Слова ключа статьи (`stop`) из сравнения выбрасываются с обеих сторон, поэтому множество `used` можно заполнять
+ * обычным headingKey без знания ключа.
+ */
+function isTakenHeading(key: string, used: Set<string>, stop: Set<string> = new Set()): boolean {
   if (!key) return true;
   if (used.has(key)) return true;
-  const words = new Set(key.split(" ").filter(Boolean));
+  const words = significantWords(key, stop);
   if (words.size === 0) return true;
   for (const taken of used) {
-    const tw = new Set(taken.split(" ").filter(Boolean));
+    const tw = significantWords(taken, stop);
     if (tw.size === 0) continue;
     let shared = 0;
     for (const w of words) if (tw.has(w)) shared++;
     const similarity = shared / Math.max(words.size, tw.size);
-    if (shared >= 2 && similarity >= 0.7) return true; // почти-дубль
+    if (similarity === 1 || (shared >= 2 && similarity >= 0.7)) return true; // дубль или почти-дубль
   }
   return false;
 }
 
 /**
- * Возвращает уникальный заголовок: при повторе добавляет отличающийся признак
- * этого фото, а если признаков нет — осмысленный уточнитель. Номеров не добавляем. (оригинал: textGuards.ts:111-156)
+ * Возвращает уникальный заголовок: при повторе добавляет хвост через запятую (не тире — аудит text-v2) с отличающимся признаком этого фото
+ * (никогда не в начало: «Black Pointed-Toe Heels Professional Plaid…» — аудит 2026-10-14), а если признаков нет
+ * или хвост делает H2 длиннее предела — осмысленный уточнитель. Номеров не добавляем. Результат ≤ MAX_HEADING_CHARS.
+ * `keyword` — ключ статьи: его слова не считаются отличительными при сравнении. (оригинал: textGuards.ts:111-156)
  */
 export function uniqueHeading(
   heading: string,
   used: Set<string>,
-  opts: { facts?: unknown; description?: string | null } = {},
+  opts: { facts?: unknown; description?: string | null; keyword?: string | null } = {},
 ): string {
-  const base = String(heading || "").trim() || "Nail Design";
+  const base = capHeading(String(heading || "").trim() || "Nail Design");
+  const stop = keywordStopwords(opts.keyword);
   const key = headingKey(base);
-  if (!isTakenHeading(key, used)) {
+  if (!isTakenHeading(key, used, stop)) {
     used.add(key);
     return base;
   }
 
+  const baseWords = new Set(headingKey(base).split(" ").filter(Boolean));
+  // Хвост годится, если не повторяет слов заголовка и не делает его длиннее предела.
+  const tailOk = (tail: string) => {
+    const tw = headingKey(tail).split(" ").filter(Boolean);
+    return tw.length > 0 && !tw.some((w) => baseWords.has(w)) && `${base}, ${tail}`.length <= MAX_HEADING_CHARS;
+  };
   const candidates: string[] = [];
-  const words = factWords(opts.facts);
-  for (const w of words) {
-    if (headingKey(base).includes(headingKey(w))) continue;
-    candidates.push(`${titleCaseWords(w)} ${base}`);
-    candidates.push(`${base} — ${titleCaseWords(w)}`);
+  for (const w of factWords(opts.facts)) {
+    const tail = titleCaseWords(w);
+    if (tailOk(tail)) candidates.push(`${base}, ${tail}`);
   }
   const desc = String(opts.description || "")
     .split(/[.,;]/)
     .map((s) => s.trim())
     .filter((s) => s && s.length <= 40);
-  for (const d of desc) candidates.push(`${base} — ${titleCaseWords(d)}`);
+  for (const d of desc) {
+    const tail = titleCaseWords(d);
+    if (tailOk(tail)) candidates.push(`${base}, ${tail}`);
+  }
 
   const fallbackQualifiers = [
     "Close-Up Take", "Everyday Version", "Softer Variation", "Bolder Variation",
     "Second Look", "Subtle Twist", "Party Version", "Minimal Version",
     "Weekend Version", "Office-Safe Version", "Statement Version", "Low-Key Version",
   ];
-  for (const q of fallbackQualifiers) candidates.push(`${base} — ${q}`);
+  // Длинный заголовок укорачиваем, чтобы уточнитель влез в предел.
+  for (const q of fallbackQualifiers) candidates.push(`${capHeading(base, MAX_HEADING_CHARS - q.length - 2)}, ${q}`);
 
   for (const c of candidates) {
     const k = headingKey(c);
-    if (!isTakenHeading(k, used)) {
+    if (!isTakenHeading(k, used, stop)) {
       used.add(k);
       return c.replace(/\s+/g, " ").trim();
     }
@@ -183,7 +232,11 @@ export function looksLikeFactDump(text: unknown): boolean {
   return false;
 }
 
-/** Вырезает ведущее перечисление признаков (первый абзац/предложение). (оригинал: textGuards.ts:181-199) */
+/**
+ * Вырезает ведущее перечисление признаков (первый абзац/предложение). (оригинал: textGuards.ts:181-199)
+ * Первое предложение режется ВНУТРИ первого <p>, открывающий тег сохраняется (раньше регулярка срезала его вместе
+ * с предложением и оставалась сирота </p> — аудит 2026-10-14, italian bob); на выходе абзацы всегда парные.
+ */
 export function stripLeadingFactDump(html: unknown): string {
   let s = String(html ?? "");
   for (let i = 0; i < 2; i++) {
@@ -193,15 +246,58 @@ export function stripLeadingFactDump(html: unknown): string {
       s = s.slice(m[0].length);
       continue;
     }
-    // Без абзацев: убираем первое предложение
-    const plainCut = s.replace(/^\s*[^.!?]{20,400}[.!?]\s*/, "");
+    // Один абзац или текст без абзацев: убираем первое предложение, не трогая открывающий <p>
+    const plainCut = s.replace(/^(\s*(?:<p[^>]*>)?)\s*[^.!?<]{20,400}[.!?]\s*/i, "$1");
     if (plainCut !== s && plainCut.replace(/<[^>]*>/g, "").trim().length > 60) {
-      s = plainCut;
+      s = plainCut.replace(/^(\s*(?:<p[^>]*>)?\s*)([a-zа-яё])/, (_m, pre: string, ch: string) => pre + ch.toUpperCase());
       continue;
     }
     break;
   }
-  return s.trim();
+  return balanceParagraphs(s.trim());
+}
+
+const BLOCK_TAG_RE = /<\/?(?:h[1-6]|ul|ol|li|div|figure|figcaption|table|blockquote|section|img|hr)\b/i;
+
+/**
+ * Страховка парности <p>…</p>: сирота </p> без открытия — текст перед ней оборачивается в <p> (или тег убирается,
+ * если текста нет), незакрытый <p> закрывается перед следующим <p> и в конце, висячий текст между абзацами — в <p>.
+ * Блочные элементы (заголовки, списки, figure) не трогаются.
+ */
+export function balanceParagraphs(html: unknown): string {
+  const src = String(html ?? "");
+  if (!/<\/?p\b/i.test(src)) return src;
+  const re = /<(\/?)p\b[^>]*>/gi;
+  let out = "";
+  let open = false;
+  let last = 0;
+  let segStart = 0; // начало «висячего» текста в out (после последнего закрытого абзаца)
+  const wrapLoose = () => {
+    const loose = out.slice(segStart);
+    if (loose.replace(/<[^>]*>/g, "").trim() && !BLOCK_TAG_RE.test(loose)) {
+      out = `${out.slice(0, segStart)}<p>${loose.trim()}</p>`;
+    }
+  };
+  for (let m = re.exec(src); m; m = re.exec(src)) {
+    out += src.slice(last, m.index);
+    last = m.index + m[0].length;
+    if (m[1]) {
+      if (open) {
+        out += m[0];
+        open = false;
+      } else wrapLoose(); // сирота </p>
+      segStart = out.length;
+    } else {
+      if (open) out += "</p>";
+      else wrapLoose();
+      out += m[0];
+      open = true;
+    }
+  }
+  out += src.slice(last);
+  if (open) out += "</p>";
+  else wrapLoose();
+  return out;
 }
 
 /** Осталась ли в тексте служебная пометка или полное название задачи из очереди. (оригинал: textGuards.ts:202-219) */

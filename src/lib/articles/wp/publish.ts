@@ -6,7 +6,8 @@
  * Порядок: проверка качества (+ детерминированная починка) → категория → загрузка фото в медиатеку (по 2 параллельно,
  * wpMediaId/wpUrl пишутся сразу после ответа на каждый файл) → подмена ссылок в HTML → поиск записи по slug ДО создания →
  * создание или обновление записи → wpPostId/wpUrl/wpStatus сразу после ответа WP (08-plan §3 п.9).
- * Повтор публикации (есть wpPostId или запись нашлась по slug) обновляет запись, дубль не создаётся.
+ * Повтор публикации (есть wpPostId или нашлась запись с меткой этой статьи) обновляет запись, дубль не создаётся.
+ * Чужая запись с тем же адресом не трогается: статья получает свободный адрес slug-2, slug-3 … (аудит 2026-10-14).
  * Идемпотентно: уже загруженные фото пропускаются, медиа ищется по маркеру id фото в имени файла.
  */
 import { readFile } from "fs/promises";
@@ -18,8 +19,8 @@ import type { ArticleRecipeSnapshot, PublishMode } from "@/lib/articles/types";
 import { WpError, mapLimited, safeFilename, uploadMedia, type WpCreds } from "@/lib/pins/wp/client";
 import { slugify } from "@/lib/utils";
 import { resolveCategory, type CategoryResolution } from "./categories";
-import { createPost, findMediaBySlug, findPostBySlug, updatePost, type WpPostInput, type WpPostStatus } from "./posts";
-import { checkArticleQuality } from "./qualityCheck";
+import { articleMarker, createPost, findMediaBySlug, lookupPostSlug, pickFreeSlug, updatePost, type WpPostInput, type WpPostStatus } from "./posts";
+import { applyQualityPatch, checkArticleQuality } from "./qualityCheck";
 
 /** Загрузок в медиатеку одновременно. Оригинал :317 — 2 (больше → общий хостинг WP отвечает 500). */
 export const UPLOAD_CONCURRENCY = 2;
@@ -124,13 +125,8 @@ export async function publishArticle(ctx: PublishCtx): Promise<PublishOutcome> {
   // ── 1. Качество + починка (оригинал :72-118) ────────────────
   await ctx.tick("проверка качества");
   const quality = await checkArticleQuality(article, sections, photos, { signal });
-  if (Object.keys(quality.patch.article).length) {
-    await prisma.article.update({ where: { id: article.id }, data: quality.patch.article });
-    article = { ...article, ...quality.patch.article };
-  }
-  for (const sp of quality.patch.sections) {
-    await prisma.artSection.update({ where: { id: sp.id }, data: { ...(sp.heading !== undefined ? { heading: sp.heading } : {}), ...(sp.html !== undefined ? { html: sp.html } : {}) } });
-  }
+  await applyQualityPatch(article.id, quality.patch);
+  article = { ...article, ...quality.patch.article };
   if (quality.fixed.length) ctx.log(`починка: ${quality.fixed.join("; ")}`);
   if (!quality.ok) throw new QualityError(quality.problems);
 
@@ -140,6 +136,24 @@ export async function publishArticle(ctx: PublishCtx): Promise<PublishOutcome> {
     slug = slugify(article.focusKeyword || article.keyword);
     await prisma.article.update({ where: { id: article.id }, data: { slug } });
     article = { ...article, slug };
+  }
+  // Своя запись — только по wpPostId или по метке статьи в тексте; адрес, занятый чужой записью, меняем на свободный
+  // до загрузки фото (имена файлов медиа строятся от slug). Ошибка поиска не глушится — повтор позже.
+  let targetId: number | null = article.wpPostId;
+  if (!targetId) {
+    await ctx.tick("поиск записи по адресу");
+    const look = await lookupPostSlug(creds, slug, article.id, { signal });
+    if (look.own) {
+      targetId = look.own.id;
+      ctx.log(`запись этой статьи уже есть (#${look.own.id}, ${look.own.status}, /${look.own.slug}) — обновляем`);
+      await prisma.article.update({ where: { id: article.id }, data: { wpPostId: look.own.id, wpUrl: look.own.url || undefined, wpStatus: look.own.status || undefined } });
+    } else if (look.foreign) {
+      const free = pickFreeSlug(slug, look.taken);
+      ctx.log(`адрес /${slug} занят чужой записью #${look.foreign.id} («${look.foreign.title.slice(0, 80)}») — не трогаем её, публикуем как /${free}`);
+      slug = free;
+      await prisma.article.update({ where: { id: article.id }, data: { slug } });
+      article = { ...article, slug };
+    }
   }
   const h1 = article.h1.trim() || article.keyword;
   let html = article.html ?? "";
@@ -162,7 +176,13 @@ export async function publishArticle(ctx: PublishCtx): Promise<PublishOutcome> {
   // ── 3. Фото в медиатеку (оригинал :206-348) ─────────────────
   const livePhotos = photos.filter((p) => !p.excluded).sort((a, b) => a.position - b.position);
   const todo = livePhotos.filter((p) => !(p.wpMediaId && p.wpUrl));
-  const retrying = article.publishAttempts > 0 || !!article.wpPostId;
+  // Искать уже загруженные фото по метке в имени, если публикация этой статьи уже запускалась хоть раз: прошлая попытка
+  // могла загрузить файл и не успеть записать wpMediaId (рестарт воркера посреди загрузки). Признак — запись этапа
+  // publish в журнале кроме текущей, а не publishAttempts (он растёт только на классифицированной ошибке) — аудит §2.4.
+  const priorRuns = todo.length && !(article.publishAttempts > 0 || article.wpPostId)
+    ? await prisma.artStageLog.count({ where: { articleId: article.id, stage: "publish" } }).catch(() => 2)
+    : 0;
+  const retrying = article.publishAttempts > 0 || !!article.wpPostId || priorRuns > 1;
   let uploaded = 0;
   let reused = 0;
   let failed = 0;
@@ -255,7 +275,7 @@ export async function publishArticle(ctx: PublishCtx): Promise<PublishOutcome> {
   if (focusKw) meta._yoast_wpseo_focuskw = focusKw;
   const body: WpPostInput = {
     title: h1,
-    content: html,
+    content: `${articleMarker(article.id)}\n${html}`,
     slug,
     status,
     excerpt: article.metaDescription || undefined,
@@ -263,17 +283,6 @@ export async function publishArticle(ctx: PublishCtx): Promise<PublishOutcome> {
     ...(featured ? { featured_media: featured } : {}),
     ...(Object.keys(meta).length ? { meta } : {}),
   };
-
-  let targetId: number | null = article.wpPostId;
-  if (!targetId) {
-    // Защита от дублей: прошлая попытка могла создать запись, не дождавшись ответа. Ошибка поиска не глушится — повтор позже.
-    const found = await findPostBySlug(creds, slug, { title: h1, signal });
-    if (found) {
-      targetId = found.id;
-      ctx.log(`запись с адресом ${found.slug} уже есть (#${found.id}, ${found.status}) — обновляем`);
-      await prisma.article.update({ where: { id: article.id }, data: { wpPostId: found.id, wpUrl: found.url || undefined, wpStatus: found.status || undefined } });
-    }
-  }
 
   let created = false;
   let result: Awaited<ReturnType<typeof createPost>> | null = null;

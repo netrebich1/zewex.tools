@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { enqueueJob, requestStop, activeJob, JobConflict } from "../jobs";
-import { mergeRecipe, type JobStage, type ModerationMode, type Recipe, type RunSettings } from "../types";
+import { MAX_RUN_PAGES, mergeRecipe, type JobStage, type ModerationMode, type Recipe, type RunSettings } from "../types";
 import { hash32 } from "../plan/seed";
 import { removePath, runDir } from "../storage";
 import { nextStageAfter } from "./stages";
@@ -65,7 +65,7 @@ export async function createRun(me: CurrentUser, input: CreateRunInput): Promise
   const site = await prisma.pinSite.findUnique({ where: { id: input.siteId } });
   if (!site || !(await canAccessPinSite(me, site))) throw new Error("Сайт не найден");
   if (!input.urls.length) throw new Error("Добавьте хотя бы одну ссылку");
-  if (input.urls.length > 500) throw new Error("Не больше 500 ссылок за один прогон");
+  if (input.urls.length > MAX_RUN_PAGES) throw new Error(`Не больше ${MAX_RUN_PAGES} ссылок за один прогон (сейчас ${input.urls.length})`);
   const warnings: string[] = [];
 
   const recipe = mergeRecipe(input.recipe ?? site.recipe);
@@ -180,7 +180,35 @@ export async function stopRun(me: CurrentUser, runId: string): Promise<boolean> 
 export async function deleteRun(me: CurrentUser, runId: string): Promise<void> {
   const run = await getRunForUser(me, runId);
   if (!run) throw new Error("Прогон не найден");
-  if (await activeJob(runId)) throw new Error("Сначала остановите прогон");
-  await prisma.pinRun.delete({ where: { id: runId } });
+  if (await activeJob(runId)) throw new Error("Прогон сейчас выполняется: нажмите «Стоп», дождитесь остановки и удалите снова");
+  // Вместе с прогоном уходят его страницы, пины и задачи (каскад) и отметки «статья уже была в прогоне»,
+  // чтобы ошибочный прогон не мешал дальше: статьи снова доступны, дни в расписании освобождаются.
+  await prisma.$transaction([
+    prisma.pinUrlHistory.deleteMany({ where: { runId } }),
+    prisma.pinRun.delete({ where: { id: runId } }),
+  ]);
   await removePath(runDir(runId)).catch(() => {});
+}
+
+/** Что исчезнет при удалении прогона — для текста подтверждения. */
+export async function runDeleteImpact(runId: string): Promise<{ pins: number; scheduled: number; firstDay: string | null; lastDay: string | null; uploaded: number }> {
+  const where = { runId, kind: "pin", status: { not: "REMOVED" as const } };
+  const [pins, scheduled, span, uploaded] = await Promise.all([
+    prisma.pinRunItem.count({ where }),
+    prisma.pinRunItem.count({ where: { ...where, scheduledAt: { not: null } } }),
+    prisma.pinRunItem.aggregate({ where: { ...where, scheduledAt: { not: null } }, _min: { scheduledAt: true }, _max: { scheduledAt: true } }),
+    prisma.pinRunItem.count({ where: { runId, wpMediaUrl: { not: "" } } }),
+  ]);
+  const d = (x: Date | null) => (x ? x.toISOString().slice(0, 10).split("-").reverse().join(".") : null);
+  return { pins, scheduled, firstDay: d(span._min.scheduledAt), lastDay: d(span._max.scheduledAt), uploaded };
+}
+
+/** Текст подтверждения удаления: что именно пропадёт и что изменится. */
+export function deleteConfirmText(name: string, i: { pins: number; scheduled: number; firstDay: string | null; lastDay: string | null; uploaded: number }): string {
+  const lines = [`Удалить прогон «${name}» безвозвратно?`, "", `• Пинов будет удалено: ${i.pins}.`];
+  if (i.scheduled) lines.push(`• Из выгрузки и из запаса по дням уйдёт ${i.scheduled} пинов (${i.firstDay} — ${i.lastDay}). Файлы за эти дни станут меньше.`);
+  lines.push("• Статьи прогона снова можно будет брать в новые прогоны.");
+  if (i.uploaded) lines.push(`• Картинки, уже загруженные в медиатеку WordPress (${i.uploaded}), там останутся.`);
+  lines.push("", "Если файлы этого прогона уже загружены в Pinterest, там пины останутся.");
+  return lines.join("\n");
 }

@@ -42,7 +42,7 @@ export function Shell({ user, children }: { user: ShellUser; children: ReactNode
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const items = MENU.filter((n) => !n.show || n.show(user));
-  const isTools = pathname === "/" || pathname.startsWith("/projects") || pathname.startsWith("/pinterest") || pathname.startsWith("/gambling");
+  const isTools = pathname === "/" || pathname.startsWith("/projects") || pathname.startsWith("/pinterest") || pathname.startsWith("/gambling") || pathname.startsWith("/finance") || pathname.startsWith("/discovery") || pathname.startsWith("/analytics");
 
   useEffect(() => {
     if (!open) return;

@@ -27,7 +27,6 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
   // --- WordPress: фильтр из рецепта сайта, правится здесь только для этого прогона ---
   const [filter, setFilter] = useState<PagesSource>(site ? { ...site.recipe.pages, source: "wp" } : { source: "manual", postType: "posts", categories: [], excludeCategories: false, period: "all", after: "", before: "", days: 30, limit: 100, skipUsed: true });
   const [search, setSearch] = useState("");
-  const [hideUsed, setHideUsed] = useState(true);
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [wpError, setWpError] = useState("");
@@ -39,7 +38,6 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
     if (!site) return;
     setFilter({ ...site.recipe.pages, source: "wp" });
     setSource(site.hasWp && site.recipe.pages.source === "wp" ? "wp" : "manual");
-    setHideUsed(site.recipe.pages.skipUsed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteId]);
 
@@ -62,7 +60,18 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
     } catch (e) { setWpError((e as Error).message); }
     finally { setLoading(false); }
   };
-  const visible = useMemo(() => (posts ?? []).filter((p) => !hideUsed || !p.used), [posts, hideUsed]);
+  // Одна галочка «пропускать уже использованные» управляет и списком, и выбором: включена — использованные
+  // скрыты и не выбраны; выключена — показаны и выбраны вместе с остальными (повторные пины на те же статьи).
+  const visible = useMemo(() => (posts ?? []).filter((p) => !filter.skipUsed || !p.used), [posts, filter.skipUsed]);
+  useEffect(() => {
+    if (!posts) return;
+    setPicked((prev) => {
+      const n = new Set(prev);
+      for (const p of posts) { if (!p.used) continue; if (filter.skipUsed) n.delete(p.url); else n.add(p.url); }
+      return n;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter.skipUsed]);
   const togglePick = (u: string) => setPicked((p) => { const n = new Set(p); if (n.has(u)) n.delete(u); else n.add(u); return n; });
   const pickedList = [...picked];
 
@@ -132,7 +141,6 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
             </div>
             {posts && (
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" checked={hideUsed} onChange={(e) => setHideUsed(e.target.checked)} /> скрыть уже использованные</label>
                 <span className="help">Найдено: {posts.length}, использованных: {posts.filter((p) => p.used).length}, выбрано: <b>{picked.size}</b></span>
                 <span className="ml-auto flex gap-1.5">
                   <button type="button" className="btn-ghost btn-sm" onClick={() => setPicked(new Set(visible.map((p) => p.url)))}>Выбрать все</button>
@@ -151,11 +159,12 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
                     {p.used && <span className="badge bg-warn-soft text-warn px-2 py-0.5">уже был</span>}
                   </label>
                 ))}
-                {!visible.length && <p className="help p-3">Ничего не найдено по фильтру.</p>}
+                {!visible.length && <p className="help p-3">{posts.length ? "Все найденные статьи уже были в прогонах. Снимите галочку «пропускать статьи, которые уже были в прогонах» выше, чтобы сделать по ним пины повторно." : "Ничего не найдено по фильтру."}</p>}
               </div>
             )}
             {posts && pickedList.map((u) => <input key={u} type="hidden" name="urlList" value={u} />)}
-            {posts && <input type="hidden" name="urls" value={pickedList.join("\n")} />}
+            {posts && <input type="hidden" name="urlsExplicit" value="1" />}
+            {posts && picked.size === 0 && <Alert tone="warn">Не выбрано ни одной статьи. Отметьте статьи в списке или нажмите «Сбросить выбор», чтобы статьи подобрались по фильтру при запуске.</Alert>}
           </div>
         )}
       </section>

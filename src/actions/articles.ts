@@ -12,8 +12,9 @@ import { requireUser, type CurrentUser } from "@/lib/auth";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { canAccessSiteAccess } from "@/lib/sites/access";
 import { canAccessArtSite, canAccessArticle } from "@/lib/articles/access";
-import { DEFAULT_SITE_SETTINGS, PROJECT_SLUG, PUBLISH_MODES, mergeSiteSettings, type ArtRunSettings, type ArtSiteSettings, type KeywordInput, type PhotoCountSetting, type PublishMode } from "@/lib/articles/types";
+import { DEFAULT_SITE_SETTINGS, PROJECT_SLUG, PUBLISH_MODES, SITE_LIMITS, mergeSiteSettings, type ArtRunSettings, type ArtSiteSettings, type KeywordInput, type PhotoCountSetting, type PublishMode } from "@/lib/articles/types";
 import { findDuplicateKeywords, launchArticles } from "@/lib/articles/launch";
+import { updateSiteSettings } from "@/lib/articles/automation";
 import { fetchAccessToken, markRows, parseServiceKey, planSheetImport, type SheetPlan } from "@/lib/articles/sheets";
 import { purgeArticleFiles } from "@/lib/articles/storage";
 import { firstStage, stageLabel, stagesFor, type StageKey } from "@/lib/articles/stages";
@@ -63,7 +64,15 @@ export async function enableArticlesForSite(_p: FormState, f: FormData): Promise
   return { ok: "Сервис «Статьи» включён. Задайте нишу и рецепт по умолчанию в настройках сайта." };
 }
 
-/** Настройки сайта из формы (components/articles/SiteSettingsForm). Имена полей — там же. */
+/**
+ * Поля автозапуска и ИИ-модерации меняются и здесь, и на экране «Автозапуск». Форма присылает рядом исходное значение
+ * (orig_<имя>): если пользователь поле не трогал, берём свежее значение из базы (prev), а не то, что было при открытии формы.
+ */
+const touched = (f: FormData, k: string, v: string) => !f.has(`orig_${k}`) || String(f.get(`orig_${k}`)) !== v;
+const pickFlag = (f: FormData, k: string, prev: boolean) => { const v = flag(f, k); return touched(f, k, v ? "1" : "0") ? v : prev; };
+const pickNum = (f: FormData, k: string, prev: number, [min, max]: readonly [number, number]) => { const v = num(f, k, prev, min, max); return touched(f, k, String(v)) ? v : prev; };
+
+/** Настройки сайта из формы (components/articles/SiteSettingsForm). Имена полей — там же. prev — свежие настройки из базы. */
 function settingsFromForm(f: FormData, prev: ArtSiteSettings): ArtSiteSettings {
   const mode = str(f, "photoCountMode") === "range" ? "range" : "exact";
   const min = num(f, "photoMin", prev.photoCount.min, 1, 60);
@@ -78,15 +87,19 @@ function settingsFromForm(f: FormData, prev: ArtSiteSettings): ArtSiteSettings {
     photoReview: flag(f, "photoReview"),
     publishMode,
     categories: { defaultId: str(f, "catDefaultId") ? num(f, "catDefaultId", 0, 0) || null : null, rules, useAi: flag(f, "catUseAi") },
-    autostart: {
-      photoEnabled: flag(f, "autoPhotoEnabled"), photoLimit: num(f, "autoPhotoLimit", prev.autostart.photoLimit, 1, 20),
-      writingEnabled: flag(f, "autoWritingEnabled"), writingLimit: num(f, "autoWritingLimit", prev.autostart.writingLimit, 1, 20),
-      publishLimit: num(f, "autoPublishLimit", prev.autostart.publishLimit, 1, 20), autoRestart: flag(f, "autoRestart"),
-    },
-    aiModeration: {
-      enabled: flag(f, "aiModEnabled"), batchFrom: num(f, "aiModBatchFrom", prev.aiModeration.batchFrom, 1, 500), concurrency: num(f, "aiModConcurrency", prev.aiModeration.concurrency, 1, 20),
-      backlogThreshold: num(f, "aiModBacklog", prev.aiModeration.backlogThreshold, 0, 1000), autoApply: flag(f, "aiModAutoApply"),
-    },
+    // Группы без полей в форме (старая форма, другая страница) не трогаем.
+    autostart: has(f, "autoPhotoLimit") ? {
+      photoEnabled: pickFlag(f, "autoPhotoEnabled", prev.autostart.photoEnabled), photoLimit: pickNum(f, "autoPhotoLimit", prev.autostart.photoLimit, SITE_LIMITS.photoLimit),
+      writingEnabled: pickFlag(f, "autoWritingEnabled", prev.autostart.writingEnabled), writingLimit: pickNum(f, "autoWritingLimit", prev.autostart.writingLimit, SITE_LIMITS.writingLimit),
+      publishLimit: pickNum(f, "autoPublishLimit", prev.autostart.publishLimit, SITE_LIMITS.publishLimit),
+    } : prev.autostart,
+    aiModeration: has(f, "aiModConcurrency") ? {
+      enabled: pickFlag(f, "aiModEnabled", prev.aiModeration.enabled),
+      batchFrom: pickNum(f, "aiModBatchFrom", prev.aiModeration.batchFrom, SITE_LIMITS.batchFrom),
+      concurrency: pickNum(f, "aiModConcurrency", prev.aiModeration.concurrency, SITE_LIMITS.concurrency),
+      backlogThreshold: pickNum(f, "aiModBacklog", prev.aiModeration.backlogThreshold, SITE_LIMITS.backlogThreshold),
+      autoApply: pickFlag(f, "aiModAutoApply", prev.aiModeration.autoApply),
+    } : prev.aiModeration,
     search: { country: str(f, "searchCountry").toLowerCase().slice(0, 8), language: str(f, "searchLanguage").toLowerCase().slice(0, 8), freshness: str(f, "searchFreshness").slice(0, 8) },
     yearInUrlPercent: yearRaw === "" ? null : num(f, "yearInUrlPercent", 0, 0, 100),
     sheetUrl: str(f, "sheetUrl").slice(0, 1000),
@@ -97,9 +110,7 @@ export async function saveArtSiteSettings(_p: FormState, f: FormData): Promise<F
   const me = await requireUser();
   const id = str(f, "id");
   try {
-    const site = await siteForUser(me, id);
-    const prev = mergeSiteSettings(site.settings);
-    const next = settingsFromForm(f, prev);
+    await siteForUser(me, id);
     const recipeId = str(f, "defaultRecipeId");
     if (recipeId) {
       const r = await prisma.artRecipe.findUnique({ where: { id: recipeId }, select: { id: true } });
@@ -107,14 +118,18 @@ export async function saveArtSiteSettings(_p: FormState, f: FormData): Promise<F
     }
     const nicheCode = str(f, "nicheCode");
     if (nicheCode && !(await prisma.artNiche.findUnique({ where: { code: nicheCode }, select: { code: true } }))) throw new Error("Ниша не найдена");
-    await prisma.artSite.update({
-      where: { id },
-      data: { settings: next as unknown as Prisma.InputJsonValue, name: has(f, "name") ? str(f, "name") || site.name : site.name, nicheCode: has(f, "nicheCode") ? nicheCode || null : site.nicheCode, defaultRecipeId: has(f, "defaultRecipeId") ? recipeId || null : site.defaultRecipeId },
-    });
+    // Запись со сравнением по updatedAt: настройки берутся свежими из базы прямо перед записью (экран «Автозапуск»
+    // мог поменять переключатели, пока форма была открыта), неизвестные поля JSON сохраняются.
+    await updateSiteSettings(
+      id,
+      (raw) => ({ ...raw, ...settingsFromForm(f, mergeSiteSettings(raw)) }),
+      (row) => ({ name: has(f, "name") ? str(f, "name") || row.name : row.name, nicheCode: has(f, "nicheCode") ? nicheCode || null : row.nicheCode, defaultRecipeId: has(f, "defaultRecipeId") ? recipeId || null : row.defaultRecipeId }),
+    );
   } catch (e) { return fail(e); }
   revalidatePath(`${ART}/sites/${id}`);
   revalidatePath(`${ART}/sites`);
   revalidatePath(ART);
+  revalidatePath(`${ART}/automation`);
   return { ok: "Настройки сайта сохранены" };
 }
 
@@ -214,7 +229,8 @@ export async function launchArticlesAction(_p: FormState, f: FormData): Promise<
       }
       // Запоминаем ссылку в настройках сайта — иначе обратная запись ссылок и дат после публикации будет пропущена
       if (sheetUrl !== siteSettings.sheetUrl) {
-        await prisma.artSite.update({ where: { id: site.id }, data: { settings: { ...siteSettings, sheetUrl } as unknown as Prisma.InputJsonValue } });
+        // Только поле sheetUrl: остальные настройки берутся свежими из базы (не затираем параллельные правки).
+        await updateSiteSettings(site.id, (raw) => ({ ...raw, sheetUrl }));
       }
       const r = await launchArticles(me, { siteId, settings: { ...settings, recipeId: "", sheet: { url: sheetUrl, tab: plan.tab } }, keywords: plan.ready, name: str(f, "name") });
       runId = r.runId;

@@ -8,6 +8,7 @@ import type { ArticleCursor, ArticleFacts, ArticlePlan, ArticleRecipeSnapshot } 
 import type { AiCtx } from "@/lib/articles/ai";
 import type { StageKey } from "@/lib/articles/stages";
 import type { WpCreds } from "@/lib/pins/wp/client";
+import type { RetryKind } from "@/lib/articles/errors";
 
 export type ArtStageCtx = {
   /** Свежая строка статьи на момент старта этапа */
@@ -27,6 +28,8 @@ export type ArtStageCtx = {
   log: (msg: string, extra?: unknown) => void;
   /** Сохранить изменённый cursor/facts/plan (частично) — вызывать после значимых шагов внутри этапа. */
   save: (patch: { cursor?: ArticleCursor; facts?: ArticleFacts; plan?: ArticlePlan | null; note?: string | null }) => Promise<void>;
+  /** Сколько раз подряд этот этап уже откладывался по видам сбоев (серия считается раннером по журналу этапов). */
+  retries: Record<RetryKind, number>;
 };
 
 export type ArtStageResult = {
@@ -39,10 +42,19 @@ export type ArtStageResult = {
    * или состояние ожидания человека (PHOTO_REVIEW, WAITING_FOR_PHOTOS, REVIEW_PENDING …).
    */
   next?: StageKey | { wait: ArtStatus; note?: string };
-  /** Фатальная причина: статья → FAILED с этим текстом */
+  /** Фатальная причина: статья → FAILED (на этапе publish — PUBLISH_ERROR) с этим текстом */
   fatal?: string;
   /** Повторить этот же этап позже (мс): временная проблема (лимиты, сеть, занятые слоты) */
   retryInMs?: number;
+  /**
+   * Вид повтора (src/lib/articles/errors.ts): transient — сбой провайдера/сети (окно ~1 ч, пауза не меньше расписания),
+   * malformed — модель ответила не в том формате (до 3 отложенных повторов), key — ждём рабочий ключ,
+   * planned (по умолчанию) — этап сам решил подождать (потолок по этапу). После потолка статья падает с `giveUp`
+   * (или общим текстом) — бесконечных повторов нет.
+   */
+  retryKind?: RetryKind;
+  /** Текст окончательной ошибки, если повторы этого вида исчерпаны */
+  giveUp?: string;
 };
 
 export type ArtStageHandler = (ctx: ArtStageCtx) => Promise<ArtStageResult>;

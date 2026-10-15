@@ -90,7 +90,7 @@ export const PERMISSION_FIELDS: Array<FieldMeta<PermissionKey>> = [
   { key: "keysCreate", label: "Добавляет и меняет ключи", options: [{ value: "none", label: "Нельзя" }, { value: "personal", label: "Только личные" }, { value: "team", label: "Личные и своих команд" }, { value: "all", label: "Любые, включая общие" }] },
   { key: "keysAssign", label: "Назначает ключи (правила)", hint: "Подключение ключей к сервисам и командам, правила на страницах инструментов.", options: [{ value: "none", label: "Только личные правила" }, { value: "team", label: "Правила своих команд" }, { value: "all", label: "Любые: сервисы, команды, глобальные" }] },
   { key: "teams", label: "Команды", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }, { value: "manage", label: "Состав своих команд" }, { value: "all", label: "Создавать и управлять всеми" }] },
-  { key: "sites", label: "Сайты", options: [{ value: "team", label: "Сайты своих команд" }, { value: "all", label: "Все сайты" }] },
+  { key: "sites", label: "Сайты", options: [{ value: "team", label: "Только свои сайты (где отмечен)" }, { value: "all", label: "Все сайты" }] },
   { key: "providers", label: "Провайдеры и модели", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }, { value: "manage", label: "Менять настройки и модели" }] },
   { key: "balances", label: "Балансы в шапке", hint: "«Свои» — ключи команды сотрудника в открытых ему инструментах.", options: [{ value: "none", label: "Не показывать" }, { value: "own", label: "Только свои ключи" }, { value: "all", label: "Все провайдеры" }] },
   { key: "users", label: "Пользователи", hint: "Добавлять людей и менять их права может только админ.", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }] },
@@ -145,7 +145,7 @@ export function resolvePermissions(role: string, raw: unknown): Permissions {
 
 /* ---------- Проверки. `Actor` — минимум из CurrentUser, чтобы не тянуть auth.ts на клиент. ---------- */
 
-export type Actor = { id: string; role: string; teamIds: string[]; leadTeamIds: string[]; perms: Permissions };
+export type Actor = { id: string; role: string; teamIds: string[]; leadTeamIds: string[]; perms: Permissions; privateTools?: string[] };
 
 /** Команды уровня «своя команда»: все команды пользователя плюс те, где он лидер. */
 function ownTeams(u: Actor): string[] {
@@ -157,13 +157,25 @@ export type TeamScope = "all" | string[];
 export const inScope = (scope: TeamScope, teamId: string | null | undefined) => scope === "all" || (!!teamId && scope.includes(teamId));
 
 /* Инструменты */
+/**
+ * Закрытые инструменты: роль и `perms.tools` их не открывают, даже админу. Доступ — запись `ToolAccess`
+ * (выдаёт владелец портала на странице пользователя), владелец видит их всегда. Список — в `CurrentUser.privateTools`.
+ */
+export const PRIVATE_TOOLS = ["finance"] as const;
+export const isPrivateTool = (slug: string) => (PRIVATE_TOOLS as readonly string[]).includes(slug);
+
 export function canUseTool(u: Actor, slug: string): boolean {
+  if (isPrivateTool(slug)) return !!u.privateTools?.includes(slug);
   return u.role === "ADMIN" || u.perms.tools === "all" || u.perms.tools.includes(slug);
 }
-/** Условие для Project.findMany: только инструменты, открытые сотруднику. */
+/** Условие для Project.findMany: только инструменты, открытые сотруднику (закрытые — только выданные). */
 export function toolWhere(u: Actor): Record<string, unknown> {
-  return u.role === "ADMIN" || u.perms.tools === "all" ? {} : { slug: { in: u.perms.tools } };
+  const hidden = PRIVATE_TOOLS.filter((s) => !u.privateTools?.includes(s));
+  const base = u.role === "ADMIN" || u.perms.tools === "all" ? {} : { slug: { in: [...u.perms.tools, ...(u.privateTools ?? [])] } };
+  return hidden.length ? { AND: [base, { slug: { notIn: hidden } }] } : base;
 }
+/** Условие для списков инструментов в настройках (ключи, сайты, галочки прав): без закрытых. */
+export const publicToolWhere = { slug: { notIn: [...PRIVATE_TOOLS] } };
 
 /* Расход */
 /** Раздел «Расход» в меню; лидер команды всегда видит расход своей команды. */
