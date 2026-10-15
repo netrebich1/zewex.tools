@@ -54,6 +54,8 @@ export interface SolveInput {
   focusY?: number;
   /** Зона текста из стиля: top | bottom | side | middle | overlay. Если задана — важнее семейства. */
   zone?: "top" | "bottom" | "overlay" | "middle" | "side";
+  /** v8: фото наезжает на низ заголовка на N px (только зона top). */
+  overlap?: number;
 }
 
 const rect = (x: number, y: number, w: number, h: number): SceneRect => ({ x, y, w, h });
@@ -206,9 +208,24 @@ export function solveCanvasScene(input: SolveInput): SolvedScene {
   ]);
   const overlay = input.zone ? input.zone === "overlay" : OVERLAY_FAMILIES.has(input.family);
   const plate: PlateKind = overlay ? (input.plate ?? "none") : "none";
-  const side = input.zone ? input.zone === "side" && input.count <= 2 : input.family === "clean-product" && input.count === 1;
+  const side = input.zone ? input.zone === "side" && input.count <= 3 : input.family === "clean-product" && input.count === 1;
+  const middle = input.zone === "middle" && input.count >= 2;
   let textRect: SceneRect;
   let photoArea: SceneRect;
+  // v8: зона middle — заголовок между двумя рядами фото (раньше рисовалась как top).
+  if (middle) {
+    const topH = (PIN_H - textH - 40) / 2;
+    textRect = rect(p, topH + 20, PIN_W - p * 2, textH);
+    const areaTop = rect(0, 0, PIN_W, topH);
+    const areaBot = rect(0, topH + textH + 40, PIN_W, PIN_H - topH - textH - 40);
+    const nTop = Math.ceil(input.count / 2), nBot = input.count - nTop;
+    const ratios = input.imageRatios.slice(0, input.count);
+    const top = justifyRows(areaTop, [nTop], ratios.slice(0, nTop));
+    const bot = justifyRows(areaBot, [nBot], ratios.slice(nTop)).map((c) => ({ ...c, imageIndex: c.imageIndex + nTop }));
+    const placements = insetPlacements([...top, ...bot], input.gutter);
+    const base = { family: input.family, photos: placements, textRect, textOnPhoto: false, plate: "none" as PlateKind, radius: input.radius, gutter: input.gutter, align: input.align };
+    return { ...base, issues: sceneIssues(base, input.textHeight) };
+  }
 
   if (overlay) {
     photoArea = rect(0, 0, PIN_W, PIN_H);
@@ -244,8 +261,9 @@ export function solveCanvasScene(input: SolveInput): SolvedScene {
     const topText = input.zone ? input.zone === "top" || input.zone === "middle" : TOP_TEXT.has(input.family);
 
     if (topText) {
+      const overlap = Math.max(0, Math.min(160, input.overlap ?? 0));
       textRect = rect(p, p, PIN_W - p * 2, textH);
-      photoArea = rect(0, textH + p + 20, PIN_W, PIN_H - textH - p - 20);
+      photoArea = rect(0, textH + p + 20 - overlap, PIN_W, PIN_H - textH - p - 20 + overlap);
     } else {
       let photoH = PIN_H - textH - 20;
       if (input.count === 1) {

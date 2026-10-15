@@ -10,8 +10,8 @@ import type { StyleSpec } from "./styleSpec";
 
 export type PaletteMood = "bold" | "dark" | "light";
 
-const P = (id: string, name: string, mood: PaletteMood, bg: string, fg: string, accent: string, soft: string, onAccent: string): CanvasPalette & { mood: string[] } =>
-  ({ id, name, bg, fg, accent, soft, onAccent, mood: [mood] });
+const P = (id: string, name: string, mood: PaletteMood, bg: string, fg: string, accent: string, soft: string, onAccent: string, accent2?: string): CanvasPalette & { mood: string[] } =>
+  ({ id, name, bg, fg, accent, soft, onAccent, ...(accent2 ? { accent2 } : {}), mood: [mood] });
 
 export const BOLD_PALETTES: Array<CanvasPalette & { mood: string[] }> = [
   // Насыщенный фон, светлый текст
@@ -38,6 +38,29 @@ export const BOLD_PALETTES: Array<CanvasPalette & { mood: string[] }> = [
   P("zx-rust-cream", "Rust Cream", "light", "#FBF3EA", "#2A1A12", "#B8441F", "#F2DCCB", "#FFFFFF"),
   P("zx-lavender-ink", "Lavender Ink", "light", "#EDE7FF", "#1F1638", "#5B2DC9", "#DCD2FA", "#FFFFFF"),
   P("zx-mint-ink", "Mint Ink", "light", "#DFF5EC", "#0F2A22", "#0E7C5B", "#C6EBDC", "#FFFFFF"),
+
+  /* ---------- 2027: тон-в-тон (fg/bg ≥ 10, акцент того же цвета темнее) ---------- */
+  P("zx-choco-cream", "Шоколад на сливочном", "light", "#F6E7D3", "#3B2115", "#5A3321", "#EBD5BB", "#FFF4E6", "#B8652E"),
+  P("zx-cherry-rose", "Вишня на розовом", "light", "#F9D7DC", "#5A0E1E", "#8E1431", "#F2C3CB", "#FFF2F4", "#D4506A"),
+  P("zx-graphite-butter", "Графит на масляном", "bold", "#F3D86B", "#23262B", "#2E3238", "#EFCF52", "#F7E9A8", "#C2410C"),
+  P("zx-olive-pistachio", "Олива на фисташковом", "light", "#D9E6B8", "#22301A", "#3C5224", "#CBDBA3", "#EEF5DD", "#B4552F"),
+  /* ---------- 2027: молочно-белый Cloud Dancer + один горячий акцент ---------- */
+  P("zx-cloud-coral", "Cloud Dancer + коралл", "light", "#F2F0EB", "#1F1E1B", "#E24A32", "#E7E3DB", "#FFFFFF", "#1F3FD1"),
+  P("zx-cloud-cobalt", "Cloud Dancer + кобальт", "light", "#F2F0EB", "#15192E", "#1F3FD1", "#E4E3DE", "#FFFFFF", "#E24A32"),
+  P("zx-cloud-lime", "Cloud Dancer + лайм", "light", "#F2F0EB", "#1B2012", "#B9E53D", "#E6E4DD", "#1B2012", "#1F3FD1"),
+  /* ---------- 2027: сезонные ---------- */
+  P("zx-winter-ice", "Зимняя ледяная", "light", "#E6F2FA", "#0E2A42", "#1F5F9E", "#CFE4F2", "#FFFFFF", "#E8614D"),
+  P("zx-xmas-bordeaux", "Рождество: бордо и ель", "dark", "#5C0F1E", "#FFF6EC", "#2F7A4B", "#74192B", "#FFFFFF", "#E9C46A"),
+  P("zx-autumn-ochre", "Осень: охра и бургунди", "bold", "#D9A441", "#4A1020", "#6E1327", "#CF9633", "#FFF1E3", "#2F3A1F"),
+  P("zx-spring-lilac", "Весна: сирень и лайм", "light", "#EBDDF5", "#2A1A3A", "#6FA81A", "#DFCBEE", "#13200A", "#7C3AED"),
+  P("zx-summer-azure", "Лето: лазурь и лимон", "bold", "#0A6BB0", "#FFFFFF", "#FFE94A", "#1A7BC2", "#1A1A1A", "#FF8A3D"),
+  /* ---------- 2027: чёрный + неон ---------- */
+  P("zx-black-neon-lime", "Чёрный + неоновый лайм", "dark", "#0B0B0B", "#FFFFFF", "#D4FF3F", "#1A1A1A", "#0B0B0B", "#FF3DA6"),
+  P("zx-black-neon-pink", "Чёрный + неоновый розовый", "dark", "#0B0B0B", "#FFFFFF", "#FF3DA6", "#1A1A1A", "#0B0B0B", "#3DF0FF"),
+  P("zx-violet-neon", "Фиолет + кислотный лимон", "dark", "#2A0F5E", "#FFFFFF", "#E8FF4D", "#3A1A78", "#1A1A1A", "#FF7AC6"),
+  /* ---------- 2027: матовая бумага (под зерно и антикву) ---------- */
+  P("zx-paper-ink", "Бумага и чернила", "light", "#EFE9DC", "#2A2622", "#9A4B2A", "#E3DCCB", "#FFF7EE", "#3F5E4A"),
+  P("zx-sage-paper", "Шалфей на бумаге", "light", "#E7E6D9", "#2A3028", "#4F6A5A", "#D9D8C8", "#FFFFFF", "#B4654A"),
 ];
 
 export const BOLD_PALETTE_MAP = new Map(BOLD_PALETTES.map((p) => [p.id, p]));

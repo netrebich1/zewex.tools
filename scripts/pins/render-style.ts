@@ -4,12 +4,12 @@
  * Пишет <outDir>/<style>_<count>_<seed>.jpg. БД — из DATABASE_URL (.env приложения).
  */
 import { setDefaultResultOrder } from "dns";
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { prisma } from "@/lib/db";
 import { installNodeCanvasHost } from "@/lib/pins/canvas/host.node";
 import { renderPin } from "@/lib/pins/canvas";
-import { toRecipe, type StyleSpec } from "@/lib/pins/canvas/styleSpec";
+import { toRecipe, validateStyle, type StyleSpec } from "@/lib/pins/canvas/styleSpec";
 import { CATALOG_LIB } from "@/lib/pins/canvas/catalog";
 import { testPhotos } from "@/lib/pins/canvas/photos";
 import { attachBoldPalettes } from "@/lib/pins/canvas/paletteLibrary";
@@ -27,13 +27,20 @@ async function main() {
   installNodeCanvasHost(process.env.PINS_FONTS_DIR || "/var/www/zewex_tools_usr/data/storage/pins/fonts");
   await mkdir(outDir, { recursive: true });
   const where = which === "all" ? {} : which === "pending" ? { isActive: true, isApproved: false } : which === "approved" ? { isApproved: true } : { id: { contains: which } };
-  const rows: Array<{ id: string; data: unknown }> = which === "curated"
-    ? CURATED_STYLES.map((c) => ({ id: c.id, data: c.spec }))
-    : await prisma.pinCanvasStyle.findMany({ where: { libraryId: CATALOG_LIB, ...where }, orderBy: { sortOrder: "asc" } });
+  // --spec=<file.json>: массив {id, spec} — отладка новых стилей без базы и каталога.
+  const specFile = flag("spec");
+  const rows: Array<{ id: string; data: unknown }> = specFile
+    ? (JSON.parse(await readFile(specFile, "utf8")) as Array<{ id: string; spec: unknown }>).map((c) => ({ id: c.id, data: c.spec }))
+    : which === "curated"
+      ? CURATED_STYLES.map((c) => ({ id: c.id, data: c.spec }))
+      : await prisma.pinCanvasStyle.findMany({ where: { libraryId: CATALOG_LIB, ...where }, orderBy: { sortOrder: "asc" } });
+  const title = flag("title") ?? "Cozy Fall Living Room Ideas";
   console.log(`styles: ${rows.length}`);
   const photos = await testPhotos();
   for (const row of rows) {
     const spec = flag("upgrade") ? attachFontSets(attachBoldPalettes(row.data as unknown as StyleSpec, row.id), row.id) : row.data as unknown as StyleSpec;
+    const problems = validateStyle(spec);
+    if (problems.length) console.log(`${row.id}: ${problems.join("; ")}`);
     const safe = row.id.replace(/[^a-z0-9_-]/gi, "_").slice(0, 60);
     for (const count of counts) {
       const n = spec.counts.includes(count as 1) ? count : spec.counts.filter((c) => c <= count).pop() ?? spec.counts[0];
@@ -43,7 +50,7 @@ async function main() {
           const recipe = { ...toRecipe(spec, seed, n), ...(accent ? { accent } : {}) };
           const start = (s * 2) % photos.length;
           const pick = [...photos.slice(start), ...photos.slice(0, start)].slice(0, n);
-          const r = await renderPin({ recipe, photos: pick, texts: { title: "Cozy Fall Living Room Ideas", kicker: "Inspiration", cta: "See all ideas", domain: "example.com", number: n >= 2 ? "12" : undefined }, seed });
+          const r = await renderPin({ recipe, photos: pick, texts: { title, kicker: "Inspiration", cta: "See all ideas", domain: "example.com", number: n >= 2 ? "12" : undefined }, seed });
           await writeFile(join(outDir, `${safe}__${n}_${s}.jpg`), r.jpeg);
           if (r.issues.length) console.log(`${row.id} x${n} s${s}: ${r.issues.join("; ")}`);
         } catch (e) {

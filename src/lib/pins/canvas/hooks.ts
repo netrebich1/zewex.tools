@@ -5,7 +5,9 @@
  * расширенный LSI-словами), запрет цифр и годов (их подставляет шаблон, кроме цифр
  * из ключа/H1), пачки по 3 страницы, 4 параллельных запроса, 3 попытки, второй проход
  * по одной странице для «недобранных», фолбэк из заголовка страницы.
- * Что изменилось: заголовок ≤ 36 знаков (цель — 3 строки), без эмодзи, язык из входа,
+ * Что изменилось: заголовок ≤ 44 знаков (цель — 2–3 строки), без эмодзи, язык из входа,
+ * обрезанные посреди фразы хуки («Styles For 4th Of») не допускаются: лишние слова снимаются
+ * целиком вместе с повисшим предлогом, а хуки, которые пришлось резать, идут последними,
  * вызов идёт через aiChat (слот text_main), ключ выбирает портал — ротация на повторе
  * происходит сама, если предыдущий ключ отключён.
  */
@@ -41,7 +43,7 @@ export interface GenerateHooksOptions {
   signal?: AbortSignal;
 }
 
-export const HOOK_TITLE_MAX = 36;
+export const HOOK_TITLE_MAX = 44;
 export const HOOK_KICKER_MAX = 22;
 export const HOOK_CTA_MAX = 18;
 
@@ -54,6 +56,19 @@ const CALL_TIMEOUT_MS = 30_000;
 
 const EMOJI_RE = /\p{Extended_Pictographic}|️|‍|[\u{1F1E6}-\u{1F1FF}]/gu;
 
+/** Служебные слова, на которые заголовок заканчиваться не должен (en/ru/uk/de/fr/es). */
+const DANGLING_RE = /\s+(?:for|of|and|or|with|to|the|a|an|in|on|at|by|from|your|that|this|into|и|в|во|на|с|со|для|из|к|ко|по|от|о|об|у|за|до|при|про|та|і|й|з|із|зі|до|для|під|над|при|und|mit|für|von|zu|der|die|das|et|de|du|des|pour|avec|y|con|para|el|la|los|las)$/iu;
+
+function stripDangling(s: string): string {
+  let out = s;
+  for (let i = 0; i < 3; i++) {
+    const next = out.replace(DANGLING_RE, "").replace(/[\s,:;—–-]+$/, "").trim();
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
 function clean(s: unknown, max: number): string {
   const base = String(s ?? "")
     .replace(EMOJI_RE, "")
@@ -61,11 +76,16 @@ function clean(s: unknown, max: number): string {
     .replace(/\s{2,}/g, " ")
     .replace(/[.!]+$/, "")
     .trim();
-  if (base.length <= max) return base;
-  // Режем по границе слова, чтобы не оставлять обрубков.
+  if (base.length <= max) return stripDangling(base);
+  // Режем по границе слова и снимаем повисший предлог, чтобы не оставлять обрубков фразы.
   const cut = base.slice(0, max + 1);
   const sp = cut.lastIndexOf(" ");
-  return (sp > max * 0.5 ? cut.slice(0, sp) : base.slice(0, max)).replace(/[\s,:;—–-]+$/, "").trim();
+  return stripDangling((sp > max * 0.5 ? cut.slice(0, sp) : base.slice(0, max)).replace(/[\s,:;—–-]+$/, "").trim());
+}
+
+/** Пришлось ли резать текст (длиннее лимита). */
+function wasCut(s: unknown, max: number): boolean {
+  return String(s ?? "").replace(EMOJI_RE, "").replace(/[«»"“”]/g, "").replace(/\s{2,}/g, " ").replace(/[.!]+$/, "").trim().length > max;
 }
 
 /** Цифры в текст не пускаем: число идей и год подставляет движок шаблона.
@@ -102,7 +122,7 @@ function systemPrompt(language: string, audience: string, perPage: number): stri
     "Не додавай фактів, яких немає в keyword/title (бренди, імена, конкретні техніки, ціни, локації).",
     "Варіанти різняться формулюванням і акцентом, а не темою.",
     "Правила форми:",
-    `- title: 3-6 слів, до ${HOOK_TITLE_MAX} знаків (читається у 3 короткі рядки), чіпляючий хук; БЕЗ крапки в кінці, без лапок.`,
+    `- title: 3-6 слів, СУВОРО до ${HOOK_TITLE_MAX - 4} знаків разом із пробілами (читається у 2-3 короткі рядки), закінчена фраза, чіпляючий хук; БЕЗ крапки в кінці, без лапок. Довші за ліміт варіанти будуть відкинуті — краще коротше.`,
     "- Жодних емодзі та спецсимволів у жодному полі.",
     "- СУВОРО ЗАБОРОНЕНО використовувати будь-які цифри та роки в title, kicker, cta",
     "  (кількість ідей і рік підставляє шаблон автоматично). Не пиши «7 ідей», «2025» тощо.",
@@ -146,17 +166,18 @@ function parseResults(json: unknown): RawRow[] {
 function toHooks(row: RawRow, src: HookPageInput): CanvasHook[] {
   const allow = keywordDigits(src.keyword, src.title);
   const list = Array.isArray(row.hooks) ? row.hooks.filter(isRecord) : [];
-  const out: CanvasHook[] = [];
+  const out: Array<CanvasHook & { cut: boolean }> = [];
   const seen = new Set<string>();
   for (const h of list as RawHook[]) {
     const title = stripDigits(clean(h.title, HOOK_TITLE_MAX), allow);
-    if (!title || seen.has(title.toLowerCase())) continue;
+    if (!title || title.split(" ").length < 2 || seen.has(title.toLowerCase())) continue;
     seen.add(title.toLowerCase());
     const kicker = stripDigits(clean(h.kicker, HOOK_KICKER_MAX), allow);
     const cta = stripDigits(clean(h.cta, HOOK_CTA_MAX), allow);
-    out.push({ title, ...(kicker ? { kicker } : {}), ...(cta ? { cta } : {}) });
+    out.push({ title, ...(kicker ? { kicker } : {}), ...(cta ? { cta } : {}), cut: wasCut(h.title, HOOK_TITLE_MAX) });
   }
-  return out;
+  // Целые хуки вперёд, резаные — в хвост (их возьмут, только если целых не хватило).
+  return out.sort((a, b) => Number(a.cut) - Number(b.cut)).map(({ cut: _c, ...h }) => h);
 }
 
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve) => {

@@ -43,6 +43,8 @@ export const nodeCanvasHost: CanvasHost = {
   encodeJpeg: (c, quality) => native(c).encode("jpeg", Math.round(Math.max(0, Math.min(1, quality)) * 100)),
   encodePng: (c) => native(c).encode("png"),
   hasFont: (family) => GlobalFonts.has(family),
+  // Skia принимает свой Canvas как источник drawImage; тип DOM — структурно.
+  snapshot: (c) => native(c) as unknown as CanvasImageSource,
 };
 
 /** Имя папки → семейство: дефисы становятся пробелами. */

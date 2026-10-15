@@ -18,7 +18,8 @@
  * зависеть от порта движка. Из него берутся только типы рецепта.
  */
 
-import type { CanvasPalette, CanvasRecipe } from "./recipe";
+import type { CanvasPalette, CanvasRecipe, CanvasFx, TitleEmphasis } from "./recipe";
+import { familyWeights, fontSupports } from "./fonts";
 
 /* ---------- производные типы из рецепта (не дублируем union'ы движка) ---------- */
 
@@ -69,6 +70,27 @@ export interface StyleTitle {
   tracking?: number;
   /** Красить последнее слово акцентом (только если акцент читается на фоне). */
   accentWord?: boolean;
+  /* ---------- v8 ---------- */
+  /** Диапазон кегля (px на ширину 1000): постер 120–200, редакционный 64–96; по умолчанию 42–92. */
+  minSize?: number;
+  maxSize?: number;
+  /** Межстрочный (0.84–1.3), по умолчанию 1.08; для капса узких шрифтов 0.9. */
+  leading?: number;
+  /** Контур: stroke — обводка, echo — контурные повторы позади, hollow — только контур. */
+  outline?: "stroke" | "echo" | "hollow";
+  /** Мягкая тень текста поверх фото. */
+  shadow?: boolean;
+  /** Акцентная часть заголовка (крупнее/другим шрифтом/цветом). */
+  emphasis?: TitleEmphasis;
+}
+
+/** v8: подача фото и декор пина. */
+export interface StylePhoto {
+  style?: "polaroid" | "card";
+  tone?: "duotone" | "mono" | "warm";
+  shape?: "arch";
+  /** Фото наезжает на низ заголовка (только зона top), px. */
+  overlap?: number;
 }
 
 export interface StylePlate {
@@ -96,6 +118,10 @@ export interface StyleFontSet {
   pair: string;
   fonts: StyleFonts;
   roleFonts?: StyleRoleFonts;
+  /** Письменности набора (latin/cyrillic); нет — считается, что обе. Набор без нужной письменности для языка пина не выбирается. */
+  scripts?: string[];
+  /** Межстрочный по умолчанию для заголовочного шрифта набора (у шрифтов с высокими выносами 1.14+). */
+  leading?: number;
 }
 
 export interface StyleGrid {
@@ -122,8 +148,8 @@ export interface StyleSpec {
   fontSets?: StyleFontSet[];
   /** 1–4 палитры; seed выбирает одну. */
   palettes: CanvasPalette[];
-  /** Источник цвета: фиксированная палитра или палитра + оттенок из фото. */
-  color: "palette" | "photo-tint";
+  /** Источник цвета: фиксированная палитра, палитра + оттенок из фото (светлая), или тёмная палитра из фото. */
+  color: "palette" | "photo-tint" | "photo-tint-dark";
   title: StyleTitle;
   plate?: StylePlate;
   number?: StyleNumber;
@@ -146,6 +172,12 @@ export interface StyleSpec {
   grid?: StyleGrid;
   useAccent2?: boolean;
   shadow?: "none" | "soft";
+  /* ---------- v8 ---------- */
+  photo?: StylePhoto;
+  /** Круглый стикер с текстом по кругу (кикер) в свободном углу. */
+  ringBadge?: boolean;
+  /** Тонкая линейка над заголовком (редакционный приём). */
+  rule?: boolean;
   /** Легаси-шаблоны, из которых стиль получен (для миграции наборов). */
   sourceIds?: string[];
 }
@@ -354,7 +386,11 @@ export function paletteIndex(spec: StyleSpec, seed: number): number {
 
 /** Все наборы шрифтов стиля: основной + альтернативы. */
 export function allFontSets(spec: StyleSpec): StyleFontSet[] {
-  return [{ pair: spec.pair, fonts: spec.fonts, ...(spec.roleFonts ? { roleFonts: spec.roleFonts } : {}) }, ...(spec.fontSets ?? [])];
+  const alts = spec.fontSets ?? [];
+  // Основной набор может повторяться в fontSets (там у него письменности и межстрочный) — берём ту запись.
+  const main = alts.find((f) => f.pair === spec.pair)
+    ?? { pair: spec.pair, fonts: spec.fonts, ...(spec.roleFonts ? { roleFonts: spec.roleFonts } : {}) };
+  return [main, ...alts.filter((f) => f !== main)];
 }
 
 /** Индекс набора шрифтов по seed (другая соль, чем у палитры, чтобы не коррелировали). */
@@ -366,9 +402,30 @@ export function fontSetIndex(spec: StyleSpec, seed: number): number {
   return (h >>> 0) % n;
 }
 
-export function toRecipe(spec: StyleSpec, seed: number, photoCount: number): CanvasRecipe {
+/** Наборы шрифтов, пригодные для письменности (набор без `scripts` считается универсальным). */
+export function fontSetsForScript(spec: StyleSpec, script?: string): StyleFontSet[] {
+  const all = allFontSets(spec);
+  if (!script) return all;
+  const ok = all.filter((f) => !f.scripts || f.scripts.includes(script));
+  return ok.length ? ok : all;
+}
+
+/** Ближайшее доступное начертание семейства (Skia иначе синтезирует жирность и портит рисунок). */
+export function nearestWeight(family: string, weight: number): number {
+  const ws = familyWeights(family);
+  if (!ws.length || ws.includes(weight)) return weight;
+  return ws.reduce((best, w) => (Math.abs(w - weight) < Math.abs(best - weight) ? w : best), ws[0]);
+}
+
+export interface ToRecipeOptions {
+  /** Письменность текста пина: latin | cyrillic — фильтрует наборы шрифтов. */
+  script?: string;
+}
+
+export function toRecipe(spec: StyleSpec, seed: number, photoCount: number, opts: ToRecipeOptions = {}): CanvasRecipe {
   const layout = LAYOUTS[spec.layout] ?? LAYOUTS["lay-bottom-editorial"];
-  const fs = allFontSets(spec)[fontSetIndex(spec, seed)];
+  const sets = fontSetsForScript(spec, opts.script);
+  const fs = sets[fontSetIndex({ ...spec, fontSets: sets.slice(1) }, seed)] ?? sets[0];
   const count = pickCount(spec, photoCount);
   const palette = measurePalette(spec.palettes[paletteIndex(spec, seed)] ?? spec.palettes[0]);
   const grid = nearestGrid(spec.grid?.gutter ?? 16, spec.grid?.radius ?? 12);
@@ -409,10 +466,28 @@ export function toRecipe(spec: StyleSpec, seed: number, photoCount: number): Can
     domain: spec.domain || "dom-plain",
   };
 
+  const titleFamily = spec.title.font === "sans" ? fs.fonts.sans : fs.fonts.display;
+  const t = spec.title;
+  const fx: CanvasFx = {
+    ...(t.minSize !== undefined ? { titleMin: t.minSize } : {}),
+    ...(t.maxSize !== undefined ? { titleMax: t.maxSize } : {}),
+    ...(t.leading !== undefined ? { leading: t.leading } : fs.leading !== undefined ? { leading: fs.leading } : {}),
+    ...(t.outline ? { outline: t.outline } : {}),
+    ...(t.shadow ? { textShadow: true } : {}),
+    ...(t.emphasis ? { emphasis: { ...t.emphasis, ...(t.emphasis.weight !== undefined ? { weight: nearestWeight(t.emphasis.font === "sans" ? fs.fonts.sans : t.emphasis.font === "script" ? (fs.fonts.script ?? titleFamily) : fs.fonts.display, t.emphasis.weight) } : {}) } } : {}),
+    ...(spec.photo?.style ? { photoStyle: spec.photo.style } : {}),
+    ...(spec.photo?.tone ? { photoTone: spec.photo.tone } : {}),
+    ...(spec.photo?.shape ? { photoShape: spec.photo.shape } : {}),
+    ...(spec.photo?.overlap ? { photoOverlap: spec.photo.overlap } : {}),
+    ...(spec.ringBadge ? { ringBadge: true } : {}),
+    ...(spec.rule ? { rule: true } : {}),
+  };
+
   return {
     v: 7,
     kit,
     roleFonts,
+    ...(Object.keys(fx).length ? { fx } : {}),
     family: layout.family,
     layout: LEGACY_LAYOUT_FOR_COUNT[count] ?? `v5-grid-${count}`,
     photoCount: count,
@@ -421,7 +496,7 @@ export function toRecipe(spec: StyleSpec, seed: number, photoCount: number): Can
     fontPair: fs.pair,
     titleFont: spec.title.font,
     titleCase: spec.title.case,
-    titleWeight: spec.title.weight,
+    titleWeight: nearestWeight(titleFamily, spec.title.weight),
     titleAlign: spec.title.align,
     textZone: layout.zone,
     padding: STYLE_PADDING,
@@ -438,7 +513,7 @@ export function toRecipe(spec: StyleSpec, seed: number, photoCount: number): Can
     ctaCase: spec.cta?.case ?? (spec.title.case === "title" ? "title" : "upper"),
     texture: spec.grain ? 0.05 : 0,
     overlay: layout.overlay ? clamp(spec.overlay ?? OVERLAY_DEFAULT, OVERLAY_MIN, OVERLAY_MAX) : 0,
-    colorSource: spec.color === "photo-tint" ? "photo" : "palette",
+    colorSource: spec.color === "photo-tint" ? "photo" : spec.color === "photo-tint-dark" ? "photo-dark" : "palette",
     doodles: !!spec.doodles,
     titleAccentWord: !!spec.title.accentWord && !!palette.accentAsText,
     domainBar: false,
@@ -462,6 +537,7 @@ function usedFamilies(spec: StyleSpec, fs: StyleFontSet = { pair: spec.pair, fon
   if (spec.number) out.add(roles[1]);
   out.add(roles[0]); out.add(roles[2]); out.add(roles[3]);
   if (spec.kickerScript && fs.fonts.script) out.add(fs.fonts.script);
+  if (spec.title.emphasis?.font === "script" && fs.fonts.script) out.add(fs.fonts.script);
   return [...out].filter(Boolean);
 }
 
@@ -485,16 +561,30 @@ export function validateStyle(spec: StyleSpec): string[] {
   for (const fs of allFontSets(spec)) {
     if (!fs.pair || !fs.fonts?.display || !fs.fonts?.sans || !fs.fonts?.body) { out.push(`Набор шрифтов ${fs.pair || "?"} неполный`); continue; }
     const fams = usedFamilies(spec, fs);
-    if (fams.length > 2) out.push(`Слишком много шрифтов на пине (${fs.pair}): ${fams.join(", ")} (допустимо 2)`);
+    // Рукописный акцент — третье семейство по замыслу (антиква + рукописное слово).
+    const limit = spec.title.emphasis?.font === "script" && fs.fonts.script ? 3 : 2;
+    if (fams.length > limit) out.push(`Слишком много шрифтов на пине (${fs.pair}): ${fams.join(", ")} (допустимо ${limit})`);
+    if (spec.title.emphasis?.font === "script" && !fs.fonts.script) out.push(`Рукописный акцент заголовка без script-шрифта в наборе ${fs.pair}`);
+    for (const fam of fams) if (!fontSupports(fam, "latin")) out.push(`Шрифт ${fam} (${fs.pair}) не поддерживает латиницу`);
     if (spec.kickerScript && !fs.fonts.script && !spec.subtext) out.push(`Рукописный кикер без script-шрифта в наборе ${fs.pair}`);
   }
-  if ((spec.fontSets?.length ?? 0) > 4) out.push(`Наборов шрифтов ${spec.fontSets!.length}, допустимо до 4 альтернатив`);
+  if ((spec.fontSets?.length ?? 0) > 5) out.push(`Наборов шрифтов ${spec.fontSets!.length}, допустимо до 5 альтернатив`);
 
   if (!Number.isInteger(spec.title.maxLines) || spec.title.maxLines < 1 || spec.title.maxLines > TITLE_MAX_LINES) {
     out.push(`Заголовок: maxLines ${spec.title.maxLines}, допустимо 1–${TITLE_MAX_LINES}`);
   }
   if (spec.title.weight < 100 || spec.title.weight > 900 || spec.title.weight % 100 !== 0) out.push(`Начертание заголовка ${spec.title.weight} вне 100–900`);
   if (spec.title.tracking !== undefined && Math.abs(spec.title.tracking) > 8) out.push(`Разрядка заголовка ${spec.title.tracking} слишком большая`);
+  const tt = spec.title;
+  if (tt.minSize !== undefined && (tt.minSize < 30 || tt.minSize > 220)) out.push(`minSize ${tt.minSize} вне 30–220`);
+  if (tt.maxSize !== undefined && (tt.maxSize < 40 || tt.maxSize > 240)) out.push(`maxSize ${tt.maxSize} вне 40–240`);
+  if (tt.minSize !== undefined && tt.maxSize !== undefined && tt.minSize > tt.maxSize) out.push("minSize больше maxSize");
+  if (tt.leading !== undefined && (tt.leading < 0.8 || tt.leading > 1.4)) out.push(`Межстрочный ${tt.leading} вне 0.8–1.4`);
+  if (tt.emphasis && (tt.emphasis.scale < 0.4 || tt.emphasis.scale > 3)) out.push(`Масштаб акцента ${tt.emphasis.scale} вне 0.4–3`);
+  if (spec.photo?.overlap !== undefined && (spec.photo.overlap < 0 || spec.photo.overlap > 160)) out.push(`Наезд фото ${spec.photo.overlap} вне 0–160`);
+  if (spec.photo?.overlap && layout && layout.zone !== "top") out.push("Наезд фото на заголовок — только для раскладок с текстом сверху");
+  if (spec.photo?.shape === "arch" && layout?.overlay) out.push("Арка-окно не сочетается с текстом поверх фото");
+  if (spec.photo?.style === "polaroid" && spec.counts.some((c) => c > 4)) out.push("Полароиды: не больше 4 фото");
 
   if (!spec.palettes.length || spec.palettes.length > 4) out.push(`Палитр ${spec.palettes.length}, нужно 1–4`);
   spec.palettes.forEach((p, i) => {

@@ -2,18 +2,19 @@
  * Рендер canvas-пина (порт canvasEngine.ts). Браузерные зависимости заменены
  * хостом: холст — host.createCanvas, фото — HostImage, экспорт — host.encodeJpeg.
  */
-import { PIN_H, PIN_W, drawSmartCover, accentBox, toAccent } from "./crop";
+import { PIN_H, PIN_W, drawSmartCover, accentBox, toAccent, type SubjectRect } from "./crop";
 import { loadFontFamilies } from "./fonts";
 import { solveCanvasScene, type PlateKind, type SolvedScene } from "./layoutSolver";
 import type { CanvasRecipe, CanvasPalette } from "./recipe";
-import { roundRect } from "./decor";
+import { roundRect, grain } from "./decor";
 import { drawPlate, scatterDoodles, domainBar as drawDomainBar, HEAVY_PLATES } from "./plates";
 import {
   drawKitPlate, drawKitNumber, drawKitHighlight, drawKitCta, drawKitFrame, drawKitDomain,
   subtextTransform, CTA_UNDERLINED, PLATE_KIT_MAP, NUMBER_PLACEMENT_MAP,
   highlightExtraRoom, kitNumberHeight,
 } from "./kit";
-import { getHost, type Ctx2D, type HostImage } from "./host";
+import { getHost, asImageSource, type Ctx2D, type HostImage } from "./host";
+import type { TitleEmphasis } from "./recipe";
 
 /** Цифра рисуется отдельно от текстового стека. */
 const DETACHED_PLACEMENTS = new Set(["np-ghost", "np-corner-tl", "np-corner-tr", "np-corner-bl", "np-corner-br"]);
@@ -47,6 +48,8 @@ export interface PinText { title: string; kicker?: string; subtitle?: string; ct
 export interface RenderCanvasArgs {
   recipe: CanvasRecipe;
   photos: HostImage[];
+  /** Рамки объектов по индексам photos (от модели со зрением); undefined — карта энергии. */
+  subjects?: Array<SubjectRect | null | undefined>;
   text: PinText;
   domain?: string;
   seed?: number;
@@ -60,6 +63,18 @@ interface TextLine {
   boxH?: number; arrowH?: number;
   /** v7.4: строка вынесена из общего стека (цифра-фон, цифра в углу). */
   detached?: boolean;
+  /** v8: акцентная часть заголовка (крупнее / другим шрифтом / цветом). */
+  emph?: TitleEmphasis;
+}
+
+/** v8: границы кегля и межстрочный заголовка — из стиля либо по умолчанию (42–92, 1.08). */
+interface TitleFit { min: number; max: number; leading: number; maxLines: number }
+
+function titleFitOf(r: CanvasRecipe): TitleFit {
+  const fx = r.fx || {};
+  const min = Math.max(30, Math.min(220, fx.titleMin ?? 42));
+  const max = Math.max(min, Math.min(240, fx.titleMax ?? 92));
+  return { min, max, leading: Math.max(0.8, Math.min(1.4, fx.leading ?? 1.08)), maxLines: 4 };
 }
 
 const CTA_GAP = 12;
@@ -98,15 +113,89 @@ function wrap(ctx: Ctx2D, text: string, maxW: number) {
   return lines;
 }
 
-function fitTitle(ctx: Ctx2D, text: string, maxW: number, maxH: number, font: string, weight: number) {
-  for (let size = 92; size >= 42; size -= 2) {
+function fitTitle(ctx: Ctx2D, text: string, maxW: number, maxH: number, font: string, weight: number, fit: TitleFit = { min: 42, max: 92, leading: 1.08, maxLines: 4 }) {
+  const step = fit.max > 120 ? 4 : 2;
+  for (let size = fit.max; size >= fit.min; size -= step) {
     ctx.font = `${weight} ${size}px "${font}"`;
     const lines = wrap(ctx, text, maxW);
-    const lh = size * 1.08;
-    if (lines.length <= 4 && lines.length * lh <= maxH) return { size, lines, lineHeight: lh };
+    const lh = size * fit.leading;
+    // Длинное слово шире колонки — кегль ещё меньше.
+    if (lines.some((l) => ctx.measureText(l).width > maxW)) continue;
+    if (lines.length <= fit.maxLines && lines.length * lh <= maxH) return { size, lines, lineHeight: lh };
   }
-  ctx.font = `${weight} 40px "${font}"`;
-  return { size: 40, lines: wrap(ctx, text, maxW).slice(0, 4), lineHeight: 44 };
+  // Не влезло в заданный диапазон (узкая колонка, длинный заголовок): опускаемся ниже минимума
+  // и разрешаем ещё две строки — слова заголовка терять нельзя («Nails For» без «Work»).
+  for (let size = fit.min - 2; size >= 30; size -= 2) {
+    ctx.font = `${weight} ${size}px "${font}"`;
+    const lines = wrap(ctx, text, maxW);
+    const lh = size * fit.leading;
+    if (lines.some((l) => ctx.measureText(l).width > maxW)) continue;
+    if (lines.length <= fit.maxLines + 2 && lines.length * lh <= maxH) return { size, lines, lineHeight: lh };
+  }
+  ctx.font = `${weight} 30px "${font}"`;
+  return { size: 30, lines: wrap(ctx, text, maxW), lineHeight: 30 * fit.leading };
+}
+
+/** Делит слова заголовка на обычную и акцентную части. */
+function splitEmphasis(words: string[], part: TitleEmphasis["part"]): { small: string[]; big: string[]; bigFirst: boolean } | null {
+  const n = words.length;
+  if (n < 2) return null;
+  switch (part) {
+    case "first-word": return { big: words.slice(0, 1), small: words.slice(1), bigFirst: true };
+    case "last-word": return { big: words.slice(-1), small: words.slice(0, -1), bigFirst: false };
+    case "last-two": return n < 3 ? { big: words.slice(-1), small: words.slice(0, -1), bigFirst: false } : { big: words.slice(-2), small: words.slice(0, -2), bigFirst: false };
+    case "first-line": { const k = Math.max(1, Math.ceil(n / 2)); return { big: words.slice(0, k), small: words.slice(k), bigFirst: true }; }
+    case "last-line": { const k = Math.max(1, Math.floor(n / 2)); return { big: words.slice(k), small: words.slice(0, k), bigFirst: false }; }
+  }
+  return null;
+}
+
+function applyCase(text: string, mode: TitleEmphasis["case"] | CanvasRecipe["titleCase"]): string {
+  if (mode === "lower") return text.toLocaleLowerCase();
+  return titleCase(text, (mode ?? "title") as CanvasRecipe["titleCase"]);
+}
+
+/**
+ * v8: заголовок с акцентной частью — две группы строк разного кегля (и, возможно, шрифта).
+ * Подбор: базовый кегль идёт вниз, пока обе части не влезут по ширине и высоте.
+ */
+function fitEmphasis(
+  ctx: Ctx2D, r: CanvasRecipe, rawTitle: string, maxW: number, maxH: number, titleFont: string, fit: TitleFit,
+): TextLine[] | null {
+  const e = r.fx?.emphasis;
+  if (!e) return null;
+  const words = rawTitle.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  // На длинных заголовках (7+ слов) акцент не помогает — мелкая часть становится нечитаемой.
+  if (words.length > 6) return null;
+  // На длинных заголовках (7+ слов) акцент не помогает — мелкая часть становится нечитаемой.
+  if (words.length > 6) return null;
+  const parts = splitEmphasis(words, e.part);
+  if (!parts) return null;
+  const bigFont = e.font === "script" ? (r.fonts.script || titleFont) : e.font === "sans" ? r.fonts.sans : e.font === "display" ? r.fonts.display : titleFont;
+  const isScript = e.font === "script" && !!r.fonts.script;
+  const bigWeight = e.weight ?? (isScript ? 400 : r.titleWeight);
+  // У рукописных шрифтов низкий x-height — акцент визуально меньше, компенсируем.
+  const scale = Math.max(0.4, Math.min(3, (e.scale || 1.6) * (isScript ? 1.3 : 1)));
+  const smallText = titleCase(parts.small.join(" "), r.titleCase);
+  const bigText = applyCase(parts.big.join(" "), e.case ?? (isScript ? "lower" : r.titleCase));
+  const bigLeading = isScript ? Math.max(0.95, fit.leading * 0.95) : fit.leading;
+  const step = fit.max > 120 ? 4 : 2;
+  for (let size = fit.max; size >= fit.min; size -= step) {
+    const bigSize = Math.round(size * scale);
+    if (bigSize > 260) continue;
+    ctx.font = `${r.titleWeight} ${size}px "${titleFont}"`;
+    const smallLines = smallText ? wrap(ctx, smallText, maxW) : [];
+    if (smallLines.some((l) => ctx.measureText(l).width > maxW)) continue;
+    ctx.font = `${bigWeight} ${bigSize}px "${bigFont}"`;
+    const bigLines = wrap(ctx, bigText, maxW);
+    if (bigLines.some((l) => ctx.measureText(l).width > maxW)) continue;
+    const h = smallLines.length * size * fit.leading + bigLines.length * bigSize * bigLeading;
+    if (smallLines.length + bigLines.length > fit.maxLines || h > maxH) continue;
+    const small: TextLine[] = smallLines.map((t) => ({ text: t, font: titleFont, size, weight: r.titleWeight, color: r.palette.fg, lineHeight: size * fit.leading, role: "title" }));
+    const big: TextLine[] = bigLines.map((t) => ({ text: t, font: bigFont, size: bigSize, weight: bigWeight, color: r.palette.fg, lineHeight: bigSize * bigLeading, role: "title", emph: e }));
+    return parts.bigFirst ? [...big, ...small] : [...small, ...big];
+  }
+  return null;
 }
 
 function fitSingleLine(ctx: Ctx2D, text: string, font: string, weight: number, start: number, min: number, maxW: number) {
@@ -131,7 +220,10 @@ function measureTextStack(ctx: Ctx2D, r: CanvasRecipe, text: PinText, maxW: numb
   const heroNumber = ideaCount && numberAllowed && (r.numberStyle === "hero" || r.numberStyle === "circle" || r.numberStyle === "square" || r.numberStyle === "plain");
   const place = r.kit?.numPlace;
   const detached = !!(heroNumber && place && DETACHED_PLACEMENTS.has(place));
-  const fit = fitTitle(ctx, title, maxW, Math.max(180, maxH * (heroNumber && !detached ? .54 : .68)), titleFont, r.titleWeight);
+  const tf = titleFitOf(r);
+  const titleRoom = Math.max(180, maxH * (heroNumber && !detached ? .54 : .68));
+  const emphLines = inline ? null : fitEmphasis(ctx, r, rawTitle, maxW, titleRoom, titleFont, tf);
+  const fit = emphLines ? null : fitTitle(ctx, title, maxW, titleRoom, titleFont, r.titleWeight, tf);
   const lines: TextLine[] = [];
   if (text.kicker?.trim()) {
     const script = r.scriptKicker ? r.fonts.script : undefined;
@@ -139,7 +231,8 @@ function measureTextStack(ctx: Ctx2D, r: CanvasRecipe, text: PinText, maxW: numb
     const value = base && (script ? base : base.toLocaleUpperCase());
     const font = script || kickerFont;
     if (value) {
-      const size = fitSingleLine(ctx, value, font, script ? 500 : 700, script ? 44 : 28, 20, maxW);
+      // v8: кикер крупнее (в ленте Pinterest пин ~236 px шириной — 28 px превращались в 6–7 px).
+      const size = fitSingleLine(ctx, value, font, script ? 500 : 700, script ? 50 : 34, 22, maxW);
       lines.push({ text: value, font, size, weight: script ? 500 : 700, color: r.palette.accent, lineHeight: size + 12, role: "meta" });
     }
   }
@@ -164,21 +257,26 @@ function measureTextStack(ctx: Ctx2D, r: CanvasRecipe, text: PinText, maxW: numb
     });
   }
   // Плашки выделения заголовка выше строки — добавляем воздух.
-  const hlRoom = r.kit ? highlightExtraRoom(r.kit.highlight, fit.size) : 0;
-  fit.lines.forEach((line) => lines.push({ text: line, font: titleFont, size: fit.size, weight: r.titleWeight, color: r.palette.fg, lineHeight: fit.lineHeight + hlRoom, role: "title" }));
+  if (emphLines) {
+    const hlRoom = r.kit ? highlightExtraRoom(r.kit.highlight, emphLines[0].size) : 0;
+    emphLines.forEach((l) => lines.push({ ...l, lineHeight: l.lineHeight + hlRoom }));
+  } else if (fit) {
+    const hlRoom = r.kit ? highlightExtraRoom(r.kit.highlight, fit.size) : 0;
+    fit.lines.forEach((line) => lines.push({ text: line, font: titleFont, size: fit.size, weight: r.titleWeight, color: r.palette.fg, lineHeight: fit.lineHeight + hlRoom, role: "title" }));
+  }
   if (text.subtitle?.trim()) {
     const value = r.kit ? subtextTransform(r.kit.subtext, text.subtitle, "subtitle") : text.subtitle.trim();
     if (value) {
-      const size = fitSingleLine(ctx, value, subFont, 600, 31, 21, maxW);
+      const size = fitSingleLine(ctx, value, subFont, 600, 34, 22, maxW);
       lines.push({ text: value, font: subFont, size, weight: 600, color: r.palette.fg, lineHeight: size + 13, role: "meta" });
     }
   }
-  if (year?.trim() && r.yearStyle !== "none") lines.push({ text: year.trim(), font: kickerFont, size: 30, weight: 800, color: r.palette.accent, lineHeight: 44, role: "meta" });
+  if (year?.trim() && r.yearStyle !== "none") lines.push({ text: year.trim(), font: kickerFont, size: 34, weight: 800, color: r.palette.accent, lineHeight: 48, role: "meta" });
   if (text.cta?.trim() && r.ctaStyle !== "none") {
     const raw = text.cta.trim();
     const value = r.ctaCase === "title" ? raw : raw.toLocaleUpperCase();
-    const probe = ctaMetrics(27, r.ctaStyle);
-    const size = fitSingleLine(ctx, value, ctaFont, 800, 27, 17, Math.max(120, maxW - probe.padX * 2 - 16));
+    const probe = ctaMetrics(32, r.ctaStyle);
+    const size = fitSingleLine(ctx, value, ctaFont, 800, 32, 20, Math.max(120, maxW - probe.padX * 2 - 16));
     const { boxH } = ctaMetrics(size, r.ctaStyle);
     const arrowH = arrowHeight(r.ctaArrow, size);
     lines.push({
@@ -202,23 +300,108 @@ function luminance(hex: string) {
   return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
 }
 
+/** Контур ячейки: арка-окно для верхнего ряда (v8) либо скруглённый прямоугольник. */
+function cellPath(ctx: Ctx2D, b: Box, radius: number, arch: boolean) {
+  if (arch && b.h > b.w * 0.7) {
+    const rr = b.w / 2;
+    ctx.beginPath();
+    ctx.moveTo(b.x, b.y + b.h);
+    ctx.lineTo(b.x, b.y + rr);
+    ctx.arc(b.x + rr, b.y + rr, rr, Math.PI, 0);
+    ctx.lineTo(b.x + b.w, b.y + b.h);
+    ctx.closePath();
+    return;
+  }
+  roundRect(ctx, b.x, b.y, b.w, b.h, radius);
+}
+
+/** Пробует CSS-фильтр контекста (есть в Skia/@napi-rs, в типах DOM может отсутствовать). */
+function setFilter(ctx: Ctx2D, value: string) {
+  try { (ctx as unknown as { filter: string }).filter = value; } catch { /* noop */ }
+}
+
+/** v8: тонировка фото внутри уже обрезанной ячейки. */
+function tonePhoto(ctx: Ctx2D, tone: NonNullable<CanvasRecipe["fx"]>["photoTone"], b: Box, p: CanvasPalette) {
+  if (!tone) return;
+  ctx.save();
+  if (tone === "duotone") {
+    // Оттенок акцента поверх ч/б кадра: hue/sat акцента, светлота фото.
+    ctx.globalCompositeOperation = "color";
+    ctx.fillStyle = p.accent; ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = p.accent; ctx.fillRect(b.x, b.y, b.w, b.h);
+  } else if (tone === "warm") {
+    ctx.globalCompositeOperation = "soft-light";
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "#E9A860"; ctx.fillRect(b.x, b.y, b.w, b.h);
+  }
+  ctx.restore();
+}
+
 function drawPhotos(ctx: Ctx2D, args: RenderCanvasArgs, scene: SolvedScene) {
-  scene.photos.forEach((p) => {
+  const r = args.recipe;
+  const fx = r.fx || {};
+  const seed = args.seed || 1;
+  const topY = Math.min(...scene.photos.map((p) => p.y));
+  const light = luminance(r.palette.bg) > 0.5;
+  scene.photos.forEach((p, i) => {
     const img = args.photos[p.imageIndex];
     if (!img) return;
+    let box: Box = { x: p.x, y: p.y, w: p.w, h: p.h };
+    const arch = fx.photoShape === "arch" && Math.abs(p.y - topY) < 2;
     ctx.save();
-    roundRect(ctx, p.x, p.y, p.w, p.h, scene.radius);
-    ctx.clip();
+    if (fx.photoStyle === "polaroid") {
+      // Белая карточка с полем снизу, лёгкий поворот по сиду, полоска скотча сверху.
+      const angle = ((((seed + i * 7919) % 7) - 3) / 3) * (3.2 * Math.PI / 180);
+      const shrink = 0.94;
+      const cw = p.w * shrink, chh = p.h * shrink;
+      const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+      ctx.translate(cx, cy); ctx.rotate(angle); ctx.translate(-cx, -cy);
+      const card: Box = { x: cx - cw / 2, y: cy - chh / 2, w: cw, h: chh };
+      ctx.shadowColor = "rgba(0,0,0,.22)"; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10;
+      ctx.fillStyle = "#FBF9F5";
+      ctx.fillRect(card.x, card.y, card.w, card.h);
+      ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      const mat = Math.max(10, Math.min(22, cw * 0.05));
+      box = { x: card.x + mat, y: card.y + mat, w: card.w - mat * 2, h: card.h - mat - Math.max(mat * 2.6, cw * 0.14) };
+      ctx.beginPath(); ctx.rect(box.x, box.y, box.w, box.h); ctx.clip();
+    } else if (fx.photoStyle === "card") {
+      ctx.shadowColor = light ? "rgba(0,0,0,.18)" : "rgba(0,0,0,.45)"; ctx.shadowBlur = 28; ctx.shadowOffsetY = 12;
+      ctx.fillStyle = r.palette.soft;
+      cellPath(ctx, box, scene.radius, arch); ctx.fill();
+      ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      cellPath(ctx, box, scene.radius, arch); ctx.clip();
+    } else {
+      cellPath(ctx, box, scene.radius, arch); ctx.clip();
+    }
+    if (fx.photoTone === "mono" || fx.photoTone === "duotone") setFilter(ctx, "grayscale(1)");
+    else if (fx.photoTone === "warm") setFilter(ctx, "sepia(0.25) saturate(1.15)");
     // Всегда настоящий cover: ячейка заполняется целиком, smart-фокус хранит объект.
-    drawSmartCover(ctx, img, p.x, p.y, p.w, p.h, {
+    drawSmartCover(ctx, img, box.x, box.y, box.w, box.h, {
       maxCrop: 1,
-      fillBg: args.recipe.palette.soft,
-      accent: toAccent(args.recipe.accent),
+      fillBg: r.palette.soft,
+      accent: toAccent(r.accent),
+      subject: args.subjects?.[p.imageIndex] ?? null,
     });
+    setFilter(ctx, "none");
+    tonePhoto(ctx, fx.photoTone, box, r.palette);
+    if (fx.photoStyle === "polaroid") {
+      // Скотч: полупрозрачная полоска под наклоном поверх верхнего края.
+      ctx.restore(); ctx.save();
+      const angle = ((((seed + i * 7919) % 7) - 3) / 3) * (3.2 * Math.PI / 180);
+      const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+      ctx.translate(cx, cy); ctx.rotate(angle); ctx.translate(-cx, -cy);
+      ctx.translate(box.x + box.w / 2, box.y - 2); ctx.rotate(-0.1);
+      ctx.globalAlpha = 0.55; ctx.fillStyle = light ? "#FFFFFF" : "#F2EBD9";
+      const tw = Math.min(140, box.w * 0.42), th = Math.max(22, tw * 0.26);
+      ctx.fillRect(-tw / 2, -th / 2, tw, th);
+    }
     ctx.restore();
+    if (fx.photoStyle === "polaroid") return;
     // v7.4: рамка/обводка кадра поверх фото.
-    const p2 = args.recipe.palette;
-    drawKitFrame(ctx, args.recipe.kit?.frame, { x: p.x, y: p.y, w: p.w, h: p.h }, scene.radius, {
+    const p2 = r.palette;
+    drawKitFrame(ctx, r.kit?.frame, box, scene.radius, {
       accent: p2.accent, accent2: p2.accent2 || p2.accent, bg: p2.bg, fg: p2.fg,
     });
   });
@@ -310,9 +493,61 @@ function setLetterSpacing(ctx: Ctx2D, value: string) {
   try { (ctx as unknown as { letterSpacing: string }).letterSpacing = value; } catch { /* noop */ }
 }
 
-function drawTextStack(ctx: Ctx2D, scene: SolvedScene, r: CanvasRecipe, lines: TextLine[], seed = 1) {
+/** v8: ширина кнопки как в drawCta — нужна для выравнивания влево. */
+function ctaBoxWidth(style: CanvasRecipe["ctaStyle"], size: number, textW: number) {
+  const { padX } = ctaMetrics(size, style);
+  return style === "bar" ? Math.min(textW + padX * 2 + 120, 760) : textW + padX * 2;
+}
+
+/** v8: матовое стекло — размытая копия холста под подложкой. */
+function drawGlass(ctx: Ctx2D, snapshot: CanvasImageSource | null, box: Box, radius: number, dark: boolean) {
+  ctx.save();
+  roundRect(ctx, box.x, box.y, box.w, box.h, Math.max(20, radius));
+  ctx.clip();
+  if (snapshot) {
+    setFilter(ctx, "blur(22px)");
+    try { ctx.drawImage(snapshot, 0, 0); } catch { /* хост без снимка */ }
+    setFilter(ctx, "none");
+  }
+  ctx.fillStyle = dark ? "rgba(12,12,14,.42)" : "rgba(255,255,255,.46)";
+  ctx.fillRect(box.x, box.y, box.w, box.h);
+  ctx.restore();
+}
+
+/** v8: контурные приёмы заголовка. */
+function drawTitleGlyphs(ctx: Ctx2D, r: CanvasRecipe, line: TextLine, x: number, baseline: number, fill: string, knockout: string, accent: string) {
+  const outline = line.emph && r.fx?.outline === "hollow" ? undefined : r.fx?.outline;
+  const lw = Math.max(2, line.size * (outline === "hollow" ? 0.045 : 0.06));
+  ctx.lineJoin = "round";
+  if (outline === "echo") {
+    // Контурные повторы уходят вверх-вправо; основной текст «вырезает» их обводкой цвета поверхности.
+    ctx.save();
+    ctx.strokeStyle = accent; ctx.lineWidth = Math.max(2, line.size * 0.028); ctx.globalAlpha = 0.85;
+    const d = line.size * 0.1;
+    ctx.strokeText(line.text, x + d, baseline - d);
+    ctx.restore();
+    ctx.save();
+    ctx.strokeStyle = knockout; ctx.lineWidth = Math.max(4, line.size * 0.07); ctx.strokeText(line.text, x, baseline);
+    ctx.restore();
+    ctx.fillStyle = fill; ctx.fillText(line.text, x, baseline);
+    return;
+  }
+  if (outline === "hollow") {
+    ctx.strokeStyle = fill; ctx.lineWidth = lw; ctx.strokeText(line.text, x, baseline);
+    return;
+  }
+  if (outline === "stroke") {
+    ctx.strokeStyle = knockout; ctx.lineWidth = lw * 2; ctx.strokeText(line.text, x, baseline);
+  }
+  ctx.fillStyle = fill; ctx.fillText(line.text, x, baseline);
+}
+
+function drawTextStack(ctx: Ctx2D, scene: SolvedScene, r: CanvasRecipe, lines: TextLine[], seed = 1, snapshot: CanvasImageSource | null = null) {
   const totalH = stackHeight(lines);
-  let y = scene.textRect.y + Math.max(0, (scene.textRect.h - totalH) / 2);
+  // v8: при наезде фото на заголовок стек прижимается к верху зоны.
+  const overlap = r.fx?.photoOverlap && r.textZone === "top" ? r.fx.photoOverlap : 0;
+  let y = scene.textRect.y + (overlap ? 0 : Math.max(0, (scene.textRect.h - totalH) / 2));
+  const left = scene.align === "left";
   const plate = scene.plate;
   // На full-bleed макетах текст живёт на подложке либо белым по затемнению.
   const onPlate = scene.textOnPhoto && plate !== "none";
@@ -337,6 +572,7 @@ function drawTextStack(ctx: Ctx2D, scene: SolvedScene, r: CanvasRecipe, lines: T
     const pad = 34;
     plateBox = { x: scene.textRect.x - pad, y: y - pad, w: scene.textRect.w + pad * 2, h: totalH + pad * 2 };
     // v7: форма подложки из кита; для v5/v6 — исторические формы.
+    if (plate === "glass") drawGlass(ctx, snapshot, plateBox, r.radius || 18, luminance(r.palette.bg) < 0.4);
     const kitPlate = r.kit && r.kit.plate !== "kit-none" && PLATE_KIT_MAP.has(r.kit.plate)
       ? drawKitPlate(ctx, r.kit.plate, plateBox, {
         fill: pc.fill, stroke: pc.stroke, accent: pc.accent ?? r.palette.accent, radius: r.radius || 18,
@@ -384,10 +620,22 @@ function drawTextStack(ctx: Ctx2D, scene: SolvedScene, r: CanvasRecipe, lines: T
     ctx.font = `${line.weight} ${line.size}px "${line.font}"`;
     const metrics = ctx.measureText(line.text);
     const width = metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight || metrics.width;
-    const cx = scene.textRect.x + scene.textRect.w / 2;
+    // v8: выравнивание влево — чернила начинаются от левого края зоны; кнопка тоже прижата влево.
+    const cx = left
+      ? (line.role === "cta" ? scene.textRect.x + ctaBoxWidth(r.ctaStyle, line.size, width) / 2 : scene.textRect.x + width / 2)
+      : scene.textRect.x + scene.textRect.w / 2;
     // Оптический центр: боковые выносы у шрифтов разные, центрируем по чернилам.
     const x = cx + (metrics.actualBoundingBoxLeft - metrics.actualBoundingBoxRight) / 2;
     const inkLeft = x - metrics.actualBoundingBoxLeft;
+    // v8: линейка над первой строкой заголовка.
+    if (r.fx?.rule && line.role === "title" && flow.findIndex((l) => l.role === "title") === i) {
+      ctx.save();
+      ctx.strokeStyle = pickContrast(surface, [r.palette.accent, ink, r.palette.fg], 3); ctx.lineWidth = 3; ctx.globalAlpha = 0.9;
+      const ry = y - 12;
+      ctx.beginPath(); ctx.moveTo(scene.textRect.x, ry); ctx.lineTo(scene.textRect.x + scene.textRect.w, ry); ctx.stroke();
+      ctx.restore();
+      y += 10;
+    }
     // Цифру центрируем внутри её слота: слот шире глифа на высоту формы кита.
     const baseline = line.role === "hero"
       ? y + (line.lineHeight + line.size * 0.72) / 2
@@ -432,10 +680,22 @@ function drawTextStack(ctx: Ctx2D, scene: SolvedScene, r: CanvasRecipe, lines: T
     ctx.textBaseline = "alphabetic";
     // v6: последняя строка заголовка может краситься акцентом.
     if (r.titleAccentWord && !kitInk && line.role === "title" && i === lastTitle) ctx.fillStyle = titleAccent;
+    // v8: цвет акцентной части заголовка.
+    if (line.emph && !kitInk) {
+      const want = line.emph.color === "accent" ? titleAccent
+        : line.emph.color === "accent2" ? pickContrast(surface, [r.palette.accent2, titleAccent], 4.5)
+        : String(ctx.fillStyle);
+      ctx.fillStyle = want;
+    }
     if (kitOutline) {
       ctx.save();
       ctx.strokeStyle = kitInk || heroInk; ctx.lineWidth = Math.max(3, line.size * 0.05);
       ctx.strokeText(line.text, x, baseline);
+      ctx.restore();
+    } else if (line.role === "title" && (r.fx?.outline || r.fx?.textShadow)) {
+      ctx.save();
+      if (r.fx?.textShadow) { ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = Math.round(line.size * 0.22); ctx.shadowOffsetY = Math.round(line.size * 0.05); }
+      drawTitleGlyphs(ctx, r, line, x, baseline, String(ctx.fillStyle), surface, titleAccent);
       ctx.restore();
     } else {
       ctx.fillText(line.text, x, baseline);
@@ -644,6 +904,56 @@ function drawDomain(ctx: Ctx2D, domain: string, r: CanvasRecipe, onPhoto: boolea
   drawKitDomain(ctx, id, domain, font, { ink, fill, onFill, onPhoto }, { w: PIN_W, h: PIN_H });
 }
 
+/**
+ * v8: круглый стикер с текстом по кругу («NEW · IDEAS · NEW …») в свободном углу —
+ * напротив текстовой зоны, выше полосы домена.
+ */
+function drawRingBadge(ctx: Ctx2D, r: CanvasRecipe, scene: SolvedScene, kicker: string, seed: number) {
+  const R = 92, pad = 64;
+  const textTop = scene.textRect.y + scene.textRect.h / 2 < PIN_H / 2;
+  const cx = PIN_W - pad - R;
+  const cy = textTop ? PIN_H - 150 - R : pad + R;
+  const font = r.roleFonts?.cta || r.fonts.sans;
+  const word = (kicker.trim() || "NEW IDEAS").toLocaleUpperCase().replace(/\s+/g, " ");
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-0.2 + ((seed % 5) - 2) * 0.05);
+  ctx.shadowColor = "rgba(0,0,0,.25)"; ctx.shadowBlur = 20; ctx.shadowOffsetY = 6;
+  ctx.fillStyle = r.palette.accent;
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  ctx.strokeStyle = r.palette.onAccent; ctx.lineWidth = 2; ctx.globalAlpha = 0.7;
+  ctx.beginPath(); ctx.arc(0, 0, R - 10, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 1;
+  // Текст по кругу: повторяем слово с разделителем, пока не заполним окружность.
+  const size = 22;
+  ctx.font = `800 ${size}px "${font}"`;
+  ctx.fillStyle = r.palette.onAccent;
+  ctx.textBaseline = "middle"; ctx.textAlign = "center";
+  const unit = `${word} · `;
+  const rr = R - 30;
+  const circ = Math.PI * 2 * rr;
+  let text = unit;
+  while (ctx.measureText(text + unit).width <= circ) text += unit;
+  const chars = [...text];
+  const total = chars.reduce((sum, c) => sum + ctx.measureText(c).width, 0);
+  let a = -Math.PI / 2;
+  for (const c of chars) {
+    const w = ctx.measureText(c).width;
+    const da = (w / total) * Math.PI * 2;
+    ctx.save();
+    ctx.rotate(a + da / 2);
+    ctx.translate(0, -rr);
+    ctx.fillText(c, 0, 0);
+    ctx.restore();
+    a += da;
+  }
+  // Центр: стрелка/звёздочка.
+  ctx.font = `900 ${Math.round(R * 0.5)}px "${font}"`;
+  ctx.fillText("✦", 0, 2);
+  ctx.restore();
+}
+
 export interface RenderCanvasResult {
   jpeg: Buffer;
   /** Замечания решателя сцены (текст не влез, объект срезан и т.п.). */
@@ -671,19 +981,31 @@ export async function renderCanvasPinDetailed(args: RenderCanvasArgs): Promise<R
   const plate = HEAVY_PLATES.includes(wanted) && count < 4
     ? (wanted === "blob" || wanted === "sticker" ? "brush" : "band")
     : wanted;
+  const overlap = r.fx?.photoOverlap && r.textZone === "top" ? Math.max(0, Math.min(160, r.fx.photoOverlap)) : 0;
   const solve = (textHeight: number, photos = count) => solveCanvasScene({
     family: r.family, count: photos, imageRatios, textHeight, padding: r.padding, radius: r.radius, gutter: r.gutter,
-    align: "center", accent, seed: args.seed || 1, plate, focusY, zone: r.textZone,
+    // v8: выравнивание влево поддерживается (раньше всегда центр).
+    align: r.titleAlign === "left" ? "left" : "center", accent, seed: args.seed || 1, plate, focusY, zone: r.textZone, overlap,
   });
-  let scene = solve(320);
+  // v8: крупным заголовкам (постер 120–200 px) первая оценка зоны нужна выше, иначе кегль не поднимется.
+  const tf0 = titleFitOf(r);
+  let scene = solve(Math.max(320, Math.min(600, Math.round(tf0.max * 2.2 * tf0.leading))));
   let lines = measureTextStack(ctx, r, args.text, scene.textRect.w, scene.textRect.h, args.ideaCount, args.year);
   scene = solve(stackHeight(lines));
   if (scene.issues.includes("текст не помещается")) {
     lines = lines.map((l) => l.role === "title" ? { ...l, size: Math.max(38, l.size * .84), lineHeight: l.lineHeight * .84 } : l);
     scene = solve(stackHeight(lines), args.photos.length);
   }
-  drawPhotos(ctx, args, scene);
-  drawTextStack(ctx, scene, r, lines, args.seed || 1);
+  // v8: при наезде фото на заголовок текст рисуется первым, фото ложится сверху.
+  if (overlap) {
+    drawTextStack(ctx, scene, r, lines, args.seed || 1);
+    drawPhotos(ctx, args, scene);
+  } else {
+    drawPhotos(ctx, args, scene);
+    const snapshot = scene.plate === "glass" && host.snapshot ? host.snapshot(canvas) : null;
+    drawTextStack(ctx, scene, r, lines, args.seed || 1, snapshot);
+  }
+  if (r.fx?.ringBadge) drawRingBadge(ctx, r, scene, args.text.kicker || "", args.seed || 1);
   // v6: доменная лента внизу — только если текстовый блок туда не заходит.
   const barSafe = scene.textRect.y + scene.textRect.h < PIN_H - 96;
   if (r.domainBar && (args.domain || "").trim() && barSafe) {
@@ -693,6 +1015,8 @@ export async function renderCanvasPinDetailed(args: RenderCanvasArgs): Promise<R
   }
 
   if (r.decor === "frame") { ctx.strokeStyle = r.palette.accent; ctx.lineWidth = 18; ctx.strokeRect(9, 9, PIN_W - 18, PIN_H - 18); }
+  // v8: зерно/бумага — раньше флаг сохранялся, но не рисовался.
+  if (r.decor === "grain" || r.texture > 0) grain(ctx, Math.max(0.04, Math.min(0.09, r.texture || 0.06)), args.seed || 7);
   const jpeg = await host.encodeJpeg(canvas, 0.94);
   return { jpeg, issues: scene.issues };
 }

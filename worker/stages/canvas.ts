@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { guessAccent, renderPin } from "@/lib/pins/canvas";
 import { toRecipe } from "@/lib/pins/canvas/styleSpec";
+import { scriptForLanguage } from "@/lib/pins/canvas/fonts";
 import { approvedStylesForSite } from "@/lib/pins/canvas/catalog";
 import { generateHooks, type CanvasHook } from "@/lib/pins/canvas/hooks";
 import { cachedPhoto } from "@/lib/pins/canvas/photos";
@@ -125,7 +126,8 @@ export const canvasStage: StageHandler = async (ctx) => {
       const yearTxt = tags.year ? pinYearFor(rc.recipe.text, page) : "";
       const kickerParts = [seasonTxt, yearTxt].filter(Boolean);
       const kicker = kickerParts.length ? kickerParts.join(" ") : hook.kicker;
-      const recipe = { ...toRecipe(style.spec, seed, photos.length), accent };
+      // Наборы шрифтов отбираются по письменности языка пина (латинские наборы не идут на кириллицу).
+      const recipe = { ...toRecipe(style.spec, seed, photos.length, { script: scriptForLanguage(lang) }), accent };
       const r = await renderPin({ recipe, photos, subjects, texts: { title: hook.title, kicker, cta: tags.cta ? hook.cta : undefined, domain: tags.siteName ? (rc.recipe.text.siteName.trim() || domainFor(page.finalUrl || page.url)) : undefined, number: showNumber ? String(ideaCount) : undefined }, seed });
       const item = await prisma.pinRunItem.create({
         data: { runId: rc.run.id, pageId: page.id, siteId: rc.site.id, kind: "pin", engine: "CANVAS", styleId: row.styleId, sourceImageUrl: chosen[0] ?? "", sortOrder: 2000 + row.sortOrder, status: "PENDING", title: "", styleParams: { hook, tags, ideaCount, photos: chosen, photoCount: photos.length, issues: r.issues } as object },

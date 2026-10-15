@@ -3,9 +3,10 @@
  *
  * Перед первым рендером нужно поставить хост:
  *   import { installNodeCanvasHost } from "@/lib/pins/canvas/host.node";
+import { installNodeCanvasHost } from "@/lib/pins/canvas/host.node";
  *   installNodeCanvasHost(join(storageRoot(), "pins/fonts"));
  */
-import { PIN_H, PIN_W } from "./crop";
+import { PIN_H, PIN_W, type SubjectRect } from "./crop";
 import { renderCanvasPinDetailed } from "./engine";
 import { getHost } from "./host";
 import { paletteFromPhoto, readableOn } from "./palette";
@@ -43,7 +44,7 @@ export interface RenderPinOptions {
   /** Фирменный акцент (hex) — применяется при colorSource "brand" в рецепте. */
   brandAccent?: string;
   /** Переопределяет источник цвета рецепта. */
-  colorSource?: "palette" | "photo";
+  colorSource?: "palette" | "photo" | "photo-dark";
 }
 
 export interface RenderPinArgs {
@@ -53,6 +54,8 @@ export interface RenderPinArgs {
   texts: RenderPinTexts;
   seed: number;
   options?: RenderPinOptions;
+  /** Рамки объектов по индексам photos (lib/pins/canvas/subject.ts). */
+  subjects?: Array<SubjectRect | null | undefined>;
 }
 
 export interface RenderPinResult {
@@ -72,8 +75,8 @@ function applyColorOptions(recipe: CanvasRecipe, first: HostImage, seed: number,
   const source = options?.colorSource ?? recipe.colorSource ?? "palette";
   const brand = options?.brandAccent ?? recipe.brandAccent;
   let palette: CanvasPalette = recipe.palette;
-  if (source === "photo") {
-    const p = paletteFromPhoto(first, seed);
+  if (source === "photo" || source === "photo-dark") {
+    const p = paletteFromPhoto(first, seed, source === "photo-dark" ? "dark" : undefined);
     palette = { ...palette, bg: p.bg, fg: p.fg, accent: p.accent, onAccent: p.onAccent, soft: p.soft, accent2: undefined };
   } else if (source === "brand" && brand && HEX.test(brand)) {
     palette = { ...palette, accent: brand, onAccent: readableOn(brand, "#ffffff"), accent2: undefined };
@@ -95,6 +98,7 @@ export async function renderPin(args: RenderPinArgs): Promise<RenderPinResult> {
   const { jpeg, issues } = await renderCanvasPinDetailed({
     recipe,
     photos: images,
+    subjects: args.subjects,
     text: { title: args.texts.title, kicker: args.texts.kicker, cta: args.texts.cta },
     domain: args.texts.domain,
     seed: args.seed,

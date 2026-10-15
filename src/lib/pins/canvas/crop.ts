@@ -153,9 +153,9 @@ function energyMap(img: HostImage, prof: AccentProfile = accentProfile("auto")):
         prof.skin * skin[i];
       if (v < 0) v = 0;
       if (prof.bias) {
+        // Формула ровно как в легаси (canvaPins.ts): результат там был утверждён владельцем, не «исправлять».
         const ny = y / Math.max(1, h - 1) - 0.5;
-        // bias < 0 — предпочтение верху кадра (лицо, причёска): верхние строки усиливаем, нижние гасим.
-        v *= 1 + prof.bias * ny * 0.8;
+        v *= 1 + prof.bias * -ny * 0.8;
         if (v < 0) v = 0;
       }
       if (y < 2 || y >= h - 2 || x < 2 || x >= w - 2) v *= 0.3;
@@ -221,8 +221,13 @@ export function accentBox(img: HostImage, accent?: AccentType): { x0: number; y0
   return { x0: x0 / w, y0: y0 / h, x1: (x1 + 1) / w, y1: (y1 + 1) / h };
 }
 
+/** Рамка главного объекта от модели со зрением (доли 0..1) и точка фокуса. */
+export type SubjectRect = { x0: number; y0: number; x1: number; y1: number; fx: number; fy: number };
+
 export interface SmartCoverOpts {
   accent?: AccentType;
+  /** Рамка объекта: окно обязано её накрыть; если не влезает — держим верх рамки и фокус по горизонтали. */
+  subject?: SubjectRect | null;
   /** ручной фокус 0..1 — перекрывает авто */
   focus?: { fx: number; fy: number };
   /** дополнительное приближение (1 = максимально широкий безопасный кадр) */
@@ -254,9 +259,26 @@ export function drawSmartCover(
   let sw = dw / cover, sh = dh / cover;
 
   let cx: number, cy: number;
+  let subjectTop: number | null = null, subjectBottom: number | null = null, subjectFx: number | null = null, subjectLeft: number | null = null, subjectRight: number | null = null;
   if (opts.focus) {
     cx = opts.focus.fx * iw;
     cy = opts.focus.fy * ih;
+  } else if (opts.subject) {
+    // Рамка от модели: расширяем окно, чтобы рамка влезла целиком (с небольшим воздухом), и центрируем на ней.
+    const s = opts.subject;
+    const air = 0.03;
+    const bx0 = Math.max(0, s.x0 - air) * iw, bx1 = Math.min(1, s.x1 + air) * iw;
+    const by0 = Math.max(0, s.y0 - air * 1.5) * ih, by1 = Math.min(1, s.y1 + air) * ih;
+    let needW = Math.max(sw, bx1 - bx0);
+    let needH = Math.max(sh, by1 - by0);
+    if (needW / needH > ar) needH = needW / ar; else needW = needH * ar;
+    if (needW > iw) { needW = iw; needH = iw / ar; }
+    if (needH > ih) { needH = ih; needW = ih * ar; }
+    sw = Math.min(iw, needW);
+    sh = Math.min(ih, needH);
+    cx = (bx0 + bx1) / 2;
+    cy = (by0 + by1) / 2;
+    subjectTop = by0; subjectBottom = by1; subjectLeft = bx0; subjectRight = bx1; subjectFx = s.fx * iw;
   } else {
     const box = accentBox(img, opts.accent);
     const m = prof.margin;
@@ -281,17 +303,16 @@ export function drawSmartCover(
     sh = Math.max(dh / cover, sh / zoom);
   }
 
+  // Как в легаси: окно центрируется на боксе акцента и только прижимается к краям исходника.
   let sx = cx - sw / 2;
   let sy = cy - sh / 2;
-  if (!opts.focus) {
-    // Окно обязано целиком накрывать бокс акцента: если оно меньше бокса,
-    // держим верх (лицо и причёска живут вверху), а не центр.
-    const box = accentBox(img, opts.accent);
-    const m = prof.margin;
-    const bx0 = Math.max(0, box.x0 - m) * iw, bx1 = Math.min(1, box.x1 + m) * iw;
-    const by0 = Math.max(0, box.y0 - m * 1.5) * ih, by1 = Math.min(1, box.y1 + m) * ih;
-    if (sh >= by1 - by0) sy = Math.max(by1 - sh, Math.min(by0, sy)); else sy = by0;
-    if (sw >= bx1 - bx0) sx = Math.max(bx1 - sw, Math.min(bx0, sx)); else sx = (bx0 + bx1) / 2 - sw / 2;
+  if (subjectTop !== null && subjectBottom !== null && subjectFx !== null && subjectLeft !== null && subjectRight !== null) {
+    // Рамка не влезает по высоте (широкая ячейка под портрет): держим верх рамки — голова и причёска важнее низа.
+    if (sh < subjectBottom - subjectTop) sy = subjectTop;
+    else sy = Math.max(subjectBottom - sh, Math.min(subjectTop, sy));
+    // По горизонтали: если рамка не влезает — центр на фокусе; иначе окно внутри рамки.
+    if (sw < subjectRight - subjectLeft) sx = subjectFx - sw / 2;
+    else sx = Math.max(subjectRight - sw, Math.min(subjectLeft, sx));
   }
   sx = Math.max(0, Math.min(iw - sw, sx));
   sy = Math.max(0, Math.min(ih - sh, sy));

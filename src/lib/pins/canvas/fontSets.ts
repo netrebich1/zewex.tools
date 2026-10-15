@@ -5,10 +5,14 @@
  * не все наборы, а только те, что ему к лицу (класс рисунка: элегантная антиква,
  * жирный гротеск, узкий, геометрический, мягкий). Seed выбирает один из них.
  */
-import { fontClass } from "./fonts";
+import { fontClass, fontSupports } from "./fonts";
 import type { StyleFontSet, StyleSpec } from "./styleSpec";
 
-export type FontSetClass = "serif" | "bold" | "condensed" | "geo" | "soft";
+/**
+ * Классы рисунка. `poster` — сверхузкие/тяжёлые плакатные гарнитуры под кегль 120–200 px,
+ * `script` — наборы с рукописным акцентом (антиква + script для emphasis.font = "script").
+ */
+export type FontSetClass = "serif" | "bold" | "condensed" | "geo" | "soft" | "poster" | "script";
 
 export interface CuratedFontSet extends StyleFontSet {
   id: string;
@@ -17,8 +21,23 @@ export interface CuratedFontSet extends StyleFontSet {
   titleWeight: number;
 }
 
-const S = (id: string, cls: FontSetClass, display: string, sans: string, titleWeight: number, body = sans): CuratedFontSet =>
-  ({ id, cls, pair: id, fonts: { display, sans, body }, titleWeight });
+/** Письменности, которые поддерживают все семейства набора. */
+function scriptsOf(...families: Array<string | undefined>): string[] {
+  const fams = families.filter((f): f is string => Boolean(f));
+  return ["latin", "cyrillic"].filter((sc) => fams.every((f) => fontSupports(f, sc)));
+}
+
+/**
+ * Набор: заголовок + текст (+ тело, + рукописный акцент). `scripts` считается по библиотеке шрифтов:
+ * латинские наборы не попадают на кириллические пины (toRecipe фильтрует по языку).
+ */
+const S = (id: string, cls: FontSetClass, display: string, sans: string, titleWeight: number, body = sans, extra: { script?: string; leading?: number } = {}): CuratedFontSet => ({
+  id, cls, pair: id,
+  fonts: { display, sans, body, ...(extra.script ? { script: extra.script } : {}) },
+  titleWeight,
+  scripts: scriptsOf(display, sans, body, extra.script),
+  ...(extra.leading !== undefined ? { leading: extra.leading } : {}),
+});
 
 export const FONT_SETS: CuratedFontSet[] = [
   // Элегантная антиква — бьюти, мода, декор
@@ -33,7 +52,8 @@ export const FONT_SETS: CuratedFontSet[] = [
   // Жирный современный гротеск — постеры, цифры, списки
   S("zx-montserrat", "bold", "Montserrat", "Montserrat", 800, "Manrope"),
   S("zx-unbounded-manrope", "bold", "Unbounded", "Manrope", 700),
-  S("zx-dela-golos", "bold", "Dela Gothic One", "Golos Text", 400),
+  // Dela — высокие выносы, заголовку нужен межстрочный просторнее
+  S("zx-dela-golos", "bold", "Dela Gothic One", "Golos Text", 400, "Golos Text", { leading: 1.16 }),
   S("zx-inter-tight", "bold", "Inter Tight", "Inter", 800),
   S("zx-onest", "bold", "Onest", "Onest", 800),
   S("zx-madefor", "bold", "Wix Madefor Display", "Wix Madefor Text", 800),
@@ -49,6 +69,31 @@ export const FONT_SETS: CuratedFontSet[] = [
   // Мягкий — рецепты, дети, уют
   S("zx-nunito", "soft", "Nunito", "Nunito Sans", 800),
   S("zx-comfortaa-mulish", "soft", "Comfortaa", "Mulish", 700),
+
+  /* ---------- 2027 ---------- */
+  // Плакатные: сверхузкие и тяжёлые, под кегль 120–200 px (latin-only наборы на кириллицу не попадут)
+  S("zx-sofia-xcond", "poster", "Sofia Sans Extra Condensed", "Sofia Sans", 900, "Sofia Sans", { leading: 0.9 }),
+  S("zx-barlow-manrope", "poster", "Barlow Condensed", "Manrope", 800, "Manrope", { leading: 0.92 }),
+  S("zx-anton-manrope", "poster", "Anton", "Manrope", 400, "Manrope", { leading: 0.94 }),
+  S("zx-bebas-manrope", "poster", "Bebas Neue", "Manrope", 400, "Manrope", { leading: 0.9 }),
+  S("zx-oswald-inter", "poster", "Oswald", "Inter", 700, "Inter", { leading: 0.94 }),
+  // Антиква + рукописный акцент (третье семейство допустимо только для emphasis.font = "script")
+  S("zx-bona-vibes", "script", "Bona Nova", "Sofia Sans", 700, "Sofia Sans", { script: "Great Vibes" }),
+  S("zx-cormorant-marck", "script", "Cormorant Garamond", "Jost", 600, "Jost", { script: "Marck Script" }),
+  S("zx-playfair-pacifico", "script", "Playfair Display", "Montserrat", 900, "Manrope", { script: "Pacifico" }),
+  S("zx-prata-marck", "script", "Prata", "Manrope", 400, "Manrope", { script: "Marck Script" }),
+  S("zx-archivo-caveat", "script", "Archivo Black", "Archivo", 400, "Archivo", { script: "Caveat" }),
+  // Антиква редакционная
+  S("zx-forum-tenor", "serif", "Forum", "Tenor Sans", 400),
+  S("zx-instrument-inter", "serif", "Instrument Serif", "Inter", 400, "Inter", { leading: 1.0 }),
+  // Жирный гротеск
+  S("zx-unbounded-onest", "bold", "Unbounded", "Onest", 900, "Onest", { leading: 1.1 }),
+  S("zx-bricolage-inter", "bold", "Bricolage Grotesque", "Inter", 800),
+  S("zx-syne-space", "bold", "Syne", "Space Grotesk", 800),
+  // Геометрический / гуманистический
+  S("zx-ysabeau", "geo", "Ysabeau", "Ysabeau", 800, "Ysabeau"),
+  // Мягкий, рукописно-округлый
+  S("zx-shantell-nunito", "soft", "Shantell Sans", "Nunito", 800, "Nunito", { leading: 1.12 }),
 ];
 
 export const FONT_SET_MAP = new Map(FONT_SETS.map((f) => [f.id, f]));
@@ -61,7 +106,7 @@ export function fontSet(id: string): CuratedFontSet {
 
 /** Наборы по классам → StyleFontSet[] (для curated-стилей). */
 export function fontSetsOf(...ids: string[]): StyleFontSet[] {
-  return ids.map((id) => { const { pair, fonts } = fontSet(id); return { pair, fonts }; });
+  return ids.map((id) => { const { pair, fonts, scripts, leading } = fontSet(id); return { pair, fonts, scripts, ...(leading !== undefined ? { leading } : {}) }; });
 }
 
 /** Ревизия спецификации, с которой у стиля есть подобранные наборы шрифтов. */
@@ -97,7 +142,7 @@ export function attachFontSets(spec: StyleSpec, key: string): StyleSpec {
   for (let i = 0; i < pool.length && picked.length < 2; i++) {
     const f = pool[(h + i * 7919) % pool.length];
     if (picked.some((p) => p.pair === f.pair)) continue;
-    picked.push({ pair: f.pair, fonts: f.fonts });
+    picked.push({ pair: f.pair, fonts: f.fonts, scripts: f.scripts });
   }
   return { ...spec, rev: FONT_REV, fontSets: picked };
 }

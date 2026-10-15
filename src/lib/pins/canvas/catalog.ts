@@ -81,19 +81,27 @@ export async function harvestCandidates(): Promise<{ groups: number; created: nu
   return { groups: groups.size, created, skipped };
 }
 
-/** Свои стили портала (curated.ts) → строки каталога, если их ещё нет. Idempotent. */
-export async function seedCuratedStyles(): Promise<{ created: number; invalid: string[] }> {
-  let created = 0;
+/**
+ * Свои стили портала (curated.ts) → строки каталога. Новые создаются; у существующих, если спецификация
+ * в коде изменилась, обновляются данные и сбрасывается превью (утверждение владельца сохраняется). Idempotent.
+ */
+export async function seedCuratedStyles(): Promise<{ created: number; updated: number; invalid: string[] }> {
+  let created = 0, updated = 0;
   const invalid: string[] = [];
   for (const c of CURATED_STYLES) {
     const problems = validateStyle(c.spec);
     if (problems.length) { invalid.push(`${c.id}: ${problems.join("; ")}`); continue; }
-    const exists = await prisma.pinCanvasStyle.findUnique({ where: { id: c.id }, select: { id: true } });
-    if (exists) continue;
+    const exists = await prisma.pinCanvasStyle.findUnique({ where: { id: c.id }, select: { id: true, data: true } });
+    if (exists) {
+      if (JSON.stringify(exists.data) === JSON.stringify(c.spec)) continue;
+      await prisma.pinCanvasStyle.update({ where: { id: c.id }, data: { name: c.spec.name, category: c.category, data: c.spec as unknown as object, previewPath: null, isActive: true } });
+      updated++;
+      continue;
+    }
     await prisma.pinCanvasStyle.create({ data: { id: c.id, libraryId: CATALOG_LIB, name: c.spec.name, category: c.category, data: c.spec as unknown as object, isActive: true, isApproved: false, sortOrder: 0 } });
     created++;
   }
-  return { created, invalid };
+  return { created, updated, invalid };
 }
 
 /**

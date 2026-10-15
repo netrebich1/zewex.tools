@@ -23,6 +23,8 @@ export interface CanvasHost {
   encodePng?(c: HostCanvas): Promise<Buffer>;
   /** Зарегистрировано ли семейство шрифта на хосте. */
   hasFont(family: string): boolean;
+  /** v8: холст как источник для drawImage (матовое стекло рисует размытую копию холста). */
+  snapshot?(c: HostCanvas): CanvasImageSource;
 }
 
 let host: CanvasHost | null = null;

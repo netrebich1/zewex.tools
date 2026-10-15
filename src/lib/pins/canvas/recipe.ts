@@ -9,7 +9,7 @@ import { contrast } from "./palette";
 
 export type TextHighlight = "none" | "marker" | "underline" | "chip" | "box" | "gradient";
 export type TextZone = "top" | "bottom" | "overlay" | "middle" | "side";
-export type ColorSource = "palette" | "photo" | "brand";
+export type ColorSource = "palette" | "photo" | "photo-dark" | "brand";
 export type DecorKind = "none" | "frame" | "grain" | "sparkles";
 export type CtaStyle = "none" | "pill" | "outline" | "block" | "tag" | "line" | "bar" | "frame";
 export type CtaArrow = "none" | "chevron" | "double" | "stem" | "dot";
@@ -86,6 +86,50 @@ export interface CanvasRecipe {
   numberMode?: "required" | "optional" | "none";
   /** Версия библиотеки, которой собран шаблон. */
   libVersion?: number;
+  /* ---------- v8 (2027): типографика и фото-эффекты ---------- */
+  fx?: CanvasFx;
+}
+
+/** Акцентная часть заголовка: часть слов крупнее/другим шрифтом/цветом («cozy fall» мелко, «LIVING ROOM» крупно). */
+export interface TitleEmphasis {
+  /** Какая часть заголовка акцентная. */
+  part: "first-word" | "last-word" | "last-two" | "first-line" | "last-line";
+  /** Во сколько раз акцент крупнее остального текста (0.4–3). */
+  scale: number;
+  /** Шрифт акцента: display/sans из пары или рукописный (fonts.script). */
+  font?: "display" | "sans" | "script";
+  /** Цвет акцента. */
+  color?: "accent" | "fg" | "accent2";
+  /** Регистр акцента; по умолчанию как у заголовка. */
+  case?: "upper" | "title" | "sentence" | "lower";
+  weight?: number;
+}
+
+/**
+ * v8: расширения движка. Все поля необязательные — старые рецепты рендерятся как раньше.
+ */
+export interface CanvasFx {
+  /** Диапазон кегля заголовка (по умолчанию 42–92) и межстрочный (1.08). */
+  titleMin?: number;
+  titleMax?: number;
+  leading?: number;
+  /** Контур заголовка: stroke — обводка акцентом, echo — два контурных повтора позади, hollow — только контур. */
+  outline?: "stroke" | "echo" | "hollow";
+  /** Мягкая тень у текста (для текста поверх фото). */
+  textShadow?: boolean;
+  emphasis?: TitleEmphasis;
+  /** Подача фото: polaroid — белые рамки с лёгким поворотом и скотчем; card — карточки с мягкой тенью. */
+  photoStyle?: "polaroid" | "card";
+  /** Тонировка фото: duotone — два цвета палитры, mono — чёрно-белое, warm — тёплый фильтр. */
+  photoTone?: "duotone" | "mono" | "warm";
+  /** Форма верхнего ряда фото: arch — арка-окно. */
+  photoShape?: "arch";
+  /** Фото наезжает на низ заголовка на N px (текст сверху, рисуется под фото). */
+  photoOverlap?: number;
+  /** Круглый стикер с текстом по кругу (кикер) в свободном углу. */
+  ringBadge?: boolean;
+  /** Тонкая линейка над заголовком с номером/кикером (редакционный приём). */
+  rule?: boolean;
 }
 
 const BASE_PALETTES: CanvasPalette[] = [

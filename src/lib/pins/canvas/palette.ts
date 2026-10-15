@@ -148,14 +148,15 @@ export interface PhotoPalette {
  *  2 — насыщенный фон цвета фото, белый текст, контрастный акцент;
  *  3 — средний пастельный фон, тёмный текст, глубокий акцент.
  */
-export function paletteFromPhoto(img: HostImage, seed = 0): PhotoPalette {
+export function paletteFromPhoto(img: HostImage, seed = 0, forceMood?: "dark" | "light" | "bold" | "pale"): PhotoPalette {
   const cols = dominantColors(img);
   const hsls = cols.map((c) => ({ hex: c, ...rgbToHsl(hexToRgb(c)) }));
   const vivid = [...hsls].sort((a, b) => b.s * (1 - Math.abs(b.l - 0.5)) - a.s * (1 - Math.abs(a.l - 0.5)))[0] || hsls[0];
   // У серых фото (s ≈ 0) оттенок случайный — берём тёплый нейтральный.
   const h = vivid.s < 0.08 ? 28 : vivid.h;
   const s0 = Math.max(0.35, vivid.s);
-  const mood = ((seed >>> 0) % 4);
+  // v8: стиль может требовать тёмную (или другую) палитру из фото, а не жребий по seed.
+  const mood = forceMood === "dark" ? 1 : forceMood === "bold" ? 2 : forceMood === "pale" ? 3 : forceMood === "light" ? 0 : ((seed >>> 0) % 4);
   const rot = seed % 3 === 0 ? 170 : seed % 3 === 1 ? 32 : -36;
 
   let bg: string, soft: string, accent: string, fg: string;

@@ -17,7 +17,7 @@ export const previews: StageHandler = async (ctx) => {
     const h = await harvestCandidates();
     ctx.log(`harvest: groups ${h.groups}, created ${h.created}, skipped ${h.skipped}`);
     const c = await seedCuratedStyles();
-    ctx.log(`curated: created ${c.created}${c.invalid.length ? `, invalid: ${c.invalid.join(" | ")}` : ""}`);
+    ctx.log(`curated: created ${c.created}, updated ${c.updated}${c.invalid.length ? `, invalid: ${c.invalid.join(" | ")}` : ""}`);
     const up = await upgradeCatalogSpecs();
     ctx.log(`specs upgraded: ${up}`);
   }

@@ -702,6 +702,11 @@ export function drawKitHighlight(
       case "tape":
         ctx.fillRect(x - 22, top + 2, width + 44, h - 4);
         break;
+      case "block":
+      case "marker-solid":
+        // Плотная плашка накрывает выносные элементы целиком и не режет буквы.
+        roundRect(ctx, x - 18, baseline - size * 0.86, width + 36, size * 1.12, 6); ctx.fill();
+        break;
       default:
         ctx.fillRect(x - 12, top, width + 24, h);
     }
@@ -1320,16 +1325,17 @@ export interface DomainKit {
 }
 
 export const DOMAIN_KITS: DomainKit[] = [
-  { id: "dom-plain", name: "Простая подпись", kind: "plain", size: 26, loud: false },
-  { id: "dom-spaced", name: "Разрядка капсом", kind: "spaced", size: 24, loud: false },
-  { id: "dom-spaced-lg", name: "Крупная разрядка", kind: "spaced", size: 30, loud: true },
-  { id: "dom-rule", name: "Линии по бокам", kind: "rule", size: 25, loud: false },
-  { id: "dom-pill", name: "Пилюля акцентом", kind: "pill", size: 25, loud: true },
-  { id: "dom-bar", name: "Лента во всю ширину", kind: "bar", size: 27, loud: true },
-  { id: "dom-outline", name: "Контурная рамка", kind: "outline", size: 24, loud: true },
-  { id: "dom-dots", name: "С точками по краям", kind: "dots", size: 25, loud: false },
-  { id: "dom-corner", name: "В углу мелко", kind: "corner", size: 21, loud: false },
-  { id: "dom-tick", name: "С засечкой сверху", kind: "tick", size: 26, loud: false },
+  // v8: кегли подняты на 4 px — в ленте Pinterest пин сжимается в 4 раза.
+  { id: "dom-plain", name: "Простая подпись", kind: "plain", size: 30, loud: false },
+  { id: "dom-spaced", name: "Разрядка капсом", kind: "spaced", size: 28, loud: false },
+  { id: "dom-spaced-lg", name: "Крупная разрядка", kind: "spaced", size: 34, loud: true },
+  { id: "dom-rule", name: "Линии по бокам", kind: "rule", size: 29, loud: false },
+  { id: "dom-pill", name: "Пилюля акцентом", kind: "pill", size: 29, loud: true },
+  { id: "dom-bar", name: "Лента во всю ширину", kind: "bar", size: 31, loud: true },
+  { id: "dom-outline", name: "Контурная рамка", kind: "outline", size: 28, loud: true },
+  { id: "dom-dots", name: "С точками по краям", kind: "dots", size: 29, loud: false },
+  { id: "dom-corner", name: "В углу мелко", kind: "corner", size: 24, loud: false },
+  { id: "dom-tick", name: "С засечкой сверху", kind: "tick", size: 30, loud: false },
 ];
 
 export const DOMAIN_KIT_MAP = new Map(DOMAIN_KITS.map((d) => [d.id, d]));
@@ -1364,8 +1370,14 @@ export function drawKitDomain(
   const baseY = canvas.h - (kit.kind === "bar" ? 22 : 30);
 
   const label = (x: number, y: number, color: string) => { ctx.fillStyle = color; ctx.fillText(text, x, y); };
-  // Защита от фона: под текстом лёгкая тень-ореол, а не серая плашка.
-  const halo = (fn: () => void) => {
+  // Защита от фона: на пёстром фото тени-ореола мало — под подписью тёмная полупрозрачная пилюля.
+  const halo = (fn: () => void, box?: { x: number; y: number }) => {
+    if (paint.onPhoto && box) {
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,.4)";
+      roundRect(ctx, box.x - size * 0.6, box.y - size * 0.95, w + size * 1.2, size * 1.5, size * 0.75); ctx.fill();
+      ctx.restore();
+    }
     if (paint.onPhoto) { ctx.shadowColor = "rgba(0,0,0,.55)"; ctx.shadowBlur = 12; }
     fn();
     ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
@@ -1398,23 +1410,23 @@ export function drawKitDomain(
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    halo(() => label(cx - w / 2, baseY, paint.ink));
+    halo(() => label(cx - w / 2, baseY, paint.ink), { x: cx - w / 2, y: baseY });
   } else if (kit.kind === "dots") {
     const gap = 18, rr = 3.5;
     ctx.fillStyle = paint.ink;
     ctx.beginPath(); ctx.arc(cx - w / 2 - gap, baseY - size * 0.3, rr, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(cx + w / 2 + gap, baseY - size * 0.3, rr, 0, Math.PI * 2); ctx.fill();
-    halo(() => label(cx - w / 2, baseY, paint.ink));
+    halo(() => label(cx - w / 2, baseY, paint.ink), { x: cx - w / 2, y: baseY });
   } else if (kit.kind === "tick") {
     ctx.strokeStyle = paint.fill; ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(cx - size * 1.1, baseY - size * 1.25); ctx.lineTo(cx + size * 1.1, baseY - size * 1.25);
     ctx.stroke();
-    halo(() => label(cx - w / 2, baseY, paint.ink));
+    halo(() => label(cx - w / 2, baseY, paint.ink), { x: cx - w / 2, y: baseY });
   } else if (kit.kind === "corner") {
-    halo(() => label(canvas.w - w - 34, canvas.h - 28, paint.ink));
+    halo(() => label(canvas.w - w - 34, canvas.h - 28, paint.ink), { x: canvas.w - w - 34, y: canvas.h - 28 });
   } else {
-    halo(() => label(cx - w / 2, baseY, paint.ink));
+    halo(() => label(cx - w / 2, baseY, paint.ink), { x: cx - w / 2, y: baseY });
   }
   ctx.restore();
   try { (ctx as unknown as { letterSpacing: string }).letterSpacing = "0px"; } catch { /* noop */ }
