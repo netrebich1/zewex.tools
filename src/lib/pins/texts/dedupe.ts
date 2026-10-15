@@ -61,7 +61,7 @@ async function rewriteWithAi(ctx: AiCtx, items: DedupeRow[], taken: string[], si
     description: (it.description || "").slice(0, 300),
   }));
   const system = 'You write Pinterest pin titles. Return JSON only: {"titles":[{"i":number,"title":string}]}.';
-  const user = `Rewrite each title so it is unique: different wording from the original and from every title in TAKEN and from each other. Same language as original, keep the keyword phrase naturally, max 90 characters, no emojis, no quotes, no hashtags, no ':' or '|' or '-' suffix tricks.\nTAKEN:\n${taken.join("\n")}\nITEMS:\n${JSON.stringify(list)}`;
+  const user = `Rewrite each title so it is unique: different wording from the original and from every title in TAKEN and from each other. Same language as original, keep the keyword phrase naturally, keep the year exactly as in the original (or no year if it has none), max 90 characters, no emojis, no quotes, no hashtags, no ':' or '|' or '-' suffix tricks.\nTAKEN:\n${taken.join("\n")}\nITEMS:\n${JSON.stringify(list)}`;
   const res = await aiChat({ ...ctx, signal: signal ?? ctx.signal }, "text_fast", {
     system,
     user,

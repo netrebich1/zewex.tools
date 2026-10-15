@@ -234,3 +234,25 @@ export function inShare(id: string, percent: number): boolean {
 export function cleanTitle(s: string): string {
   return tidy(stripHashtags(String(s || "").replace(/["«»“”„]/g, "")));
 }
+
+/* --------------------------------- год ---------------------------------- */
+
+/** Годы 2020–2039 отдельным числом (не часть длинного числа). */
+const YEAR_RE = /(?<![\p{N}])20[23]\p{N}(?![\p{N}])/gu;
+
+/**
+ * Год в тексте по решению для пина: year — подставить (чужие годы заменяются на него, повтор схлопывается),
+ * пусто — годов быть не должно (вырезаются). ensure — дописать год в конец, если его нет (для заголовка).
+ */
+export function applyYear(text: string, year: string, opts: { ensure?: boolean; max?: number } = {}): string {
+  const t = (text || "").trim();
+  if (!year) return tidy(t.replace(YEAR_RE, ""));
+  let out = t.replace(YEAR_RE, year);
+  const twice = new RegExp(`${year}(\\s*[,·|–—-]?\\s*${year})+`, "g");
+  out = out.replace(twice, year);
+  if (opts.ensure && !out.includes(year)) {
+    const max = opts.max ?? LIMITS.title;
+    out = `${truncateAtWord(out, max - year.length - 1)} ${year}`.trim();
+  }
+  return out;
+}

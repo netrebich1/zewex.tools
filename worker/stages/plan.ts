@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { planAiPins } from "@/lib/pins/plan/aiPlan";
 import { planPinoraPins } from "@/lib/pins/plan/pinoraPlan";
 import { buildPinoraParams } from "@/lib/pins/prompts/pinora";
-import { decideElements, pinYear, pinSiteName } from "@/lib/pins/prompts/elements";
+import { decideElements, pinYearFor, pinSiteName } from "@/lib/pins/prompts/elements";
 import { allowedPinoraTypes } from "@/lib/pins/recipeForm";
 import { nicheLabel } from "@/lib/pins/prompts/pinoraTypes";
 import { ideaCountFor } from "@/lib/pins/types";
@@ -50,7 +50,6 @@ export const plan: StageHandler = async (ctx) => {
     ? planPinoraPins({ pages: todo.map((p) => ({ id: p.id, niche: pinoraNiche || p.niche || rc.site.niche, existingPinoraCount: countOf(p.id, "PINORA") })), types: pinoraTypes, perPage: perPagePinora, seed: rc.settings.seed })
     : [];
 
-  const year = pinYear(rc.recipe.text);
   const siteName = pinSiteName(rc.recipe.text, { linkDomain: rc.recipe.publishing.linkDomain, siteName: rc.settings.siteName });
   const data = [
     ...aiRows.map((r) => ({ runId: rc.run.id, pageId: r.pageId, siteId: rc.site.id, kind: "pin", engine: "OPENAI" as const, styleId: r.styleId, sortOrder: r.sortOrder, styleParams: { setId: r.setId } })),
@@ -58,7 +57,7 @@ export const plan: StageHandler = async (ctx) => {
       const page = rc.pageById.get(r.pageId)!;
       const id = `${rc.run.id}|${r.pageId}|pinora|${r.sortOrder}`;
       const tags = decideElements(id, rc.recipe.text);
-      const params = buildPinoraParams({ type: r.pinType, niche: r.niche || page.niche || rc.site.niche, seed: hash32(id), tags, keyword: page.keyword, pageTitle: page.pageTitle, siteName, ideaCount: ideaCountFor(page, rc.recipe.text) || undefined, year: tags.year ? year : undefined, season: tags.season ? page.seasonWord || page.season : undefined });
+      const params = buildPinoraParams({ type: r.pinType, niche: r.niche || page.niche || rc.site.niche, seed: hash32(id), tags, keyword: page.keyword, pageTitle: page.pageTitle, siteName, ideaCount: ideaCountFor(page, rc.recipe.text) || undefined, year: tags.year ? pinYearFor(rc.recipe.text, page) : undefined, season: tags.season ? page.seasonWord || page.season : undefined });
       return { runId: rc.run.id, pageId: r.pageId, siteId: rc.site.id, kind: "pin", engine: "PINORA" as const, pinType: r.pinType, sortOrder: 500 + r.sortOrder, styleParams: params as object };
     }),
   ];

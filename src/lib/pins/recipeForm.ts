@@ -2,7 +2,7 @@
  * Разбор полей формы рецепта (общий для настроек сайта, нового прогона и правки прогона).
  * Без обращений к базе: проверку принадлежности наборов/доступа делает вызывающий код.
  */
-import { mergeRecipe, type Recipe } from "./types";
+import { MAX_RUN_PAGES, cleanYearRules, mergeRecipe, type Recipe } from "./types";
 import { PINORA_NICHES, PINORA_TYPES, typesForNiche } from "./prompts/pinoraTypes";
 
 /** Типы Pinora, допустимые для ниши: «авто» — только универсальные (без привязки к нише), как в старом сервисе. */
@@ -52,17 +52,18 @@ export function recipeFromForm(f: FormData, base: unknown, opts: RecipeFormOptio
       period,
       after: day("pagesAfter", r.pages.after), before: day("pagesBefore", r.pages.before),
       days: num(f, "pagesDays", r.pages.days, 1, 3650),
-      limit: num(f, "pagesLimit", r.pages.limit, 1, 500),
+      limit: num(f, "pagesLimit", r.pages.limit, 1, MAX_RUN_PAGES),
       skipUsed: has("pagesSkipUsedPresent") ? f.get("pagesSkipUsed") === "on" : r.pages.skipUsed,
     } : r.pages,
     mix: has("mixAi") ? { ai: num(f, "mixAi", r.mix.ai, 0, 20), photos: num(f, "mixPhotos", r.mix.photos, 0, 20), canvas: num(f, "mixCanvas", r.mix.canvas, 0, 20), pinora: num(f, "mixPinora", r.mix.pinora, 0, 20) } : r.mix,
-    photosMode: has("photosMode") ? (str(f, "photosMode") === "featured_only" ? "featured_only" : "all") : r.photosMode,
+    photosMode: has("photosMode") ? ((["featured_only", "sections"] as const).find((v) => v === str(f, "photosMode")) ?? "auto") : r.photosMode,
     sets: {
       ...r.sets,
       aiSetIds: has("setsPresent") ? only(f.getAll("aiSetIds").map(String)) : r.sets.aiSetIds,
       canvasSetIds: has("setsPresent") ? only(f.getAll("canvasSetIds").map(String)) : r.sets.canvasSetIds,
       canvasStyleIds: has("setsPresent") ? f.getAll("canvasStyleIds").map(String) : r.sets.canvasStyleIds,
       pinoraTypes: has("setsPresent") ? f.getAll("pinoraTypes").map(String).filter((t) => allowedPinoraTypes(has("pinoraNiche") ? str(f, "pinoraNiche") : r.sets.pinoraNiche).includes(t)) : r.sets.pinoraTypes,
+      canvasPhotoCounts: has("canvasPhotoCountsPresent") ? f.getAll("canvasPhotoCounts").map(Number).filter((n) => [1, 2, 3, 4, 6].includes(n)) : r.sets.canvasPhotoCounts,
       pinoraNiche: has("pinoraNiche") ? (PINORA_NICHES.some((n) => n.id === str(f, "pinoraNiche")) ? str(f, "pinoraNiche") : "auto") : r.sets.pinoraNiche,
     },
     text: {
@@ -77,6 +78,11 @@ export function recipeFromForm(f: FormData, base: unknown, opts: RecipeFormOptio
       audience: (["women", "men", "mix"] as const).find((a) => a === str(f, "audience")) ?? r.text.audience,
       brandColor: has("brandColor") ? str(f, "brandColor") || undefined : r.text.brandColor,
       year: has("textYear") ? (/^\d{4}$/.test(str(f, "textYear")) ? str(f, "textYear") : "") : r.text.year,
+      // Особые годы: строки «слова через запятую» + «год»; пустые строки отбрасываются при чистке.
+      yearRules: has("yearRulesPresent") ? cleanYearRules({
+        enabled: f.get("yearRulesOn") === "on",
+        rules: f.getAll("yearRuleWords").map((w, i) => ({ words: String(w).split(/[,;\n]/), year: String(f.getAll("yearRuleYear")[i] ?? "").trim() })),
+      }) : r.text.yearRules,
       siteName: has("textSiteName") ? str(f, "textSiteName").slice(0, 80) : r.text.siteName,
     },
     publishing: {
@@ -85,10 +91,17 @@ export function recipeFromForm(f: FormData, base: unknown, opts: RecipeFormOptio
       photoLinkPercent: num(f, "photoLinkPercent", r.publishing.photoLinkPercent, 0, 100),
     },
     schedule: {
+      dailyMode: has("dailyMode") ? (str(f, "dailyMode") === "dates" ? "dates" : "fixed") : r.schedule.dailyMode,
+      lastDate: day("lastDate", r.schedule.lastDate),
       pinsPerDay: num(f, "pinsPerDay", r.schedule.pinsPerDay, 1, 100),
       startFrom: has("startFrom") ? (/^\d{4}-\d{2}-\d{2}$/.test(str(f, "startFrom")) ? str(f, "startFrom") : "next_free_day") : r.schedule.startFrom,
       moderationMode: has("moderationMode") ? (str(f, "moderationMode") === "auto" ? "auto" : "required") : r.schedule.moderationMode,
       samplePercent: r.schedule.samplePercent,
+      windowDays: num(f, "windowDays", r.schedule.windowDays, 1, 120),
+      perPagePerDay: num(f, "perPagePerDay", r.schedule.perPagePerDay, 0, 20),
+      firstPinWindowDays: num(f, "firstPinWindowDays", r.schedule.firstPinWindowDays, 1, 60),
+      stepMinDays: num(f, "stepMinDays", r.schedule.stepMinDays, 1, 60),
+      stepMaxDays: Math.max(num(f, "stepMinDays", r.schedule.stepMinDays, 1, 60), num(f, "stepMaxDays", r.schedule.stepMaxDays, 1, 60)),
     },
     boards: { multiBoard: has("multiBoardPresent") ? f.get("multiBoard") === "on" : r.boards.multiBoard },
   };

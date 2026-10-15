@@ -2,6 +2,7 @@ import { aiChat, type AiCtx } from "@/lib/pins/ai/client";
 import { LIMITS } from "@/lib/pins/types";
 import {
   applyLimits,
+  applyYear,
   cleanTitle,
   inShare,
   makeHashtags,
@@ -33,6 +34,8 @@ export type TextItem = {
   prompt?: string;
   season?: string;
   seasonWord?: string;
+  /** Год для этого пина ("2027") или пусто — год не упоминать. Решение по проценту «Год» — то же, что для картинки. */
+  year?: string;
 };
 
 export type TextInput = {
@@ -62,7 +65,7 @@ export function buildSystemPrompt(input: Pick<TextInput, "language" | "audience"
   const siteName = input.siteName.trim();
   return `You are a senior Pinterest SEO copywriter.
 For every input item you get: the article's main KEYWORD, the pin/photo CONTEXT
-(visual style or article section), the target BOARD and the HASHTAGS flag.
+(visual style or article section), the target BOARD, the YEAR and the HASHTAGS flag.
 
 Write, per item:
 - "title": Pinterest pin title, max ${LIMITS.title} characters, keyword-led, natural, no clickbait spam, no quotes, no hashtags.
@@ -71,6 +74,11 @@ Write, per item:
   Hashtags MUST be written in the SAME language as the description itself (Ukrainian copy -> Ukrainian hashtags,
   e.g. #манікюр #короткінігті; never transliterate or switch to English). Single words or joined words, no spaces inside a tag.
   if HASHTAGS=no -> no hashtags at all (max ${LIMITS.description} chars total).
+
+YEAR RULE — MANDATORY, set per item:
+- YEAR=<4 digits> -> use exactly that year once in the title and once in the description, naturally
+  (e.g. "Christmas Nail Ideas 2026"). Never use any other year, never write the year twice in one field.
+- YEAR=none -> do not mention any year anywhere (title, description, alt), even if the source title has one.
 
 HASHTAGS=no items must be 100% clean of "#" symbols.
 The flag is set per item on purpose — respect it exactly, do not "improve" an item by adding what is turned off.
@@ -126,6 +134,7 @@ export function buildUserPrompt(chunk: TextItem[], flags: Map<string, boolean>):
    REQUIRED SEASONAL TERMS: ${terms.join(", ") || "none"}
    CONTEXT: ${contextOf(it).slice(0, 400) || "(none)"}
    BOARD: ${it.boardName.trim() || "(none)"}
+   YEAR: ${it.year || "none"}
    HASHTAGS: ${flags.get(it.id) ? "yes" : "no"}`;
   });
   return `ITEMS:\n${lines.join("\n")}\n\nReturn the JSON object now.`;
@@ -161,9 +170,10 @@ export function finalizeTexts(raw: { title: string; description: string; alt: st
   const terms = requiredSeasonalTerms(it);
   const clean = (s: string) => stripAiMentions(stripEmoji(s));
 
-  const title = requireTerms(cleanTitle(clean(raw.title)), terms, "dash");
+  const year = it.year || "";
+  const title = applyYear(requireTerms(cleanTitle(clean(raw.title)), terms, "dash"), year, { ensure: true, max: LIMITS.title });
 
-  let description = requireTerms(clean(raw.description), terms, "sentence");
+  let description = applyYear(requireTerms(clean(raw.description), terms, "sentence"), year);
   description = normalizeHashtags(description, withHashtags, MAX_TAGS);
   if (withHashtags && !description.includes("#")) {
     const tags = makeHashtags(it.keyword, it.boardName);

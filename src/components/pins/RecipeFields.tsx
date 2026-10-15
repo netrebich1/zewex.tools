@@ -3,6 +3,8 @@ import { Field } from "@/components/ui";
 import type { Recipe } from "@/lib/pins/types";
 import { pinYear } from "@/lib/pins/prompts/elements";
 import { PinoraPicker } from "@/components/pins/PinoraPicker";
+import { ScheduleModeFields } from "@/components/pins/ScheduleModeFields";
+import { YearRulesFields } from "@/components/pins/YearRulesFields";
 
 export type RecipeSetOption = { id: string; name: string; count: number; topic?: string };
 export type RecipeCanvasStyle = { id: string; name: string; previewUrl: string | null; zewex: boolean };
@@ -102,23 +104,38 @@ export function RecipeFields({ r, data, scope }: { r: Recipe; data: RecipeFields
             {num("mixPinora", "Pinora-пины", r.mix.pinora)}
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Какие фото брать"><select name="photosMode" className="input py-1.5" defaultValue={r.photosMode}><option value="all">Все фото статьи</option><option value="featured_only">Только миниатюру</option></select></Field>
+            <Field label="Какие фото брать" hint="Миниатюра — главная картинка записи в WordPress"><select name="photosMode" className="input py-1.5" defaultValue={r.photosMode}><option value="auto">Авто: кулинария — миниатюра, остальное — фото из статьи</option><option value="sections">Всегда фото из статьи</option><option value="featured_only">Всегда только миниатюра записи</option></select></Field>
             <Field label="Фото со ссылкой, %"><input name="photoLinkPercent" type="number" min={0} max={100} className="input py-1.5" defaultValue={r.publishing.photoLinkPercent} /></Field>
+          </div>
+          <div>
+            <div className="text-[12px] text-muted mb-1">Фото на одном Canvas-пине <span className="help">· ничего не отмечено — как умеет стиль; для кулинарии обычно только 1</span></div>
+            <input type="hidden" name="canvasPhotoCountsPresent" value="1" />
+            <div className="flex flex-wrap gap-1.5">
+              {[1, 2, 3, 4, 6].map((n) => <label key={n} className={chip}><input type="checkbox" name="canvasPhotoCounts" value={n} defaultChecked={(r.sets.canvasPhotoCounts ?? []).includes(n)} className="h-3.5 w-3.5" /> {n} фото</label>)}
+            </div>
           </div>
         </section>
 
-        <section className="rounded-xl border border-line p-3 space-y-2">
-          <div className="text-[13px] font-semibold">Расписание и модерация</div>
+        <section className="rounded-xl border border-line p-3 space-y-3">
+          <div className="text-[13px] font-semibold">Расписание</div>
+          <ScheduleModeFields s={r.schedule} />
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Пинов в день (до 100)"><input name="pinsPerDay" type="number" min={1} max={100} className="input py-1.5" defaultValue={r.schedule.pinsPerDay} /></Field>
-            <Field label="Начинать с" hint="Пусто — следующий свободный день"><input name="startFrom" type="date" className="input py-1.5" defaultValue={r.schedule.startFrom === "next_free_day" ? "" : r.schedule.startFrom} /></Field>
             <Field label="Модерация"><select name="moderationMode" className="input py-1.5" defaultValue={r.schedule.moderationMode}><option value="required">Обязательна</option><option value="auto">Автоодобрение</option></select></Field>
             <Field label="Доски">
               <input type="hidden" name="multiBoardPresent" value="1" />
               <label className={`${chip} mt-0.5`}><input type="checkbox" name="multiBoard" defaultChecked={r.boards.multiBoard} className="h-3.5 w-3.5" /> до 3 досок на пин</label>
             </Field>
           </div>
-          <p className="help">Окно 30 дней, до 2 пинов со статьи в день, первый пин в первые 3 дня, шаг 2–5 дней, 08:00–21:00.</p>
+          <details className="rounded-lg border border-line px-3 py-2">
+            <summary className="cursor-pointer text-[13px]">Предпочтения раскладки статьи <span className="help">· мягкие: норма дня важнее, при конфликте берётся ближайший возможный вариант</span></summary>
+            <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <Field label="Первый пин статьи в первые N дней"><input name="firstPinWindowDays" type="number" min={1} max={60} className="input py-1.5" defaultValue={r.schedule.firstPinWindowDays} /></Field>
+              <Field label="Шаг между пинами статьи от, дней"><input name="stepMinDays" type="number" min={1} max={60} className="input py-1.5" defaultValue={r.schedule.stepMinDays} /></Field>
+              <Field label="Шаг до, дней"><input name="stepMaxDays" type="number" min={1} max={60} className="input py-1.5" defaultValue={r.schedule.stepMaxDays} /></Field>
+              <Field label="Пинов одной статьи в день" hint="0 — без ограничения"><input name="perPagePerDay" type="number" min={0} max={20} className="input py-1.5" defaultValue={r.schedule.perPagePerDay} /></Field>
+            </div>
+            <p className="help mt-2">Время публикации 08:00–21:00, минуты разбрасываются случайно.</p>
+          </details>
         </section>
 
         {styles(true)}
@@ -134,11 +151,14 @@ export function RecipeFields({ r, data, scope }: { r: Recipe; data: RecipeFields
             </div>
             {element("pctSeason", "Сезон", r.text.percents.season, <span className="help">Слово сезона определяется по статье и дате.</span>)}
             {element("pctYear", "Год", r.text.percents.year, (
-              <div className="flex items-center gap-2">
-                <input name="textYear" inputMode="numeric" pattern="[0-9]{4}" className="input w-24 py-1 text-center" placeholder={pinYear({})} defaultValue={r.text.year} />
-                <span className="help">Пусто — текущий ({pinYear({})}, с октября уже следующий). Впишите 2027 для статей на будущий год.</span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <input name="textYear" inputMode="numeric" pattern="[0-9]{4}" className="input w-24 py-1 text-center" placeholder={pinYear({})} defaultValue={r.text.year} />
+                  <span className="help">Пусто — текущий ({pinYear({})}, с октября уже следующий). Доля действует на надпись на пине, заголовок и описание.</span>
+                </div>
               </div>
             ))}
+            <YearRulesFields value={r.text.yearRules} baseYear={r.text.year || pinYear({})} />
             {element("pctNumber", "Число идей", r.text.percents.number, (
               <div className="flex items-center gap-2">
                 <select name="numberSource" className="input py-1 w-auto" defaultValue={r.text.numberSource}><option value="sections">По разделам статьи (H2 с фото)</option><option value="images">По всем фото статьи</option><option value="none">Не считать</option></select>

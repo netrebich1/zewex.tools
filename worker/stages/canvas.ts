@@ -5,15 +5,18 @@ import { toRecipe } from "@/lib/pins/canvas/styleSpec";
 import { approvedStylesForSite } from "@/lib/pins/canvas/catalog";
 import { generateHooks, type CanvasHook } from "@/lib/pins/canvas/hooks";
 import { cachedPhoto } from "@/lib/pins/canvas/photos";
+import { subjectBoxFor } from "@/lib/pins/canvas/subject";
 import { planCanvasPins } from "@/lib/pins/plan/canvasPlan";
 import { hash32 } from "@/lib/pins/plan/seed";
-import { decideElements, seasonForDate, seasonWord, pinYear } from "@/lib/pins/prompts/elements";
+import { decideElements, seasonForDate, seasonWord, pinYearFor } from "@/lib/pins/prompts/elements";
 import { ideaCountFor } from "@/lib/pins/types";
 import { makeThumb } from "@/lib/pins/images";
 import { itemImageRel, itemThumbRel, writeFileAtomic } from "@/lib/pins/storage";
 import { AiError } from "@/lib/pins/ai/errors";
 import type { StageHandler } from "./index";
-import { loadRunCtx } from "./_shared";
+import { loadRunCtx, runQueue } from "./_shared";
+
+const CANVAS_CONCURRENCY = Math.max(1, Number(process.env.PINS_CANVAS_CONCURRENCY || 3));
 
 /**
  * Этап canvas: Canvas-пины на сервере. Для каждой страницы: хуки (ИИ) → план по утверждённым
@@ -37,9 +40,14 @@ export const canvasStage: StageHandler = async (ctx) => {
   const existing = await prisma.pinRunItem.groupBy({ by: ["pageId"], where: { runId: rc.run.id, engine: "CANVAS", status: { not: "REMOVED" } }, _count: { _all: true } });
   const existingCount = (id: string) => existing.find((e) => e.pageId === id)?._count._all ?? 0;
 
+  const allowedCounts = rc.recipe.sets.canvasPhotoCounts ?? [];
+  if (allowedCounts.length && !styles.some((s) => s.spec.counts.some((n) => allowedCounts.includes(n)))) {
+    return { fatal: `Ни один выбранный Canvas-стиль не умеет ${allowedCounts.join("/")} фото на пине. Выберите другие стили или снимите ограничение по числу фото в настройках прогона.` };
+  }
   const plan = planCanvasPins({
     pages: pages.map((p) => ({ id: p.id, poolPhotoCount: (poolByPage.get(p.id) ?? []).length, existingCanvasCount: existingCount(p.id), quota: p.canvasQuota })),
-    styles: styles.map((s) => ({ id: s.id, counts: s.spec.counts })),
+    // Число фото на пине ограничивается настройкой прогона (например, кулинария — только 1 фото).
+    styles: styles.map((s) => ({ id: s.id, counts: s.spec.counts.filter((n) => !allowedCounts.length || allowedCounts.includes(n)) })),
     perPage,
     seed: rc.settings.seed,
   });
@@ -75,11 +83,16 @@ export const canvasStage: StageHandler = async (ctx) => {
     if (rc.recipe.publishing.linkDomain) return rc.recipe.publishing.linkDomain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
     try { return url ? new URL(url).hostname.replace(/^www\./, "") : siteDomain; } catch { return siteDomain; }
   };
-  for (const row of plan) {
-    if (ctx.signal.aborted) break;
+  // Несколько пинов параллельно: большую часть времени пин ждёт скачивания фото и ответа модели (кадрирование),
+  // само рисование занимает процессор ~1 с. На 2 ядрах больше 3 одновременно не ставим, чтобы не тормозить сайт.
+  // Одно и то же фото в параллельных пинах качаем и размечаем один раз.
+  const photoOnce = new Map<string, Promise<Buffer>>();
+  const subjectOnce = new Map<string, ReturnType<typeof subjectBoxFor>>();
+  const getPhoto = (u: string) => { let p = photoOnce.get(u); if (!p) { p = cachedPhoto(u, ctx.signal); photoOnce.set(u, p); } return p; };
+  await runQueue(plan, CANVAS_CONCURRENCY, async (row) => {
     const page = rc.pageById.get(row.pageId);
     const style = styles.find((s) => s.id === row.styleId);
-    if (!page || !style) { failed++; continue; }
+    if (!page || !style) { failed++; return; }
     try {
       const urls = poolByPage.get(page.id) ?? [];
       const seed = hash32(`${rc.settings.seed}|${page.id}|${row.styleId}|${row.sortOrder}`);
@@ -87,8 +100,18 @@ export const canvasStage: StageHandler = async (ctx) => {
       const chosen: string[] = [];
       for (let i = 0; i < urls.length && chosen.length < row.photoCount; i++) chosen.push(urls[(start + i) % urls.length]);
       const photos: Buffer[] = [];
-      for (const u of chosen) { try { photos.push(await cachedPhoto(u, ctx.signal)); } catch { /* битое фото */ } }
+      const photoUrls: string[] = [];
+      for (const u of chosen) { try { photos.push(await getPhoto(u)); photoUrls.push(u); } catch { /* битое фото */ } }
       if (!photos.length) throw new Error("Нет доступных фото статьи");
+      // Профиль акцента для умной обрезки: ниша сайта и ключ страницы (ногти, волосы, одежда…).
+      const accent = guessAccent(page.niche || rc.site.niche, page.keyword, page.topic, page.pageTitle || page.h1);
+      // Рамки объектов от модели со зрением (кэш на фото): кадр как у дизайнера, без срезанных голов.
+      const subjects = await Promise.all(photoUrls.map((u, i) => {
+        const key = `${u}|${accent}`;
+        let s = subjectOnce.get(key);
+        if (!s) { s = subjectBoxFor(rc.ai, u, photos[i], accent, (m) => ctx.log(m)); subjectOnce.set(key, s); }
+        return s;
+      }));
       const hooks = (page.canvasHooks as unknown as CanvasHook[] | null) ?? [];
       const hook = hooks.length ? hooks[row.sortOrder % hooks.length] : { title: page.keyword };
       // Элементы пина по процентам рецепта (как у ИИ-пинов): сезон/год — в кикер, число — только
@@ -99,13 +122,11 @@ export const canvasStage: StageHandler = async (ctx) => {
       const showNumber = ideaCount >= 3 && !!style.spec.number && (numberRequired || tags.number);
       const lang = rc.recipe.text.language;
       const seasonTxt = tags.season ? (page.seasonWord || seasonWord((page.season as "fall" | "winter" | "spring" | "summer") || seasonForDate(), lang)) : "";
-      const yearTxt = tags.year ? pinYear(rc.recipe.text) : "";
+      const yearTxt = tags.year ? pinYearFor(rc.recipe.text, page) : "";
       const kickerParts = [seasonTxt, yearTxt].filter(Boolean);
       const kicker = kickerParts.length ? kickerParts.join(" ") : hook.kicker;
-      // Профиль акцента для умной обрезки: ниша сайта и ключ страницы (ногти, волосы, одежда…).
-      const accent = guessAccent(page.niche || rc.site.niche, page.keyword, page.topic, page.pageTitle || page.h1);
       const recipe = { ...toRecipe(style.spec, seed, photos.length), accent };
-      const r = await renderPin({ recipe, photos, texts: { title: hook.title, kicker, cta: tags.cta ? hook.cta : undefined, domain: tags.siteName ? (rc.recipe.text.siteName.trim() || domainFor(page.finalUrl || page.url)) : undefined, number: showNumber ? String(ideaCount) : undefined }, seed });
+      const r = await renderPin({ recipe, photos, subjects, texts: { title: hook.title, kicker, cta: tags.cta ? hook.cta : undefined, domain: tags.siteName ? (rc.recipe.text.siteName.trim() || domainFor(page.finalUrl || page.url)) : undefined, number: showNumber ? String(ideaCount) : undefined }, seed });
       const item = await prisma.pinRunItem.create({
         data: { runId: rc.run.id, pageId: page.id, siteId: rc.site.id, kind: "pin", engine: "CANVAS", styleId: row.styleId, sourceImageUrl: chosen[0] ?? "", sortOrder: 2000 + row.sortOrder, status: "PENDING", title: "", styleParams: { hook, tags, ideaCount, photos: chosen, photoCount: photos.length, issues: r.issues } as object },
       });
@@ -120,7 +141,7 @@ export const canvasStage: StageHandler = async (ctx) => {
     }
     done++;
     await ctx.tick({ done, total: plan.length, label: `Canvas ${done}/${plan.length}` });
-  }
+  }, ctx.signal);
   if (ctx.signal.aborted) throw ctx.signal.reason instanceof Error ? ctx.signal.reason : new Error("aborted");
   return { summary: `canvas: ${done - failed} готово, ${failed} с ошибкой` };
 };

@@ -1,4 +1,5 @@
-import { pinSiteName } from "@/lib/pins/prompts/elements";
+import { itemYear, pinSiteName } from "@/lib/pins/prompts/elements";
+import { applyYear } from "@/lib/pins/texts/rules";
 import { prisma } from "@/lib/db";
 import { generatePinTexts, type TextItem } from "@/lib/pins/texts/generate";
 import { dedupeTitles } from "@/lib/pins/texts/dedupe";
@@ -41,6 +42,7 @@ export const texts: StageHandler = async (ctx) => {
       prompt: it.prompt || undefined,
       season: it.page.season || undefined,
       seasonWord: it.page.seasonWord || undefined,
+      year: itemYear(it, it.page, rc.recipe.text),
     }));
     try {
       const res = await generatePinTexts(rc.ai, {
@@ -71,10 +73,16 @@ export const texts: StageHandler = async (ctx) => {
 
   // уникализация заголовков в рамках прогона (одна выгрузка = одни файлы)
   if (!ctx.signal.aborted && !acc.fatal) {
-    const rows = await prisma.pinRunItem.findMany({ where: { runId: rc.run.id, status: "READY", moderation: "APPROVED", title: { not: "" } }, select: { id: true, title: true, page: { select: { keyword: true } } } });
+    const rows = await prisma.pinRunItem.findMany({ where: { runId: rc.run.id, status: "READY", moderation: "APPROVED", title: { not: "" } }, select: { id: true, title: true, engine: true, styleParams: true, page: { select: { keyword: true, topic: true, pageTitle: true, h1: true } } } });
     try {
       const renamed = await dedupeTitles(rc.ai, rows.map((r) => ({ id: r.id, title: r.title, keyword: r.page.keyword })), { signal: ctx.signal });
-      for (const [id, title] of renamed) await prisma.pinRunItem.update({ where: { id }, data: { title: title.slice(0, LIMITS.title) } });
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      for (const [id, title] of renamed) {
+        const row = byId.get(id);
+        // переписанный заголовок держит тот же год, что и исходный (или остаётся без года)
+        const fixed = row ? applyYear(title, itemYear(row, row.page, rc.recipe.text), { ensure: true, max: LIMITS.title }) : title;
+        await prisma.pinRunItem.update({ where: { id }, data: { title: fixed.slice(0, LIMITS.title) } });
+      }
       if (renamed.size) ctx.log(`titles deduped: ${renamed.size}`);
     } catch (e) {
       if (e instanceof AiError && e.cls.kind === "fatal_run") return { fatal: e.cls.message };

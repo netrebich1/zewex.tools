@@ -31,9 +31,29 @@ export const SLOT_IMAGE_MAIN = "image_main";
 /** Лимиты Pinterest на тексты пина. */
 export const LIMITS = { title: 100, alt: 490, description: 500, descriptionWithTags: 350 } as const;
 export const MAX_PINS_PER_DAY = 100;
+/** Максимум статей (ссылок) в одном прогоне. */
+export const MAX_RUN_PAGES = 3000;
 export const SCHEDULE = { windowDays: 30, perPagePerDay: 2, firstPinWindowDays: 3, stepMinDays: 2, stepMaxDays: 5, hourFrom: 8, hourTo: 21 } as const;
 
 export type ModerationMode = "required" | "auto" | "sample";
+
+/** Правило года: любое из слов (без учёта регистра, вхождение подстроки) → этот год. */
+export type YearRule = { words: string[]; year: string };
+export type YearRules = { enabled: boolean; rules: YearRule[] };
+export const MAX_YEAR_RULES = 10;
+
+/** Чистит правила года: слова без пустых, год из 4 цифр, правила без слов или года отбрасываются. */
+export function cleanYearRules(v: unknown): YearRules {
+  const o = (v && typeof v === "object" ? v : {}) as Partial<YearRules>;
+  const rules = (Array.isArray(o.rules) ? o.rules : [])
+    .map((r) => ({
+      words: [...new Set((Array.isArray(r?.words) ? r.words : []).map((w) => String(w ?? "").trim().toLocaleLowerCase().slice(0, 60)).filter(Boolean))].slice(0, 30),
+      year: /^\d{4}$/.test(String(r?.year ?? "")) ? String(r!.year) : "",
+    }))
+    .filter((r) => r.words.length && r.year)
+    .slice(0, MAX_YEAR_RULES);
+  return { enabled: !!o.enabled, rules };
+}
 
 export type ElementPercents = { season: number; year: number; number: number; cta: number; siteName: number; hashtags: number };
 export const ELEMENT_KEYS: ReadonlyArray<keyof ElementPercents> = ["season", "year", "number", "cta", "siteName", "hashtags"];
@@ -72,10 +92,16 @@ export type PagesSource = {
 export type Recipe = {
   pages: PagesSource;
   mix: { ai: number; photos: number; canvas: number; pinora: number };
-  photosMode: "all" | "featured_only";
+  /**
+   * Какие фото статьи брать: auto — для кулинарных статей только миниатюра записи из WordPress, для остальных фото из статьи;
+   * sections — всегда фото из статьи (первое в каждом разделе H2); featured_only — всегда только миниатюра.
+   * Старое значение "all" читается как auto.
+   */
+  photosMode: "auto" | "sections" | "featured_only";
   /** canvasStyleIds — утверждённые Canvas-стили каталога, выбранные напрямую; canvasSetIds — старые наборы (совместимость). */
   /** pinoraNiche — ниша Pinora: "auto" (по каждой статье) или id ниши (decor, nails, hair, outfit, cooking). */
-  sets: { aiSetIds: string[]; canvasSetIds: string[]; canvasStyleIds: string[]; pinoraTypes: string[]; pinoraNiche: string };
+  /** canvasPhotoCounts — допустимое число фото на Canvas-пине (1/2/3/4/6); пусто — любое, что умеет стиль. */
+  sets: { aiSetIds: string[]; canvasSetIds: string[]; canvasStyleIds: string[]; pinoraTypes: string[]; pinoraNiche: string; canvasPhotoCounts: number[] };
   text: {
     language: string;
     /** Устаревшие поля (до percents): hashtags/variety/elements. Сохраняются для совместимости. */
@@ -90,19 +116,32 @@ export type Recipe = {
     brandColor?: string;
     /** Год на пинах и в текстах; пусто — текущий (с октября уже следующий). Уровень прогона. */
     year: string;
+    /** Особые годы по словам: если ключ (или заголовок статьи) содержит слово правила — берётся год правила. Уровень прогона. */
+    yearRules: YearRules;
     /** Имя сайта на пинах и в текстах; пусто — домен сайта (домен для ссылок или хост статьи). Уровень прогона. */
     siteName: string;
   };
   publishing: { wpConnectionId: string | null; linkDomain: string; photoLinkPercent: number };
-  schedule: { pinsPerDay: number; startFrom: "next_free_day" | string; moderationMode: ModerationMode; samplePercent: number };
+  /**
+   * Расписание прогона: pinsPerDay — потолок на сайт в день; windowDays — окно; perPagePerDay — максимум пинов одной статьи в день;
+   * firstPinWindowDays — первый пин статьи в первые N дней; stepMinDays/stepMaxDays — шаг между пинами одной статьи.
+   */
+  schedule: {
+    /** fixed — строго pinsPerDay в день (окно растёт само); dates — равномерно от startFrom до lastDate. */
+    dailyMode: "fixed" | "dates";
+    pinsPerDay: number; startFrom: "next_free_day" | string; lastDate: string;
+    moderationMode: ModerationMode; samplePercent: number;
+    /** Мягкие предпочтения раскладки (норма дня важнее): окно (только старое поле), пинов статьи в день, первый пин, шаг. */
+    windowDays: number; perPagePerDay: number; firstPinWindowDays: number; stepMinDays: number; stepMaxDays: number;
+  };
   boards: { multiBoard: boolean };
 };
 
 export const DEFAULT_RECIPE: Recipe = {
   pages: { source: "manual", postType: "posts", categories: [], excludeCategories: false, period: "all", after: "", before: "", days: 30, limit: 100, skipUsed: true },
   mix: { ai: 3, photos: 4, canvas: 2, pinora: 0 },
-  photosMode: "all",
-  sets: { aiSetIds: [], canvasSetIds: [], canvasStyleIds: [], pinoraTypes: [], pinoraNiche: "auto" },
+  photosMode: "auto",
+  sets: { aiSetIds: [], canvasSetIds: [], canvasStyleIds: [], pinoraTypes: [], pinoraNiche: "auto", canvasPhotoCounts: [] },
   text: {
     language: "en",
     hashtags: true,
@@ -112,10 +151,11 @@ export const DEFAULT_RECIPE: Recipe = {
     numberSource: "sections",
     audience: "women",
     year: "",
+    yearRules: { enabled: false, rules: [] },
     siteName: "",
   },
   publishing: { wpConnectionId: null, linkDomain: "", photoLinkPercent: 40 },
-  schedule: { pinsPerDay: 90, startFrom: "next_free_day", moderationMode: "required", samplePercent: 20 },
+  schedule: { dailyMode: "fixed", pinsPerDay: 90, startFrom: "next_free_day", lastDate: "", moderationMode: "required", samplePercent: 20, windowDays: SCHEDULE.windowDays, perPagePerDay: SCHEDULE.perPagePerDay, firstPinWindowDays: SCHEDULE.firstPinWindowDays, stepMinDays: SCHEDULE.stepMinDays, stepMaxDays: SCHEDULE.stepMaxDays },
   boards: { multiBoard: false },
 };
 
@@ -147,6 +187,7 @@ function mergeText(t: Partial<Recipe["text"]> | undefined): Recipe["text"] {
     ...d, ...(t ?? {}), elements, variety, hashtags, percents,
     numberSource: t?.numberSource === "images" || t?.numberSource === "none" ? t.numberSource : "sections",
     year: /^\d{4}$/.test(String(t?.year ?? "")) ? String(t!.year) : "",
+    yearRules: cleanYearRules(t?.yearRules),
     siteName: String(t?.siteName ?? "").trim().slice(0, 80),
   };
 }
@@ -171,7 +212,7 @@ function mergePages(p: Partial<PagesSource> | undefined): PagesSource {
     period: p?.period === "range" || p?.period === "days" ? p.period : "all",
     after: isoDay(p?.after), before: isoDay(p?.before),
     days: Number.isFinite(days) ? Math.min(3650, Math.max(1, Math.round(days))) : d.days,
-    limit: Number.isFinite(limit) ? Math.min(500, Math.max(1, Math.round(limit))) : d.limit,
+    limit: Number.isFinite(limit) ? Math.min(MAX_RUN_PAGES, Math.max(1, Math.round(limit))) : d.limit,
     skipUsed: p?.skipUsed !== false,
   };
 }
@@ -205,11 +246,20 @@ export function runDefaultsFrom(siteRecipe: unknown, lastRunSettings: unknown | 
   return {
     ...site,
     pages: last.pages, mix: last.mix, photosMode: last.photosMode,
-    text: { ...site.text, percents: last.text.percents, numberSource: last.text.numberSource, hashtags: last.text.hashtags, variety: last.text.variety, elements: last.text.elements, year: last.text.year, siteName: last.text.siteName },
+    // Число фото на Canvas-пине задаётся только в прогоне — берём из прошлого прогона, остальные наборы — из сайта.
+    sets: { ...site.sets, canvasPhotoCounts: last.sets.canvasPhotoCounts },
+    text: { ...site.text, percents: last.text.percents, numberSource: last.text.numberSource, hashtags: last.text.hashtags, variety: last.text.variety, elements: last.text.elements, year: last.text.year, yearRules: last.text.yearRules, siteName: last.text.siteName },
     publishing: { ...site.publishing, photoLinkPercent: last.publishing.photoLinkPercent },
     schedule: { ...last.schedule, startFrom: "next_free_day" },
     boards: last.boards,
   };
+}
+
+/** Для этой статьи брать только миниатюру? (режим прогона + ниша статьи/сайта; кулинария — всегда миниатюра в режиме auto) */
+export function featuredOnlyFor(mode: Recipe["photosMode"], pageNiche?: string | null, siteNiche?: string | null): boolean {
+  if (mode === "featured_only") return true;
+  if (mode === "sections") return false;
+  return (pageNiche || siteNiche || "") === "cooking";
 }
 
 export function mergeRecipe(partial: unknown): Recipe {
@@ -218,11 +268,15 @@ export function mergeRecipe(partial: unknown): Recipe {
   return {
     pages: mergePages(p.pages),
     mix: { ...d.mix, ...(p.mix ?? {}) },
-    photosMode: p.photosMode ?? d.photosMode,
-    sets: { ...d.sets, ...(p.sets ?? {}), pinoraNiche: String((p.sets as Partial<Recipe["sets"]> | undefined)?.pinoraNiche || "auto") },
+    photosMode: p.photosMode === "featured_only" || p.photosMode === "sections" ? p.photosMode : "auto",
+    sets: {
+      ...d.sets, ...(p.sets ?? {}),
+      pinoraNiche: String((p.sets as Partial<Recipe["sets"]> | undefined)?.pinoraNiche || "auto"),
+      canvasPhotoCounts: (Array.isArray((p.sets as Partial<Recipe["sets"]> | undefined)?.canvasPhotoCounts) ? (p.sets as Recipe["sets"]).canvasPhotoCounts : []).map(Number).filter((n) => [1, 2, 3, 4, 6].includes(n)),
+    },
     text: mergeText(p.text),
     publishing: { ...d.publishing, ...(p.publishing ?? {}) },
-    schedule: { ...d.schedule, ...(p.schedule ?? {}) },
+    schedule: { ...d.schedule, ...(p.schedule ?? {}), dailyMode: (p.schedule as Partial<Recipe["schedule"]> | undefined)?.dailyMode === "dates" ? "dates" : "fixed", lastDate: isoDay((p.schedule as Partial<Recipe["schedule"]> | undefined)?.lastDate) },
     boards: { ...d.boards, ...(p.boards ?? {}) },
   };
 }

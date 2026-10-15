@@ -63,6 +63,41 @@ export function pinYear(text: { year?: string }, now: Date = new Date()): string
   return /^\d{4}$/.test(text.year ?? "") ? (text.year as string) : currentYear(now);
 }
 
+/**
+ * Год для пинов статьи с учётом особых правил прогона: если правила включены и ключ статьи
+ * (или её заголовок/H1/тема) содержит слово правила — год правила (первое совпавшее правило), иначе обычный год.
+ */
+export function pinYearFor(
+  text: { year?: string; yearRules?: { enabled: boolean; rules: Array<{ words: string[]; year: string }> } },
+  page: { keyword?: string | null; pageTitle?: string | null; h1?: string | null; topic?: string | null },
+  now: Date = new Date(),
+): string {
+  const yr = text.yearRules;
+  if (yr?.enabled && yr.rules.length) {
+    const hay = [page.keyword, page.pageTitle, page.h1, page.topic].map((s) => s || "").join(" | ").toLocaleLowerCase();
+    const hit = yr.rules.find((r) => /^\d{4}$/.test(r.year) && r.words.some((w) => w && hay.includes(w.toLocaleLowerCase())));
+    if (hit) return hit.year;
+  }
+  return pinYear(text, now);
+}
+
+/**
+ * Год для текстов пина (заголовок, описание) — по тому же жребию, что и надпись на картинке:
+ * Canvas хранит решение в styleParams.tags, Pinora — в styleParams.yearEnabled, ИИ-пины и фото — жребий по id.
+ * Пустая строка — год в текстах не упоминать.
+ */
+export function itemYear(
+  item: { id: string; engine: string; styleParams: unknown },
+  page: Parameters<typeof pinYearFor>[1],
+  recipeText: Recipe["text"],
+): string {
+  const sp = (item.styleParams && typeof item.styleParams === "object" ? item.styleParams : {}) as { tags?: { year?: boolean }; yearEnabled?: boolean };
+  const on = item.engine === "CANVAS" && sp.tags ? !!sp.tags.year
+    : item.engine === "PINORA" && typeof sp.yearEnabled === "boolean" ? sp.yearEnabled
+    : decideElements(item.id, recipeText).year;
+  return on ? pinYearFor(recipeText, page) : "";
+}
+
 const hostOf = (s: string) => s.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
 
 /** Имя сайта для пинов: заданное в настройках прогона, иначе домен (домен для ссылок, иначе хост сайта). */
