@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { analyticsUser, propertyWhere } from "@/lib/analytics/access";
+import { analyticsUser, propertyViewWhere } from "@/lib/analytics/access";
 import { realtimeActiveUsers } from "@/lib/analytics/google";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   if (!me) return new Response("Нет доступа", { status: 401 });
   const ids = (new URL(req.url).searchParams.get("ids") ?? "").split(",").filter(Boolean).slice(0, 60);
   if (!ids.length) return Response.json({});
-  const props = await prisma.gaProperty.findMany({ where: { id: { in: ids }, enabled: true, ...propertyWhere(me) }, include: { account: true } });
+  const props = await prisma.gaProperty.findMany({ where: { id: { in: ids }, enabled: true, ...(await propertyViewWhere(me)) }, include: { account: true } });
   const out: Record<string, number | null> = {};
   await Promise.all(props.map(async (p) => {
     out[p.id] = p.account.status === "OK" ? await realtimeActiveUsers(p.account, p.propertyId).catch(() => null) : null;

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { propertyWhere, requireAnalytics } from "@/lib/analytics/access";
+import { propertyViewWhere, requireAnalytics } from "@/lib/analytics/access";
 import { analyticsContext, one, prevLabel } from "@/lib/analytics/page";
 import { dims, hourHeatmap, pages, series, totals, PAGE_SORTS, type PageSort } from "@/lib/analytics/query";
 import { DIM_LABELS } from "@/lib/analytics/types";
@@ -33,7 +33,7 @@ export default async function SitePage({ params, searchParams }: { params: Promi
   const me = await requireAnalytics();
   const { id } = await params;
   const sp = await searchParams;
-  const site = await prisma.gaProperty.findFirst({ where: { id, ...propertyWhere(me) }, include: { groups: { include: { group: true } }, account: { select: { email: true, status: true } } } });
+  const site = await prisma.gaProperty.findFirst({ where: { id, ...(await propertyViewWhere(me)) }, include: { groups: { include: { group: true } }, account: { select: { email: true, status: true } } } });
   if (!site) notFound();
   const ctx = await analyticsContext(me, sp, site.timezone);
   const r = ctx.range;

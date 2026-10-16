@@ -182,9 +182,9 @@ export const publicToolWhere = { slug: { notIn: [...PRIVATE_TOOLS] } };
 export function canViewUsage(u: Actor): boolean {
   return u.role === "ADMIN" || u.perms.usage !== "none" || u.leadTeamIds.length > 0;
 }
-/** Суммы расхода других людей внутри инструментов (журналы, сводки): уровень «команда» и выше. */
+/** Суммы расхода других людей внутри инструментов (журналы, сводки): уровень «команда» и выше, а также лидер команды. */
 export function seesTeamCosts(u: Actor): boolean {
-  return u.role === "ADMIN" || u.perms.usage === "team" || u.perms.usage === "all";
+  return u.role === "ADMIN" || u.perms.usage === "team" || u.perms.usage === "all" || u.leadTeamIds.length > 0;
 }
 export function usageScope(u: Actor): TeamScope {
   if (u.role === "ADMIN" || u.perms.usage === "all") return "all";
