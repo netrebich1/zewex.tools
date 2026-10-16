@@ -1,12 +1,20 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
 import { randomToken } from "./crypto";
+import { canManageTeam as permCanManageTeam, canUseTool, isPrivateTool, parsePermissions, PRIVATE_TOOLS, resolvePermissions, type Permissions } from "./permissions";
+import { PATH_HEADER } from "./requestPath";
 
 export const SESSION_COOKIE = "zx_session";
 const SESSION_DAYS = 30;
+
+/** Логин для входа: почта или короткое имя. Хранится в `User.email` в нижнем регистре. */
+export const LOGIN_RE = /^[a-z0-9][a-z0-9._@+-]{2,63}$/;
+export function normalizeLogin(raw: string): string {
+  return raw.trim().toLowerCase();
+}
 
 export async function hashPassword(p: string) {
   return bcrypt.hash(p, 11);
@@ -46,35 +54,118 @@ export type CurrentUser = {
   name: string;
   role: "ADMIN" | "MEMBER";
   teamIds: string[];
-  /** Teams where the user has the LEAD role: they may manage that team's rules. */
+  /** Teams where the user has the LEAD role: they get team-level rights in that team on top of `perms`. */
   leadTeamIds: string[];
+  /** Effective permissions (admins get everything). See src/lib/permissions.ts. */
+  perms: Permissions;
+  /** Вошедший — главный админ (переключатели режима и вход в кабинеты). В чужом кабинете false: там это `impersonator`. */
+  superAdmin: boolean;
+  /** Главный админ смотрит портал как сотрудник: роль MEMBER, его команды и права из `User.permissions`. */
+  memberView: boolean;
+  /** Главный админ, который вошёл в этот кабинет. Есть только в его собственной сессии — вернуться может только он. */
+  impersonator: { id: string; name: string; email: string } | null;
+  /** Открытые этому человеку закрытые инструменты (`PRIVATE_TOOLS`): владелец — все, остальные — по `ToolAccess`. */
+  privateTools: string[];
 };
 
-export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
+/** Владелец портала (почта из ALLOWED_REGISTRATION_EMAILS) — главный админ всегда; остальным админам флаг ставит владелец. */
+export function isOwnerEmail(email: string): boolean {
+  return allowedRegistrationEmails().includes(email);
+}
+function isSuperAdmin(u: { role: string; email: string; superAdmin: boolean; isActive: boolean }): boolean {
+  return u.isActive && u.role === "ADMIN" && (u.superAdmin || isOwnerEmail(u.email));
+}
+
+/** Права главного админа в режиме сотрудника: свои сохранённые; если их не задавали — по умолчанию, но со всеми инструментами. */
+function memberViewPermissions(raw: unknown): Permissions {
+  return raw == null ? { ...parsePermissions(null), tools: "all" } : parsePermissions(raw);
+}
+
+const withTeams = { memberships: { select: { teamId: true, role: true } }, toolAccess: { select: { slug: true } } } as const;
+
+/** Закрытые инструменты человека: владелец портала видит все, остальные — только выданные (роль не важна). */
+function privateToolsOf(u: { email: string; toolAccess: { slug: string }[] }): string[] {
+  if (isOwnerEmail(u.email)) return [...PRIVATE_TOOLS];
+  return u.toolAccess.map((a) => a.slug).filter(isPrivateTool);
+}
+
+/** Сессия как есть: настоящий вошедший пользователь, без режима сотрудника и чужого кабинета. */
+export const realSession = cache(async () => {
   const jar = await cookies();
   const id = jar.get(SESSION_COOKIE)?.value;
   if (!id) return null;
-  const session = await prisma.session.findUnique({
-    where: { id },
-    include: { user: { include: { memberships: { select: { teamId: true, role: true } } } } },
-  });
+  const session = await prisma.session.findUnique({ where: { id }, include: { user: { include: withTeams } } });
   if (!session || session.expiresAt < new Date() || !session.user.isActive) return null;
-  const u = session.user;
+  return { ...session, superAdmin: isSuperAdmin(session.user) };
+});
+
+const sessionUser = cache(async (): Promise<CurrentUser | null> => {
+  const session = await realSession();
+  if (!session) return null;
+  const real = session.user;
+  // Чужой кабинет: только для главного админа и только в его сессии. Цель — активный пользователь, не главный админ.
+  if (session.superAdmin && session.actAsUserId && session.actAsUserId !== real.id) {
+    const t = await prisma.user.findUnique({ where: { id: session.actAsUserId }, include: withTeams });
+    if (t && t.isActive && !isSuperAdmin(t)) {
+      return {
+        id: t.id, email: t.email, name: t.name, role: t.role,
+        teamIds: t.memberships.map((m) => m.teamId),
+        leadTeamIds: t.memberships.filter((m) => m.role === "LEAD").map((m) => m.teamId),
+        perms: resolvePermissions(t.role, t.permissions),
+        superAdmin: false, memberView: false,
+        impersonator: { id: real.id, name: real.name, email: real.email },
+        privateTools: privateToolsOf(t),
+      };
+    }
+  }
+  const memberView = session.superAdmin && session.memberView;
   return {
-    id: u.id, email: u.email, name: u.name, role: u.role,
-    teamIds: u.memberships.map((m) => m.teamId),
-    leadTeamIds: u.memberships.filter((m) => m.role === "LEAD").map((m) => m.teamId),
+    id: real.id, email: real.email, name: real.name,
+    role: memberView ? "MEMBER" : real.role,
+    teamIds: real.memberships.map((m) => m.teamId),
+    leadTeamIds: real.memberships.filter((m) => m.role === "LEAD").map((m) => m.teamId),
+    perms: memberView ? memberViewPermissions(real.permissions) : resolvePermissions(real.role, real.permissions),
+    superAdmin: session.superAdmin, memberView, impersonator: null,
+    privateTools: privateToolsOf(real),
   };
 });
 
-/** Admins manage every team; a team lead manages only teams they lead. */
+/** Адреса инструментов: страницы — `Project.url`, API — `/api/<slug>`. Список меняется только сидом, держим минуту. */
+let toolPaths: { at: number; list: { slug: string; prefixes: string[] }[] } | null = null;
+async function toolForPath(pathname: string): Promise<string | null> {
+  if (!toolPaths || Date.now() - toolPaths.at > 60_000) {
+    const projects = await prisma.project.findMany({ select: { slug: true, url: true } });
+    toolPaths = {
+      at: Date.now(),
+      list: projects.map((p) => ({ slug: p.slug, prefixes: [`/api/${p.slug}`, ...(p.url && /^\/[^/]/.test(p.url) ? [p.url.replace(/\/+$/, "")] : [])] })),
+    };
+  }
+  return toolPaths.list.find((t) => t.prefixes.some((pre) => pathname === pre || pathname.startsWith(`${pre}/`)))?.slug ?? null;
+}
+
+/** Запрос идёт в инструмент, который сотруднику не выдан (см. `Permissions.tools`). Закрытые инструменты проверяются и у админа. */
+async function toolDenied(u: CurrentUser): Promise<boolean> {
+  const path = (await headers()).get(PATH_HEADER);
+  if (!path) return false;
+  const slug = await toolForPath(path);
+  return !!slug && !canUseTool(u, slug);
+}
+
+/** Текущий пользователь; null — не вошёл или запрос относится к инструменту, который ему не выдан. */
+export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
+  const u = await sessionUser();
+  return u && !(await toolDenied(u)) ? u : null;
+});
+
+/** Admins and users with the «all teams» right manage every team; «own teams» right and team leads manage theirs. */
 export function canManageTeam(u: CurrentUser, teamId: string): boolean {
-  return u.role === "ADMIN" || u.leadTeamIds.includes(teamId);
+  return permCanManageTeam(u, teamId);
 }
 
 export async function requireUser(): Promise<CurrentUser> {
-  const u = await getCurrentUser();
+  const u = await sessionUser();
   if (!u) redirect("/login");
+  if (await toolDenied(u)) redirect("/?denied=1");
   return u;
 }
 

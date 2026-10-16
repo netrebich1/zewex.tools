@@ -1,0 +1,2330 @@
+[
+ {
+  "family": "Playfair Display",
+  "weights": [
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Cormorant",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Lora",
+  "weights": [
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Bitter",
+  "weights": [
+   200,
+   300,
+   400,
+   600,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Prata",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Spectral",
+  "weights": [
+   200,
+   300,
+   400,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "PT Serif",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Alice",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "EB Garamond",
+  "weights": [
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Literata",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Unbounded",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Oswald",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Alumni Sans",
+  "weights": [
+   200,
+   400,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Russo One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Cuprum",
+  "weights": [
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Playfair Display SC",
+  "weights": [
+   400,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Montserrat",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Manrope",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Onest",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Inter",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Nunito",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Golos Text",
+  "weights": [
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Jost",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Raleway",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Commissioner",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Wix Madefor Display",
+  "weights": [
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Piazzolla",
+  "weights": [
+   300,
+   400,
+   600,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Comfortaa",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Baloo 2",
+  "weights": [
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Ruda",
+  "weights": [
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Podkova",
+  "weights": [
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Yeseva One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Caveat",
+  "weights": [
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Marck Script",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Bad Script",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Pacifico",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Anton",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Archivo Black",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Bebas Neue",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Fjalla One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Alfa Slab One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Archivo Narrow",
+  "weights": [
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Bowlby One SC",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Syne",
+  "weights": [
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Bricolage Grotesque",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Kanit",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Chivo",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Fira Sans Extra Condensed",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Space Grotesk",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Archivo",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Barlow Condensed",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Tenor Sans",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Cormorant Garamond",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Merriweather",
+  "weights": [
+   300,
+   400,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Source Serif 4",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Instrument Serif",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Caveat Brush",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Amatic SC",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Gloria Hallelujah",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin"
+  ]
+ },
+ {
+  "family": "Shantell Sans",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Roboto",
+  "weights": [
+   100,
+   300,
+   400,
+   500,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Roboto Condensed",
+  "weights": [
+   300,
+   400,
+   500,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Open Sans",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Source Sans 3",
+  "weights": [
+   200,
+   300,
+   400,
+   600,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Nunito Sans",
+  "weights": [
+   200,
+   300,
+   400,
+   600,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Fira Sans",
+  "weights": [
+   100,
+   300,
+   400,
+   500,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Fira Sans Condensed",
+  "weights": [
+   300,
+   400,
+   500,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "IBM Plex Sans",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "PT Sans Narrow",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Exo 2",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Ubuntu",
+  "weights": [
+   300,
+   400,
+   500,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Play",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Geologica",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Alegreya Sans",
+  "weights": [
+   300,
+   400,
+   500,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Merriweather Sans",
+  "weights": [
+   300,
+   400,
+   500,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Roboto Slab",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "IBM Plex Serif",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Noto Serif",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Alegreya",
+  "weights": [
+   400,
+   500,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Vollkorn",
+  "weights": [
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Tektur",
+  "weights": [
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Yanone Kaffeesatz",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik Mono One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Stalinist One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Kelly Slab",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "JetBrains Mono",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Roboto Mono",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "IBM Plex Mono",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Inter Tight",
+  "weights": [
+   200,
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Wix Madefor Text",
+  "weights": [
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Scada",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Kurale",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Ledger",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Marmelad",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Cormorant Infant",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Andika",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Forum",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Philosopher",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Oranienbaum",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Old Standard TT",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Bona Nova",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Cormorant SC",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Cormorant Unicase",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Noto Serif Display",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Playfair",
+  "weights": [
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Gabriela",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Orelega One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Viaoda Libre",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Kaisei Tokumin",
+  "weights": [
+   400,
+   500,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Kaisei Decol",
+  "weights": [
+   400,
+   500,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Zen Antique",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Brygada 1918",
+  "weights": [
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Roboto Serif",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "STIX Two Text",
+  "weights": [
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Alegreya SC",
+  "weights": [
+   400,
+   500,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Spectral SC",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Arsenal",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Mulish",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Sofia Sans",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Sofia Sans Condensed",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Sofia Sans Extra Condensed",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Ysabeau",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Montserrat Alternates",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Overpass",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Didact Gothic",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "IBM Plex Sans Condensed",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Noto Sans Display",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Advent Pro",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Jura",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "M PLUS Rounded 1c",
+  "weights": [
+   300,
+   400,
+   500,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Zen Maru Gothic",
+  "weights": [
+   300,
+   400,
+   500,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Balsamiq Sans",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Bellota",
+  "weights": [
+   300,
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Poiret One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "El Messiri",
+  "weights": [
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Days One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Dela Gothic One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Oi",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Seymour One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rampart One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Reggae One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Alumni Sans Collegiate One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik Dirt",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik Distressed",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik Wet Paint",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik Spray Paint",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik Marker Hatch",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Lobster",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Pattaya",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Great Vibes",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Comforter Brush",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Neucha",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Pangolin",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "PT Mono",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Martian Mono",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Ruslan Display",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Underdog",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Pixelify Sans",
+  "weights": [
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Handjet",
+  "weights": [
+   300,
+   400,
+   600,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Yuji Syuku",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Train One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Tinos",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Vollkorn SC",
+  "weights": [
+   400,
+   600,
+   700,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Alegreya Sans SC",
+  "weights": [
+   300,
+   400,
+   500,
+   700,
+   800
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "PT Serif Caption",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "PT Sans Caption",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Bona Nova SC",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Sofia Sans Semi Condensed",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700,
+   800,
+   900
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Gentium Book Plus",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik Scribble",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik Doodle Shadow",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik Bubbles",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik Vinyl",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik Glitch",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Rubik Burned",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Kablammo",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Prosto One",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Ubuntu Condensed",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Ubuntu Mono",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Fira Code",
+  "weights": [
+   300,
+   400,
+   500,
+   600,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Comforter",
+  "weights": [
+   400
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Bellota Text",
+  "weights": [
+   300,
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ },
+ {
+  "family": "Charis SIL",
+  "weights": [
+   400,
+   700
+  ],
+  "scripts": [
+   "latin",
+   "cyrillic"
+  ]
+ }
+]

@@ -69,6 +69,10 @@ model User {
   isActive      Boolean      @default(true)
   inviteToken   String?      @unique
   inviteExpires DateTime?
+  /// Права участника (JSON `Permissions` из src/lib/permissions.ts); null — права по умолчанию. Для ADMIN не учитываются.
+  permissions   Json?
+  /// Главный админ: переключается в режим сотрудника и входит в кабинет любого сотрудника. Владельцу портала (ALLOWED_REGISTRATION_EMAILS) не нужен — он главный всегда.
+  superAdmin    Boolean      @default(false)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   sessions      Session[]
@@ -76,12 +80,20 @@ model User {
   apiKeys       ApiKey[]
   bindings      Binding[]
   usage         UsageLog[]
+  siteViews     SiteAccessViewer[]
+  favorites     FavoriteTool[]
+  toolAccess    ToolAccess[]
+  gaAccounts    GaAccount[]
 }
 
 model Session {
   id        String   @id
   userId    String
   expiresAt DateTime
+  /// Главный админ смотрит портал как обычный сотрудник (свои команды и права из User.permissions).
+  memberView  Boolean @default(false)
+  /// Главный админ вошёл в кабинет этого пользователя; вернуться может только он сам (флаг живёт в его сессии).
+  actAsUserId String?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -96,6 +108,13 @@ model Team {
   createdAt   DateTime     @default(now())
   members     TeamMember[]
   bindings    Binding[]
+  pinSites    PinSite[]
+  artSites    ArtSite[]
+  artRuns     ArtRun[]
+  articles    Article[]
+  pinRuns     PinRun[]
+  siteShares  SiteAccessTeam[]
+  apiKeys     ApiKey[]
 }
 
 model TeamMember {
@@ -131,6 +150,18 @@ model Project {
   section     Section    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   slots       Slot[]
   usage       UsageLog[]
+  favorites   FavoriteTool[]
+}
+
+/// Избранные инструменты пользователя (звёздочка на главной)
+model FavoriteTool {
+  userId    String
+  projectId String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([userId, projectId])
 }
 
 model Slot {
@@ -140,6 +171,8 @@ model Slot {
   name        String
   capability  Capability
   description String?
+  /// Предпочтительные провайдеры через запятую (slug), если у слота несколько ключей разных провайдеров
+  preferProviders String?
   project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   bindings    Binding[]
   usage       UsageLog[]
@@ -159,6 +192,13 @@ model Provider {
   docsUrl        String?
   isActive       Boolean      @default(true)
   order          Int          @default(0)
+  /// Модель по умолчанию для текстовых слотов (modelId как в API провайдера)
+  defaultChatModel  String?
+  /// Модель по умолчанию для слотов картинок
+  defaultImageModel String?
+  /// Отдельный токен аккаунта для запроса баланса (laozhang: «System Token»), зашифрован
+  balanceTokenEnc  String?  @db.Text
+  balanceTokenHint String?
   models         Model[]
   apiKeys        ApiKey[]
   bindings       Binding[]
@@ -173,6 +213,7 @@ model Model {
   capabilities  String      @default("CHAT")
   inputPrice    Float?
   outputPrice   Float?
+  unitPrice     Float?
   contextLength Int?
   isEnabled     Boolean     @default(false)
   source        ModelSource @default(MANUAL)
@@ -191,8 +232,14 @@ model ApiKey {
   secretEnc       String     @db.Text
   secretHint      String
   ownerId         String?
+  /// Командный ключ: виден участникам команды и назначается только её правилам. Пусто и без владельца — общий ключ.
+  teamId          String?
   status          KeyStatus  @default(ACTIVE)
   monthlyLimitUsd Float?
+  /// Остаток на счёте, введённый вручную (провайдеры без баланса по API, например OpenAI), и момент ввода.
+  /// Текущий остаток = balanceUsd − расход по журналу через этот ключ с balanceAt (src/lib/balances.ts).
+  balanceUsd      Float?
+  balanceAt       DateTime?
   notes           String?
   lastCheckedAt   DateTime?
   lastCheckOk     Boolean?
@@ -200,8 +247,11 @@ model ApiKey {
   createdAt       DateTime   @default(now())
   provider        Provider   @relation(fields: [providerId], references: [id], onDelete: Restrict)
   owner           User?      @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  team            Team?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
   bindings        Binding[]
   usage           UsageLog[]
+
+  @@index([teamId])
 }
 
 model Binding {
@@ -243,6 +293,8 @@ model UsageLog {
   durationMs   Int          @default(0)
   ok           Boolean      @default(true)
   error        String?      @db.Text
+  teamId       String?
+  refId        String?
   createdAt    DateTime     @default(now())
   user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -254,4 +306,1416 @@ model UsageLog {
   @@index([createdAt])
   @@index([apiKeyId, createdAt])
   @@index([userId, createdAt])
+  @@index([refId])
+  @@index([teamId, createdAt])
+}
+
+// ───────────────────────────── Pinterest Pins ─────────────────────────────
+// Сервис массового создания пинов. Все модели с префиксом Pin. Данные команды
+// изолированы по teamId (портальная Team). Тяжёлую работу выполняет только
+// воркер (worker/), Next.js лишь ставит задачи и читает агрегаты.
+
+enum PinRunStatus {
+  DRAFT
+  QUEUED
+  RUNNING
+  WAITING_MODERATION
+  BLOCKED
+  STOPPED
+  DONE
+  FAILED
+}
+
+enum PinJobStatus {
+  PENDING
+  RUNNING
+  STOPPING
+  DONE
+  ERROR
+  STOPPED
+}
+
+enum PinEngine {
+  OPENAI
+  PINORA
+  CANVAS
+  PHOTO
+}
+
+enum PinItemStatus {
+  PENDING
+  READY
+  ERROR
+  POOL
+  REMOVED
+}
+
+enum PinModeration {
+  NONE
+  APPROVED
+  REJECTED
+}
+
+model PinSite {
+  id             String   @id @default(uuid()) @db.Char(36)
+  teamId         String
+  name           String
+  slug           String
+  niche          String   @default("")
+  recipe         Json
+  legacy         Json?
+  wpConnectionId String?  @db.Char(36)
+  isActive       Boolean  @default(true)
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  team           Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  boards         PinBoard[]
+  sets           PinSet[]
+  runs           PinRun[]
+  exclusions     PinStyleExclusion[]
+
+  @@unique([teamId, slug])
+  @@index([teamId])
+}
+
+model PinBoard {
+  id        String  @id @default(uuid()) @db.Char(36)
+  siteId    String  @db.Char(36)
+  name      String
+  sortOrder Int     @default(0)
+  site      PinSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId])
+}
+
+model PinSet {
+  id        String   @id @default(uuid()) @db.Char(36)
+  siteId    String   @db.Char(36)
+  name      String
+  topic     String   @default("")
+  setKind   String   @default("ai")
+  styleIds  Json
+  pinCount  Int      @default(0)
+  meta      Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  site      PinSite  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId])
+}
+
+model PinCanvasStyle {
+  id          String   @id @db.VarChar(160)
+  libraryId   String   @default("other")
+  name        String
+  category    String   @default("")
+  data        Json
+  isActive    Boolean  @default(true)
+  isApproved  Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  previewPath String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([libraryId, isActive])
+}
+
+model PinPinoraTheme {
+  id           String @id @default(uuid()) @db.Char(36)
+  name         String @unique
+  displayName  String
+  instructions Json
+  learnedRules Json
+  sortOrder    Int    @default(0)
+}
+
+model PinExample {
+  id        String   @id @default(uuid()) @db.Char(36)
+  niche     String
+  styleId   String?
+  topic     String?
+  sourceUrl String   @default("") @db.VarChar(2000)
+  imagePath String   @default("")
+  caption   String?  @db.Text
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([styleId])
+  @@index([niche])
+}
+
+model PinStyleOverride {
+  id          String   @id @default(uuid()) @db.Char(36)
+  teamId      String
+  siteId      String?  @db.Char(36)
+  styleId     String
+  instruction String   @db.Text
+  isActive    Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+
+  @@index([teamId, styleId])
+}
+
+model PinStyleExclusion {
+  id        String  @id @default(uuid()) @db.Char(36)
+  teamId    String
+  siteId    String  @db.Char(36)
+  topic     String  @default("")
+  styleId   String
+  kind      String  @default("ai")
+  styleName String  @default("")
+  site      PinSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, topic, styleId])
+}
+
+/// Доступ к сайту (WordPress и т.п.): общая сущность портала, назначается сервисам и командам
+model SiteAccess {
+  id                  String    @id @default(uuid()) @db.Char(36)
+  teamId              String
+  kind                String    @default("wordpress")
+  name                String
+  baseUrl             String
+  username            String
+  appPasswordEnc      String    @db.Text
+  mediaBaseUrl        String?
+  mediaUsername       String?
+  mediaAppPasswordEnc String?   @db.Text
+  mediaDomain         String?
+  linkDomain          String?
+  /// Сервисы (slug проектов), которым доступен этот сайт; пусто — всем
+  projects            Json?
+  notes               String?
+  lastCheckedAt       DateTime?
+  lastCheckOk         Boolean?
+  lastCheckNote       String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  /// Дополнительные команды, которым доступен сайт (teamId — команда-владелец)
+  teams               SiteAccessTeam[]
+  /// Если не пусто — сайт видят только эти сотрудники (плюс админы и лидеры команды-владельца)
+  viewers             SiteAccessViewer[]
+  artSites            ArtSite[]
+
+  @@index([teamId])
+  @@map("PinWpConnection")
+}
+
+model SiteAccessTeam {
+  accessId String     @db.Char(36)
+  teamId   String
+  access   SiteAccess @relation(fields: [accessId], references: [id], onDelete: Cascade)
+  team     Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([accessId, teamId])
+  @@index([teamId])
+}
+
+model SiteAccessViewer {
+  accessId String     @db.Char(36)
+  userId   String
+  access   SiteAccess @relation(fields: [accessId], references: [id], onDelete: Cascade)
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([accessId, userId])
+  @@index([userId])
+}
+
+model PinRun {
+  id            String       @id @default(uuid()) @db.Char(36)
+  teamId        String
+  siteId        String?      @db.Char(36)
+  createdById   String?
+  name          String       @default("")
+  autopilot     Boolean      @default(true)
+  stepByStep    Boolean      @default(false)
+  status        PinRunStatus @default(DRAFT)
+  stage         String       @default("pages")
+  settings      Json
+  stopRequested Boolean      @default(false)
+  blockedReason String?      @db.Text
+  moderatedAt   DateTime?
+  costUsd       Float        @default(0)
+  budgetUsd     Float?
+  imagesPurgedAt DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  team          Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  site          PinSite?     @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  pages         PinRunPage[]
+  items         PinRunItem[]
+  jobs          PinJob[]
+
+  @@index([teamId, status])
+  @@index([siteId, createdAt])
+}
+
+model PinRunPage {
+  id                String    @id @default(uuid()) @db.Char(36)
+  runId             String    @db.Char(36)
+  url               String    @db.VarChar(1000)
+  finalUrl          String?   @db.VarChar(1000)
+  pageTitle         String    @default("") @db.Text
+  h1                String    @default("") @db.Text
+  keyword           String    @default("")
+  boards            Json
+  topic             String    @default("")
+  niche             String    @default("")
+  season            String    @default("")
+  seasonWord        String    @default("")
+  imageCount        Int       @default(0)
+  sectionImageCount Int       @default(0)
+  pinQuota          Int?
+  canvasQuota       Int?
+  pinSetId          String?   @db.Char(36)
+  canvasPinSetId    String?   @db.Char(36)
+  canvasHooks       Json?
+  featuredImage     String?   @db.VarChar(1000)
+  status            String    @default("pending")
+  error             String?   @db.Text
+  metaAttempts      Int       @default(0)
+  photosAt          DateTime?
+  plannedAt         DateTime?
+  sortOrder         Int       @default(0)
+  run               PinRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  items             PinRunItem[]
+
+  @@index([runId, sortOrder])
+}
+
+model PinRunItem {
+  id              String        @id @default(uuid()) @db.Char(36)
+  runId           String        @db.Char(36)
+  pageId          String        @db.Char(36)
+  siteId          String?       @db.Char(36)
+  kind            String        @default("pin")
+  engine          PinEngine
+  styleId         String?
+  pinType         String        @default("")
+  styleParams     Json?
+  prompt          String        @default("") @db.Text
+  pinFormat       String        @default("2:3")
+  sourceImageUrl  String        @default("") @db.VarChar(1000)
+  sourceImagePath String        @default("")
+  imagePath       String        @default("")
+  thumbPath       String        @default("")
+  imageW          Int?
+  imageH          Int?
+  wpMediaUrl      String        @default("") @db.VarChar(1000)
+  wpMediaId       String?
+  title           String        @default("") @db.VarChar(255)
+  description     String        @default("") @db.Text
+  altText         String        @default("") @db.VarChar(600)
+  targetLink      String        @default("") @db.VarChar(1000)
+  boardName       String        @default("")
+  scheduledAt     DateTime?
+  scheduleFixed   Boolean       @default(false)
+  status          PinItemStatus @default(PENDING)
+  moderation      PinModeration @default(NONE)
+  rejectReason    String?
+  /// Пост-модерация: одобренный пин просмотрен повторно (очередь пост-модерации его больше не показывает)
+  postReviewedAt  DateTime?
+  error           String?       @db.Text
+  errorStage      String?
+  errorKind       String?
+  attempts        Int           @default(0)
+  nextRetryAt     DateTime?
+  sortOrder       Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  run             PinRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  page            PinRunPage    @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([runId, status])
+  @@index([runId, pageId])
+  @@index([runId, engine])
+  @@index([runId, moderation])
+  @@index([siteId, scheduledAt])
+  @@index([runId, sourceImageUrl(length: 191)])
+}
+
+model PinJob {
+  id         String       @id @default(uuid()) @db.Char(36)
+  runId      String       @db.Char(36)
+  teamId     String
+  stage      String
+  status     PinJobStatus @default(PENDING)
+  priority   Int          @default(0)
+  options    Json?
+  done       Int          @default(0)
+  total      Int          @default(0)
+  label      String       @default("")
+  attempts   Int          @default(0)
+  nextRunAt  DateTime?
+  leaseUntil DateTime?
+  workerId   String?
+  error      String?      @db.Text
+  createdAt  DateTime     @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  run        PinRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([status, priority, createdAt])
+  @@index([runId, status])
+  @@index([teamId, status])
+}
+
+model PinExportLog {
+  id         String   @id @default(cuid())
+  teamId     String
+  siteId     String   @db.Char(36)
+  day        String
+  fileName   String
+  rows       Int      @default(0)
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  @@index([teamId, day])
+}
+
+model PinUrlHistory {
+  id        String   @id @default(cuid())
+  siteId    String   @db.Char(36)
+  url       String   @db.VarChar(1000)
+  runId     String?  @db.Char(36)
+  createdAt DateTime @default(now())
+
+  @@index([siteId, url(length: 191)])
+}
+
+// ───────────────────────────── Подбор доменов (Gambling) ─────────────────────────────
+// Бренды × приставки (3 уровня приоритета) × зоны → проверка свободности (RDAP + DNS)
+// в воркере; выбор вручную или ИИ; выгрузка CSV/XLSX. Данные видны команде автора.
+
+enum DomainRunStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  STOPPED
+}
+
+model DomainRun {
+  id              String          @id @default(uuid()) @db.Char(36)
+  teamId          String?
+  createdById     String
+  name            String          @default("")
+  status          DomainRunStatus @default(QUEUED)
+  /// Все настройки подбора (бренды, зоны, уровни приставок, страна, анализ выдачи)
+  settings        Json
+  /// Ход проверки: текущий бренд, сколько брендов готово, сколько доменов проверено
+  progress        Json?
+  totalGenerated  Int             @default(0)
+  totalChecked    Int             @default(0)
+  totalAvailable  Int             @default(0)
+  /// Бренды, для которых не набралось нужного числа свободных доменов
+  incompleteBrands Json?
+  stopRequested   Boolean         @default(false)
+  error           String?         @db.Text
+  workerId        String?
+  leaseUntil      DateTime?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  domains         DomainCandidate[]
+
+  @@index([teamId, createdAt])
+  @@index([createdById, createdAt])
+  @@index([status])
+}
+
+model DomainCandidate {
+  id        String    @id @default(uuid()) @db.Char(36)
+  runId     String    @db.Char(36)
+  brand     String
+  domain    String
+  tld       String
+  suffix    String?
+  /// Уровень приставки: 1–3; 0 — без приставки
+  tier      Int       @default(0)
+  pattern   String    @default("brand")
+  /// available | taken | unknown
+  status    String    @default("unknown")
+  /// rdap | dns | none
+  source    String    @default("none")
+  checkedAt DateTime?
+  selected  Boolean   @default(false)
+  aiScore   Int?
+  aiReason  String?
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  run       DomainRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, domain])
+  @@index([runId, brand, sortOrder])
+  @@index([runId, status])
+}
+
+// ───────────────────────────── Pinterest Articles ─────────────────────────────
+// Сервис статей-подборок под Pinterest (перенос Zewex Pinterest Articles).
+// Статья — строка очереди: воркер захватывает её по lease и ведёт по этапам
+// (src/lib/articles/stages.ts) до состояния ожидания или конца. Все модели с префиксом Art.
+
+enum ArtFormat {
+  REAL_PHOTO
+  GENERATED_PHOTO
+}
+
+enum ArtStatus {
+  PENDING
+  RUNNING
+  PHOTO_REVIEW
+  INSUFFICIENT_PHOTOS
+  WAITING_FOR_PHOTOS
+  REVIEW_PENDING
+  NEEDS_REWORK
+  PUBLISH_QUEUED
+  PUBLISHING
+  COMPLETED
+  PUBLISH_ERROR
+  FAILED
+  PAUSED
+  STOPPED
+}
+
+/// Ниша или подниша (parentCode): outfits, hair, nails/manicure/pedicure, interior/decor/outdoor, blog
+model ArtNiche {
+  code       String   @id
+  name       String
+  emoji      String   @default("📄")
+  sortOrder  Int      @default(0)
+  isActive   Boolean  @default(true)
+  parentCode String?
+  profile    ArtNicheProfile?
+}
+
+/// Профиль ниши: словари поиска, обязательные визуальные признаки, оси разнообразия, подсказки для текста (JSON)
+model ArtNicheProfile {
+  nicheCode String   @id
+  label     String
+  /// {attributes, required_visuals, exclusive_terms, diversity_axes, search_templates, constraint_specs, concept_fields, fact_block}
+  profile   Json
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+  niche     ArtNiche @relation(fields: [nicheCode], references: [code], onDelete: Cascade)
+}
+
+/// Набор промтов на связку ниша + подниша + формат (старые UUID сохранены)
+model ArtPromptSet {
+  id           String      @id @db.Char(36)
+  name         String
+  description  String?     @db.Text
+  nicheCode    String
+  subnicheCode String?
+  format       ArtFormat
+  isActive     Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  prompts      ArtPrompt[]
+  recipes      ArtRecipe[]
+
+  @@index([nicheCode, format, isActive])
+}
+
+/// Промт шага (stageKey: rp_photo_search, rp_photo_rate, rp_photo_plan, rp_section_plan, stage_2, stage_5_scene_planner,
+/// stage_6_image_seo, stage_7_writer_system, stage_7_writer_user, stage_7_intro_outro). В одном наборе может быть несколько вариантов шага.
+model ArtPrompt {
+  id        String             @id @db.Char(36)
+  setId     String             @db.Char(36)
+  stageKey  String
+  name      String
+  system    String?            @db.LongText
+  text      String             @db.LongText
+  /// Справочно (модель задаётся в рецепте)
+  model     String?
+  isActive  Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  set       ArtPromptSet       @relation(fields: [setId], references: [id], onDelete: Cascade)
+  versions  ArtPromptVersion[]
+
+  @@index([setId, stageKey, createdAt])
+}
+
+/// История правок промта (пишется при каждом сохранении в UI)
+model ArtPromptVersion {
+  id            String    @id @default(uuid()) @db.Char(36)
+  promptId      String    @db.Char(36)
+  version       Int
+  system        String?   @db.LongText
+  text          String    @db.LongText
+  changeSummary String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  prompt        ArtPrompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@unique([promptId, version])
+}
+
+/// Рецепт статьи (= сценарий оригинала): ниша, формат, набор промтов, модели и варианты по шагам, настройки поиска/текста/картинок/публикации
+model ArtRecipe {
+  id             String        @id @db.Char(36)
+  number         Int?
+  name           String
+  description    String?       @db.Text
+  nicheCode      String
+  subnicheCode   String?
+  format         ArtFormat
+  promptSetId    String?       @db.Char(36)
+  isActive       Boolean       @default(true)
+  isDefault      Boolean       @default(false)
+  /// {stage_key: prompt_id}
+  stagePromptIds Json
+  /// {stage_key: "provider:model"}
+  stageModels    Json
+  /// {batchSize, personality, wordCount, schemaEnabled}
+  text           Json
+  /// {provider, model, quality, size, mode, groupId, promptId, promptWriterModel}
+  images         Json
+  /// PhotoSearchConfig: source, country, language, freshness, license, orientation[], minWidth, minHeight, minScore, candidatesTotal, ratingBatchSize, includeDomains, excludeDomains, imageType, uniqueMode, writerMode, captionMode, captionTemplate, querySuffix
+  photoSearch    Json
+  /// {mode: auto | moderate_first | publish_then_edit, seoYearUrlPercent}
+  publish        Json
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  promptSet      ArtPromptSet? @relation(fields: [promptSetId], references: [id], onDelete: SetNull)
+  sites          ArtSite[]
+  runs           ArtRun[]
+  articles       Article[]
+
+  @@index([nicheCode, format, isActive])
+}
+
+/// Сайт в сервисе статей: привязка к доступу WordPress (SiteAccess), ниша, рецепт по умолчанию, автозапуск и лимиты (settings)
+model ArtSite {
+  id              String      @id @default(uuid()) @db.Char(36)
+  teamId          String
+  accessId        String?     @db.Char(36)
+  name            String
+  slug            String
+  isActive        Boolean     @default(true)
+  nicheCode       String?
+  defaultRecipeId String?     @db.Char(36)
+  /// ArtSiteSettings (src/lib/articles/types.ts): фото по умолчанию, модерация фото до текста, публикация, категории WP и правила,
+  /// автозапуск (photoEnabled/photoLimit/writingEnabled/writingLimit/publishLimit/autoRestart), ИИ-модерация, поиск по умолчанию
+  settings        Json
+  /// Кэш категорий WordPress [{id, name, slug, parent}]
+  wpCategories    Json?
+  sortOrder       Int         @default(0)
+  createdById     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  team            Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  access          SiteAccess? @relation(fields: [accessId], references: [id], onDelete: SetNull)
+  defaultRecipe   ArtRecipe?  @relation(fields: [defaultRecipeId], references: [id], onDelete: SetNull)
+  runs            ArtRun[]
+  articles        Article[]
+  aiRuns          ArtAiModerationRun[]
+
+  @@unique([teamId, slug])
+  @@index([teamId])
+  @@index([accessId])
+}
+
+/// Запуск (партия ключей на один сайт с одним рецептом и параметрами)
+model ArtRun {
+  id          String     @id @default(uuid()) @db.Char(36)
+  teamId      String
+  siteId      String     @db.Char(36)
+  recipeId    String?    @db.Char(36)
+  createdById String?
+  name        String     @default("")
+  /// ArtRunSettings: photoCount {mode: exact|range, min, max}, photoReview, publishMode, search overrides, yearInUrl, testLabel
+  settings    Json
+  createdAt   DateTime   @default(now())
+  team        Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  site        ArtSite    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  recipe      ArtRecipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  articles    Article[]
+
+  @@index([siteId, createdAt])
+  @@index([teamId, createdAt])
+}
+
+/// Статья: ключ, состояние конвейера, план, тексты, мета, публикация. Одновременно строка очереди воркера.
+model Article {
+  id                 String      @id @default(uuid()) @db.Char(36)
+  teamId             String
+  siteId             String      @db.Char(36)
+  runId              String?     @db.Char(36)
+  recipeId           String?     @db.Char(36)
+  createdById        String?
+  keyword            String
+  seoKeyword         String      @default("")
+  focusKeyword       String      @default("")
+  keywordRu          String      @default("")
+  format             ArtFormat   @default(REAL_PHOTO)
+  /// Сколько фото/секций нужно (из запуска: точное или уже выбранное из диапазона)
+  photoCount         Int         @default(20)
+  /// Модерация фото человеком/ИИ до написания текста (режим 2 оригинала)
+  photoReview        Boolean     @default(true)
+  /// auto | moderate_first | publish_then_edit
+  publishMode        String      @default("moderate_first")
+  /// Снимок рецепта и настроек запуска на момент старта (ArticleRecipeSnapshot) — его исполняет воркер
+  recipe             Json
+  status             ArtStatus   @default(PENDING)
+  /// Текущий этап реестра (search, filter, …, publish, done)
+  stage              String      @default("search")
+  /// Данные этапов: кольца добора, план, контракт темы, тренд-бриф и т.п. (ArticleCursor)
+  cursor             Json?
+  /// Атрибуты ключа и контракт темы (parse-keyword + topicContract)
+  facts              Json?
+  /// План статьи: h1, title, metaDescription, slug, порядок фото, план вступления (ArticlePlan)
+  plan               Json?
+  introHtml          String?     @db.MediumText
+  outroHtml          String?     @db.MediumText
+  html               String?     @db.LongText
+  h1                 String      @default("")
+  metaTitle          String      @default("")
+  metaDescription    String      @default("") @db.Text
+  slug               String      @default("")
+  wpPostId           Int?
+  wpUrl              String?     @db.VarChar(1000)
+  wpCategoryId       Int?
+  wpStatus           String?
+  publishAttempts    Int         @default(0)
+  error              String?     @db.Text
+  errorStage         String?
+  note               String?     @db.Text
+  /// Причина «Мало фото» и кто поставил
+  insufficientReason String?     @db.Text
+  insufficientById   String?
+  insufficientByAi   Boolean     @default(false)
+  attempts           Int         @default(0)
+  priority           Int         @default(0)
+  nextRunAt          DateTime?
+  leaseUntil         DateTime?
+  workerId           String?
+  stopRequested      Boolean     @default(false)
+  /// Закрепление за модератором (TTL 15 мин)
+  claimedById        String?
+  claimedAt          DateTime?
+  /// Запуск ИИ-модерации, который держит статью (оригинал: захват на 30 дней)
+  aiRunId            String?     @db.Char(36)
+  moderatedById      String?
+  moderatedAt        DateTime?
+  reviewedById       String?
+  reviewedAt         DateTime?
+  costUsd            Float       @default(0)
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  publishedAt        DateTime?
+  purgedAt           DateTime?
+  /// Строка Google Таблицы, из которой пришла статья (вкладка = домен сайта), и состояние обратной записи отчёта: ok | error
+  sheetRow           Int?
+  sheetTab           String?
+  sheetSyncState     String?
+  sheetSyncError     String?     @db.Text
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  team               Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  site               ArtSite     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  run                ArtRun?     @relation(fields: [runId], references: [id], onDelete: SetNull)
+  recipeRef          ArtRecipe?  @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  candidates         ArtPhotoCandidate[]
+  photos             ArtPhoto[]
+  sections           ArtSection[]
+  stageLogs          ArtStageLog[]
+  events             ArtModerationEvent[]
+  errors             ArtError[]
+  aiResults          ArtAiModerationResult[]
+
+  @@index([siteId, status])
+  @@index([aiRunId])
+  @@index([teamId, status])
+  @@index([status, priority, createdAt])
+  @@index([runId])
+  @@index([siteId, keyword])
+  @@index([claimedById])
+  @@index([siteId, sheetRow])
+}
+
+/// Кандидат фото (все найденные, включая отбракованные с причиной)
+model ArtPhotoCandidate {
+  id            String   @id @default(uuid()) @db.Char(36)
+  articleId     String   @db.Char(36)
+  /// URL файла картинки (source_url DataForSEO / original SerpApi)
+  url           String   @db.VarChar(2000)
+  /// Страница, где найдено фото, и её домен
+  pageUrl       String   @default("") @db.VarChar(2000)
+  domain        String   @default("")
+  thumbUrl      String   @default("") @db.VarChar(2000)
+  title         String   @default("") @db.Text
+  searchQuery   String   @default("")
+  /// Позиция в выдаче и номер вариации запроса
+  position      Int      @default(0)
+  queryIndex    Int      @default(0)
+  width         Int?
+  height        Int?
+  bytes         Int?
+  sha256        String?
+  phash         String?
+  /// Локальный путь к скачанному оригиналу и миниатюре (storage/articles/<id>/cand/…)
+  path          String   @default("")
+  thumbPath     String   @default("")
+  /// found | downloaded | rejected | rated | keep | selected | reserve
+  status        String   @default("found")
+  rejectStage   String?
+  rejectReason  String?  @db.Text
+  techScore     Int?
+  techDetails   Json?
+  beautyRank    Int?
+  aiScore       Float?
+  /// {virality, trend, composition, framing, lighting, …} и прочие поля vision-оценки
+  aiBreakdown   Json?
+  aiFacts       Json?
+  aiDescription String?  @db.Text
+  relevance     Float?
+  audience      Json?
+  rankScore     Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  article       Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId, status])
+  @@index([articleId, rankScore])
+  @@index([sha256])
+}
+
+/// Фото статьи (отобранные, по позициям; одна секция = одно фото)
+model ArtPhoto {
+  id            String   @id @default(uuid()) @db.Char(36)
+  articleId     String   @db.Char(36)
+  candidateId   String?  @db.Char(36)
+  position      Int
+  path          String   @default("")
+  thumbPath     String   @default("")
+  publicUrl     String   @default("") @db.VarChar(1000)
+  sourceUrl     String   @default("") @db.VarChar(2000)
+  sourcePageUrl String   @default("") @db.VarChar(2000)
+  sourceDomain  String   @default("")
+  width         Int?
+  height        Int?
+  sha256        String?
+  phash         String?
+  altText       String   @default("") @db.Text
+  caption       String   @default("") @db.Text
+  fileName      String   @default("")
+  facts         Json?
+  description   String?  @db.Text
+  aiScore       Float?
+  wpMediaId     Int?
+  wpUrl         String?  @db.VarChar(1000)
+  /// Исключено модератором (остаётся для истории и undo)
+  excluded      Boolean  @default(false)
+  excludedById  String?
+  excludedByAi  Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  article       Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId, position])
+  @@index([sha256])
+}
+
+/// Секция статьи (0 — вступление, 9990 — заключение, 1..n — по фото)
+model ArtSection {
+  id        String   @id @default(uuid()) @db.Char(36)
+  articleId String   @db.Char(36)
+  position  Int
+  photoId   String?  @db.Char(36)
+  heading   String   @default("") @db.Text
+  html      String?  @db.MediumText
+  /// Рецепт секции из плана (угол, объём, список, уход, честный минус)
+  brief     Json?
+  wordCount Int      @default(0)
+  /// planned | written | failed
+  status    String   @default("planned")
+  error     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, position])
+}
+
+/// Отпечатки использованных фото: уникальность между сайтами и статьями (не удаляются при очистке)
+model ArtPhotoFingerprint {
+  id        String   @id @default(uuid()) @db.Char(36)
+  teamId    String
+  siteId    String   @db.Char(36)
+  articleId String?  @db.Char(36)
+  sha256    String?
+  phash     String?
+  sourceUrl String   @default("") @db.VarChar(2000)
+  createdAt DateTime @default(now())
+
+  @@index([sha256])
+  @@index([phash])
+  @@index([teamId, createdAt])
+}
+
+/// Действия модерации (человек или ИИ) — для статистики сотрудников и undo
+model ArtModerationEvent {
+  id        String   @id @default(uuid()) @db.Char(36)
+  articleId String   @db.Char(36)
+  userId    String?
+  byAi      Boolean  @default(false)
+  /// approve | exclude | restore | add | reorder | topup | insufficient | skip | review_approve | review_rework | publish
+  action    String
+  payload   Json?
+  createdAt DateTime @default(now())
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId, createdAt])
+  @@index([userId, createdAt])
+}
+
+/// Журнал этапов статьи: таймлайн карточки статьи
+model ArtStageLog {
+  id         String    @id @default(uuid()) @db.Char(36)
+  articleId  String    @db.Char(36)
+  stage      String
+  /// running | done | error | skipped
+  status     String    @default("running")
+  summary    String?   @db.Text
+  error      String?   @db.Text
+  details    Json?
+  costUsd    Float     @default(0)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  article    Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId, startedAt])
+}
+
+/// Ошибки конвейера: группировка по сигнатуре, «устранено»
+model ArtError {
+  id         String    @id @default(uuid()) @db.Char(36)
+  teamId     String
+  siteId     String?   @db.Char(36)
+  articleId  String?   @db.Char(36)
+  stage      String
+  message    String    @db.Text
+  signature  String
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  article    Article?  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, createdAt])
+  @@index([signature, createdAt])
+  @@index([siteId, createdAt])
+}
+
+/// Глобальные настройки автозапуска сервиса статей (singleton, id = "main"): мастер-выключатели и потолки
+model ArtSettings {
+  id               String   @id @default("main")
+  /// Мастер-выключатели: при false цепочка не запускается ни на одном сайте
+  photoMaster      Boolean  @default(true)
+  writingMaster    Boolean  @default(true)
+  publishMaster    Boolean  @default(true)
+  aiModMaster      Boolean  @default(true)
+  /// Потолок одновременных статей на всех сайтах (0 — только ARTICLES_WORKER_CONCURRENCY)
+  maxConcurrent    Int      @default(0)
+  /// Пачка автозапуска ИИ-модерации по умолчанию
+  aiModAutoBatch   Int      @default(20)
+  /// Google Таблицы: JSON-ключ сервисного аккаунта (зашифрован) и его e-mail — ему выдают доступ «Редактор» к таблице
+  sheetsKeyEnc     String?  @db.Text
+  sheetsEmail      String?
+  updatedAt        DateTime @updatedAt
+}
+
+/// Запуск ИИ-модерации фото (оригинал: ai_moderation_runs)
+model ArtAiModerationRun {
+  id           String   @id @default(uuid()) @db.Char(36)
+  teamId       String
+  siteId       String   @db.Char(36)
+  /// auto — решения применяются; test — только предложения
+  mode         String   @default("auto")
+  /// mix3 (по умолчанию) | mix2 | legacy
+  model        String   @default("mix3")
+  concurrency  Int      @default(5)
+  /// running | stopped | done | failed
+  status       String   @default("running")
+  /// auto — автозапуск по сайту, manual — кнопка
+  source       String   @default("manual")
+  total        Int      @default(0)
+  processed    Int      @default(0)
+  applied      Int      @default(0)
+  costUsd      Float    @default(0)
+  startedById  String?
+  heartbeatAt  DateTime?
+  error        String?  @db.Text
+  createdAt    DateTime @default(now())
+  finishedAt   DateTime?
+  site         ArtSite  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  results      ArtAiModerationResult[]
+
+  @@index([siteId, status])
+  @@index([teamId, createdAt])
+}
+
+/// Решение ИИ по статье (оригинал: ai_moderation_results)
+model ArtAiModerationResult {
+  id           String   @id @default(uuid()) @db.Char(36)
+  runId        String   @db.Char(36)
+  articleId    String   @db.Char(36)
+  /// processing | proposed | applying | applied | sent_to_human | excluded | failed | superseded
+  status       String   @default("processing")
+  /// approve | human | insufficient
+  decision     String?
+  confidence   Int?
+  photosBefore Int      @default(0)
+  photosAfter  Int      @default(0)
+  /// id ArtPhoto, которые были в статье до решения
+  originalIds  Json?
+  /// [{photoId, reason}]
+  removed      Json?
+  /// [{candidateId, reason}]
+  added        Json?
+  /// Итоговый порядок id (фото и кандидаты)
+  finalOrder   Json?
+  /// Подробности проходов: lite/flash-мнения, споры, pass_costs
+  review       Json?
+  summary      String?  @db.Text
+  error        String?  @db.Text
+  costUsd      Float    @default(0)
+  resolvedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  run          ArtAiModerationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  article      Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, articleId])
+  @@index([articleId, createdAt])
+  @@index([runId, status])
+}
+
+/* ---------- Закрытые инструменты ---------- */
+
+/// Доступ к закрытому инструменту (`PRIVATE_TOOLS` в src/lib/permissions.ts). Роль не важна: админ без записи инструмент не видит.
+/// Владелец портала видит закрытые инструменты всегда; выдаёт доступ только он (страница пользователя).
+model ToolAccess {
+  userId      String
+  slug        String
+  grantedById String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, slug])
+}
+
+/* ---------- Финансы Wexora (проект `finance`, закрытый) ---------- */
+
+enum FinOpType {
+  EXPENSE
+  INCOME
+  SETTLEMENT
+}
+
+enum FinCategoryKind {
+  EXPENSE
+  INCOME
+  ANY
+}
+
+/// Строка отчёта P&L, к которой относится категория. Из неё же выводится `FinCategory.kind` (где категорию предлагать).
+enum FinPnlLine {
+  /// Выручка
+  REVENUE
+  /// Прямые расходы (себестоимость): то, без чего нет выручки направления — контент, ИИ, домены, фриланс
+  COGS
+  /// Операционные расходы: сервисы, серверы, реклама, общие траты
+  OPEX
+  /// Налоги, комиссии банков и бирж
+  TAX
+  /// Прочее: вне операционной деятельности, курсовые разницы, разовое
+  OTHER
+}
+
+/// Направление бизнеса: два уровня (Пинтерест → Кулинария).
+model FinDirection {
+  id       String         @id @default(cuid())
+  parentId String?
+  name     String
+  order    Int            @default(0)
+  archived Boolean        @default(false)
+  parent   FinDirection?  @relation("FinDirTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children FinDirection[] @relation("FinDirTree")
+  ops      FinOp[]
+}
+
+model FinCategory {
+  id       String          @id @default(cuid())
+  name     String
+  kind     FinCategoryKind @default(ANY)
+  pnl      FinPnlLine      @default(OPEX)
+  order    Int             @default(0)
+  archived Boolean         @default(false)
+  ops      FinOp[]
+  counterparties FinCounterpartyCategory[]
+}
+
+/// Контрагент: кому платим (Ahrefs, Hetzner, фрилансер) или от кого получаем. Может быть в нескольких категориях.
+model FinCounterparty {
+  id         String   @id @default(cuid())
+  name       String   @unique @db.VarChar(120)
+  archived   Boolean  @default(false)
+  createdById String?
+  createdAt  DateTime @default(now())
+  ops        FinOp[]
+  categories FinCounterpartyCategory[]
+}
+
+model FinCounterpartyCategory {
+  counterpartyId String
+  categoryId     String
+  counterparty   FinCounterparty @relation(fields: [counterpartyId], references: [id], onDelete: Cascade)
+  category       FinCategory     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([counterpartyId, categoryId])
+  @@index([categoryId])
+}
+
+/// Партнёр (кто платит и получает деньги). Доли в процентах, по умолчанию 50/50.
+model FinPartner {
+  id       String  @id @default(cuid())
+  name     String
+  userId   String? @unique
+  sharePct Decimal @default(50) @db.Decimal(6, 2)
+  order    Int     @default(0)
+  ops      FinOp[] @relation("FinOpPartner")
+  received FinOp[] @relation("FinOpToPartner")
+}
+
+/// Операция. Сумма в валюте операции + курс к EUR на дату; `amountEur` фиксируется при сохранении и дальше не плывёт.
+model FinOp {
+  id          String       @id @default(cuid())
+  type        FinOpType
+  date        DateTime     @db.Date
+  amount      Decimal      @db.Decimal(18, 4)
+  currency    String       @db.VarChar(10)
+  /// 1 единица валюты = rate EUR
+  rate        Decimal      @db.Decimal(20, 10)
+  rateManual  Boolean      @default(false)
+  amountEur   Decimal      @db.Decimal(18, 2)
+  directionId String?
+  categoryId  String?
+  counterpartyId String?
+  /// Расход — кто платил, доход — кто получил, возврат — кто отдал.
+  partnerId   String
+  /// Возврат — кому отдал.
+  toPartnerId String?
+  /// Карта / кошелёк / счёт, свободный текст.
+  account     String?      @db.VarChar(120)
+  note        String?      @db.Text
+  createdById String
+  updatedById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  /// Удалённая операция не стирается: не входит в итоги, но остаётся для истории (кто и когда удалил).
+  deletedAt   DateTime?
+  deletedById String?
+  direction   FinDirection? @relation(fields: [directionId], references: [id], onDelete: SetNull)
+  category    FinCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  counterparty FinCounterparty? @relation(fields: [counterpartyId], references: [id], onDelete: SetNull)
+  partner     FinPartner    @relation("FinOpPartner", fields: [partnerId], references: [id], onDelete: Restrict)
+  toPartner   FinPartner?   @relation("FinOpToPartner", fields: [toPartnerId], references: [id], onDelete: Restrict)
+
+  @@index([date])
+  @@index([directionId])
+  @@index([counterpartyId])
+  @@index([deletedAt])
+}
+
+/// Курсы на дату: 1 EUR = rates[cur] единиц валюты (источник @fawazahmed0/currency-api, середина рынка как в Google).
+model FinRate {
+  date      String   @id @db.VarChar(10)
+  rates     Json
+  fetchedAt DateTime @default(now())
+}
+
+// ───────────────────────── DeepL Articler (раздел Discovery, проект `deepl`) ─────────────────────────
+// Пакетная адаптация статей WordPress: цепочка переводов DeepL → H2 → постредактура → добор ключей → публикация.
+
+enum DeeplJobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  STOPPED
+}
+
+/// Ключ DeepL уровня инструмента: пул с ротацией по sortOrder, лимит и расход символов из /v2/usage
+model DeeplKey {
+  id        String    @id @default(uuid()) @db.Char(36)
+  label     String
+  secretEnc String    @db.Text
+  hint      String    @default("")
+  isActive  Boolean   @default(true)
+  /// Лимит символов за период (null — без лимита)
+  charLimit Float?
+  /// Лимит задан вручную: «Обновить расход из DeepL» его не перезаписывает
+  limitManual Boolean @default(false)
+  charUsed  Float     @default(0)
+  sortOrder Int       @default(0)
+  lastError String?   @db.Text
+  usageAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+/// Промт этапа: headings (H2) | post_edit (постредактура) | any
+model DeeplPrompt {
+  id        String   @id @default(uuid()) @db.Char(36)
+  name      String
+  purpose   String   @default("any")
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Сценарий: сохранённый набор настроек прогона (DeeplSettings)
+model DeeplScenario {
+  id        String   @id @default(uuid()) @db.Char(36)
+  name      String
+  settings  Json
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Прогон: партия статей одного сайта с одними настройками
+model DeeplJob {
+  id            String         @id @default(uuid()) @db.Char(36)
+  teamId        String?
+  createdById   String
+  accessId      String?        @db.Char(36)
+  siteName      String         @default("")
+  name          String         @default("")
+  status        DeeplJobStatus @default(QUEUED)
+  /// DeeplSettings (src/lib/deepl/types.ts) с текстами промтов на момент запуска
+  settings      Json
+  total         Int            @default(0)
+  stopRequested Boolean        @default(false)
+  error         String?        @db.Text
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  items         DeeplItem[]
+
+  @@index([createdById, createdAt])
+  @@index([teamId, createdAt])
+  @@index([status])
+}
+
+/// Статья прогона: исходник, снимки этапов, итог, публикация
+model DeeplItem {
+  id               String    @id @default(uuid()) @db.Char(36)
+  jobId            String    @db.Char(36)
+  position         Int
+  wpPostId         Int?
+  sourceUrl        String?   @db.Text
+  title            String    @default("") @db.Text
+  wpStatus         String?
+  wpDate           String?
+  sourceHtml       String?   @db.LongText
+  finalHtml        String?   @db.LongText
+  /// Снимки этапов [{key,label,html,chars,changedWords,status}]
+  stages           Json?
+  warnings         Json?
+  keywordReport    Json?
+  /// pending | processing | done | warning | error | stopped
+  status           String    @default("pending")
+  stage            String    @default("pending")
+  error            String?   @db.Text
+  workerId         String?
+  leaseUntil       DateTime?
+  attempts         Int       @default(0)
+  costUsd          Float     @default(0)
+  deeplChars       Float     @default(0)
+  publishedUrl     String?   @db.Text
+  publishedPostId  Int?
+  publishMode      String?
+  publishedAt      DateTime?
+  originalWpHtml   String?   @db.LongText
+  originalWpStatus String?
+  originalWpTitle  String?   @db.Text
+  revertedAt       DateTime?
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  job              DeeplJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, position])
+  @@index([status, createdAt])
+}
+
+/// Кэш переводов: sha256(source>target + фрагмент) → результат; один фрагмент не оплачивается дважды
+model DeeplCache {
+  hash       String   @id @db.Char(64)
+  sourceLang String?
+  targetLang String
+  srcChars   Int
+  result     String   @db.LongText
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/* ---------- Трафик сайтов: Google Analytics 4 (проект `analytics`) ---------- */
+
+/// Подключённый Google-аккаунт: OAuth (refresh token) или сервисный аккаунт (JSON-ключ). Все GA-свойства, доступные этому аккаунту, попадают в GaProperty.
+model GaAccount {
+  id                 String       @id @default(uuid()) @db.Char(36)
+  /// Кто подключил; видит сам и админы
+  userId             String
+  /// oauth | service
+  kind               String       @default("oauth") @db.VarChar(16)
+  /// Почта Google или client_email сервисного аккаунта
+  email              String
+  label              String       @default("")
+  refreshTokenEnc    String?      @db.Text
+  saKeyEnc           String?      @db.Text
+  accessTokenEnc     String?      @db.Text
+  accessExpires      DateTime?
+  /// OK | ERROR (нужно переподключить)
+  status             String       @default("OK") @db.VarChar(16)
+  lastError          String?      @db.Text
+  propertiesSyncedAt DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  properties         GaProperty[]
+
+  @@index([userId])
+}
+
+/// GA4-свойство (сайт). Данные тянутся только для enabled; syncState хранит, до какой даты загружена история по каждому виду данных.
+model GaProperty {
+  id            String    @id @default(uuid()) @db.Char(36)
+  accountId     String    @db.Char(36)
+  /// Числовой id свойства GA4 («properties/123» → «123»)
+  propertyId    String    @db.VarChar(32)
+  name          String
+  gaAccountName String    @default("")
+  gaAccountId   String    @default("") @db.VarChar(32)
+  /// Адрес сайта из веб-потока (defaultUri)
+  url           String?
+  host          String?   @db.VarChar(255)
+  timezone      String    @default("UTC") @db.VarChar(64)
+  currency      String    @default("USD") @db.VarChar(8)
+  enabled       Boolean   @default(false)
+  /// Свойство пропало из списка GA при обновлении
+  removed       Boolean   @default(false)
+  /// Порядок в списках (как в GA при подключении)
+  order         Int       @default(0)
+  /// { dailyFrom, hourlyFrom, pagesFrom, dimsFrom: "YYYY-MM-DD" — самая ранняя загруженная дата }
+  syncState     Json?
+  nextSyncAt    DateTime?
+  syncLockedAt  DateTime?
+  syncLockedBy  String?
+  lastSyncAt    DateTime?
+  lastSyncError String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  account       GaAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  groups        GaGroupProperty[]
+  daily         GaDaily[]
+  hourly        GaHourly[]
+  pages         GaPageDaily[]
+  dims          GaDimDaily[]
+
+  @@unique([accountId, propertyId])
+  @@index([enabled, nextSyncAt])
+}
+
+/// Группа сайтов (как метки): сайт может быть в нескольких группах.
+model GaGroup {
+  id         String            @id @default(uuid()) @db.Char(36)
+  userId     String
+  name       String
+  color      String            @default("#2a78d6") @db.VarChar(16)
+  order      Int               @default(0)
+  createdAt  DateTime          @default(now())
+  properties GaGroupProperty[]
+
+  @@index([userId])
+}
+
+model GaGroupProperty {
+  groupId    String     @db.Char(36)
+  propertyId String     @db.Char(36)
+  group      GaGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  property   GaProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, propertyId])
+  @@index([propertyId])
+}
+
+/// Итоги сайта за день (в часовом поясе свойства). Отказы = 1 − engaged/sessions, время = engagementSec/sessions.
+model GaDaily {
+  propertyId    String     @db.Char(36)
+  date          DateTime   @db.Date
+  sessions      Int        @default(0)
+  users         Int        @default(0)
+  newUsers      Int        @default(0)
+  pageviews     Int        @default(0)
+  engaged       Int        @default(0)
+  engagementSec Float      @default(0)
+  keyEvents     Float      @default(0)
+  events        Int        @default(0)
+  property      GaProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, date])
+  @@index([date])
+}
+
+/// Визиты по часам.
+model GaHourly {
+  propertyId String     @db.Char(36)
+  date       DateTime   @db.Date
+  hour       Int        @db.TinyInt
+  sessions   Int        @default(0)
+  users      Int        @default(0)
+  pageviews  Int        @default(0)
+  property   GaProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, date, hour])
+  @@index([date])
+}
+
+/// Страницы за день: топ по просмотрам (PAGES_PER_DAY), ключ — sha1 пути.
+model GaPageDaily {
+  propertyId    String     @db.Char(36)
+  date          DateTime   @db.Date
+  pathHash      String     @db.Char(40)
+  path          String     @db.VarChar(1000)
+  title         String     @default("") @db.VarChar(500)
+  pageviews     Int        @default(0)
+  users         Int        @default(0)
+  sessions      Int        @default(0)
+  engagementSec Float      @default(0)
+  property      GaProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, date, pathHash])
+  @@index([date])
+}
+
+/// Разрезы за день: kind = channel | source | country | device | referrer.
+model GaDimDaily {
+  propertyId String     @db.Char(36)
+  date       DateTime   @db.Date
+  kind       String     @db.VarChar(16)
+  value      String     @db.VarChar(190)
+  sessions   Int        @default(0)
+  users      Int        @default(0)
+  property   GaProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, date, kind, value])
+  @@index([kind, date])
 }

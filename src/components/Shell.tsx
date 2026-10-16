@@ -1,105 +1,119 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { LogoFull, LogoMark } from "./Logo";
 import { Icon, type IconName } from "./Icons";
+import { ThemeSwitch } from "./ThemeSwitch";
+import { HeaderBalances } from "./HeaderBalances";
+import { ImpersonationBar, ViewAsPicker, ViewModeMenuItem, ViewModeSwitch } from "./ViewAs";
+import { stopImpersonation } from "@/actions/viewAs";
+import { canSeeBalances, showsBalances, canViewKeys, canViewProviders, canViewTeams, canViewUsage, canViewUsers, type Actor } from "@/lib/permissions";
 
-type NavItem = { href: string; label: string; icon: IconName; admin?: boolean };
+type NavItem = { href: string; label: string; icon: IconName; show?: (u: Actor) => boolean };
 
-const NAV: NavItem[] = [
-  { href: "/", label: "Инструменты", icon: "grid" },
-  { href: "/keys", label: "Ключи", icon: "key" },
-  { href: "/providers", label: "Провайдеры и модели", icon: "cloud" },
-  { href: "/teams", label: "Команды", icon: "users" },
-  { href: "/users", label: "Пользователи", icon: "shield", admin: true },
-  { href: "/usage", label: "Расход", icon: "chart" },
+/** Меню под аватаркой: всё служебное. Основной экран — инструменты. Пункты скрываются по правам. */
+const MENU: NavItem[] = [
+  { href: "/keys", label: "Ключи ИИ", icon: "key", show: canViewKeys },
+  { href: "/sites", label: "Сайты", icon: "layers" },
+  { href: "/providers", label: "Провайдеры и модели", icon: "cloud", show: canViewProviders },
+  { href: "/teams", label: "Команды", icon: "users", show: canViewTeams },
+  { href: "/users", label: "Пользователи", icon: "user", show: canViewUsers },
+  { href: "/usage", label: "Расход", icon: "chart", show: canViewUsage },
   { href: "/account", label: "Аккаунт", icon: "user" },
 ];
 
-const MOBILE = ["/", "/keys", "/providers", "/usage"];
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "•";
+}
 
-export function Shell({ user, children }: { user: { name: string; email: string; role: string }; children: ReactNode }) {
+type ShellUser = Actor & {
+  name: string;
+  email: string;
+  /** Главный админ: переключатель «Админ / Сотрудник» и вход в кабинеты сотрудников. */
+  superAdmin: boolean;
+  memberView: boolean;
+  /** Кто вошёл в этот кабинет (только в сессии вошедшего главного админа). */
+  impersonator: { id: string; name: string; email: string } | null;
+};
+
+export function Shell({ user, children }: { user: ShellUser; children: ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const isActive = (href: string) => (href === "/" ? pathname === "/" || pathname.startsWith("/projects") : pathname.startsWith(href));
-  const items = NAV.filter((n) => !n.admin || user.role === "ADMIN");
+  const ref = useRef<HTMLDivElement>(null);
+  const items = MENU.filter((n) => !n.show || n.show(user));
+  const isTools = pathname === "/" || pathname.startsWith("/projects") || pathname.startsWith("/pinterest") || pathname.startsWith("/gambling") || pathname.startsWith("/finance") || pathname.startsWith("/discovery") || pathname.startsWith("/analytics");
 
-  const nav = (
-    <nav className="flex flex-col gap-1">
-      {items.map((n) => {
-        const I = Icon[n.icon];
-        return (
-          <Link key={n.href} href={n.href} className={`nav-link ${isActive(n.href) ? "active" : ""}`} onClick={() => setOpen(false)}>
-            <I width={18} height={18} />
-            {n.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  useEffect(() => setOpen(false), [pathname]);
+
+  // Цвет шапки показывает режим: синий — вы смотрите как сотрудник, фиолетовый — вы в чужом кабинете.
+  const view = user.impersonator ? "view-as" : user.memberView ? "view-member" : "";
 
   return (
-    <div className="min-h-dvh lg:flex">
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-line lg:bg-surface lg:sticky lg:top-0 lg:h-dvh">
-        <div className="px-5 pt-6 pb-5">
-          <Link href="/"><LogoFull className="h-7 w-auto" /></Link>
-        </div>
-        <div className="px-3 flex-1 overflow-y-auto">{nav}</div>
-        <div className="border-t border-line p-4">
-          <div className="text-[14px] font-medium truncate">{user.name}</div>
-          <div className="help truncate">{user.email}</div>
-          <form action="/logout" method="post" className="mt-3">
-            <button className="btn-ghost btn-sm w-full"><Icon.logout width={16} height={16} /> Выйти</button>
-          </form>
-        </div>
-      </aside>
-
-      {/* Mobile header */}
-      <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between border-b border-line bg-surface/90 backdrop-blur px-4 h-14">
-        <Link href="/"><LogoFull className="h-6 w-auto" /></Link>
-        <button className="btn-ghost btn-sm" onClick={() => setOpen(true)} aria-label="Меню"><Icon.menu /></button>
-      </header>
-
-      {/* Mobile drawer */}
-      {open && (
-        <div className="lg:hidden fixed inset-0 z-40">
-          <div className="absolute inset-0 bg-ink/40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-0 h-full w-[82%] max-w-xs bg-surface shadow-2xl p-4 flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <LogoMark className="h-7 w-auto" />
-              <button className="btn-ghost btn-sm" onClick={() => setOpen(false)} aria-label="Закрыть"><Icon.x /></button>
-            </div>
-            {nav}
-            <div className="mt-auto border-t border-line pt-4">
-              <div className="text-[14px] font-medium truncate">{user.name}</div>
-              <div className="help truncate">{user.email}</div>
-              <form action="/logout" method="post" className="mt-3">
-                <button className="btn-ghost btn-sm w-full"><Icon.logout width={16} height={16} /> Выйти</button>
-              </form>
-            </div>
+    <div className={`min-h-dvh flex flex-col ${view}`}>
+      {user.impersonator && <ImpersonationBar name={user.name} email={user.email} by={user.impersonator.name} />}
+      <header className="view-header sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-md">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 h-14 flex items-center gap-3">
+          <Link href="/" className="shrink-0" aria-label="Zewex Tools"><LogoFull className="h-6 w-auto hidden sm:block" /><LogoMark className="h-6 w-auto sm:hidden" /></Link>
+          <nav className="flex items-center gap-1 ml-2">
+            <Link href="/" className={`tab ${isTools ? "active" : ""}`}><Icon.grid width={15} height={15} /> Инструменты</Link>
+          </nav>
+          <div className="ml-auto flex items-center gap-2">
+            {user.impersonator && <span className="view-chip hidden lg:inline-flex">Кабинет сотрудника</span>}
+            {showsBalances(user) && <HeaderBalances mine={!canSeeBalances(user)} />}
+            {user.superAdmin && <ViewModeSwitch memberView={user.memberView} />}
+            <ThemeSwitch />
+          </div>
+          <div className="relative flex items-center gap-2" ref={ref}>
+            <button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 h-9 rounded-full border border-line bg-surface pl-1 pr-2.5 hover:border-line-2 transition" aria-haspopup="menu" aria-expanded={open}>
+              <span className="view-avatar inline-flex h-7 w-7 items-center justify-center rounded-full bg-ink text-bg text-[12px] font-bold">{initials(user.name)}</span>
+              <span className="hidden sm:block text-[13.5px] font-medium max-w-[140px] truncate">{user.name}</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`text-muted transition ${open ? "rotate-180" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            {open && (
+              <div className="menu" role="menu">
+                <div className="px-3 py-2 border-b border-line mb-1">
+                  <div className="text-[14px] font-semibold truncate">{user.name}</div>
+                  <div className="help truncate">{user.email}</div>
+                  {user.memberView && <div className="mt-1.5 view-chip">Режим сотрудника</div>}
+                  {user.impersonator && <div className="mt-1.5 help">Вы вошли как этот сотрудник. Вернуться: {user.impersonator.name}</div>}
+                </div>
+                {user.impersonator && (
+                  <form action={stopImpersonation} className="border-b border-line mb-1 pb-1">
+                    <button className="menu-item font-semibold" style={{ color: "var(--view-as)" }}><Icon.logout width={16} height={16} /> Вернуться в свой кабинет</button>
+                  </form>
+                )}
+                {user.superAdmin && <ViewModeMenuItem memberView={user.memberView} />}
+                {user.superAdmin && <ViewAsPicker />}
+                {user.superAdmin && <div className="border-b border-line my-1" />}
+                {items.map((n) => {
+                  const I = Icon[n.icon];
+                  const active = pathname.startsWith(n.href);
+                  return (
+                    <Link key={n.href} href={n.href} role="menuitem" className={`menu-item ${active ? "bg-ink/5 text-ink" : ""}`}>
+                      <I width={16} height={16} /> {n.label}
+                    </Link>
+                  );
+                })}
+                <form action="/logout" method="post" className="border-t border-line mt-1 pt-1">
+                  <button className="menu-item text-danger hover:text-danger"><Icon.logout width={16} height={16} /> Выйти</button>
+                </form>
+              </div>
+            )}
           </div>
         </div>
-      )}
-
+      </header>
       <main className="flex-1 min-w-0">
-        <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8 pb-24 lg:pb-10">{children}</div>
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">{children}</div>
       </main>
-
-      {/* Mobile bottom tabs */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 border-t border-line bg-surface/95 backdrop-blur grid grid-cols-4 pb-[env(safe-area-inset-bottom)]">
-        {items.filter((n) => MOBILE.includes(n.href)).map((n) => {
-          const I = Icon[n.icon];
-          const active = isActive(n.href);
-          return (
-            <Link key={n.href} href={n.href} className={`flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${active ? "text-ink" : "text-muted"}`}>
-              <span className={`rounded-full px-3 py-0.5 ${active ? "bg-brand-soft" : ""}`}><I width={20} height={20} /></span>
-              {n.label.split(" ")[0]}
-            </Link>
-          );
-        })}
-      </nav>
     </div>
   );
 }
