@@ -8,19 +8,22 @@ import { saveAiSet, saveStyleNote, toggleStyleHidden } from "@/actions/pins";
 export type StyleRow = {
   id: string; name: string; category: string; type: string; group: string; groupName: string; variantLabel: string;
   concept: string; examples: string[]; hidden: boolean; note: string;
+  /** Ниши стиля (decor, interior…); пусто — универсальный. */
+  niches?: string[];
 };
 type SetRow = { id: string; name: string; topic: string; styleIds: string[] };
 type CategoryRow = { id: string; label: string; note?: string };
 type TypeRow = { id: string; label: string; ru?: string; color?: string; desc?: string };
 
-type Group = { key: string; name: string; category: string; type: string; concept: string; variants: StyleRow[]; examples: string[] };
+type Group = { key: string; name: string; category: string; type: string; concept: string; variants: StyleRow[]; examples: string[]; niches: string[] };
 
 /**
  * Галерея ИИ-стилей, сгруппированная по стилям: у стиля до 5 вариантов (цветовых подач).
  * В набор можно взять весь стиль («Выбрать все») или отдельные варианты.
  */
-export function AiStylePicker({ siteId, teamId, styles, categories, types, sets, initialEdit }: { siteId: string; teamId: string; styles: StyleRow[]; categories: CategoryRow[]; types: TypeRow[]; sets: SetRow[]; initialEdit?: string }) {
+export function AiStylePicker({ siteId, teamId, styles, categories, types, sets, initialEdit, nicheLabels = {} }: { siteId: string; teamId: string; styles: StyleRow[]; categories: CategoryRow[]; types: TypeRow[]; sets: SetRow[]; initialEdit?: string; nicheLabels?: Record<string, string> }) {
   const [cat, setCat] = useState<string>("");
+  const [niche, setNiche] = useState<string>("");
   const [type, setType] = useState<string>("");
   const [q, setQ] = useState("");
   const [onlyExamples, setOnlyExamples] = useState(false);
@@ -35,8 +38,9 @@ export function AiStylePicker({ siteId, teamId, styles, categories, types, sets,
     const map = new Map<string, Group>();
     for (const s of styles) {
       let g = map.get(s.group);
-      if (!g) { g = { key: s.group, name: s.groupName, category: s.category, type: s.type, concept: s.concept, variants: [], examples: [] }; map.set(s.group, g); }
+      if (!g) { g = { key: s.group, name: s.groupName, category: s.category, type: s.type, concept: s.concept, variants: [], examples: [], niches: [] }; map.set(s.group, g); }
       g.variants.push(s);
+      for (const n of s.niches ?? []) if (!g.niches.includes(n)) g.niches.push(n);
       for (const u of s.examples) if (g.examples.length < 5 && !g.examples.includes(u)) g.examples.push(u);
     }
     return [...map.values()];
@@ -47,11 +51,13 @@ export function AiStylePicker({ siteId, teamId, styles, categories, types, sets,
     return groups
       .map((g) => ({ ...g, variants: g.variants.filter((v) => showHidden || !v.hidden) }))
       .filter((g) => g.variants.length > 0)
-      .filter((g) => (!cat || g.category === cat) && (!type || g.type === type))
+      .filter((g) => (!cat || g.category === cat) && (!type || g.type === type) && (!niche || g.niches.includes(niche)))
       .filter((g) => !onlyExamples || g.examples.length > 0)
       .filter((g) => !onlySelected || g.variants.some((v) => selected.has(v.id)))
       .filter((g) => !needle || g.name.toLowerCase().includes(needle) || g.key.includes(needle) || g.variants.some((v) => v.variantLabel.toLowerCase().includes(needle)));
-  }, [groups, cat, type, q, onlyExamples, showHidden, onlySelected, selected]);
+  }, [groups, cat, type, niche, q, onlyExamples, showHidden, onlySelected, selected]);
+  // Ниши, которые есть у стилей текущей категории (кнопки «Декор», «Интерьер»…).
+  const niches = useMemo(() => [...new Set(groups.filter((g) => !cat || g.category === cat).flatMap((g) => g.niches))], [groups, cat]);
 
   const typeOf = (id: string) => types.find((t) => t.id === id);
   const loadSet = (id: string) => { setEditSet(id); setSelected(new Set(sets.find((x) => x.id === id)?.styleIds ?? [])); setOnlySelected(!!id); };
@@ -85,6 +91,15 @@ export function AiStylePicker({ siteId, teamId, styles, categories, types, sets,
           <button key={t.id} type="button" title={t.desc} className={`badge px-2.5 py-1 ${type === t.id ? "text-bg" : "bg-ink/5 hover:bg-ink/10"}`} style={type === t.id ? { background: t.color } : undefined} onClick={() => setType(type === t.id ? "" : t.id)}>{t.ru ?? t.label}</button>
         ))}
       </div>
+      {niches.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          <span className="help mr-1">Ниша:</span>
+          <button type="button" className={`badge px-2.5 py-1 ${!niche ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`} onClick={() => setNiche("")}>Все</button>
+          {niches.map((n) => (
+            <button key={n} type="button" className={`badge px-2.5 py-1 ${niche === n ? "bg-brand text-bg" : "bg-ink/5 hover:bg-ink/10"}`} onClick={() => setNiche(niche === n ? "" : n)}>{nicheLabels[n] ?? n}</button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <span className="help">{catNote ?? "Стилей: " + groups.length}{" · показано: "}{list.length}</span>
         <button type="button" className="btn-ghost btn-sm ml-auto" onClick={() => setMany(visibleIds, true)}>Выбрать всё показанное</button>
@@ -106,6 +121,7 @@ export function AiStylePicker({ siteId, teamId, styles, categories, types, sets,
                   <div className="mt-1 flex flex-wrap gap-1">
                     {t && <span className="badge px-2 py-0.5 text-bg" style={{ background: t.color }}>{t.ru ?? t.label}</span>}
                     <Badge>{categories.find((c) => c.id === g.category)?.label.split(" / ")[0] ?? g.category}</Badge>
+                    {g.niches.map((n) => <Badge key={n}>{nicheLabels[n] ?? n}</Badge>)}
                   </div>
                 </div>
                 <button type="button" className={`btn-sm ${all ? "btn-primary" : "btn-ghost"}`} onClick={() => setMany(ids, !all)}>{all ? "Снять все" : `Выбрать все ${ids.length}`}</button>

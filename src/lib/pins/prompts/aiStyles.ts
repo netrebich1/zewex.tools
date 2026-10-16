@@ -26,7 +26,12 @@ export type AiStyle = {
   avoid: string;
   gold: string;
   examples?: string[];
+  /** Ниши, под которые стиль сделан (decor, interior, …) — фильтр «только декор» в галерее. Пусто — универсальный. */
+  niches?: string[];
 };
+
+/** Подписи ниш стилей для фильтра. */
+export const STYLE_NICHE_LABELS: Record<string, string> = { decor: "Декор", interior: "Интерьер", beauty: "Бьюти", fashion: "Мода", food: "Еда" };
 
 export type AiStyleCategory = { id: string; label: string; note?: string };
 export type AiStyleType = { id: string; label: string; ru?: string; color?: string; desc?: string };
@@ -59,6 +64,7 @@ function normalizeStyle(s: RawStyle): AiStyle | null {
     avoid: str(s.avoid),
     gold: str(s.gold),
     examples: examples && examples.length ? examples : undefined,
+    niches: Array.isArray(s.niches) ? s.niches.filter((n): n is string => typeof n === "string" && n !== "") : undefined,
   };
 }
 
@@ -85,7 +91,7 @@ export const styleTypes: AiStyleType[] = (Array.isArray(raw.types) ? (raw.types 
   .filter((t) => t.id !== "");
 
 /** Порядок категорий при сортировке результатов (как в generate-pin-prompt). */
-export const CATEGORY_ORDER: Record<string, number> = { magazine: 0, soft: 1, ctr: 2, traffic: 3, modern2027: 4 };
+export const CATEGORY_ORDER: Record<string, number> = { magazine: 0, soft: 1, ctr: 2, traffic: 3, modern2027: 4, newyear: 5 };
 export const CATEGORY_ORDER_FALLBACK = 50;
 
 export function getAiStyle(id: string): AiStyle | undefined {

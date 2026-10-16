@@ -3,7 +3,7 @@
  * → PinExample + файл pins/examples/<id>.jpg. Ключи и расход — через портал (правила пользователя).
  *
  *   npx tsx scripts/pins/gen-style-examples.ts --user=<userId> --team=<teamId> --category=modern2027 \
- *     --keyword="trendy outfits 2027" --niche=outfit [--styles=id1,id2] [--force] [--concurrency=4] [--dry]
+ *     --keyword="trendy outfits 2027" --niche=outfit [--styles=id1,id2] [--season=winter] [--year=2027] [--force] [--concurrency=4] [--dry]
  *
  * Варианты, у которых пример уже есть, пропускаются (кроме --force).
  */
@@ -28,6 +28,8 @@ async function main() {
   const force = flag("force") === "1";
   const dry = flag("dry") === "1";
   const concurrency = Number(flag("concurrency", "4"));
+  const season = flag("season", "fall");
+  const year = flag("year", "2027");
   if (!userId || !teamId) throw new Error("--user и --team обязательны");
 
   let styles = listAiStyles(category || undefined);
@@ -42,7 +44,7 @@ async function main() {
   const ctx: AiCtx = { userId, teamId };
   const prompts = await generateAiPrompts(ctx, {
     keyword, topic: keyword, niche, language: "en", audience: "women", siteName: "",
-    year: "2027", season: "fall", seasonWord: "fall", ideaCount: 12,
+    year, season, seasonWord: season, ideaCount: 12,
     styles: styles.map((s) => ({ id: s.id, tags: { season: false, year: true, number: s.type === "listicle", siteName: false, cta: true } })),
   });
   console.log(`prompts: ${prompts.length}/${styles.length}`);
