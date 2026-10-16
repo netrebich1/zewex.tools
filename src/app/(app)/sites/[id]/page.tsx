@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { canAccessPinSite, canSeeAccess } from "@/lib/sites/access";
+import { canAccessPinSite, canEditAccess, canSeeAccess } from "@/lib/sites/access";
 import { accessFormData } from "@/lib/sites/form";
 import { Alert, Badge, Card, PageHeader, sp, type SearchParams } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
@@ -46,6 +46,7 @@ export default async function SitePage({ params, searchParams }: { params: Promi
   ]);
   const teamName = (tid: string) => teams.find((t) => t.id === tid)?.name ?? "другая команда";
   const canDelete = canManageTeam(me, access.teamId);
+  const canEdit = canEditAccess(me, access);
   const impact = canDelete ? await siteDeletionImpact(access.id) : null;
   const pr = (access.projects as string[] | null) ?? [];
   const pinsAllowed = !pr.length || pr.includes(PROJECT_SLUG);
@@ -58,19 +59,20 @@ export default async function SitePage({ params, searchParams }: { params: Promi
         <div className="space-y-4">
           {(!access.username || !access.appPasswordEnc) && <Alert tone="warn">Сайт перенесён из старого сервиса: доступ к REST API ещё не введён. Укажите логин WordPress и Application Password и нажмите «Сохранить сайт», иначе загрузка картинок в медиатеку и импорт статей работать не будут.</Alert>}
           <Card title="Доступ, команды и видимость" description="Доступ по REST API WordPress вводится один раз. Здесь же — какие команды и сотрудники видят сайт и в какие инструменты он интегрирован. Пароль хранится в зашифрованном виде.">
-            <SiteAccessForm row={access} teams={teams} projects={projects} members={members} />
+            {canEdit ? <SiteAccessForm row={access} teams={teams} projects={projects} members={members} />
+              : <Alert>Сайт принадлежит команде «{teamName(access.teamId)}» и открыт вашей команде. Смотреть и работать с ним в инструментах можно, а менять доступ, видимость и подключение инструментов — лидер команды «{teamName(access.teamId)}» или админ.</Alert>}
           </Card>
 
           <Card title="Инструменты" description="Сайт подключается к инструментам ниже. Отключение ничего не удаляет: настройки и история остаются, подключить снова можно в любой момент. Все настройки инструмента делаются внутри него.">
             <div className="space-y-3">
               <ToolRow
-                accessId={access.id} tool="pins" name="Pinterest Pins" allowed={pinsAllowed} site={pins}
+                accessId={access.id} canEdit={canEdit} tool="pins" name="Pinterest Pins" allowed={pinsAllowed} site={pins}
                 hint="Доски, шаблоны ИИ- и Canvas-пинов, язык — в настройках сайта внутри инструмента."
                 settingsHref={pins ? `/pinterest/pins/sites/${pins.id}?tab=settings` : ""} enable={enablePinsForSite}
                 offWarning="Сайт пропадёт из Pinterest Pins: новые прогоны, выгрузка и календарь запаса его не покажут, запланированные пины в выгрузку не попадут. Доски, настройки, прогоны и пины сохранятся, подключить снова можно в любой момент. Отключить?"
               />
               <ToolRow
-                accessId={access.id} tool="articles" name="Статьи" allowed={articlesAllowed} site={articles}
+                accessId={access.id} canEdit={canEdit} tool="articles" name="Статьи" allowed={articlesAllowed} site={articles}
                 hint="Ниша, рецепт, количество фото, модерация, категории WordPress, автозапуск — в настройках сайта внутри инструмента."
                 settingsHref={articles ? `/pinterest/articles/sites/${articles.id}?tab=settings` : ""} enable={enableArticlesForSite}
                 offWarning="Сайт пропадёт из Статей: новые запуски и автозапуск остановятся, статьи в очереди будут ждать. Настройки, запуски и статьи сохранятся, подключить снова можно в любой момент. Отключить?"
@@ -117,8 +119,8 @@ export default async function SitePage({ params, searchParams }: { params: Promi
 }
 
 /** Строка инструмента: подключить / открыть настройки и отключить / подключить снова. Отключение = архив в инструменте, данные сохраняются. */
-function ToolRow({ accessId, tool, name, hint, allowed, site, settingsHref, enable, offWarning }: {
-  accessId: string; tool: "pins" | "articles"; name: string; hint: string; allowed: boolean;
+function ToolRow({ accessId, canEdit, tool, name, hint, allowed, site, settingsHref, enable, offWarning }: {
+  accessId: string; canEdit: boolean; tool: "pins" | "articles"; name: string; hint: string; allowed: boolean;
   site: { id: string; isActive: boolean } | null; settingsHref: string; offWarning: string;
   enable: (p: FormState, f: FormData) => Promise<FormState>;
 }) {
@@ -129,7 +131,9 @@ function ToolRow({ accessId, tool, name, hint, allowed, site, settingsHref, enab
         <div className="help">{site && !site.isActive ? "Сайт отключён от инструмента. Настройки и история сохранены." : hint}</div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {!site ? (
+        {!canEdit ? (
+          site?.isActive ? <Link href={settingsHref} className="btn-ghost">Открыть в инструменте</Link> : <span className="help">{site ? "отключён" : "не подключён"}</span>
+        ) : !site ? (
           allowed
             ? <ActionForm action={enable} hidden={{ accessId }} className="inline"><SubmitButton className="btn-primary" pendingText="Подключаю…">Подключить</SubmitButton></ActionForm>
             : <span className="help">не отмечен в списке инструментов выше</span>

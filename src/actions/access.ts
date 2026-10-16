@@ -10,7 +10,7 @@ import { assertPublicUrl } from "@/lib/pins/fetch";
 import { removePath, runDir } from "@/lib/pins/storage";
 import { purgeArticleFiles } from "@/lib/articles/storage";
 import { siteDeletionImpact } from "@/lib/sites/delete";
-import { canAccessSiteAccess } from "@/lib/sites/access";
+import { canAccessSiteAccess, canEditAccess, canEditSiteAccess } from "@/lib/sites/access";
 import { seesAllSites } from "@/lib/permissions";
 
 export type FormState = { error?: string; ok?: string };
@@ -26,7 +26,9 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
   const id = str(f, "id");
   const teamId = str(f, "teamId");
   if (!canManageTeam(me, teamId) && !me.teamIds.includes(teamId)) return { error: "Нет доступа к команде" };
-  if (id && !(await canAccessSiteAccess(me, id))) return { error: "Доступ не найден" };
+  const before = id ? await prisma.siteAccess.findUnique({ where: { id }, select: { teamId: true, teams: { select: { teamId: true } }, viewers: { select: { userId: true } } } }) : null;
+  if (id && !before) return { error: "Доступ не найден" };
+  if (before && !canEditAccess(me, before)) return { error: "Менять этот сайт может лидер команды-владельца или админ" };
   const baseUrl = str(f, "baseUrl").replace(/\/+$/, "");
   const username = str(f, "username");
   const appPassword = str(f, "appPassword");
@@ -38,7 +40,9 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
   } catch (e) { return fail(e); }
   const projects = f.getAll("projects").map(String).filter(Boolean);
   // Дополнительные команды: только те, где пользователь состоит (админ — любые); владелец не дублируется.
-  const extraTeams = [...new Set(f.getAll("teamIds").map(String).filter((t) => t && t !== teamId && (seesAllSites(me) || me.teamIds.includes(t))))];
+  // Команды, которых нет в форме у этого пользователя (он в них не состоит), сохраняются как были — иначе при сохранении они бы слетели.
+  const hiddenTeams = seesAllSites(me) ? [] : (before?.teams ?? []).map((t) => t.teamId).filter((t) => !me.teamIds.includes(t));
+  const extraTeams = [...new Set([...f.getAll("teamIds").map(String).filter((t) => t && (seesAllSites(me) || me.teamIds.includes(t))), ...hiddenTeams])].filter((t) => t !== teamId);
   const allTeams = [teamId, ...extraTeams];
   // Видимость: только участники выбранных команд.
   const wantViewers = [...new Set(f.getAll("viewerIds").map(String).filter(Boolean))];
@@ -48,7 +52,11 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
   // Сотрудник видит только свои сайты: тот, кто создаёт или правит сайт, остаётся в списке видящих
   // (иначе он сам потеряет сайт). Администратору и лидеру команды-владельца это не нужно — они видят всё.
   const keepsSelf = me.role !== "ADMIN" && !canManageTeam(me, teamId);
-  const viewers = keepsSelf && !pickedViewers.includes(me.id) ? [...pickedViewers, me.id] : pickedViewers;
+  // Сотрудники других команд, которых форма этому пользователю не показывает, тоже сохраняются как были.
+  const formUsers = seesAllSites(me) ? null : new Set((await prisma.teamMember.findMany({ where: { teamId: { in: me.teamIds } }, select: { userId: true } })).map((m) => m.userId));
+  const hiddenViewers = formUsers ? (before?.viewers ?? []).map((v) => v.userId).filter((u) => !formUsers.has(u)) : [];
+  const kept = [...new Set([...pickedViewers, ...hiddenViewers])];
+  const viewers = keepsSelf && !kept.includes(me.id) ? [...kept, me.id] : kept;
   const data = {
     teamId, kind: "wordpress", name: str(f, "name") || baseUrl.replace(/^https?:\/\//, ""), baseUrl, username,
     mediaBaseUrl: str(f, "mediaBaseUrl").replace(/\/+$/, "") || null, mediaUsername: str(f, "mediaUsername") || null, mediaDomain: str(f, "mediaDomain") || null,
@@ -86,7 +94,7 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
   revalidatePath("/pinterest/pins/sites");
   if (createdId) redirect(`/sites/${createdId}`);
   revalidatePath(`/sites/${id}`);
-  return { ok: wantViewers.length && !viewers.length ? "Доступ сохранён. Выбранные сотрудники не состоят в командах сайта, видимость оставлена для всех." : "Доступ сохранён" };
+  return { ok: wantViewers.length && !viewers.length ? "Доступ сохранён. Выбранные сотрудники не состоят в командах сайта: сайт видят только лидеры команд и админы." : "Доступ сохранён" };
 }
 
 export async function testSiteAccess(_p: FormState, f: FormData): Promise<FormState> {
@@ -152,6 +160,7 @@ export async function setSiteToolActive(_p: FormState, f: FormData): Promise<For
   if (tool !== "pins" && tool !== "articles") return { error: "Неизвестный инструмент" };
   const access = await prisma.siteAccess.findUnique({ where: { id: accessId }, select: { id: true, projects: true } });
   if (!access || !(await canAccessSiteAccess(me, accessId))) return { error: "Сайт не найден" };
+  if (!(await canEditSiteAccess(me, accessId))) return { error: "Подключать и отключать инструменты может лидер команды-владельца или админ" };
   const label = tool === "pins" ? "Pinterest Pins" : "Статьи";
   const slug = tool === "pins" ? "pins" : "articles";
   const pr = (access.projects as string[] | null) ?? [];

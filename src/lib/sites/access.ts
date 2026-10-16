@@ -6,13 +6,13 @@
 import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
-import { seesAllSites } from "@/lib/permissions";
+import { canManageTeam, seesAllSites } from "@/lib/permissions";
 
 type AccessRow = { id: string; teamId: string; teams: { teamId: string }[]; viewers: { userId: string }[] };
 
 /**
  * Видит ли пользователь сайт. Правило владельца: в команде каждый видит только СВОИ сайты, а не все сайты команды.
- * Админ и право «все сайты» — всё; лидер команды-владельца — все сайты своей команды;
+ * Админ и право «все сайты» — всё; лидер команды — все сайты, которые принадлежат его команде или открыты ей;
  * обычный сотрудник — только сайты, где он отмечен в «Кто видит сайт» (создатель сайта отмечается сам).
  * Пустой список сотрудников больше НЕ означает «вся команда».
  */
@@ -20,7 +20,23 @@ export function canSeeAccess(me: CurrentUser, a: Omit<AccessRow, "id">): boolean
   if (seesAllSites(me)) return true;
   const inTeam = me.teamIds.includes(a.teamId) || a.teams.some((t) => me.teamIds.includes(t.teamId));
   if (!inTeam) return false;
-  return a.viewers.some((v) => v.userId === me.id) || me.leadTeamIds.includes(a.teamId);
+  if (a.viewers.some((v) => v.userId === me.id)) return true;
+  return me.leadTeamIds.includes(a.teamId) || a.teams.some((t) => me.leadTeamIds.includes(t.teamId));
+}
+
+/**
+ * Может ли менять сайт: доступ REST API, команды, видимость, подключение инструментов.
+ * Админ и «все сайты»; тот, кто управляет командой-владельцем (её лидер, право «команды: управлять»);
+ * сотрудник команды-владельца, отмеченный в «Кто видит сайт». Лидер команды, которой сайт только открыт, — смотрит.
+ */
+export function canEditAccess(me: CurrentUser, a: { teamId: string; viewers: { userId: string }[] }): boolean {
+  if (seesAllSites(me) || canManageTeam(me, a.teamId)) return true;
+  return me.teamIds.includes(a.teamId) && a.viewers.some((v) => v.userId === me.id);
+}
+
+export async function canEditSiteAccess(me: CurrentUser, accessId: string): Promise<boolean> {
+  const a = await prisma.siteAccess.findUnique({ where: { id: accessId }, select: { teamId: true, viewers: { select: { userId: true } } } });
+  return !!a && canEditAccess(me, a);
 }
 
 /** Id доступов, видимых пользователю; null — все (админ). */

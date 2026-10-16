@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { canAccessTeam } from "@/lib/pins/runs/actions";
-import { canAccessPinSite, canAccessRun, canAccessSiteAccess } from "@/lib/sites/access";
+import { canAccessPinSite, canAccessRun, canAccessSiteAccess, canEditSiteAccess } from "@/lib/sites/access";
 import { redirect } from "next/navigation";
 import { canManageTeam, requireUser } from "@/lib/auth";
 import { createRun, continueRun, deleteRun, parseUrls, redoMissing, skipFailed, stopRun } from "@/lib/pins/runs/actions";
@@ -171,6 +171,7 @@ export async function enablePinsForSite(_p: FormState, f: FormData): Promise<For
   try {
     const access = await prisma.siteAccess.findUnique({ where: { id: accessId } });
     if (!access || !(await canAccessSiteAccess(me, accessId))) throw new Error("Сайт не найден");
+    if (!(await canEditSiteAccess(me, accessId))) throw new Error("Подключать инструменты может лидер команды-владельца или админ");
     const exists = await prisma.pinSite.findFirst({ where: { wpConnectionId: accessId } });
     if (exists) throw new Error("Pinterest Pins уже включён");
     const base = access.name.toLowerCase().replace(/^https?:\/\//, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70) || "site";
