@@ -6,10 +6,10 @@ import { Alert, Badge, Card, PageHeader, type SearchParams, sp } from "@/compone
 import { canAccessArtSite } from "@/lib/articles/access";
 import { PUBLISH_MODES, type ArtRunSettings } from "@/lib/articles/types";
 import { STATUS_LABELS } from "@/lib/articles/labels";
-import { runArticles, runProgress } from "@/lib/articles/queries";
+import { runArticles, runProgress, runTimings } from "@/lib/articles/queries";
 import { ArticlesTable } from "@/components/articles/ArticlesTable";
 import { badgeTone } from "@/components/articles/StatusBadge";
-import { fmtDate, fmtMoney } from "@/lib/utils";
+import { fmtDate, fmtDuration, fmtMoney } from "@/lib/utils";
 import { seesTeamCosts } from "@/lib/permissions";
 import { costBreakdown } from "@/lib/articles/costs";
 import { errorsSummary } from "@/lib/articles/errorsView";
@@ -29,12 +29,14 @@ export default async function ArticlesRunPage({ params, searchParams }: { params
   if (!run || !(await canAccessArtSite(me, run.site))) notFound();
   const s = run.settings as unknown as ArtRunSettings;
   const canCosts = seesTeamCosts(me);
-  const [progress, rows, author, costs, errs] = await Promise.all([
+  const [progress, rows, author, costs, errs, timings] = await Promise.all([
     runProgress(id), runArticles(id),
     run.createdById ? prisma.user.findUnique({ where: { id: run.createdById }, select: { name: true, email: true } }) : null,
     canCosts ? costBreakdown({ siteIds: [run.site.id], runId: id, withArticles: true }) : null,
     errorsSummary(me, { runId: id }, { runId: id }),
+    runTimings([id]),
   ]);
+  const timing = timings.get(id) ?? null;
   const pct = progress.total ? Math.round((progress.completed / progress.total) * 100) : 0;
   const search = [s.search?.country && `страна ${s.search.country}`, s.search?.language && `язык ${s.search.language}`, s.search?.freshness && `свежесть ${s.search.freshness}`].filter(Boolean).join(", ");
 
@@ -58,6 +60,14 @@ export default async function ArticlesRunPage({ params, searchParams }: { params
             {progress.errors > 0 && <span className="text-danger text-[13px]">ошибок {progress.errors}</span>}
             {canCosts && <span className="ml-auto help">расход {fmtMoney(progress.costUsd)}</span>}
           </div>
+          {timing?.startedAt && (
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px]" title="От момента, когда воркер взял первую статью, до окончания последней. Пока статьи в очереди, в работе или ждут человека — запуск идёт.">
+              <span><span className="text-muted">Старт</span> {fmtDate(timing.startedAt)}</span>
+              <span>{timing.finishedAt ? <><span className="text-muted">Закончили</span> {fmtDate(timing.finishedAt)}</> : <span className="text-warn">идёт · не закончено {timing.open}</span>}</span>
+              <span><span className="text-muted">{timing.finishedAt ? "Время работы" : "Работает уже"}</span> <b>{fmtDuration(timing.durationMs)}</b></span>
+              {timing.finishedAt && progress.completed > 0 && timing.durationMs != null && <span className="text-muted">≈ {fmtDuration(timing.durationMs / progress.completed)} на опубликованную</span>}
+            </div>
+          )}
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-ink/5"><div className="h-full bg-ok transition-all" style={{ width: `${pct}%` }} /></div>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {progress.byStatus.map((b) => <Badge key={b.status} tone={badgeTone(STATUS_LABELS[b.status].tone)}>{STATUS_LABELS[b.status].label}: {b.count}</Badge>)}

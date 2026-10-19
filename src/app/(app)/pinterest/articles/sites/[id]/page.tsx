@@ -8,13 +8,13 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { syncSiteCategories, toggleArtSiteActive } from "@/actions/articles";
 import { loadArtSite } from "@/lib/articles/access";
 import { mergeSiteSettings } from "@/lib/articles/types";
-import { STATUS_FILTER_GROUPS, queuePage, siteRuns, siteStats, sitesFunnel } from "@/lib/articles/queries";
+import { STATUS_FILTER_GROUPS, queuePage, siteRunTimings, siteRuns, siteStats, sitesFunnel } from "@/lib/articles/queries";
 import { ArticlesTable } from "@/components/articles/ArticlesTable";
 import { SiteFunnel } from "@/components/articles/SiteFunnel";
 import { SiteSettingsForm, type WpCategoryOption } from "@/components/articles/SiteSettingsForm";
 import { SheetsCard } from "@/components/articles/SheetsCard";
 import { sheetsConnection, siteDomains } from "@/lib/articles/sheets";
-import { fmtDate, fmtMoney } from "@/lib/utils";
+import { fmtDate, fmtDuration, fmtMoney } from "@/lib/utils";
 import type { CurrentUser } from "@/lib/auth";
 import { seesTeamCosts } from "@/lib/permissions";
 import { costBreakdown } from "@/lib/articles/costs";
@@ -126,10 +126,11 @@ async function QueueTab({ siteId, q }: { siteId: string; q: SearchParams }) {
 async function StatsTab({ siteId, me, days }: { siteId: string; me: CurrentUser; days: number }) {
   const canCosts = seesTeamCosts(me);
   const since = new Date(Date.now() - days * 86400_000);
-  const [s, costs, errs] = await Promise.all([
+  const [s, costs, errs, runTimes] = await Promise.all([
     siteStats(siteId, 30),
     canCosts ? costBreakdown({ siteIds: [siteId], since }) : null,
     errorsSummary(me, { siteId, since }, { siteId }),
+    siteRunTimings(siteId, since),
   ]);
   const runs = costs?.byRun.length ? await prisma.artRun.findMany({ where: { id: { in: costs.byRun.map((r) => r.id) } }, select: { id: true, name: true, createdAt: true } }) : [];
   const max = Math.max(1, ...s.days.map((d) => d.count));
@@ -157,6 +158,31 @@ async function StatsTab({ siteId, me, days }: { siteId: string; me: CurrentUser;
         <span className="help">Период расходов и ошибок:</span>
         {[7, 30, 90].map((d) => <Link key={d} href={periodLink(d)} className={`badge px-3 py-1 ${days === d ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{d} дн.</Link>)}
       </div>
+      <Card title={`Время работы запусков за ${days} дн.`} description="Старт — воркер взял первую статью запуска, конец — закончилась последняя (опубликована, ошибка или остановлена). Пока статьи в очереди, в работе или ждут человека — запуск идёт.">
+        {runTimes.length === 0 ? <p className="help">Запусков за период нет.</p> : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead><tr><th>Запуск</th><th className="text-right">Статей</th><th className="text-right">Опубликовано</th><th>Старт</th><th>Закончили</th><th className="text-right">Время работы</th><th className="text-right">На статью</th></tr></thead>
+              <tbody>
+                {runTimes.map((r) => {
+                  const t = r.timing;
+                  return (
+                    <tr key={r.id}>
+                      <td><Link href={`/pinterest/articles/runs/${r.id}`} className="underline">{r.name || `Запуск ${r.id.slice(0, 8)}`}</Link></td>
+                      <td className="text-right tabular-nums">{r.articles}</td>
+                      <td className="text-right tabular-nums">{r.completed}</td>
+                      <td className="whitespace-nowrap">{t?.startedAt ? fmtDate(t.startedAt) : <span className="text-muted">не начат</span>}</td>
+                      <td className="whitespace-nowrap">{t?.finishedAt ? fmtDate(t.finishedAt) : t?.startedAt ? <span className="text-warn">идёт · осталось {t.open}</span> : "—"}</td>
+                      <td className="text-right tabular-nums whitespace-nowrap">{t?.startedAt ? <>{fmtDuration(t.durationMs)}{!t.finishedAt && <span className="text-muted"> …</span>}</> : "—"}</td>
+                      <td className="text-right tabular-nums whitespace-nowrap">{t?.finishedAt && r.completed > 0 && t.durationMs != null ? fmtDuration(t.durationMs / r.completed) : "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
       {costs && (
         <>
           <Card title={`Расходы за ${days} дн. · ${fmtMoney(costs.total)}`} description="Всё, что потрачено на статьи сайта за период (по времени вызова), по фазам. «Одна опубликованная» и «потеряно» — по статьям, на которые тратили в этот период."

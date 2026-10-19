@@ -259,6 +259,53 @@ export async function runProgress(runId: string): Promise<RunProgress> {
   };
 }
 
+/* ───────── Время работы запусков ───────── */
+
+/** Статусы, при которых статья запуска ещё не закончена (в очереди, в работе или ждёт человека). */
+const OPEN_STATUSES: ArtStatus[] = ["PENDING", "RUNNING", "PHOTO_REVIEW", "INSUFFICIENT_PHOTOS", "WAITING_FOR_PHOTOS", "REVIEW_PENDING", "NEEDS_REWORK", "PUBLISH_QUEUED", "PUBLISHING", "PAUSED"];
+
+export type RunTiming = {
+  /** Старт первой статьи (воркер взял её в работу) */
+  startedAt: Date | null;
+  /** Когда закончилась последняя статья; null — запуск ещё идёт */
+  finishedAt: Date | null;
+  /** Статей ещё не закончено (очередь, работа, ждут человека) */
+  open: number;
+  /** От старта до конца (или до сейчас, если идёт), мс */
+  durationMs: number | null;
+};
+
+/** Старт, конец и общее время работы запусков: от первой взятой в работу статьи до последней законченной. */
+export async function runTimings(runIds: string[]): Promise<Map<string, RunTiming>> {
+  const out = new Map<string, RunTiming>();
+  if (!runIds.length) return out;
+  const [agg, open] = await Promise.all([
+    prisma.article.groupBy({ by: ["runId"], where: { runId: { in: runIds } }, _min: { startedAt: true }, _max: { finishedAt: true, publishedAt: true } }),
+    prisma.article.groupBy({ by: ["runId"], where: { runId: { in: runIds }, status: { in: OPEN_STATUSES } }, _count: { _all: true } }),
+  ]);
+  const now = Date.now();
+  for (const g of agg) {
+    if (!g.runId) continue;
+    const openN = open.find((o) => o.runId === g.runId)?._count._all ?? 0;
+    const start = g._min.startedAt;
+    const last = [g._max.finishedAt, g._max.publishedAt].filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+    const end = openN ? null : last;
+    out.set(g.runId, { startedAt: start, finishedAt: end, open: openN, durationMs: start ? (end ?? new Date(now)).getTime() - start.getTime() : null });
+  }
+  return out;
+}
+
+/** Запуски сайта за период с временем работы (вкладка «Статистика» сайта). */
+export async function siteRunTimings(siteId: string, since: Date): Promise<Array<{ id: string; name: string | null; createdAt: Date; articles: number; completed: number; timing: RunTiming | null }>> {
+  const runs = await prisma.artRun.findMany({ where: { siteId, createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 50, select: { id: true, name: true, createdAt: true, _count: { select: { articles: true } } } });
+  const ids = runs.map((r) => r.id);
+  const [timings, done] = await Promise.all([
+    runTimings(ids),
+    ids.length ? prisma.article.groupBy({ by: ["runId"], where: { runId: { in: ids }, status: "COMPLETED" }, _count: { _all: true } }) : Promise.resolve([]),
+  ]);
+  return runs.map((r) => ({ id: r.id, name: r.name, createdAt: r.createdAt, articles: r._count.articles, completed: done.find((d) => d.runId === r.id)?._count._all ?? 0, timing: timings.get(r.id) ?? null }));
+}
+
 /* ───────── Статистика сайта ───────── */
 
 export type SiteStats = {
