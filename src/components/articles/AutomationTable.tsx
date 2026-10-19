@@ -138,6 +138,14 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
             Потолок воркера: {worker.runningTotal} / {worker.cap}
           </span>
         )}
+        {worker.disk && (
+          <span
+            className={`badge px-2.5 py-1 tabular-nums ${worker.disk.freeMb < worker.disk.totalMb * 0.15 ? "bg-danger-soft text-danger" : "bg-ink/5"}`}
+            title={`Файлы статей хранятся (фото статей и одобренные ИИ кандидаты); удаляются только отклонённые. Свободно ${gb(worker.disk.freeMb)} из ${gb(worker.disk.totalMb)} на диске сервера. Замер ${new Date(worker.disk.at).toLocaleString("ru-RU")}, обновляется раз в 30 мин.`}
+          >
+            Диск: статьи {gb(worker.disk.storageMb)} · свободно {gb(worker.disk.freeMb)} из {gb(worker.disk.totalMb)}
+          </span>
+        )}
         <span className="help">Мастер-выключатели (все сайты сразу):</span>
         <MasterSwitch label="Поиск фото" on={global.photoMaster} disabled={!canEditGlobal} saving={saving === "g-photo"} onChange={(v) => saveGlobal({ photoMaster: v }, "g-photo")} />
         <MasterSwitch label="Написание" on={global.writingMaster} disabled={!canEditGlobal} saving={saving === "g-writing"} onChange={(v) => saveGlobal({ writingMaster: v }, "g-writing")} />
@@ -317,4 +325,9 @@ function NumInput({ value, min, max, onSave, disabled }: { value: number; min: n
       className="input !w-16 !py-1 !px-1.5 text-center text-[12.5px] tabular-nums disabled:opacity-50"
     />
   );
+}
+
+/** МБ → «1,2 ГБ» / «850 МБ». */
+function gb(mb: number): string {
+  return mb >= 1024 ? `${(mb / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} ГБ` : `${mb} МБ`;
 }

@@ -183,6 +183,8 @@ export type WorkerBrief = {
   running: number;
   /** Потолок воркера ARTICLES_WORKER_CONCURRENCY (0 — воркер ещё не сообщил) */
   cap: number;
+  /** Место на диске, МБ (null — воркер ещё не измерил) */
+  disk: { storageMb: number; freeMb: number; totalMb: number; at: string } | null;
 };
 
 export type AutomationPayload = {
@@ -316,10 +318,12 @@ export async function siteAutostartRows(me: CurrentUser, global?: ArtGlobalSetti
       prisma.article.count({ where: { status: "RUNNING" } }),
       prisma.article.count({ where: { status: "RUNNING", leaseUntil: { gt: now } } }),
       prisma.article.count({ where: { status: "PENDING" } }),
-      prisma.artSettings.findUnique({ where: { id: "main" }, select: { workerCap: true } }),
+      prisma.artSettings.findUnique({ where: { id: "main" }, select: { workerCap: true, storageMb: true, diskFreeMb: true, diskTotalMb: true, storageAt: true } }),
     ]),
   ]);
-  const worker: WorkerBrief = { running: workerRows[0], runningTotal: workerRows[1], alive: workerRows[1] > 0, pending: workerRows[2], cap: workerRows[3]?.workerCap ?? 0 };
+  const worker: WorkerBrief = { running: workerRows[0], runningTotal: workerRows[1], alive: workerRows[1] > 0, pending: workerRows[2], cap: workerRows[3]?.workerCap ?? 0,
+    disk: workerRows[3]?.storageAt ? { storageMb: workerRows[3].storageMb, freeMb: workerRows[3].diskFreeMb, totalMb: workerRows[3].diskTotalMb, at: workerRows[3].storageAt.toISOString() } : null,
+  };
 
   const counts = new Map<string, AutostartCounts>();
   for (const id of ids) counts.set(id, emptyCounts());

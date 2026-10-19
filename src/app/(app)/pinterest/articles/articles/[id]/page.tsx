@@ -108,7 +108,7 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
               <div className="flex justify-between gap-3"><dt className="text-muted">Попыток публикации</dt><dd>{a.publishAttempts}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Опубликована</dt><dd>{a.publishedAt ? fmtDate(a.publishedAt) : "—"}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Адрес (slug)</dt><dd className="mono">{a.slug || "—"}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-muted">Файлы на сервере</dt><dd>{a.purgedAt ? `удалены ${fmtDate(a.purgedAt)}` : "хранятся"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted">Файлы на сервере</dt><dd>{a.purgedAt ? `хранятся, отклонённые кандидаты удалены ${fmtDate(a.purgedAt)}` : "хранятся"}</dd></div>
               {a.sheetRow != null && (
                 <div className="flex justify-between gap-3"><dt className="text-muted">Google Таблица</dt>
                   <dd className={a.sheetSyncState === "error" ? "text-danger" : ""} title={a.sheetSyncError ?? undefined}>

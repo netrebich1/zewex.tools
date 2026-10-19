@@ -22,7 +22,7 @@ import { absPath, articleDir, makeThumb, photoRel, photoThumbRel, publicUrl, pur
 import { MIN_PHOTOS, PHOTO_LOOPS, type ArticleCursor } from "@/lib/articles/types";
 import { getNicheProfile, specializeProfile, type NicheProfile } from "@/lib/articles/photo/profile";
 import { orderPhotosForVariety, photoTraits, type DiversityInput } from "@/lib/articles/photo/diversity";
-import { NEAR_DUPLICATE_DISTANCE, loadPhotoUsage, purgeOldFingerprints, recordPhotoFingerprints, type UniqueMode } from "@/lib/articles/photo/fingerprints";
+import { NEAR_DUPLICATE_DISTANCE, loadPhotoUsage, recordPhotoFingerprints, type UniqueMode } from "@/lib/articles/photo/fingerprints";
 import { buildCaption } from "@/lib/articles/photo/caption";
 import { VisionImageCache, imageContent, listFromJson, mustRethrow, numberedTitles, phashDistance, resolveTrendBrief, trendBriefText, visionJson } from "@/lib/articles/photo/vision";
 import { candidateRank, readBreakdown, topicOf } from "@/lib/articles/photo/ranking";
@@ -491,11 +491,11 @@ export const select: ArtStageHandler = async (ctx) => {
     uniqueMode,
     rows: ready.map((s) => ({ sha256: s.row.c.sha256, phash: s.row.c.phash, sourceUrl: s.row.c.url })),
   });
-  await purgeOldFingerprints().catch(() => 0);
+  // Старые отпечатки не удаляются (решение 2026-10-19: храним все данные); в поиске повторов действует окно cutoffDate.
 
-  // Оригиналы кандидатов, не вошедших в статью, больше не нужны (миниатюры остаются для резерва в модерации).
-  const allIds = (await prisma.artPhotoCandidate.findMany({ where: { articleId: article.id }, select: { id: true } })).map((x) => x.id);
-  await purgeCandidateOriginals(article.id, new Set(selectedIds), allIds);
+  // Оригиналы отклонённых кандидатов больше не нужны; одобренные ИИ (selected + reserve) храним — под будущий мешап статей.
+  const cands = await prisma.artPhotoCandidate.findMany({ where: { articleId: article.id }, select: { id: true, status: true } });
+  await purgeCandidateOriginals(article.id, new Set(cands.filter((c) => KEEP_STATUSES.includes(c.status)).map((c) => c.id)), cands.map((c) => c.id));
 
   // Фото отобраны — счётчики колец добора больше не нужны (оригинал: direct-pipeline:588-591).
   const cursor: ArticleCursor = { ...ctx.cursor };

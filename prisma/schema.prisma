@@ -1223,6 +1223,11 @@ model ArtSettings {
   aiModAutoBatch   Int      @default(20)
   /// Потолок воркера статей (ARTICLES_WORKER_CONCURRENCY): воркер пишет при старте, экран «Автозапуск» показывает
   workerCap        Int      @default(0)
+  /// Место на диске (пишет воркер раз в 30 мин): файлы статей, свободно и всего на разделе хранилища, МБ
+  storageMb        Int      @default(0)
+  diskFreeMb       Int      @default(0)
+  diskTotalMb      Int      @default(0)
+  storageAt        DateTime?
   /// Google Таблицы: JSON-ключ сервисного аккаунта (зашифрован) и его e-mail — ему выдают доступ «Редактор» к таблице
   sheetsKeyEnc     String?  @db.Text
   sheetsEmail      String?

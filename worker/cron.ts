@@ -4,6 +4,8 @@ import { domainsRequeueStale } from "./domains";
 import { requeueStaleArticles } from "./articles";
 import { autostartTick } from "./articles/autostart";
 import { purgePublishedBacklog } from "@/lib/articles/wp/cleanup";
+import { measureStorage } from "@/lib/articles/storage";
+import { prisma } from "@/lib/db";
 import { purgeOldRuns } from "@/lib/pins/runs/cleanup";
 import { resyncSheets } from "@/lib/articles/sheets";
 import { failedKeywordsTick } from "@/lib/articles/failedKeywords";
@@ -27,6 +29,9 @@ export function startCron(): () => void {
   timers.push(setInterval(() => autostartTick().then((r) => { if (r.enabled || r.disabled) log.info(`articles autostart: enabled ${r.enabled}, disabled ${r.disabled}`); }).catch((e) => log.warn("articles autostartTick failed", e)), 60_000));
   // Статьи: досылка отчётов в Google Таблицы, которые не записались при публикации (оригинал: publish-worker, каждый тик).
   timers.push(setInterval(() => resyncSheets(10).then((r) => { if (r.tried) log.info(`articles sheets resync: ${r.ok}/${r.tried}`); }).catch((e) => log.warn("articles resyncSheets failed", e)), 5 * 60_000));
+  // Статьи: место на диске для экрана «Автозапуск» (данные хранятся, решение 2026-10-19) — через 2 мин после старта и раз в 30 мин.
+  const disk = () => measureStorage().then((d) => prisma.artSettings.upsert({ where: { id: "main" }, update: { ...d, storageAt: new Date() }, create: { id: "main", ...d, storageAt: new Date() } })).catch((e) => log.warn("articles measureStorage failed", e));
+  timers.push(setTimeout(disk, 2 * 60_000), setInterval(disk, 30 * 60_000));
   // Статьи: список «Неудачные ключи» — полный проход через 90 с после старта (он же бэкфилл), затем изменения каждые 10 мин.
   const failedKw = (full: boolean) => () => failedKeywordsTick(full).then((r) => { if (r.created || r.updated || r.orphansDeleted) log.info(`articles failed keywords${r.full ? " (full)" : ""}: +${r.created}, ~${r.updated}, -${r.orphansDeleted}`); }).catch((e) => log.warn("articles failedKeywords failed", e));
   timers.push(setTimeout(failedKw(true), 90_000), setInterval(failedKw(false), 10 * 60_000));

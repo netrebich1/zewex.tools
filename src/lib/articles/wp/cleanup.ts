@@ -6,13 +6,18 @@
  * фото снова могло попасть на другой сайт; журнал расходов (UsageLog по refId) тоже остаётся.
  */
 import { prisma } from "@/lib/db";
-import { purgeArticleFilesKeepThumbs } from "@/lib/articles/storage";
+import { compactKeptCandidates, purgeRejectedCandidateFiles } from "@/lib/articles/storage";
+
+/** Кандидаты, файлы которых храним всегда: одобренные ИИ-оценкой (под будущий мешап статей, решение 2026-10-19). */
+export const KEPT_CANDIDATE_STATUSES = ["keep", "selected", "reserve"];
 
 export type PurgeResult = { purged: boolean; reason?: string; photos: number };
 
 /**
- * Удалить файлы статьи из хранилища после того, как все фото уже на сайте: ArtPhoto.publicUrl → wpUrl, пути пустые,
- * Article.purgedAt. Условия оригинала (cleanupProjectPhotos :35-46): очередь completed, у фото есть wp_url.
+ * Очистка после публикации (с 2026-10-19 — только отклонённые): удаляются файлы кандидатов вне KEPT_CANDIDATE_STATUSES
+ * и не добавленных ИИ-модерацией; фото статьи, одобренные кандидаты и их миниатюры хранятся (владелец: данные нужны для
+ * будущего мешапа статей). Article.purgedAt — «отклонённые удалены». Условия оригинала (cleanupProjectPhotos :35-46):
+ * очередь completed, у фото есть wp_url.
  * `force` — вызов из этапа publish, когда статус COMPLETED раннер поставит сразу после этапа.
  */
 export async function purgePublishedPhotos(articleId: string, opts: { force?: boolean } = {}): Promise<PurgeResult> {
@@ -25,14 +30,15 @@ export async function purgePublishedPhotos(articleId: string, opts: { force?: bo
   const notOnSite = live.filter((p) => !p.wpUrl);
   if (notOnSite.length) return { purged: false, reason: `не на сайте фото: ${notOnSite.map((p) => p.position).join(", ")}`, photos: 0 };
 
-  // Миниатюры фото статьи и добавленных ИИ кандидатов остаются для экрана решений ИИ-модерации (аудит 2026-10-14).
+  // Храним одобренных ИИ кандидатов и добавленных ИИ-модерацией (экран решений ИИ показывает их и после публикации).
   const aiResults = await prisma.artAiModerationResult.findMany({ where: { articleId }, select: { added: true } });
-  const keepCand = new Set(aiResults.flatMap((r) => ((r.added as Array<{ candidateId?: string }> | null) ?? []).map((x) => String(x?.candidateId || ""))).filter(Boolean));
-  await purgeArticleFilesKeepThumbs(articleId, keepCand);
+  const kept = await prisma.artPhotoCandidate.findMany({ where: { articleId, status: { in: KEPT_CANDIDATE_STATUSES } }, select: { id: true, status: true } });
+  const keepCand = new Set([...kept.map((c) => c.id), ...aiResults.flatMap((r) => ((r.added as Array<{ candidateId?: string }> | null) ?? []).map((x) => String(x?.candidateId || ""))).filter(Boolean)]);
+  await purgeRejectedCandidateFiles(articleId, keepCand);
+  // Одобренных храним сжатыми «как для WordPress»; у вошедших в статью оригинал не нужен — сжатая копия в photos/.
+  await compactKeptCandidates(articleId, keepCand, new Set(kept.filter((c) => c.status === "selected").map((c) => c.id))).catch((e) => console.warn(`[articles cleanup] compact ${articleId} failed: ${e instanceof Error ? e.message : String(e)}`));
   await prisma.$transaction([
-    ...article.photos.map((p) => prisma.artPhoto.update({ where: { id: p.id }, data: { publicUrl: p.wpUrl ?? "", path: "" } })),
     prisma.artPhotoCandidate.updateMany({ where: { articleId, id: { notIn: [...keepCand] } }, data: { path: "", thumbPath: "" } }),
-    prisma.artPhotoCandidate.updateMany({ where: { articleId, id: { in: [...keepCand] } }, data: { path: "" } }),
     prisma.article.update({ where: { id: articleId }, data: { purgedAt: new Date() } }),
   ]);
   return { purged: true, photos: article.photos.length };
@@ -65,6 +71,6 @@ export async function purgePublishedBacklog(limit = 100): Promise<{ checked: num
  * Article удалялась через сутки после публикации) убрано по аудиту 2026-10-14 (stability.md §0). Вместе со строкой
  * каскадом пропадали журнал этапов, ошибки, события модерации, решения ИИ-модерации, расходы на экранах, защита от
  * повторного ключа и от пересжатых копий фото, досылка отчёта в Google Таблицу. Строки весят килобайты — храним всё.
- * Место освобождают только файлы: purgePublishedPhotos (сразу после публикации) и purgePublishedBacklog (cron).
+ * Место освобождают только файлы отклонённых кандидатов: purgePublishedPhotos (сразу после публикации) и purgePublishedBacklog (cron).
  * Файлы статей, у которых не все фото загрузились в медиатеку, не трогаем: запись на сайте ссылается на наше хранилище.
  */
