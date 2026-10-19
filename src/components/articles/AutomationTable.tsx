@@ -89,8 +89,8 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
   const tiles: Array<{ step: string; label: string; value: number; detail: string; problem?: boolean; href?: string }> = [
     { step: "1", label: "Ждут поиска фото", value: totals.photoWait, detail: "Ещё не запущены" },
     { step: "1", label: "Фото ищутся сейчас", value: totals.photoRun, detail: "Обрабатываются" },
-    { step: "2", label: "Ждут проверки фото", value: totals.review, detail: aiTotals.checking + aiTotals.waiting > 0 ? `ИИ: ${aiTotals.checking} проверяет, ${aiTotals.waiting} ждёт` : "ИИ или сотрудник", href: "/pinterest/articles/moderation/photos" },
-    { step: "2", label: "Недостаточно фото", value: totals.few, detail: "Нужен добор или решение", problem: true, href: "/pinterest/articles/moderation/photos" },
+    { step: "2", label: "Ждут проверки фото", value: totals.review, detail: aiTotals.checking + aiTotals.waiting > 0 ? `ИИ: ${aiTotals.checking} проверяет, ${aiTotals.waiting} ждёт` : "ИИ или сотрудник", href: "/pinterest/articles/moderation/articles" },
+    { step: "2", label: "Недостаточно фото", value: totals.few, detail: "Нужен добор или решение", problem: true, href: "/pinterest/articles/moderation/articles?tab=low" },
     { step: "3", label: "Ждут написания", value: totals.writeWait, detail: "Фото уже одобрены" },
     { step: "3", label: "Пишутся сейчас", value: totals.writeRun, detail: "Текст создаётся" },
     { step: "4", label: "Ждут публикации", value: totals.publishWait, detail: "Статья готова", href: "/pinterest/articles/publications" },

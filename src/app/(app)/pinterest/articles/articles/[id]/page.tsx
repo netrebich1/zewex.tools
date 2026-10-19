@@ -61,7 +61,7 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
           <p className="help mt-1.5">{st.help}</p>
           {a.note && <p className="mt-2 text-[13.5px] text-ink-2">{a.note}</p>}
           {a.error && <div className="mt-3"><Alert tone="danger"><b>{a.errorStage ? `${stageLabel(a.errorStage)}: ` : ""}</b>{a.error}</Alert></div>}
-          {a.status === "PHOTO_REVIEW" && <div className="mt-3"><Alert tone="warn">Статья ждёт модерации фото. <Link href={`/pinterest/articles/moderation/photos?article=${a.id}`} className="underline">Открыть в модерации фото →</Link></Alert></div>}
+          {a.status === "PHOTO_REVIEW" && <div className="mt-3"><Alert tone="warn">Статья ждёт модерации фото. <Link href={`/pinterest/articles/moderation/articles?article=${a.id}`} className="underline">Открыть в модерации фото →</Link></Alert></div>}
           {(a.status === "REVIEW_PENDING" || a.status === "NEEDS_REWORK") && <div className="mt-3"><Alert tone="warn">Статья ждёт модерации перед публикацией. <Link href={`/pinterest/articles/moderation/articles?article=${a.id}`} className="underline">Открыть в модерации статей →</Link></Alert></div>}
           {a.status === "INSUFFICIENT_PHOTOS" && a.insufficientReason && <div className="mt-3"><Alert tone="danger">Мало фото: {a.insufficientReason}</Alert></div>}
         </Card>

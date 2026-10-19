@@ -21,7 +21,7 @@ export default async function AiModerationPage() {
         subtitle="ИИ проверяет подобранные фото вместо сотрудника: тема и подлинность (дешёвая модель) + мнение редактора (средняя), спорные кадры — второй взгляд. «Тест» только предлагает, «Авто» применяет уверенные решения (≥75), сомнительные отдаёт людям."
         actions={
           <>
-            <Link href="/pinterest/articles/moderation/photos" className="btn-ghost">Модерация фото</Link>
+            <Link href="/pinterest/articles/moderation/articles" className="btn-ghost">Модерация</Link>
             <Link href="/pinterest/articles/automation" className="btn-ghost">Автозапуск</Link>
           </>
         }

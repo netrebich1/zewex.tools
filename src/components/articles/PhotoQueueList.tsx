@@ -11,7 +11,7 @@ import { moderationApi } from "./PhotoModerationGrid";
  * «Мало фото»: действия «Вернуть на модерацию» / «Добрать фото» / «Закрыть» прямо в строке.
  */
 
-const BASE = "/pinterest/articles/moderation/photos";
+const BASE = "/pinterest/articles/moderation/articles";
 
 const GROUPS: Array<{ key: PhotoQueueGroup; label: string; hint: string }> = [
   { key: "ai", label: "От ИИ", hint: "ИИ проверил и отдал людям (или только предложил правки в тест-режиме). Причина — в строке." },
@@ -33,12 +33,14 @@ type Props = {
   siteId?: string;
   initialGroup?: PhotoQueueGroup;
   minPhotos: number;
+  /** Показать одну группу без вкладок (страница «Модерация», вкладка «Мало фото») */
+  only?: PhotoQueueGroup;
 };
 
-export function PhotoQueueList({ queue, siteId, initialGroup, minPhotos }: Props) {
+export function PhotoQueueList({ queue, siteId, initialGroup, minPhotos, only }: Props) {
   const router = useRouter();
   const firstNonEmpty = GROUPS.find((g) => queue.counts[g.key] > 0)?.key ?? "ai";
-  const [group, setGroup] = useState<PhotoQueueGroup>(initialGroup ?? firstNonEmpty);
+  const [group, setGroup] = useState<PhotoQueueGroup>(only ?? initialGroup ?? firstNonEmpty);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; tone: "ok" | "danger" } | null>(null);
@@ -59,7 +61,7 @@ export function PhotoQueueList({ queue, siteId, initialGroup, minPhotos }: Props
     return queue.items.filter((i) => i.group === group && (!needle || i.keyword.toLowerCase().includes(needle) || i.keywordRu.toLowerCase().includes(needle) || i.siteName.toLowerCase().includes(needle)));
   }, [queue.items, group, q]);
 
-  const openHref = (i: PhotoQueueItem) => `${BASE}?article=${i.id}${siteId ? `&site=${siteId}` : ""}`;
+  const openHref = (i: PhotoQueueItem) => `${BASE}?tab=${i.group}&article=${i.id}${siteId ? `&site=${siteId}` : ""}`;
 
   const lowAction = async (i: PhotoQueueItem, action: "return_review" | "topup" | "close", ok: string) => {
     if (action === "close" && !window.confirm(`Закрыть статью «${i.keyword}»? Она не будет написана, фото и резерв останутся.`)) return;
@@ -81,7 +83,7 @@ export function PhotoQueueList({ queue, siteId, initialGroup, minPhotos }: Props
   return (
     <div className="card p-0 overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
-        {GROUPS.map((g) => (
+        {!only && GROUPS.map((g) => (
           <button key={g.key} type="button" className={`tab ${group === g.key ? "active" : ""}`} onClick={() => pick(g.key)}>
             {g.label} · {queue.counts[g.key]}
           </button>

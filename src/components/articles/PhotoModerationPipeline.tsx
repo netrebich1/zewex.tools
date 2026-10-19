@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PhotoModerationState } from "@/lib/articles/moderation";
+import type { PhotoModerationState, PhotoQueueItem } from "@/lib/articles/moderation";
 import { moderationApi, PhotoModerationGrid } from "./PhotoModerationGrid";
 
 /**
@@ -13,6 +13,8 @@ import { moderationApi, PhotoModerationGrid } from "./PhotoModerationGrid";
  * → следующая (пропустить), ← предыдущая, Esc — закрыть лайтбокс.
  * Закрепление: пинг раз в минуту, пока страница открыта; при уходе (смена статьи, переход, закрытие вкладки) —
  * release через navigator.sendBeacon.
+ * С `items` — режим списка (страница «Модерация», вкладки «Фото от ИИ» / «Фото без ИИ»): статьи слева, клик открывает,
+ * «следующая» берётся из этого списка, а не из общей очереди сервера.
  */
 
 const HEARTBEAT_MS = 60_000;
@@ -38,8 +40,10 @@ type Props = {
   initialMessage?: string;
   claims: ClaimInfo[];
   minPhotos: number;
-  /** Ссылка на очередь списком */
-  listHref: string;
+  /** Ссылка на очередь списком (без режима списка) */
+  listHref?: string;
+  /** Режим списка: статьи группы слева, следующая — из этого списка */
+  items?: PhotoQueueItem[];
 };
 
 type Blockers = { aiBusy: number; claimedByOthers: number };
@@ -52,7 +56,14 @@ const plural = (n: number, one: string, few: string, many: string) => {
   return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
 };
 
-export function PhotoModerationPipeline({ userId, siteId, initialArticleId, initialState, initialMessage, claims, minPhotos, listHref }: Props) {
+export function PhotoModerationPipeline({ userId, siteId, initialArticleId, initialState, initialMessage, claims, minPhotos, listHref, items }: Props) {
+  const listMode = !!items;
+  const [list, setListState] = useState<PhotoQueueItem[]>(items ?? []);
+  const listRef = useRef(list);
+  const setList = useCallback((fn: (l: PhotoQueueItem[]) => PhotoQueueItem[]) => {
+    listRef.current = fn(listRef.current);
+    setListState(listRef.current);
+  }, []);
   const [current, setCurrent] = useState<Current | null>(initialArticleId && initialState ? { id: initialArticleId, state: initialState } : null);
   const [header, setHeader] = useState<PhotoModerationState | null>(initialState);
   const [history, setHistory] = useState<string[]>([]);
@@ -104,7 +115,50 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
     window.scrollTo({ top: 0 });
   }, []);
 
-  const loadNext = useCallback(async () => {
+  /** Открыть статью (закрепить и загрузить). false — не удалось: занята коллегой, ушла дальше, ошибка. */
+  const open = useCallback(
+    async (id: string): Promise<boolean> => {
+      setBusy("open");
+      try {
+        const c = await moderationApi({ action: "claim", articleId: id });
+        const res = c.result as { claimed: boolean; by?: string };
+        if (!res?.claimed) {
+          setMsg({ text: `Статью сейчас модерирует ${res?.by ?? "другой сотрудник"}`, tone: "neutral" });
+          setList((l) => l.map((x) => (x.id === id ? { ...x, claimedByName: res?.by ?? "другой сотрудник", claimedMine: false } : x)));
+          return false;
+        }
+        const r = (await (await fetch(`/api/articles/moderation?article=${id}`, { cache: "no-store" })).json()) as { state?: PhotoModerationState; error?: string };
+        if (!r.state) throw new Error(r.error || "Не удалось загрузить статью");
+        setList((l) => l.map((x) => (x.id === id ? { ...x, claimedByName: "вы", claimedMine: true } : x)));
+        show(id, r.state);
+        return true;
+      } catch (e) {
+        const err = e as Error & { stale?: boolean };
+        setMsg({ text: err.message, tone: err.stale ? "neutral" : "danger" });
+        if (err.stale) setList((l) => l.filter((x) => x.id !== id));
+        return false;
+      } finally {
+        setBusy(null);
+      }
+    },
+    [show, setList],
+  );
+
+  /** Следующая статья. В режиме списка — по списку после afterId (drop — убрать afterId из списка: решение принято). */
+  const loadNext = useCallback(async (afterId: string | null = null, drop = false) => {
+    if (listMode) {
+      const l = listRef.current;
+      const idx = afterId ? l.findIndex((x) => x.id === afterId) : -1;
+      const order = idx >= 0 ? [...l.slice(idx + 1), ...l.slice(0, idx)] : l.filter((x) => x.id !== afterId);
+      if (drop && afterId) setList((x) => x.filter((i) => i.id !== afterId));
+      const cands = order.filter((x) => !skipped.current.has(x.id) && !(x.claimedByName && !x.claimedMine));
+      for (const c of cands.slice(0, 10)) if (await open(c.id)) return;
+      setCurrent(null);
+      setHeader(null);
+      setEmpty(true);
+      setBlockers(null);
+      return;
+    }
     setBusy("next");
     try {
       const u = new URLSearchParams({ next: "1", mode: "photos" });
@@ -125,29 +179,7 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
     } finally {
       setBusy(null);
     }
-  }, [siteId, show]);
-
-  const open = useCallback(
-    async (id: string) => {
-      setBusy("open");
-      try {
-        const c = await moderationApi({ action: "claim", articleId: id });
-        const res = c.result as { claimed: boolean; by?: string };
-        if (!res?.claimed) {
-          setMsg({ text: `Статью сейчас модерирует ${res?.by ?? "другой сотрудник"}`, tone: "neutral" });
-          return;
-        }
-        const r = (await (await fetch(`/api/articles/moderation?article=${id}`, { cache: "no-store" })).json()) as { state?: PhotoModerationState; error?: string };
-        if (!r.state) throw new Error(r.error || "Не удалось загрузить статью");
-        show(id, r.state);
-      } catch (e) {
-        setMsg({ text: e instanceof Error ? e.message : String(e), tone: "danger" });
-      } finally {
-        setBusy(null);
-      }
-    },
-    [show],
-  );
+  }, [siteId, show, listMode, open, setList]);
 
   const finish = useCallback(
     async (label: string, body: Record<string, unknown>, okText: string) => {
@@ -158,16 +190,17 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
         await moderationApi({ articleId: current.id, ...body });
         setMsg({ text: okText, tone: "ok" });
         setHistory((h) => [...h.slice(-19), current.id]);
-        await loadNext();
+        if (label === "skip") setList((l) => l.map((x) => (x.id === current.id ? { ...x, claimedByName: null, claimedMine: false } : x)));
+        await loadNext(current.id, label !== "skip");
       } catch (e) {
         const err = e as Error & { stale?: boolean };
         setMsg({ text: err.message, tone: err.stale ? "neutral" : "danger" });
-        if (err.stale) await loadNext();
+        if (err.stale) await loadNext(current.id, true);
       } finally {
         setBusy(null);
       }
     },
-    [current, loadNext],
+    [current, loadNext, setList],
   );
 
   /** Почему перед одобрением нужно подтверждение: ИИ добавил кадры или фото больше плана. */
@@ -235,9 +268,9 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
   const onStale = useCallback(
     (text: string) => {
       setMsg({ text: `${text}. Переходим к следующей.`, tone: "neutral" });
-      void loadNext();
+      void loadNext(currentId, true);
     },
-    [loadNext],
+    [loadNext, currentId],
   );
 
   // Пустое состояние при первом заходе без статьи — попробовать загрузить
@@ -250,8 +283,8 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
   const a = header?.article;
   const counts = header?.counts;
 
-  return (
-    <div className="space-y-4">
+  const main = (
+    <div className="space-y-4 min-w-0">
       {/* Sticky-шапка статьи */}
       <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-bg/95 backdrop-blur border-b border-line">
         {a && counts ? (
@@ -281,9 +314,11 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Link href={listHref} className="btn-ghost btn-sm" title="Очередь списком (статья освободится для коллег)">
-                Список
-              </Link>
+              {listHref && (
+                <Link href={listHref} className="btn-ghost btn-sm" title="Очередь списком (статья освободится для коллег)">
+                  Список
+                </Link>
+              )}
               <button type="button" className="btn-ghost btn-sm" disabled={!!busy || !history.length} onClick={prev} title="Предыдущая (←)">
                 ←
               </button>
@@ -373,12 +408,48 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
             <button type="button" className="btn-ghost" onClick={() => void loadNext()} disabled={!!busy}>
               Проверить ещё раз
             </button>
-            <Link href={listHref} className="btn-ghost">
-              К списку
-            </Link>
+            {listHref && (
+              <Link href={listHref} className="btn-ghost">
+                К списку
+              </Link>
+            )}
           </div>
         </div>
       ) : null}
+    </div>
+  );
+
+  if (!listMode) return main;
+  return (
+    <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+      <aside className="card p-2 lg:max-h-[80vh] lg:overflow-auto lg:sticky lg:top-4">
+        {list.length === 0 ? (
+          <p className="help p-3">Статей нет.</p>
+        ) : (
+          <ul className="space-y-0.5">
+            {list.map((x) => {
+              const sel = x.id === currentId;
+              const held = !!x.claimedByName && !x.claimedMine;
+              return (
+                <li key={x.id}>
+                  <button type="button" className={`w-full text-left rounded-lg px-3 py-2 text-[13px] transition ${sel ? "bg-ink text-bg" : "hover:bg-ink/5"}`} onClick={() => void open(x.id)} disabled={!!busy || sel} title={x.aiNote ?? undefined}>
+                    <div className="flex items-baseline gap-2">
+                      <span className="truncate font-medium flex-1">{x.keyword}</span>
+                      <span className={`shrink-0 tabular-nums text-[11.5px] ${sel ? "text-bg/70" : x.photos < Math.min(minPhotos, Math.max(1, x.norm)) ? "text-danger" : "text-muted"}`}>{x.photos}/{x.norm}</span>
+                    </div>
+                    <div className={`truncate text-[11.5px] ${sel ? "text-bg/70" : "text-muted"}`}>
+                      {x.siteName}
+                      {x.keywordRu ? ` · ${x.keywordRu}` : ""}
+                      {held ? ` · 🔒 ${x.claimedByName}` : ""}                    </div>
+                    {x.aiNote && <div className={`truncate text-[11.5px] ${sel ? "text-bg/70" : "text-warn"}`}>{x.aiNote}</div>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </aside>
+      {main}
     </div>
   );
 }

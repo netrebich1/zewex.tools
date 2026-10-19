@@ -14,7 +14,7 @@ const fail = (e: unknown): FormState => ({ error: e instanceof Error ? e.message
 
 function refresh(extra: string[] = []) {
   revalidatePath("/pinterest/articles/moderation/ai");
-  revalidatePath("/pinterest/articles/moderation/photos");
+  revalidatePath("/pinterest/articles/moderation/articles");
   revalidatePath("/pinterest/articles/automation");
   revalidatePath("/pinterest/articles");
   for (const p of extra) revalidatePath(p);

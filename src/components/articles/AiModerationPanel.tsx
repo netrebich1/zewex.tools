@@ -408,7 +408,7 @@ function ResultDialog({ r, canSeeCosts, busy, onClose, onResolve, onRerun, siteN
         ) : (
           <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3 text-muted">
             <span>Статус: {STATUS[r.status] ?? r.status}</span>
-            {r.status === "sent_to_human" && r.articleStatus === "PHOTO_REVIEW" && <Link href={`/pinterest/articles/moderation/photos?article=${r.articleId}`} className="btn-ghost btn-sm">Открыть в модерации фото</Link>}
+            {r.status === "sent_to_human" && r.articleStatus === "PHOTO_REVIEW" && <Link href={`/pinterest/articles/moderation/articles?article=${r.articleId}`} className="btn-ghost btn-sm">Открыть в модерации</Link>}
             <Link href={`/pinterest/articles/articles/${r.articleId}`} className="btn-ghost btn-sm">Карточка статьи</Link>
           </div>
         )}
