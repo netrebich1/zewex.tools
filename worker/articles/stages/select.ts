@@ -26,6 +26,7 @@ import { NEAR_DUPLICATE_DISTANCE, loadPhotoUsage, recordPhotoFingerprints, type 
 import { buildCaption } from "@/lib/articles/photo/caption";
 import { VisionImageCache, imageContent, listFromJson, mustRethrow, numberedTitles, phashDistance, resolveTrendBrief, trendBriefText, visionJson } from "@/lib/articles/photo/vision";
 import { candidateRank, readBreakdown, topicOf } from "@/lib/articles/photo/ranking";
+import { noPeopleInFrame } from "@/lib/articles/photo/contracts";
 import type { ArtStageHandler, ArtStageResult, ArtStageCtx } from "./index";
 
 /** сколько лучших кадров модель видит одной сеткой на финальном отборе (оригинал: :58) */
@@ -265,11 +266,26 @@ export const select: ArtStageHandler = async (ctx) => {
   const model = stageModel(recipe, "rp_photo_rate");
 
   // оригинал: :306-315 — одобренные, по ai_score, до 500
-  const poolRaw = await prisma.artPhotoCandidate.findMany({
+  let poolRaw = await prisma.artPhotoCandidate.findMany({
     where: { articleId: article.id, status: { in: KEEP_STATUSES } },
     orderBy: { aiScore: "desc" },
     take: 500,
   });
+  // Интерьер и декор — без людей (2026-10-19): одобренные оценкой раньше правила, но с человеком в кадре, отбраковываем.
+  if (noPeopleInFrame(niche, subniche, article.focusKeyword || article.keyword || searchKeyword)) {
+    const withPerson = poolRaw.filter((c) => {
+      const b = readBreakdown(c);
+      return b.person_visible === true || b.subject_age === "adult" || b.subject_age === "child";
+    });
+    if (withPerson.length) {
+      await prisma.artPhotoCandidate.updateMany({
+        where: { id: { in: withPerson.map((c) => c.id) } },
+        data: { status: "rejected", rejectStage: "select", rejectReason: "человек в кадре (интерьер и декор — без людей)" },
+      });
+      poolRaw = poolRaw.filter((c) => !withPerson.includes(c));
+      ctx.log(`отбракованы кадры с человеком: ${withPerson.length}`);
+    }
+  }
   await ctx.tick(`Отбор ${needed} фото из ${poolRaw.length} одобренных`);
 
   // ── Идемпотентность: прежний результат отбора и всё, что на нём построено, пересобираем (оригинал: :368-384, :616) ──

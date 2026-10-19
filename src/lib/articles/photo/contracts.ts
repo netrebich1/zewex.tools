@@ -587,6 +587,7 @@ export function buildInteriorContract(keyword: string, attrs?: Record<string, un
   if (season) {
     requirements.push(`The decor should read as ${season} through colours, textiles, greenery or seasonal props; weather does not have to be visible. Only decor that clearly belongs to the opposite season is off-topic.`);
   }
+  if (!PEOPLE_WANTED_RE.test(keyword)) requirements.push("No people: no person or human body part (hands, arms, legs, back, silhouette, reflection) anywhere in the frame — only the space and the decor.");
   requirements.push(`Real photography only: no 3D render, no CGI, no AI-generated interior, no floor plan, no mood-board collage, no real-estate listing watermark, no furniture-catalogue cut-out on a white background.`);
 
   return { decor_mode: mode, hero_element: hero, room, setting, style, palette, materials, season, occasion, size, budget, source_keyword_en: source, hard_requirements: requirements };
@@ -609,3 +610,21 @@ export const INTERIOR_NICHES = ["interior", "decor", "outdoor"];
 export function isInteriorNiche(niche?: string | null, subniche?: string | null): boolean {
   return INTERIOR_NICHES.includes(String(subniche || "")) || INTERIOR_NICHES.includes(String(niche || ""));
 }
+
+/** Ключ сам просит людей в кадре («family christmas photo»). Фигурки (gingerbread man, snowman, Santa) людьми не считаются. */
+const PEOPLE_WANTED_RE = /\b(?:people|persons?|family|families|kids?|child(?:ren)?|toddlers?|babies|baby|couples?|women|woman|(?<!gingerbread )(?:men|man)|girls?|boys?|portraits?|selfies?)\b/i;
+
+/**
+ * Интерьер и декор — без людей (решение владельца 2026-10-19, аудит 20 рождественских статей best-for-you: ~20 кадров
+ * с человеком, многие с баллом 10). Человек или часть тела в кадре — жёсткий отказ на оценке, отборе и ИИ-модерации.
+ * Исключение — ключ сам просит людей.
+ */
+export function noPeopleInFrame(niche: string | null | undefined, subniche: string | null | undefined, keyword: string | null | undefined): boolean {
+  return isInteriorNiche(niche, subniche) && !PEOPLE_WANTED_RE.test(String(keyword || ""));
+}
+
+/** Правило «без людей» для промтов (оценка, ИИ-модерация). */
+export const NO_PEOPLE_RULE =
+  "NO PEOPLE (hard): this is an interior/decor article — the photo must show the space and the decor only. " +
+  "Reject any photo where a person or any human body part is visible: a face, hands holding or hanging something, arms, legs, feet, a back, " +
+  "a silhouette or a reflection in a mirror — even small, blurred or in the background. Pets, figurines, dolls, gingerbread men, Santa or angel ornaments are fine.";

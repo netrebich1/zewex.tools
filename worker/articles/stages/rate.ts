@@ -34,6 +34,8 @@ import {
   fashionContractPrompt,
   interiorContractPrompt,
   isInteriorNiche,
+  NO_PEOPLE_RULE,
+  noPeopleInFrame,
   type FashionContract,
   type InteriorContract,
   type TopicContract,
@@ -183,7 +185,7 @@ export function buildRateSystem(inp: RateSystemInput, rescueActive: boolean): { 
     `\n\nTOPIC RULES for "${topic}" — apply strictly (HARD REJECT rules above apply to every photo):\n${rel.aiConstraints || `- the photo MUST visibly show the subject of "${topic}"`}${inp.contractRules}${inp.audienceRules}${inp.fashionRules}${inp.interiorRules}${CHECKLIST}\nWhen in doubt, reject: a wrong or off-topic photo is far worse than a missing one.` +
     (rescueActive
       ? `\n\nSECOND PASS: these photos were rejected on a first, very strict pass and we are short of usable photos.` +
-        ` Hard rules above still apply without exception (collage, text overlay, AI-generated, wrong topic, wrong body part, wrong audience/ethnicity).` +
+        ` Hard rules above still apply without exception (collage, text overlay, AI-generated, wrong topic, wrong body part, wrong audience/ethnicity, people in an interior/decor frame).` +
         ` But do NOT reject for minor aesthetic reasons alone — slightly imperfect lighting, plain background,` +
         ` visible tools or props, mild softness outside ${SUBJECT}, or an ordinary-looking result are acceptable.` +
         ` Keep every photo that is on topic and shows ${SUBJECT} clearly enough to write about.`
@@ -231,6 +233,8 @@ export const rate: ArtStageHandler = async (ctx) => {
     ? asContract<InteriorContract>(ctx.facts.interiorContract, "hard_requirements") ?? buildInteriorContract(article.focusKeyword || topic, attrs)
     : null;
   const audience = audienceRule(topic, niche);
+  // Интерьер и декор — без людей (2026-10-19): жёсткий отказ по полю person_visible / subject_age.
+  const noPeople = noPeopleInFrame(niche, subniche, article.focusKeyword || article.keyword || topic);
   // оригинал: :297-298
   const adultTopic = !/interior|decor|home|garden/i.test(niche) && !isChildIntent(focusTopic, niche);
   const rel = buildTopicRelevance(topic, niche, profile);
@@ -260,7 +264,10 @@ export const rate: ArtStageHandler = async (ctx) => {
       ` AI-generated interiors, floor plans, mood-board collages, real-estate listing frames with agency watermarks or text bars,` +
       ` and furniture-catalogue cut-outs on a plain white background.` +
       ` A single photo that happens to show a doorway, a mirror, several people or objects laid out on one surface is NOT a collage.` +
-      `\nExtract only visible facts: room or zone, style, palette, materials, key pieces, lighting, framing. Never guess prices, brands, room dimensions or renovation cost.`
+      `\nExtract only visible facts: room or zone, style, palette, materials, key pieces, lighting, framing. Never guess prices, brands, room dimensions or renovation cost.` +
+      (noPeople
+        ? `\n${NO_PEOPLE_RULE}\nFor EVERY photo, kept or rejected, add "person_visible": true if any person or human body part is visible anywhere in the frame, otherwise false. person_visible true means verdict "reject".`
+        : "")
     : "";
   const CONTRACT_RULES = topicContract.reviewRules.length
     ? `\n\nTOPIC CONTRACT (hard limits from the article topic):\n${topicContract.reviewRules.map((r, i) => `${i + 1}. ${r}`).join("\n")}`
@@ -421,6 +428,7 @@ export const rate: ArtStageHandler = async (ctx) => {
         adultTopic,
         factKeys: FACT_KEYS,
         rescue: rescueActive,
+        noPeople,
       });
       // slim: описание не сохраняем (judgeRatingItem подставил бы текст из фактов), aiBreakdown.slim = true.
       const j = slim ? slimJudgement(judged) : judged;

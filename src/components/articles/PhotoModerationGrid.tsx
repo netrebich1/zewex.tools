@@ -402,6 +402,7 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
                     </span>
                     {p.aiScore != null && <span className="absolute top-1.5 right-1.5 badge bg-surface/90">★ {Number(p.aiScore).toFixed(1)}</span>}
                     {!p.hasDescription && !p.excluded && <span className="absolute bottom-1.5 left-1.5 badge bg-danger text-white">нет описания</span>}
+                    {p.person && !p.excluded && <span className="absolute bottom-1.5 right-1.5 badge bg-danger text-white" title="Интерьер и декор — без людей: ИИ-оценка увидела в кадре человека. Снимите фото.">человек</span>}
                     {editable && (
                       <div className={`absolute inset-x-0 bottom-0 flex justify-end gap-1 p-1.5 transition bg-gradient-to-t from-ink/60 to-transparent ${HOVER_REVEAL}`}>
                         {!p.excluded && (
@@ -517,6 +518,7 @@ function ReserveCard({ c, aspect, compact, busy, editable, aiSuggest, onAdd, onZ
         {c.aiScore != null && <span className="absolute top-1.5 right-1.5 badge bg-surface/90">★ {Number(c.aiScore).toFixed(1)}</span>}
         <span className="absolute top-1.5 left-1.5 inline-flex gap-1">
           {c.status === "rejected" && <span className="badge bg-danger text-white">отклонено</span>}
+          {c.person && <span className="badge bg-danger text-white" title="Интерьер и декор — без людей: в кадре человек">человек</span>}
           {aiSuggest != null && <span className="badge bg-ok text-white" title={aiSuggest || "ИИ предлагает добавить"}>ИИ: добавить?</span>}
         </span>
         {editable && (

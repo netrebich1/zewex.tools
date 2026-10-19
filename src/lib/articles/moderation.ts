@@ -19,6 +19,7 @@ import type { CurrentUser } from "@/lib/auth";
 import { safeFetch } from "@/lib/pins/fetch";
 import { articleWhere, canAccessArticle } from "./access";
 import { firstWritingStage } from "./stages";
+import { noPeopleInFrame } from "./photo/contracts";
 import { statusLabel } from "./labels";
 import { absPath, exists, makeThumb, photoRel, photoThumbRel, publicUrl, removePath, toWpJpeg, writeFileAtomic } from "./storage";
 import { CLAIM_TTL_MIN, MIN_PHOTOS, type ArticleCursor, type ArticleFacts } from "./types";
@@ -350,6 +351,8 @@ export type ModPhoto = {
   excluded: boolean;
   excludedByAi: boolean;
   altText: string;
+  /** Интерьер и декор: оценка увидела в кадре человека — такие фото снимать (правило «без людей», 2026-10-19) */
+  person?: boolean;
 };
 
 export type ModCandidate = {
@@ -369,6 +372,8 @@ export type ModCandidate = {
   reason: string;
   status: string;
   hasDescription: boolean;
+  /** Интерьер и декор: в кадре человек (по оценке ИИ) */
+  person?: boolean;
 };
 
 export type PhotoModerationState = {
@@ -521,6 +526,12 @@ function trendFromFacts(facts: unknown): { in: string[]; out: string[] } | null 
   return inn.length || out.length ? { in: inn, out } : null;
 }
 
+/** Оценка увидела человека: person_visible или subject_age adult/child. */
+function hasPerson(breakdown: unknown): boolean {
+  const b = (breakdown ?? {}) as Record<string, unknown>;
+  return b.person_visible === true || b.subject_age === "adult" || b.subject_age === "child";
+}
+
 function candView(c: { id: string; url: string; pageUrl: string; domain: string; thumbUrl: string; path: string; thumbPath: string; width: number | null; height: number | null; aiScore: number | null; beautyRank: number | null; aiBreakdown: unknown; rejectReason: string | null; status: string; aiDescription: string | null; aiFacts: unknown }): ModCandidate {
   const b = (c.aiBreakdown ?? {}) as Record<string, unknown>;
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -555,10 +566,19 @@ export async function photoState(me: Actor, articleId: string): Promise<PhotoMod
     }),
   ]);
   const used = new Set(photos.map((p) => p.candidateId).filter(Boolean));
+  // Интерьер и декор — без людей: помечаем кадры, где оценка увидела человека.
+  const recipe = (a.recipe ?? {}) as { nicheCode?: string; subnicheCode?: string | null };
+  const noPeople = noPeopleInFrame(recipe.nicheCode, recipe.subnicheCode, a.focusKeyword || a.keyword);
+  const personIds = new Set<string>();
+  if (noPeople) {
+    const usedRows = used.size ? await prisma.artPhotoCandidate.findMany({ where: { id: { in: [...used] as string[] } }, select: { id: true, aiBreakdown: true } }) : [];
+    for (const c of [...usedRows, ...cands]) if (hasPerson(c.aiBreakdown)) personIds.add(c.id);
+  }
+  const view = (c: (typeof cands)[number]) => ({ ...candView(c), ...(personIds.has(c.id) ? { person: true } : {}) });
   const usedSha = new Set(photos.map((p) => p.sha256).filter(Boolean));
   const free = cands.filter((c) => !used.has(c.id) && !(c.sha256 && usedSha.has(c.sha256)));
-  const reserve = free.filter((c) => c.status !== "rejected").map(candView);
-  const rejected = free.filter((c) => c.status === "rejected").map(candView);
+  const reserve = free.filter((c) => c.status !== "rejected").map(view);
+  const rejected = free.filter((c) => c.status === "rejected").map(view);
   const active = photos.filter((p) => !p.excluded).length;
   const needMin = Math.min(MIN_PHOTOS, Math.max(1, a.photoCount));
   return {
@@ -592,6 +612,7 @@ export async function photoState(me: Actor, articleId: string): Promise<PhotoMod
       excluded: p.excluded,
       excludedByAi: p.excludedByAi,
       altText: p.altText,
+      ...(p.candidateId && personIds.has(p.candidateId) ? { person: true } : {}),
     })),
     reserve,
     rejected,

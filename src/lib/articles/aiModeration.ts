@@ -35,6 +35,7 @@ import { parseJsonLenient } from "@/lib/pins/ai/json";
 import { artSiteWhere, canAccessArtSite } from "./access";
 import { aiChat, articleCost, imagePart, type AiCtx, type ContentPart } from "./ai";
 import { ageRule, audienceRule, genderRule } from "./photo/audience";
+import { NO_PEOPLE_RULE, noPeopleInFrame } from "./photo/contracts";
 import { resolveTrendBrief, trendBriefText } from "./photo/vision";
 import { absPath, publicUrl } from "./storage";
 import { loadArtSettings } from "./automation";
@@ -610,6 +611,8 @@ export async function applyResult(resultId: string, op: AiResolveOp, userId: str
 export function focusRules(keyword: string, niche?: string | null, motif?: string | null): string {
   const k = String(keyword || "").toLowerCase();
   const out: string[] = [];
+  // Интерьер и декор — без людей (2026-10-19): кадр с человеком снимается как off_topic.
+  if (noPeopleInFrame(niche, null, keyword)) out.push(NO_PEOPLE_RULE.replace("Reject any photo", "FLAG as \"off_topic\" (why: «человек в кадре») any photo"));
   const g = genderRule(keyword, niche);
   if (g.allow !== "any" && !/interior|decor|home|garden|outdoor/i.test(String(niche || ""))) out.push(g.rule);
   const age = /interior|decor|home|garden|outdoor/i.test(String(niche || "")) ? "" : ageRule(keyword, niche);

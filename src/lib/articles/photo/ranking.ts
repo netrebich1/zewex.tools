@@ -125,6 +125,7 @@ export type RejectClass =
   | "catalogue"       // каталожная подача (жёсткий)
   | "synthetic"       // признаки ИИ-генерации (жёсткий)
   | "child"           // ребёнок при взрослой теме (жёсткий)
+  | "people"          // человек в кадре там, где людей быть не должно — интерьер и декор (жёсткий)
   | "dated"           // устаревший стиль (мягкий)
   | "low_virality"    // слабая Pinterest-привлекательность (мягкий)
   | "below_threshold" // модель за keep, но балл ниже порога (мягкий)
@@ -193,7 +194,7 @@ export const PROMO_MIN_SCORE = 6;
 export const RESCUE_MIN_THRESHOLD = 6;
 
 /** Жёсткие классы: не промотировать и не пересматривать (08-plan §3 п.5; аудит 02 п.7.2, 7.6). */
-export const HARD_REJECT_CLASSES: ReadonlySet<RejectClass> = new Set<RejectClass>(["audience", "checklist", "no_evidence", "catalogue", "synthetic", "child", "download", "model_failed"]);
+export const HARD_REJECT_CLASSES: ReadonlySet<RejectClass> = new Set<RejectClass>(["audience", "checklist", "no_evidence", "catalogue", "synthetic", "child", "people", "download", "model_failed"]);
 
 /** Регэксп оригинала по тексту причины (stage-photo-rate:436) — для отказов класса model_reject. */
 export const HARD_REASON_RE = /коллаж|надпис|текст|водян|watermark|ии-|ai-|сгенерирован|не соответствует теме|не та тема|педикюр|pedicure|toe|hero piece|central garment|complete outfit|wrong gender|неверн.*пол|product-only|collage|overlay|screenshot|render|mannequin|wrong subject|off-topic|off topic/i;
@@ -275,7 +276,7 @@ export type RatingJudgement = {
  */
 export function judgeRatingItem(
   item: Record<string, unknown>,
-  opts: { scoreThreshold: number; requirementsCount: number; audienceCode: string | null; adultTopic: boolean; factKeys: string[]; rescue?: boolean },
+  opts: { scoreThreshold: number; requirementsCount: number; audienceCode: string | null; adultTopic: boolean; factKeys: string[]; rescue?: boolean; noPeople?: boolean },
 ): RatingJudgement {
   const score = Math.max(0, Math.min(10, Number(item.score) || 0));
   const checklistOk = opts.requirementsCount
@@ -308,8 +309,11 @@ export function judgeRatingItem(
   const clearlySynthetic = aiLikelihood !== null && aiLikelihood >= SYNTHETIC_LIKELIHOOD_MIN && aiArtifacts.length >= 1;
   const subjectAge = String(item.subject_age || "").toLowerCase();
   const childInAdultTopic = opts.adultTopic && subjectAge === "child";
+  // Интерьер и декор: человек в кадре — по полю person_visible или по subject_age (adult/child = человек есть).
+  const personVisible = item.person_visible === true || String(item.person_visible).toLowerCase() === "true" || subjectAge === "adult" || subjectAge === "child";
+  const peopleInFrame = !!opts.noPeople && personVisible;
 
-  const verdict: "keep" | "reject" = requestedKeep && hasVisualEvidence && !lowVirality && !dated && !catalogue && !clearlySynthetic && !childInAdultTopic ? "keep" : "reject";
+  const verdict: "keep" | "reject" = requestedKeep && hasVisualEvidence && !lowVirality && !dated && !catalogue && !clearlySynthetic && !childInAdultTopic && !peopleInFrame ? "keep" : "reject";
   const miss = String(item.topic_miss || "").trim();
   const modelReason = String(item.reason || "").trim();
 
@@ -319,6 +323,9 @@ export function judgeRatingItem(
   if (!audienceOk) {
     rejectClass = "audience";
     reason = `не та аудитория: в кадре «${audienceAnswer || "не определено"}», нужна «${opts.audienceCode}»`;
+  } else if (peopleInFrame) {
+    rejectClass = "people";
+    reason = `человек в кадре (интерьер и декор — без людей)${modelReason ? `: ${modelReason}` : ""}`;
   } else if (!checklistOk) {
     rejectClass = "checklist";
     reason = `не соответствует теме: ${miss || "не выполнен пункт чек-листа"}`;
@@ -370,6 +377,7 @@ export function judgeRatingItem(
     topic_ok: topicOk,
     ...(miss ? { topic_miss: miss } : {}),
     ...(subjectAge ? { subject_age: subjectAge } : {}),
+    ...(opts.noPeople ? { person_visible: personVisible } : {}),
     score_threshold: opts.scoreThreshold,
     raw_score: score,
     ...(opts.rescue ? { rescue: true } : {}),
