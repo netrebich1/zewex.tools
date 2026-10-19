@@ -1,13 +1,25 @@
 #!/usr/bin/env bash
-# Deploy zewex-tools from this Mac to the server. Usage: ./deploy/deploy.sh
+# Deploy zewex-tools to the server. Usage: bash deploy/deploy.sh (Git Bash on Windows, or Terminal on Mac)
+# Needs only ssh + tar locally: the code goes over ssh as a tar stream, rsync --delete runs on the server.
 set -euo pipefail
 HOST=root@159.69.234.194
 KEY=~/.ssh/fastvps_ed25519
 APP=/var/www/zewex_tools_usr/data/app
 WEBROOT=/var/www/zewex_tools_usr/data/www/zewex.tools
+STAGE=/root/zewex-deploy-src
 SSH="ssh -i $KEY -o BatchMode=yes"
+EXCLUDES=(--exclude=node_modules --exclude=.next --exclude=.git --exclude=.env)
 cd "$(dirname "$0")/.."
-rsync -az --delete --exclude node_modules --exclude .next --exclude .git --exclude .env -e "$SSH" ./ $HOST:$APP/
+# CRLF from a Windows checkout breaks shell scripts and unit files on the server: stop before sending anything.
+CRLF=$(grep -rlI $'\r' --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=.git . || true)
+if [ -n "$CRLF" ]; then
+  echo "Files with CRLF line endings (need LF, see .gitattributes):"; echo "$CRLF"; exit 1
+fi
+COPYFILE_DISABLE=1 tar -czf - "${EXCLUDES[@]}" . | $SSH $HOST "set -e
+rm -rf $STAGE && mkdir -p $STAGE
+tar -xzf - -C $STAGE --no-same-owner
+rsync -a --delete ${EXCLUDES[*]} $STAGE/ $APP/
+rm -rf $STAGE"
 $SSH $HOST bash -s <<REMOTE
 set -euo pipefail
 cd $APP
@@ -59,6 +71,6 @@ curl -s -o /dev/null -w "http->https: %{http_code} %{redirect_url}\n" http://zew
 REMOTE
 # Keep the server-generated lockfile in the repo so the next deploy uses npm ci.
 if [ ! -f package-lock.json ]; then
-  rsync -az -e "$SSH" $HOST:$APP/package-lock.json ./package-lock.json && echo "package-lock.json fetched from server: commit it"
+  $SSH $HOST "cat $APP/package-lock.json" > package-lock.json && echo "package-lock.json fetched from server: commit it"
 fi
 echo "deployed"
