@@ -11,7 +11,8 @@ SSH="ssh -i $KEY -o BatchMode=yes"
 EXCLUDES=(--exclude=node_modules --exclude=.next --exclude=.git --exclude=.env)
 cd "$(dirname "$0")/.."
 # CRLF from a Windows checkout breaks shell scripts and unit files on the server: stop before sending anything.
-CRLF=$(grep -rlI $'\r' --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=.git . || true)
+# (git, not grep: grep in Git Bash for Windows matches \r in every file)
+CRLF=$(git ls-files -co --exclude-standard --eol | awk '$2 == "w/crlf" || $2 == "w/mixed" { print $NF }')
 if [ -n "$CRLF" ]; then
   echo "Files with CRLF line endings (need LF, see .gitattributes):"; echo "$CRLF"; exit 1
 fi
