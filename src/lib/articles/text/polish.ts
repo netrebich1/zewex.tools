@@ -54,6 +54,16 @@ export function fixDashesText(text: string): string {
     const headSentence = all.slice(0, offset).split(/[.!?]\s+/).pop() ?? "";
     return /[—–]/.test(sentence) || /[—–]/.test(headSentence) ? m : `. ${w[0].toUpperCase()}${w.slice(1)}`;
   });
+  // После тире целое предложение (подлежащее + глагол: «— the powder application requires…») → точка и заглавная,
+  // иначе запятая склеивала два предложения (аудит text-v3, §1.1: «This is a salon-only finish, the powder…»).
+  s = s.replace(/\s*[—–]\s*([A-Za-z][\w'’-]*)/g, (m: string, w: string, offset: number, all: string) => {
+    const rest = all.slice(offset + m.length);
+    const sentence = `${w}${rest.split(/[.!?](?:\s|$)/)[0]}`;
+    const headSentence = all.slice(0, offset).split(/[.!?]\s+/).pop() ?? "";
+    if (/[—–]/.test(sentence) || /[—–]/.test(headSentence)) return m;
+    if (headSentence.trim().split(/\s+/).filter(Boolean).length < 3 || !looksLikeClause(sentence)) return m;
+    return `. ${w[0].toUpperCase()}${w.slice(1)}`;
+  });
   // Остальное — запятая: вставки «X — aside — Y» → «X, aside, Y».
   s = s.replace(/\s*[—–]\s*/g, ", ");
   // Уборка: двойные знаки, запятая перед точкой, запятая сразу после конца предложения.
@@ -64,6 +74,38 @@ export function fixDashesText(text: string): string {
     .replace(/([.!?])\s*,\s*/g, "$1 ")
     .replace(/ {2,}/g, " ");
   return s;
+}
+
+/** С чего начинается самостоятельное предложение (подлежащее). */
+const CLAUSE_START = new Set([
+  "the", "a", "an", "each", "this", "that", "these", "those", "every", "your", "its", "their", "it", "they", "you",
+  "she", "he", "we", "one", "both", "most", "many", "some", "all", "nothing", "no", "any", "neither", "either", "our",
+  "his", "her", "plus", "chrome", "gel", "acrylic", "polish",
+]);
+/** Глаголы, по которым видно сказуемое (короткий список частых в текстах статей). */
+const CLAUSE_VERB = new Set([
+  "is", "are", "was", "were", "has", "have", "had", "needs", "need", "requires", "require", "keeps", "keep", "makes",
+  "make", "works", "work", "gives", "give", "adds", "add", "reads", "sits", "sit", "looks", "lasts", "last", "takes",
+  "take", "holds", "hold", "can", "will", "should", "must", "does", "do", "stays", "stay", "goes", "helps", "help",
+  "lets", "turns", "feels", "comes", "means", "matters", "creates", "shows", "suits", "wears", "grows", "chips",
+  "tends", "stops", "softens", "balances", "pulls", "draws", "ties", "breaks", "catches", "hides", "blurs", "fades",
+  "lifts", "gets", "costs", "lands", "pairs", "plays", "brings", "carries", "anchors", "grounds", "isn't", "aren't",
+  "won't", "can't", "doesn't", "don't", "it's", "that's", "there's", "they're", "you're",
+]);
+const RELATIVE = new Set(["that", "which", "who", "whose", "where", "when", "while", "because", "if", "so"]);
+
+/**
+ * Похоже ли на самостоятельное предложение: начинается с подлежащего, 5+ слов, глагол стоит раньше любого
+ * относительного слова («the kind that hides grow-out» — не предложение, а уточнение).
+ */
+export function looksLikeClause(text: string): boolean {
+  const words = String(text ?? "").toLowerCase().replace(/[’]/g, "'").split(/[^a-z']+/).filter(Boolean);
+  if (words.length < 5 || !CLAUSE_START.has(words[0])) return false;
+  for (let i = 1; i < Math.min(words.length, 9); i++) {
+    if (RELATIVE.has(words[i])) return false;
+    if (CLAUSE_VERB.has(words[i])) return true;
+  }
+  return false;
 }
 
 /** Тире в заголовке H2/H1: хвост «X — Y» → «X, Y» (в заголовках двоеточие не ставим). */
@@ -144,8 +186,13 @@ export type PolishOpts = { usSpelling?: boolean };
 export function polishHtml(html: unknown, opts: PolishOpts = {}): string {
   let s = String(html ?? "");
   if (!s.trim()) return s;
+  // Буквальные «\n» из JSON-ответа модели (вступление zorvianix/red french, 2026-10-15) — граница абзаца, а не текст.
+  s = s.replace(/(?:\\n|\\r)+/g, "\n");
+  if (/\n/.test(s)) s = s.replace(/<p([^>]*)>([\s\S]*?)<\/p>/gi, (_m, attrs: string, inner: string) => inner.split(/\n+/).map((x) => x.trim()).filter(Boolean).map((x) => `<p${attrs}>${x}</p>`).join("")).replace(/\n+/g, " ");
   s = mapTextNodes(s, (t) => {
     let x = fixDashesText(t);
+    // Склеенные предложения «after a week.Apply cuticle oil» — пробел после точки перед словом с заглавной.
+    x = x.replace(/([a-z\)])([.!?])([A-Z][a-z])/g, "$1$2 $3");
     if (opts.usSpelling) x = toUsSpellingText(x);
     return x.replace(/ +([,.!?;:])/g, "$1");
   });
@@ -218,7 +265,7 @@ const BANNED: Banned[] = [
   { kind: "cliche", re: /\bnot a sunday\b/i },
   { kind: "cliche", re: /\bbathroom[- ]mirror job\b/i },
   { kind: "cliche", re: /\b(?:doesn't|does not|without) (?:shout|shouting|scream|screaming)\b/i },
-  { kind: "cliche", re: /\bcatch(?:es)? (?:the|every) light\b/i },
+  { kind: "cliche", re: /\bcatch(?:es|ing)? (?:the|every) light\b/i },
   { kind: "cliche", re: /\bthe ultimate\b/i },
   { kind: "cliche", re: /\bgame[- ]changer\b/i },
   { kind: "cliche", re: /\bnon[- ]negotiable\b/i },
@@ -231,9 +278,18 @@ const BANNED: Banned[] = [
   { kind: "cliche", re: /\beffortless(?:ly)?\b/i },
   { kind: "cliche", re: /\bstunning\b/i },
   { kind: "cliche", re: /\belevates?\b|\belevated\b/i },
-  { kind: "cliche", re: /\bwhether you're\b|\bwhether you are\b/i },
+  // «Whether you're», «Whether you need/have/want…» — любой зачин «whether you» (аудит text-v3: 4 из 6 вступлений)
+  { kind: "cliche", re: /\bwhether you\b/i },
   { kind: "cliche", re: /\bwe've rounded up\b/i },
   { kind: "cliche", re: /\bvibes?\b/i },
+  // аудит text-v3: новые штампы на месте старых
+  { kind: "cliche", re: /\bcostume(?:y|-y|like)?\b/i },
+  { kind: "cliche", re: /\bafterthought\b/i },
+  { kind: "cliche", re: /\bthe honest downside\b/i },
+  { kind: "cliche", re: /\bflatter(?:s|ing)? (?:every|all|any) skin ?tones?\b|\bworks on every skin ?tone\b/i },
+  { kind: "cliche", re: /\breads as (?:intentional|deliberate|polished|effortless)\b/i },
+  { kind: "cliche", re: /\bwe've (?:included|gathered|collected)\b/i },
+  { kind: "cliche", re: /\bas dynamic as\b/i },
   // служебные слова плана и описание кадра
   { kind: "service", re: /\bhero piece\b/i },
   { kind: "service", re: /\bpicture this\b/i },
@@ -241,20 +297,76 @@ const BANNED: Banned[] = [
   { kind: "service", re: /\b(?:in|from) the (?:photo|picture|image|shot)\b|\bpictured (?:above|here)\b|\bas you can see\b/i },
 ];
 
-/** Найденные фразы стоп-листа (уникальные, как в тексте). */
-export function findBannedPhrases(html: unknown): string[] {
-  const text = String(html ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+/** Текст без тегов, с прямыми апострофами и кавычками (изогнутый «’» пропускал «Whether you’re» — аудит text-v3). */
+export function plainText(html: unknown): string {
+  return String(html ?? "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#39;|&rsquo;|&lsquo;/g, "'")
+    .replace(/[’‘ʼ]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Найденные фразы стоп-листа (уникальные, как в тексте). Слово из ключа статьи стоп-листом не считается
+ * («costume nails» — тема, а не штамп).
+ */
+export function findBannedPhrases(html: unknown, opts: { keyword?: string | null } = {}): string[] {
+  const text = plainText(html);
+  const kw = String(opts.keyword ?? "").toLowerCase();
   const out = new Set<string>();
   for (const b of BANNED) {
     const m = text.match(b.re);
-    if (m) out.add(m[0]);
+    if (m && !(kw && kw.includes(m[0].toLowerCase()))) out.add(m[0]);
   }
   return [...out];
 }
 
+/**
+ * Обороты с потолком на статью: сами по себе нормальны, но затёрты повтором (аудит text-v3: «rather than» 7,7 и
+ * «reads as» 5,7 на статью). Всё, что сверх потолка, — проблема секции, где встретилось (первые вхождения не трогаем).
+ */
+export const ARTICLE_QUOTAS: Array<{ re: RegExp; max: number; label: string }> = [
+  { re: /\brather than\b/gi, max: 2, label: "rather than" },
+  { re: /\breads? as\b/gi, max: 2, label: "reads as" },
+  { re: /\b(?:intentional|deliberate)\b/gi, max: 2, label: "intentional / deliberate" },
+  { re: /\bsalon-only\b/gi, max: 2, label: "salon-only" },
+];
+
+/** Секции (индексы), где оборот встречается сверх потолка статьи, с подписью оборота. */
+export function quotaOveruse(sections: string[]): Map<number, string[]> {
+  const out = new Map<number, string[]>();
+  for (const q of ARTICLE_QUOTAS) {
+    let seen = 0;
+    sections.forEach((html, i) => {
+      const n = (plainText(html).match(q.re) || []).length;
+      if (!n) return;
+      seen += n;
+      // в секции есть вхождения сверх потолка статьи, или оборот дважды в одной секции
+      if (seen > q.max || n >= 2) out.set(i, [...(out.get(i) ?? []), q.label]);
+    });
+  }
+  return out;
+}
+
+/** Метка проблемы «нет пунктуации»: её видит перепись и превращает в инструкцию. */
+export const NO_COMMAS_ISSUE = "no commas (punctuation lost)";
+
+/**
+ * Секция длиннее 50 слов без единой запятой — пунктуация потеряна (аудит text-v3: leather 11–14 целиком без запятых,
+ * «To recreate it look for a straight midi skirt with a slit a classic bomber»). Это дефект, секция уходит в перепись.
+ */
+export function lacksPunctuation(html: unknown): boolean {
+  const text = plainText(html);
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return words > 50 && !text.includes(",");
+}
+
 /** Короткий стоп-лист для промта автора (дублирует промты набора на случай, если их правили в портале). */
 export const BANNED_PROMPT_LINE =
-  'NEVER write first-person claims of wearing, testing, booking or getting compliments ("I wore", "mine lasted", "I was skeptical", "I\'ll admit", "I\'m booking"), and never use: "the principle", "the verdict", "masterclass", "intentional rather than accidental", "without trying too hard", "heavy lifting", "hero piece", "picture this", "doesn\'t shout", "catches the light", "not a Sunday", "the chair next to mine", "flat by 4 pm", "effortless", "stunning", "elevate", "whether you\'re", "vibe". No em dashes or en dashes. Use American spelling (color, favorite). Never describe what is NOT visible.';
+  'NEVER write first-person claims of wearing, testing, booking or getting compliments ("I wore", "mine lasted", "I was skeptical", "I\'ll admit", "I\'m booking"), and never use: "the principle", "the verdict", "masterclass", "intentional rather than accidental", "without trying too hard", "heavy lifting", "hero piece", "picture this", "doesn\'t shout", "catches the light", "not a Sunday", "the chair next to mine", "flat by 4 pm", "effortless", "stunning", "elevate", "whether you", "vibe", "costume", "afterthought", "the honest downside", "flatters every skin tone", "reads as intentional", "we\'ve included". "Rather than" and "reads as" at most twice per article. Never claim a shade suits a skin tone or undertone unless the photo facts say so. No em dashes or en dashes. Normal punctuation: commas between clauses, apostrophes in possessives and contractions, a question mark after a question. Use American spelling (color, favorite). Never describe what is NOT visible.';
 
 // ───────────────────────── повторы между статьями ─────────────────────────
 
@@ -268,10 +380,21 @@ const FUNCTION_WORDS = new Set([
   "she", "her", "hers", "they", "them", "their", "up", "out", "about", "over", "after", "before", "like", "as",
 ]);
 
+/**
+ * Обязательные обороты каркаса секции: их требует промт, повтор из секции в секцию задуман (аудит text-v3, §5:
+ * «To recreate it, look for» у одежды уходил в перепись). Из поиска шаблонов они вырезаются целиком.
+ */
+const STRUCTURAL_RE =
+  /\bto recreate (?:it|this|the look|this look)\s*,?\s*look for\b|\b(?:ask|tell) your (?:nail )?(?:tech|technician|colou?rist|stylist|barber)(?: for)?\b|\blook for (?:an?|the)\b/gi;
+/** Граница вместо вырезанного оборота: n-грамма через неё не строится. */
+const BREAK = "zzbreakzz";
+
 /** Слова текста для n-грамм: нижний регистр, без тегов и пунктуации (апостроф внутри слова сохраняется). */
 export function wordsOf(html: unknown): string[] {
   return String(html ?? "")
     .replace(/<[^>]*>/g, " ")
+    .replace(/[’]/g, "'")
+    .replace(STRUCTURAL_RE, ` ${BREAK} `)
     .toLowerCase()
     .replace(/[’]/g, "'")
     .replace(/[^a-z0-9'\s]+/g, " ")
@@ -284,7 +407,15 @@ export function wordsOf(html: unknown): string[] {
  * Слова обязательного каркаса секции («ask your tech for», «tell your stylist») — их повтор между статьями задуман
  * промтом и шаблоном не считается.
  */
-const SKELETON_WORDS = new Set(["ask", "asking", "tell", "tech", "technician", "stylist", "colorist", "colourist", "barber", "salon"]);
+const SKELETON_WORDS = new Set(["ask", "asking", "tell", "tech", "technician", "stylist", "colorist", "colourist", "barber", "salon", "recreate", BREAK]);
+/**
+ * Числа словами — это сроки и интервалы («every four to six weeks», «for two to three weeks»), а не штамп голоса:
+ * аудит text-v3 — половина ложных срабатываний проверки после записи.
+ */
+const NUMBER_WORDS = new Set([
+  "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "fourteen",
+  "fifteen", "twenty", "thirty", "forty", "few", "couple", "half", "dozen", "once", "twice", "first", "second", "third",
+]);
 /**
  * Предметные слова ниш: оборот с ними — совет по делу («a thin top coat», «a round brush on»), а не шаблон голоса.
  * Известные шаблоны с такими словами («flat by 4 pm») ловит стоп-лист BANNED.
@@ -306,7 +437,7 @@ const DOMAIN_WORDS = new Set([
  * без цифр (сроки и длины — факты) и без слов каркаса.
  */
 function templateLike(gram: string[]): boolean {
-  if (gram.some((w) => /\d/.test(w) || SKELETON_WORDS.has(w) || DOMAIN_WORDS.has(w))) return false;
+  if (gram.some((w) => /\d/.test(w) || SKELETON_WORDS.has(w) || DOMAIN_WORDS.has(w) || NUMBER_WORDS.has(w))) return false;
   const f = gram.filter((w) => FUNCTION_WORDS.has(w)).length;
   return f >= 2 && f <= 3;
 }
@@ -347,6 +478,29 @@ export function findOverused(html: unknown, overused: Iterable<string>): string[
   const out: string[] = [];
   for (const g of overused) if (grams.has(g)) out.push(g);
   return out;
+}
+
+/**
+ * Оборот в том виде, как он стоит в тексте, со знаками препинания («to recreate it, look for», а не «to recreate it
+ * look for»). Автору показываем именно так: образцы без запятых и апострофов deepseek копировал вместе с потерей
+ * пунктуации (аудит text-v3, §4 п.3). Не нашли — исходная форма.
+ */
+export function surfaceForm(texts: Iterable<string>, gram: string): string {
+  const target = gram.split(" ");
+  for (const html of texts) {
+    const text = plainText(html);
+    const tokens: Array<{ w: string; start: number; end: number }> = [];
+    for (const m of text.matchAll(/[A-Za-z0-9']+/g)) {
+      const w = m[0].toLowerCase().replace(/^'+|'+$/g, "");
+      if (w) tokens.push({ w, start: m.index ?? 0, end: (m.index ?? 0) + m[0].length });
+    }
+    for (let i = 0; i + target.length <= tokens.length; i++) {
+      let ok = true;
+      for (let k = 0; k < target.length && ok; k++) ok = tokens[i + k].w === target[k];
+      if (ok) return text.slice(tokens[i].start, tokens[i + target.length - 1].end);
+    }
+  }
+  return gram;
 }
 
 /** Слова ключа (с простым отбрасыванием окончания -s): оборот с ними — тема статьи, а не шаблон. */

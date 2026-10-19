@@ -19,6 +19,8 @@ import { slugify } from "@/lib/articles/text/slug";
 import { OUTRO_HEADING } from "@/lib/articles/text/html";
 import { buildPromptVars, contractsFor, focusKeywordOf, isOutfitsNiche, loadProfile, topicOf, type JsonRecord } from "@/lib/articles/text/vars";
 import { isInteriorNiche } from "@/lib/articles/photo/contracts";
+import { sanitizeFacts } from "@/lib/articles/photo/factSanitize";
+import { describeLatePhotos } from "@/lib/articles/photo/describeLate";
 import type { ArtStageCtx, ArtStageHandler } from "./index";
 
 /** Позиции служебных секций (оригинал: section_number 0 — intro, 9990 — outro). */
@@ -161,7 +163,7 @@ function detailsFor(p: JsonRecord, plan: JsonRecord, facts: JsonRecord, fashion:
 
 export const plan: ArtStageHandler = async (ctx) => {
   const { article, recipe } = ctx;
-  const photos = await loadActivePhotos(article.id);
+  let photos = await loadActivePhotos(article.id);
   if (!photos.length) return { fatal: "Нет отобранных фото — сначала нужен этап «Отбор»" };
 
   // Идемпотентность (оригинал: 117-126): если секции уже написаны — план не переписываем и тексты не трогаем.
@@ -173,6 +175,16 @@ export const plan: ArtStageHandler = async (ctx) => {
   }
 
   const profile = await loadProfile(ctx);
+
+  // Позднее описание фото (cost-fixes-b): тонко оценённым (rateMode=slim) и фото без фактов — факты и описание
+  // пачками до планирования; при полной оценке с фактами ничего не делает. Расход — в окне этапа plan.
+  const late = await describeLatePhotos({ ai: ctx.ai, recipe, signal: ctx.signal, tick: ctx.tick, log: ctx.log }, photos, profile, focusKeywordOf(ctx) || article.keyword);
+  if (late.described) {
+    photos = await loadActivePhotos(article.id);
+    ctx.log(`позднее описание: ${late.described} из ${late.needed} фото, ${late.calls} вызовов, $${late.costUsd.toFixed(4)}`);
+  }
+  const describedNote = late.needed ? `; описаны ${late.described} фото${late.failed ? ` (без описания ${late.failed})` : ""}` : "";
+
   const { fashion: fashionC, interior: interiorC } = contractsFor(ctx);
   const fashion = fashionC ? (fashionC as unknown as JsonRecord) : null;
   const interior = interiorC ? (interiorC as unknown as JsonRecord) : null;
@@ -245,7 +257,8 @@ export const plan: ArtStageHandler = async (ctx) => {
     const sp = ((p.section_plan || p.plan) ?? {}) as JsonRecord;
     const { section_plan: _sp, plan: _pl, ...rest } = p;
     void _sp; void _pl;
-    const pf = (m.photo.facts && typeof m.photo.facts === "object" ? m.photo.facts : {}) as JsonRecord;
+    // Факты фото без заглушек и копий описаний полей (аудит text-v3): в детали образа не попадёт «shoes: none».
+    const pf = (sanitizeFacts(m.photo.facts) ?? {}) as JsonRecord;
     const brief: JsonRecord = {
       ...rest,
       ...sp,
@@ -311,8 +324,8 @@ export const plan: ArtStageHandler = async (ctx) => {
   await prisma.article.update({ where: { id: article.id }, data: { h1, metaTitle: title, metaDescription, slug } });
 
   return {
-    summary: `План: ${sections.length} секций, H1 «${h1}»`,
-    details: { sections: sections.length, photos: photos.length, h1, slug, model },
+    summary: `План: ${sections.length} секций, H1 «${h1}»${describedNote}`,
+    details: { sections: sections.length, photos: photos.length, h1, slug, model, describedPhotos: late.described, describeCalls: late.calls, describeCostUsd: late.costUsd },
   };
 };
 

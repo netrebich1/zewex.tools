@@ -19,6 +19,7 @@ import type { Article, ArtPhoto, ArtSection } from "@prisma/client";
 import type { ArticlePlan, ArticleFacts, ArticleRecipeSnapshot } from "@/lib/articles/types";
 import { getNicheProfile, specializeProfile, topicKindLabel, subjectLabel, describeAttributes, type NicheProfile } from "@/lib/articles/photo/profile";
 import { buildFashionContract, buildInteriorContract, fashionContractPrompt, interiorContractPrompt, isInteriorNiche, type FashionContract, type InteriorContract } from "@/lib/articles/photo/contracts";
+import { sanitizeFacts } from "@/lib/articles/photo/factSanitize";
 import { sanitizeTopic } from "./textGuards";
 import { COUNT_TOKEN } from "./countToken";
 
@@ -102,18 +103,22 @@ export function topicOf(ctx: VarsCtx): string {
 
 // ───────────────────────── таблицы фото ─────────────────────────
 
+/**
+ * Факты одной строкой «key: value; …». Заглушки и копии описаний полей схемы («visible execution quality…»,
+ * «none», «any») выбрасываются — так чистятся и факты, записанные в базу до правки (аудит text-v3, §3).
+ */
 export function factsLine(facts: unknown): string {
-  if (!facts || typeof facts !== "object") return "";
-  return Object.entries(facts as JsonRecord)
-    .filter(([, v]) => String(v ?? "").trim())
-    .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`)
+  const clean = sanitizeFacts(facts);
+  if (!clean) return "";
+  return Object.entries(clean)
+    .map(([k, v]) => `${k}: ${v}`)
     .join("; ");
 }
 
 /** `n. photo_id | domain | score | description | facts(JSON)` (оригинал: stage-photo-plan:141-146). */
 export function photosTable(photos: ArtPhoto[]): string {
   return photos
-    .map((p, i) => `${i + 1}. photo_id: ${p.id} | domain: ${p.sourceDomain || "-"} | score: ${p.aiScore ?? "-"} | description: ${p.description || p.altText || "(no description)"} | facts: ${JSON.stringify(p.facts || {})}`)
+    .map((p, i) => `${i + 1}. photo_id: ${p.id} | domain: ${p.sourceDomain || "-"} | score: ${p.aiScore ?? "-"} | description: ${p.description || p.altText || "(no description)"} | facts: ${JSON.stringify(sanitizeFacts(p.facts) ?? {})}`)
     .join("\n");
 }
 

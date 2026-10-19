@@ -9,9 +9,19 @@
  * во всём портале: после пополнения статьи продолжат сами. Чтобы десятки ждущих статей не стучались к провайдеру,
  * отказ «нет средств» запоминается на ключ на NO_CREDITS_COOLDOWN_MS и следующие вызовы падают сразу, без запроса.
  * Ключ, отклонённый провайдером (401/403), по-прежнему выключается: дальше сработает запасное правило, если оно есть.
+ *
+ * Кэш промта (волна 3 п.3, замер 2026-10-16): неявный кэш Gemini через OpenRouter срабатывает только при полностью одинаковом
+ * тексте запроса до картинок и после 2–3 повторов — в наших вызовах (разные темы, заголовки, фото) практически никогда.
+ * Явный кэш (`cache_control` на системном сообщении) срабатывает всегда со второго вызова: 1711 из 1711 токенов
+ * статичного промта оценки, −35 % цены вызова на flash-lite и −23 % на gemini-3-flash (2 фото в запросе).
+ * Поэтому `cacheSystem: true` — системное сообщение уходит одним текстовым блоком с `cache_control: ephemeral`;
+ * только для OpenRouter + Gemini (другие провайдеры поле не знают). Системный текст при этом должен быть ОДИНАКОВЫМ
+ * между статьями (ниша — да, тема/ключ — нет): всё зависящее от статьи кладётся первым текстом в user.
+ * Промт короче минимума (≈1024 токена) провайдер просто не кэширует, ошибки нет.
  */
 import { prisma } from "@/lib/db";
-import { resolveSlot, runSlot, disableKey, type ResolvedSlot } from "@/lib/run";
+import { resolveSlot, runSlot, disableKey, parseModelSpec, type ResolvedSlot } from "@/lib/run";
+import { isOpenRouter } from "@/lib/adapters";
 import { AiError, classifyAiError, type ClassifiedError } from "@/lib/pins/ai/errors";
 import { acquire, DEFAULT_LIMITS } from "@/lib/pins/ai/limiter";
 import { parseJsonLenient } from "@/lib/pins/ai/json";
@@ -37,6 +47,8 @@ export type ChatRequest = {
   timeoutMs?: number;
   /** Отключить рассуждения у моделей с reasoning (оригинал: effort none) */
   noReasoning?: boolean;
+  /** Системное сообщение неизменно между вызовами (нет значений статьи) — просить провайдера кэшировать его (см. шапку). */
+  cacheSystem?: boolean;
 };
 
 export type ChatResult = { text: string; json: unknown; costUsd: number | null; model: string | null; inputTokens: number; outputTokens: number; durationMs: number };
@@ -98,7 +110,12 @@ export async function aiChat(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> 
   const release = await acquire(resolved.binding.apiKey.id, DEFAULT_LIMITS.CHAT);
   try {
     const messages: Array<Record<string, unknown>> = [];
-    if (req.system) messages.push({ role: "system", content: req.system });
+    if (req.system) {
+      messages.push({
+        role: "system",
+        content: req.cacheSystem && cacheableSystem(resolved, req.model) ? [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }] : req.system,
+      });
+    }
     for (const h of req.history ?? []) messages.push(h);
     messages.push({ role: "user", content: req.user });
     const payload: Record<string, unknown> = { messages, temperature: req.temperature ?? 0.7 };
@@ -131,6 +148,15 @@ export async function aiChat(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> 
   } finally {
     release();
   }
+}
+
+/** Явный кэш системного промта поддержан у OpenRouter для моделей Gemini (и Anthropic); остальным поле не шлём. */
+function cacheableSystem(resolved: ResolvedSlot, modelSpec?: string): boolean {
+  const b = resolved.binding;
+  if (!isOpenRouter(b.provider)) return false;
+  const wanted = parseModelSpec(modelSpec);
+  const model = wanted && (!wanted.provider || wanted.provider === b.provider.slug) ? wanted.model : b.model?.modelId ?? "";
+  return /gemini|claude/i.test(model);
 }
 
 /** Картинка как часть сообщения из буфера (JPEG/PNG/WebP). */

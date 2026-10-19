@@ -5,6 +5,7 @@
  * Имена экспортов и типов сохранены — их импортируют этапы rank/rate/select и текстовая цепочка.
  */
 import { prisma } from "@/lib/db";
+import { PHOTO_FACT_DESCRIPTIONS, factFieldGuide, sanitizeFacts } from "./factSanitize";
 
 export interface NicheAttribute {
   /** ключ поля в keyword_attributes */
@@ -151,17 +152,7 @@ const NAILS: NicheProfile = {
     fields: ["shape", "length", "colour", "finish", "technique", "design"],
     note: "форма и длина ногтей обязательны в тексте секции",
     subject_label: "the nails / the design",
-    photo_facts: {
-      colors: "main shade + accent shades + any gradient/ombre direction",
-      shape_length: "nail shape and length (e.g. \"medium almond\")",
-      finish: "glossy / matte / shimmer / chrome / jelly / cat-eye / glitter density",
-      decor: "placement of art — french tips, lines, dots, foil, rhinestones, stickers, and on WHICH nails it sits",
-      craft: "visible execution quality — line cleanliness, cuticle work, evenness",
-      difficulty: "\"diy\" | \"salon\" | \"salon-leaning\" + why in a few words",
-      framing: "what the shot shows — one hand, both hands, close macro, hand + toes",
-      occasion: "season / event the design reads as, only if visible in the design itself",
-      standout: "the single detail a reader notices first",
-    },
+    photo_facts: PHOTO_FACT_DESCRIPTIONS.nails,
   },
 };
 
@@ -219,18 +210,7 @@ const HAIR: NicheProfile = {
     fields: ["cut", "length", "texture", "colour", "technique", "styling"],
     note: "стрижка и длина обязательны в тексте секции",
     subject_label: "the hair — cut, colour and styling",
-    photo_facts: {
-      cut: "haircut family and shape (pixie, bob, lob, layers, shag…)",
-      length: "where the hair ends (ear, chin, collarbone, shoulder, mid-back)",
-      texture: "straight / wavy / curly / coily, plus density (fine, thick)",
-      colour: "base colour + any dimension (highlights, balayage, money piece, root shadow)",
-      styling: "how it is styled — blowout, braids, updo, ponytail, wet look, air dried",
-      bangs: "bangs type or \"no bangs\"",
-      parting: "middle / side / zig-zag / slicked back",
-      difficulty: "\"diy\" | \"salon\" | \"salon-leaning\" + why in a few words",
-      framing: "what the shot shows — front, side, back view, close crop",
-      standout: "the single detail a reader notices first",
-    },
+    photo_facts: PHOTO_FACT_DESCRIPTIONS.hair,
   },
 };
 
@@ -279,18 +259,7 @@ const OUTFITS: NicheProfile = {
     fields: ["hero_piece", "layers", "palette", "shoes", "silhouette"],
     note: "ключевая вещь и обувь обязательны в тексте секции",
     subject_label: "the outfit — garments, layers and shoes",
-    photo_facts: {
-      hero_piece: "the garment that defines the look",
-      layers: "every visible layer top to bottom",
-      palette: "main colours and how they combine",
-      silhouette: "fit and shape (oversized, fitted, wide leg, a-line)",
-      fabrics: "visible fabrics and textures",
-      shoes: "shoe type and colour",
-      accessories: "bag, belt, jewellery, hat — only if visible",
-      occasion: "where the look reads as appropriate",
-      framing: "full body, three-quarter, detail crop",
-      standout: "the single detail a reader notices first",
-    },
+    photo_facts: PHOTO_FACT_DESCRIPTIONS.outfits,
   },
 };
 
@@ -388,20 +357,7 @@ const INTERIOR: NicheProfile = {
     fields: ["room", "hero_element", "zone", "style", "palette", "materials", "layout_detail", "lighting_detail"],
     note: "комната или уличная зона, главный предмет и стиль обязательны в тексте секции; размеры — только из брифа",
     subject_label: "the space and its decor",
-    photo_facts: {
-      room: "which room or outdoor zone the photo shows (kitchen, patio, porch, backyard…)",
-      setting: "indoor or outdoor",
-      hero_element: "the element the frame is really about (gallery wall, rug, fire pit, bedding…)",
-      style: "interior style (modern, boho, farmhouse, scandi, japandi…)",
-      palette: "wall, cabinetry, textile and planting colours",
-      materials: "visible materials and finishes (oak, marble, brass, linen, tile, rattan, stone)",
-      key_pieces: "the defining furniture, fixtures or plants",
-      lighting: "light sources and how the space is lit, day or evening",
-      layout: "how the space is organised, storage solutions, placement of the hero element",
-      size_feel: "compact / roomy / open plan, only if visible",
-      framing: "wide room shot, corner, detail vignette, outdoor wide view",
-      standout: "the single detail a reader notices first",
-    },
+    photo_facts: PHOTO_FACT_DESCRIPTIONS.interior,
   },
 };
 
@@ -491,17 +447,7 @@ const TATTOO: NicheProfile = {
     fields: ["subject", "style", "placement", "size", "colour_mode"],
     note: "стиль и место на теле обязательны в тексте секции",
     subject_label: "the tattoo itself",
-    photo_facts: {
-      subject: "what the tattoo depicts",
-      style: "tattoo style (fine line, blackwork, realism, geometric…)",
-      placement: "exact body placement and orientation",
-      size: "micro / small / medium / large relative to the body part",
-      colour_mode: "black and grey / colour, and which colours",
-      linework: "line weight, shading, dotwork, saturation",
-      healed: "fresh or healed, if visible",
-      framing: "close crop, full placement, body in frame",
-      standout: "the single detail a reader notices first",
-    },
+    photo_facts: PHOTO_FACT_DESCRIPTIONS.tattoo,
   },
 };
 
@@ -545,17 +491,7 @@ const MAKEUP: NicheProfile = {
     fields: ["focus", "technique", "palette", "finish", "intensity"],
     note: "техника и палитра обязательны в тексте секции",
     subject_label: "the makeup look",
-    photo_facts: {
-      focus: "what the look is built around — eyes, lips, cheeks, full face",
-      technique: "eye/lip technique used (smokey, cut crease, graphic liner, overlined lips)",
-      palette: "shades used and where they sit",
-      finish: "matte / glowy / dewy / glitter, on skin and on eyes",
-      intensity: "natural / soft / bold / dramatic",
-      lashes_brows: "lash and brow treatment, if visible",
-      base: "skin finish and coverage, if visible",
-      framing: "close eye crop, face front, three-quarter",
-      standout: "the single detail a reader notices first",
-    },
+    photo_facts: PHOTO_FACT_DESCRIPTIONS.makeup,
   },
 };
 
@@ -671,11 +607,24 @@ export function describeAttributes(profile: NicheProfile, attrs: Record<string, 
   return out.join("; ");
 }
 
-/** Поля фактов для оценки фото в виде строки для промта. */
+/**
+ * Поля фактов для оценки фото — список-инструкция («- craft: что описать»), без примеров «(e.g. …)».
+ * Аудит text-v3: раньше описания стояли прямо внутри образца JSON (`"facts":{"craft": visible execution quality…}`),
+ * и модель копировала их как значения. Теперь образец JSON — только пустой скелет (photoFactSkeleton),
+ * а описания идут отдельным списком с запретом копировать (photoFactRules).
+ */
 export function photoFactFields(profile: NicheProfile): string {
-  const facts = profile.fact_block?.photo_facts;
-  if (!facts || !Object.keys(facts).length) return '"description_facts": everything visible about the subject of the topic';
-  return Object.entries(facts).map(([k, v]) => `"${k}": ${v}`).join(",\n");
+  return factFieldGuide(profile.fact_block?.photo_facts);
+}
+
+/** Правило заполнения фактов для промтов оценки/описания фото: список полей + запрет копировать инструкцию. */
+export function photoFactRules(profile: NicheProfile): string {
+  return (
+    `FACT FIELDS — for each field write the VALUE you actually SEE in THIS photo, 1-8 plain words (a shade, a shape, a placement), different photos get different values.\n` +
+    `The text after each field name is an instruction for you, never a value: do not copy it, its examples or its option lists.\n` +
+    `Not visible or not applicable → "" (never "none", "n/a", "any" or "visible").\n` +
+    photoFactFields(profile)
+  );
 }
 
 /** Пустой объект фактов для примера JSON в промте. */
@@ -683,6 +632,11 @@ export function photoFactSkeleton(profile: NicheProfile): string {
   const keys = Object.keys(profile.fact_block?.photo_facts || {});
   const list = keys.length ? keys : ["description_facts"];
   return list.map((k) => `"${k}":""`).join(",");
+}
+
+/** Факты фото без заглушек и копий описаний полей профиля (перед записью и перед использованием). */
+export function sanitizePhotoFacts(raw: unknown, profile?: NicheProfile | null, keys?: string[]): Record<string, string> | null {
+  return sanitizeFacts(raw, profile?.fact_block?.photo_facts ?? null, keys);
 }
 
 /** Как называть предмет статьи в промтах. */

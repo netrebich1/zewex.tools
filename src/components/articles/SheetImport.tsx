@@ -82,6 +82,17 @@ export function SheetImport({ siteId, defaultUrl, domain, sheets, onCount }: Pro
             </Alert>
           )}
 
+          {preview.failed && preview.failed.length > 0 && (
+            <Alert tone="warn">
+              <div className="font-medium">Уже были неудачными на этом сайте ({preview.failed.length}) — строки возьмём, но фото по ним может снова не хватить:</div>
+              <ul className="mt-1 list-disc pl-5 text-[13px]">
+                {preview.failed.slice(0, 15).map((h) => <li key={h.keyword}>{h.keyword} — {h.label.toLowerCase()}, итог {h.finalPhotos} из {h.photoTarget}{h.occurrences > 1 ? `, раз: ${h.occurrences}` : ""}</li>)}
+                {preview.failed.length > 15 && <li>…и ещё {preview.failed.length - 15}</li>}
+              </ul>
+              <a href={`/pinterest/articles/failed-keywords?site=${siteId}`} target="_blank" rel="noreferrer" className="mt-1 inline-block text-[13px] underline underline-offset-2">Список «Неудачные ключи»</a>
+            </Alert>
+          )}
+
           {ready === 0 ? (
             <Alert tone="neutral">Новых строк к запуску нет: у всех строк вкладки уже есть статус или ссылка на публикацию.</Alert>
           ) : (

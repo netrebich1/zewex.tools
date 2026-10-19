@@ -16,7 +16,7 @@ import { countTokenPromptBlock } from "@/lib/articles/text/countToken";
 import { cleanLabelsAndEmphasis } from "@/lib/articles/text/textGuards";
 import { countWords, INTRO_MIN_WORDS, looksLikeModelThinking, normalizeIntroParagraphs, OUTRO_MIN_WORDS, parseIntroOutroResponse } from "@/lib/articles/text/introOutroParse";
 import { cleanArticleHtml, OUTRO_HEADING } from "@/lib/articles/text/html";
-import { BANNED_PROMPT_LINE, polishHtml, usesUsSpelling } from "@/lib/articles/text/polish";
+import { BANNED_PROMPT_LINE, findBannedPhrases, polishHtml, usesUsSpelling } from "@/lib/articles/text/polish";
 import { buildPromptVars, loadProfile } from "@/lib/articles/text/vars";
 import type { ArtStageHandler } from "./index";
 import { INTRO_POS, isWritten, loadActivePhotos, loadPhotoSections, OUTRO_POS } from "./plan";
@@ -66,6 +66,15 @@ export const introOutro: ArtStageHandler = async (ctx) => {
   let bestIntro: string | null = null;
   let softIntro: string | null = null;
   let bestOutro: string | null = null;
+  // Стоп-лист на вступлении и заключении (аудит text-v3: «Whether you're», «catches the light without shouting»,
+  // «we've included» во вступлении pearl). Находка — одна дополнительная попытка с перечнем фраз; из всех валидных
+  // вариантов берётся тот, где находок меньше. Расход — не больше одного лишнего вызова (≈$0.0002).
+  const kwText = [article.keyword, article.focusKeyword].filter(Boolean).join(" ");
+  const banned = (html: string) => findBannedPhrases(html, { keyword: kwText });
+  let introBanned: string[] = [];
+  let softBanned: string[] = [];
+  let outroBanned: string[] = [];
+  let styleRetryUsed = false;
   let correction = "";
   let lastError: Error | null = null;
   let usedModel: string | null = null;
@@ -110,12 +119,23 @@ export const introOutro: ArtStageHandler = async (ctx) => {
       const introOk = introP === 2 && introW >= INTRO_MIN && introW <= INTRO_MAX;
       const introSoft = introP === 2 && introW >= INTRO_SOFT_MIN && introW <= INTRO_SOFT_MAX;
       const outroOk = !!outro && outroW >= OUTRO_MIN && outroW <= OUTRO_MAX;
-      if (introOk && !bestIntro) bestIntro = intro;
-      if (introSoft && !softIntro) softIntro = intro;
-      if (outroOk && !bestOutro) bestOutro = outro;
-      if (bestIntro && bestOutro) break;
+      const ib = introOk || introSoft ? banned(intro) : [];
+      const ob = outroOk ? banned(outro) : [];
+      if (introOk && (!bestIntro || ib.length < introBanned.length)) { bestIntro = intro; introBanned = ib; }
+      if (introSoft && (!softIntro || ib.length < softBanned.length)) { softIntro = intro; softBanned = ib; }
+      if (outroOk && (!bestOutro || ob.length < outroBanned.length)) { bestOutro = outro; outroBanned = ob; }
+      const flaggedNow = [...new Set([...introBanned, ...outroBanned])];
+      if (bestIntro && bestOutro && (!flaggedNow.length || styleRetryUsed)) break;
 
       const notes: string[] = [];
+      if (bestIntro && bestOutro && flaggedNow.length) {
+        // Объём в порядке, мешает только стоп-лист — одна перепись обоих блоков с перечнем фраз.
+        styleRetryUsed = true;
+        correction = `STYLE CORRECTION — MANDATORY. Rewrite both parts without these phrases and without close variants: ${flaggedNow.map((x) => `"${x}"`).join(", ")}. Keep the facts, {{COUNT}}, the length (introduction ${INTRO_MIN}-${INTRO_MAX} words in exactly 2 paragraphs, conclusion ${OUTRO_TARGET} words) and the JSON structure.`;
+        ctx.log(`попытка ${attempt}: стоп-лист во вступлении/заключении (${flaggedNow.join(", ")}) — одна перепись`);
+        if (attempt < MAX_ATTEMPTS) await new Promise((res) => setTimeout(res, 1200 * attempt));
+        continue;
+      }
       if (!introOk) {
         notes.push(
           `INTRO CORRECTION — MANDATORY. Your previous introduction had ${introW} words and ${introP} paragraphs; exactly ${INTRO_MIN}-${INTRO_MAX} words and 2 paragraphs are required. ` +
@@ -155,7 +175,8 @@ export const introOutro: ArtStageHandler = async (ctx) => {
   const labels = [article.keyword, article.focusKeyword];
   // Тире, американское написание и парность <p> — детерминированно (аудит text-v2, п. 2).
   const pol = { usSpelling: usesUsSpelling(recipe.photoSearch?.language, recipe.photoSearch?.country) };
-  const introText = polishHtml(cleanLabelsAndEmphasis(cleanArticleHtml(introRaw), labels), pol);
+  // «This is 14 ways» → «Here are 14 ways» (аудит text-v3, leather skirt): грамматика, без ИИ.
+  const introText = fixCountGrammar(polishHtml(cleanLabelsAndEmphasis(cleanArticleHtml(introRaw), labels), pol));
   const outroText = polishHtml(cleanLabelsAndEmphasis(cleanArticleHtml(bestOutro), labels), pol);
   if (!outroText.trim()) throw new MalformedAiOutput("Заключение обязательно: модель не вернула его — этап не сохранён");
   if (looksLikeModelThinking(introText) || looksLikeModelThinking(outroText)) {
@@ -181,8 +202,14 @@ export const introOutro: ArtStageHandler = async (ctx) => {
     }),
   ]);
 
+  const leftBanned = [...new Set([...banned(introText), ...banned(outroText)])];
   return {
-    summary: `Вступление ${introWords} слов, заключение ${outroWords} слов`,
-    details: { introWords, outroWords, parseMode, strictIntro: !!bestIntro, model: usedModel },
+    summary: `Вступление ${introWords} слов, заключение ${outroWords} слов${leftBanned.length ? `; стоп-лист: ${leftBanned.join(", ")}` : ""}`,
+    details: { introWords, outroWords, parseMode, strictIntro: !!bestIntro, model: usedModel, styleRetry: styleRetryUsed, bannedLeft: leftBanned },
   };
 };
+
+/** «This is {{COUNT}} ways / 14 ideas» → «Here are …»: подлежащее во множественном числе. */
+export function fixCountGrammar(html: string): string {
+  return String(html ?? "").replace(/\b(This|That) is (\{\{COUNT\}\}|\d+)(?=\s+[a-z])/g, (_m, w: string, n: string) => (w === "This" ? `Here are ${n}` : `Those are ${n}`));
+}

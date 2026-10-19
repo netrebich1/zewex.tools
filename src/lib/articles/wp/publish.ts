@@ -40,6 +40,18 @@ export class QualityError extends Error {
 }
 
 /** Медиатека сайта отвечает ошибкой сервера на каждое фото (оригинал :333 WP_MEDIA_DOWN) — ждём хостинг, попытки не тратим. */
+/**
+ * Часть фото не загрузилась в медиатеку (сайт перегружен, 503 и т.п.). Запись НЕ создаётся/не обновляется со ссылками
+ * на наше хранилище: этап повторяется позже и догружает только недостающие (владелец 2026-10-16, zorvianix: 175 статей
+ * вышли с ~790 фото по ссылке на zewex.tools).
+ */
+export class PartialUploadError extends Error {
+  constructor(public readonly failed: number, public readonly total: number, public readonly onSite: number) {
+    super(`WordPress не принял ${failed} из ${total} фото (на сайте ${onSite}) — публикация отложена, догрузим недостающие`);
+    this.name = "PartialUploadError";
+  }
+}
+
 export class MediaDownError extends Error {
   readonly code = "WP_MEDIA_DOWN";
   constructor() {
@@ -236,7 +248,10 @@ export async function publishArticle(ctx: PublishCtx): Promise<PublishOutcome> {
     } catch (e) {
       if (isAuthError(e) || signal.aborted) throw e;
       failed++;
-      if (e instanceof WpError && e.status >= 500) serverErrorsInRow++;
+      if (e instanceof WpError && e.status >= 500) {
+        serverErrorsInRow++;
+        await new Promise((r) => setTimeout(r, 3_000)); // сайт перегружен — не добиваем его следующими загрузками сразу
+      }
       if (isMediaDown()) mediaDown = true;
       // Фолбэк оригинала (:342-346): фото остаётся с публичной ссылкой хранилища, wpMediaId пуст
       ctx.log(`фото ${photo.position}: загрузка не удалась, остаётся публичная ссылка: ${e instanceof Error ? e.message : String(e)}`);
@@ -253,6 +268,8 @@ export async function publishArticle(ctx: PublishCtx): Promise<PublishOutcome> {
     throw new WpError(`Сайт не принимает фото: не загружено ни одного из ${todo.length} (ошибок ${failed})`, 503);
   }
   ctx.log(`фото: загружено ${uploaded}, найдено по маркеру ${reused}, пропущено (уже на сайте) ${livePhotos.length - todo.length}, ошибок ${failed}`);
+  // Не все фото в медиатеке — не публикуем со ссылками на наше хранилище; загруженные уже сохранены (wpUrl), повтор догрузит остальные.
+  if (failed > 0) throw new PartialUploadError(failed, livePhotos.length, onSite);
 
   // ── 4. HTML: публичные ссылки → ссылки сайта (оригинал :236-239, :307) ──
   for (const p of livePhotos) {

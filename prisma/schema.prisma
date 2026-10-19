@@ -1293,6 +1293,53 @@ model ArtAiModerationResult {
   @@index([runId, status])
 }
 
+/// Неудачные ключи сервиса статей: по ключу не нашли фото / набрали мало / после модерации осталось < 10 / модерация убрала много.
+/// Список собирает воркер (src/lib/articles/failedKeywords.ts, worker/cron.ts) по статьям; одна строка = ключ на сайте.
+/// Связь с ArtSite намеренно без relation (модель самостоятельная): строки удалённых сайтов чистит сборщик.
+model ArtFailedKeyword {
+  id               String   @id @default(uuid()) @db.Char(36)
+  teamId           String
+  siteId           String   @db.Char(36)
+  /// Ключ в нижнем регистре, без лишних пробелов (по нему уникальность на сайте)
+  keyword          String   @db.VarChar(191)
+  /// Ключ как в последней неудачной статье
+  keywordRaw       String   @db.VarChar(191)
+  nicheCode        String?
+  recipeId         String?  @db.Char(36)
+  recipeName       String   @default("")
+  /// no_photos | insufficient | few_final | ai_removed_many (по последней неудачной статье)
+  reason           String
+  /// Счётчики последней неудачной статьи: найдено кандидатов, прошло техфильтр, одобрено ИИ-оценкой, отобрано, убрала ИИ-модерация / человек, итог, цель
+  candidatesFound  Int      @default(0)
+  passedFilter     Int      @default(0)
+  approvedByRating Int      @default(0)
+  selected         Int      @default(0)
+  aiRemoved        Int      @default(0)
+  humanRemoved     Int      @default(0)
+  finalPhotos      Int      @default(0)
+  photoTarget      Int      @default(0)
+  lastArticleId    String?  @db.Char(36)
+  lastRunId        String?  @db.Char(36)
+  lastStatus       String   @default("")
+  /// Причина «Мало фото» / заметка / ошибка последней неудачной статьи (коротко)
+  detail           String?  @db.Text
+  /// Сколько статей с этим ключом были неудачными (id накапливаются в articleIds, до 500)
+  occurrences      Int      @default(1)
+  articleIds       Json?
+  /// Заметка и отметка «не считать» владельца
+  note             String?  @db.Text
+  ignored          Boolean  @default(false)
+  ignoredById      String?
+  firstSeenAt      DateTime @default(now())
+  lastSeenAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([siteId, keyword])
+  @@index([teamId, lastSeenAt])
+  @@index([siteId, lastSeenAt])
+}
+
 /* ---------- Закрытые инструменты ---------- */
 
 /// Доступ к закрытому инструменту (`PRIVATE_TOOLS` в src/lib/permissions.ts). Роль не важна: админ без записи инструмент не видит.

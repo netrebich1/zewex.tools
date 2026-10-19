@@ -166,10 +166,14 @@ function nicheLabelOf(nicheCode: string): string {
   return "Visual ideas listicle";
 }
 
-/** Title Case с маленькими словами (оригинал: stage77:766-779). */
+/**
+ * Title Case с маленькими словами (оригинал: stage77:766-779). Части через дефис — каждая с заглавной, кроме
+ * маленьких слов в середине: «Day-to-Night», «Pointed-Toe» (аудит text-v3: «Chic Day-to-night»).
+ */
 export function titleCase(s: string): string {
   const words = s.trim().split(/(\s+)/);
   let wordIdx = -1;
+  const cap = (part: string) => part.replace(/([a-z])/, (c) => c.toUpperCase());
   return words.map((w) => {
     if (/^\s+$/.test(w)) return w;
     wordIdx++;
@@ -177,8 +181,58 @@ export function titleCase(s: string): string {
     const core = w.toLowerCase();
     const bare = core.replace(/[^a-z']/g, "");
     if (wordIdx > 0 && SMALL_WORDS.has(bare)) return core;
-    return core.replace(/([a-z])/, (c) => c.toUpperCase());
+    if (!core.includes("-")) return cap(core);
+    return core
+      .split("-")
+      .map((part, i) => (i > 0 && SMALL_WORDS.has(part.replace(/[^a-z']/g, "")) ? part : cap(part)))
+      .join("-");
   }).join("");
+}
+
+/**
+ * Запретные слова меты и H1 (аудит text-v3: «Discover 20 stunning…», «to Elevate Your Style», «for effortless style»,
+ * «chic» в 2 из 3 H1). Слово из ключа статьи запретным не считается.
+ */
+const META_BANNED_RE = /\b(stunning|elevate[sd]?|elevating|effortless(?:ly)?|chic|dreamy|gorgeous|jaw-?dropping|must-have|whether you(?:'re| are)?)\b/gi;
+
+export function metaBannedWords(text: string, keyword: string): string[] {
+  const kw = String(keyword || "").toLowerCase();
+  return [...new Set((String(text || "").match(META_BANNED_RE) || []).map((w) => w.toLowerCase()).filter((w) => !kw.includes(w)))];
+}
+
+/** Детерминированная зачистка запретных слов меты, если модель не убрала их за 3 попытки. */
+export function stripMetaBanned(text: string, keyword: string): string {
+  const kw = String(keyword || "").toLowerCase();
+  const keep = (w: string) => kw.includes(w.toLowerCase());
+  let s = String(text || "");
+  // «to Elevate Your Style/Look/Wardrobe» — целиком
+  s = s.replace(/\s+(?:to|that) elevate (?:your|any|every) (?:style|look|wardrobe|outfits?|manicure|nails|hair)\b/gi, (m) => (keep("elevate") ? m : ""));
+  // «for a Chic Look», «with a stunning finish» — весь оборот, иначе остаётся «for a Look»
+  s = s.replace(/\s+(?:for|with) (?:a |an )?(?:stunning|chic|dreamy|gorgeous|jaw-?dropping) (?:look|looks|style|finish|feel|vibe|statement)\b/gi, (m) => (/(stunning|chic|dreamy|gorgeous|jaw-?dropping)/i.test(kw) ? m : ""));
+  s = s.replace(/\b(effortless)(ly)?\b/gi, (m, _w: string, ly: string | undefined) => (keep(m) ? m : ly ? "easily" : "easy"));
+  s = s.replace(/\belevat(e[sd]?|ing)\b/gi, (m, suf: string) => (keep(m) ? m : `upgrad${suf}`));
+  s = s.replace(/\b(stunning|chic|dreamy|gorgeous|jaw-?dropping|must-have)\s+/gi, (m, w: string) => (keep(w) ? m : ""));
+  s = s.replace(/\bwhether you(?:'re| are)?\b[^,.]*,\s*/gi, (m) => (keep("whether") ? m : ""));
+  return s.replace(/\s{2,}/g, " ").replace(/\s+([,.])/g, "$1").trim();
+}
+
+/** Ключ в H1 дословно (без учёта регистра). */
+export function hasExactKeyword(text: string, keyword: string): boolean {
+  const kw = String(keyword || "").toLowerCase().replace(/\s+/g, " ").trim();
+  return !kw || renderCount(String(text || ""), 10).toLowerCase().replace(/\s+/g, " ").includes(kw);
+}
+
+/**
+ * H1 без точного ключа («20 Dreamy Pearl Nail Looks» для «pearl nails»): число + ключ + хвост исходного H1 после
+ * связки (for/with/that/to…), если он есть. Иначе — число + ключ (+ год).
+ */
+export function ensureH1Keyword(h1: string, keyword: string, year: string): string {
+  if (!keyword || hasExactKeyword(h1, keyword)) return h1;
+  const kwTitle = titleCase(keyword);
+  const tail = (String(h1 || "").match(/\s((?:for|with|that|to|from|in)\s.+)$/i) || [])[1] || "";
+  let out = `${COUNT_TOKEN} ${kwTitle}${tail ? ` ${tail}` : ""}`;
+  if (year && !out.includes(year)) out = `${out} ${year}`;
+  return out.replace(/\s{2,}/g, " ").trim();
 }
 
 const DESC_MAX = 158;
@@ -343,7 +397,8 @@ export const meta: ArtStageHandler = async (ctx) => {
     const h1 = shown(m.h1);
     const rawH1 = String(m.h1 || "");
     if (title.length > 60) problems.push(`seo_title is ${title.length} characters — rewrite it to 60 or fewer.`);
-    if (title.length < 25) problems.push(`seo_title is only ${title.length} characters — make it 45-58 characters.`);
+    // Короче 40 — повтор (аудит text-v3: «White Sneakers Outfits to Try», 29 символов при цели 45–60).
+    if (title.length < 40) problems.push(`seo_title is only ${title.length} characters — make it 45-58 characters with one concrete angle.`);
     // 130+ хватает: padDescription добирает до 140 мягким CTA без лишней попытки ИИ (аудит text-v2, п. 12).
     if (desc.length < 130) problems.push(`meta_description is ${desc.length} characters — expand it to 140-160.`);
     if (desc.length > 160) problems.push(`meta_description is ${desc.length} characters — shorten it to 160 or fewer.`);
@@ -371,12 +426,17 @@ export const meta: ArtStageHandler = async (ctx) => {
         const last = Math.max(...kwWords.map((w) => wordPos(title, w) + stem(w).length));
         if (last > Math.max(30, Math.ceil(title.length / 2) + 6)) problems.push(`In seo_title the keyword "${keywordNoYear}" must sit in the first half of the title.`);
       }
-      if (!recognisable(h1)) problems.push(`h1 must contain the primary keyword "${keywordNoYear}".`);
+      // H1 — ключ дословно (аудит text-v3: «20 Dreamy Pearl Nail Looks» без «pearl nails»).
+      if (!hasExactKeyword(h1, keywordNoYear)) problems.push(`h1 must contain the exact phrase "${keywordNoYear}" (same words, same order).`);
       if (!desc.toLowerCase().startsWith(kw)) problems.push(`meta_description must start with the keyword "${keywordNoYear}" verbatim.`);
     }
     if (/:/.test(title)) {
       const head = title.split(":")[0].toLowerCase();
       if (kw && (head.includes(kw) || recognisable(head))) problems.push('seo_title uses the banned template "<keyword> <year>: <keywords>" — write one flowing human headline instead, without the colon.');
+    }
+    for (const [field, value] of [["h1", h1], ["seo_title", title], ["meta_description", desc]] as [string, string][]) {
+      const bad = metaBannedWords(value, keywordNoYear);
+      if (bad.length) problems.push(`${field} uses banned marketing words (${bad.join(", ")}) — replace them with a concrete detail.`);
     }
     const bannedInTitle = (title.match(FILLER_RE) || []).filter((w) => !kw.includes(String(w).toLowerCase()));
     if (bannedInTitle.length) problems.push(`seo_title uses template filler (${[...new Set(bannedInTitle)].join(", ")}) — replace it with a concrete angle.`);
@@ -552,6 +612,11 @@ No filler words in the title ("Ideas / Looks / Best / Stunning / Must-Try / Top"
     if (cleaned.length >= 25) seoMeta.seo_title = cleaned;
   }
 
+  // Запретные слова, если модель их оставила (аудит text-v3), — детерминированно.
+  for (const f of ["h1", "seo_title", "meta_description"] as const) {
+    if (metaBannedWords(seoMeta[f], keywordNoYear).length) seoMeta[f] = stripMetaBanned(seoMeta[f], keywordNoYear);
+  }
+
   // Год — детерминированно, даже если модель подставила чужой (оригинал: 581-583)
   seoMeta.seo_title = normalizeMetaYear(seoMeta.seo_title, year);
   seoMeta.h1 = normalizeMetaYear(seoMeta.h1, year);
@@ -580,6 +645,18 @@ No filler words in the title ("Ideas / Looks / Best / Stunning / Must-Try / Top"
         : `${seoMeta.seo_title.slice(0, 60 - year.length - 1).replace(/[\s\-–—:,]+\S*$/, "").trim()} ${year}`;
     }
     if (!seoMeta.h1.includes(year)) seoMeta.h1 = `${seoMeta.h1.trim()} for ${year}`;
+  }
+
+  // Ключ в H1 дословно (аудит text-v3).
+  seoMeta.h1 = ensureH1Keyword(seoMeta.h1, keywordNoYear, year);
+  // Тайтл короче 40 символов после всех попыток — из H1 без числа, если он влезает в 60 и содержит ключ.
+  {
+    const shortTitle = renderCount(seoMeta.seo_title, outfitCount || 10).length < 40;
+    const fromH1 = keepToken(seoMeta.h1).replace(/\s*\{\{COUNT\}\}\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+    if (shortTitle && fromH1.length >= 40 && fromH1.length <= 60 && hasExactKeyword(fromH1, keywordNoYear) && fromH1.toLowerCase() !== seoMeta.seo_title.toLowerCase()) {
+      ctx.log(`тайтл «${seoMeta.seo_title}» короче 40 символов → «${fromH1}»`);
+      seoMeta.seo_title = fromH1;
+    }
   }
 
   // Title Case + каноническая метка; H1 без метки — метка в начало (оригинал: 638-643)

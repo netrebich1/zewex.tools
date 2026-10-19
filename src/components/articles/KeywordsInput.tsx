@@ -4,6 +4,7 @@ import { Alert, Field } from "@/components/ui";
 import { checkKeywordDuplicates } from "@/actions/articles";
 import { innerDuplicates, parseKeywordLines, type ParsedKeyword } from "@/lib/articles/keywords";
 import type { KeywordInput } from "@/lib/articles/types";
+import type { FailedHint } from "@/lib/articles/failedKeywordsView";
 
 type Props = { siteId: string; onCount?: (n: number) => void };
 
@@ -16,6 +17,8 @@ export function KeywordsInput({ siteId, onCount }: Props) {
   const [text, setText] = useState("");
   const [skipDup, setSkipDup] = useState(true);
   const [dups, setDups] = useState<Set<string>>(new Set());
+  // Ключи из списка «Неудачные ключи» сайта (нормализованные) — только предупреждение, запуск не блокируют
+  const [failed, setFailed] = useState<Map<string, FailedHint>>(new Map());
   const [checking, setChecking] = useState(false);
   const [checkErr, setCheckErr] = useState("");
   const [showAll, setShowAll] = useState(false);
@@ -27,7 +30,7 @@ export function KeywordsInput({ siteId, onCount }: Props) {
 
   // Проверка дубликатов по сайту: через 700 мс после последней правки (и при смене сайта)
   useEffect(() => {
-    setDups(new Set()); setCheckErr("");
+    setDups(new Set()); setFailed(new Map()); setCheckErr("");
     if (!siteId || !valid.length) return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
@@ -36,6 +39,7 @@ export function KeywordsInput({ siteId, onCount }: Props) {
         const r = await checkKeywordDuplicates(siteId, [...new Set(valid.map((v) => v.keyword))]);
         if (r.error) setCheckErr(r.error);
         setDups(new Set(r.duplicates));
+        setFailed(new Map((r.failed ?? []).map((h) => [h.keyword, h])));
       } catch { setCheckErr("Не удалось проверить дубликаты: сервер не ответил"); }
       finally { setChecking(false); }
     }, 700);
@@ -57,6 +61,8 @@ export function KeywordsInput({ siteId, onCount }: Props) {
   useEffect(() => { onCount?.(payload.length); }, [payload.length, onCount]);
 
   const errors = rows.filter((r) => r.error);
+  const failedOf = (k: string) => failed.get(k.toLowerCase().replace(/\s+/g, " ").trim());
+  const failedInPayload = payload.flatMap((p) => { const h = failedOf(p.keyword); return h ? [{ keyword: p.keyword, h }] : []; });
   const visible = showAll ? rows : rows.slice(0, 60);
 
   return (
@@ -79,6 +85,16 @@ export function KeywordsInput({ siteId, onCount }: Props) {
         </div>
       )}
       {checkErr && <Alert tone="warn">{checkErr}</Alert>}
+      {failedInPayload.length > 0 && (
+        <Alert tone="warn">
+          <div className="font-medium">Уже были неудачными на этом сайте ({failedInPayload.length}) — запуск не блокируется, но фото по ним может снова не хватить:</div>
+          <ul className="mt-1 list-disc pl-5 text-[13px]">
+            {failedInPayload.slice(0, 20).map(({ keyword, h }) => <li key={keyword}>{keyword} — {h.label.toLowerCase()}, итог {h.finalPhotos} из {h.photoTarget}{h.occurrences > 1 ? `, раз: ${h.occurrences}` : ""}</li>)}
+            {failedInPayload.length > 20 && <li>…и ещё {failedInPayload.length - 20}</li>}
+          </ul>
+          <a href={`/pinterest/articles/failed-keywords?site=${siteId}`} target="_blank" rel="noreferrer" className="mt-1 inline-block text-[13px] underline underline-offset-2">Список «Неудачные ключи»</a>
+        </Alert>
+      )}
       {dupBySite.length > 0 && (
         <Alert tone="warn">
           <div className="font-medium">У этого сайта уже есть статьи с такими ключами{skipDup ? " — они будут пропущены" : " — будут созданы повторно"}:</div>
@@ -96,8 +112,9 @@ export function KeywordsInput({ siteId, onCount }: Props) {
                   const l = r.keyword.toLowerCase();
                   const isDup = dups.has(l);
                   const isInner = inner.has(l) && valid.find((v) => v.keyword.toLowerCase() === l) !== r;
-                  const cls = r.error ? "text-danger" : isDup ? "text-warn" : isInner ? "text-warn" : "text-ok";
-                  const note = r.error ?? (isInner ? "повтор в списке" : isDup ? (skipDup ? "уже есть у сайта · пропустим" : "уже есть у сайта · создадим снова") : "ок");
+                  const fh = !r.error && !isInner && !isDup ? failedOf(r.keyword) : undefined;
+                  const note = r.error ?? (isInner ? "повтор в списке" : isDup ? (skipDup ? "уже есть у сайта · пропустим" : "уже есть у сайта · создадим снова") : fh ? `был неудачным: ${fh.label.toLowerCase()}` : "ок");
+                  const cls = r.error ? "text-danger" : isDup || isInner || fh ? "text-warn" : "text-ok";
                   return (
                     <tr key={r.line} className={r.error ? "bg-danger-soft/40" : isDup || isInner ? "bg-warn-soft/40" : ""}>
                       <td className="text-muted tabular-nums">{r.line}</td>

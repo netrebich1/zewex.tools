@@ -14,6 +14,7 @@ import { canAccessSiteAccess } from "@/lib/sites/access";
 import { canAccessArtSite, canAccessArticle } from "@/lib/articles/access";
 import { DEFAULT_SITE_SETTINGS, PROJECT_SLUG, PUBLISH_MODES, SITE_LIMITS, mergeSiteSettings, type ArtRunSettings, type ArtSiteSettings, type KeywordInput, type PhotoCountSetting, type PublishMode } from "@/lib/articles/types";
 import { findDuplicateKeywords, launchArticles } from "@/lib/articles/launch";
+import { failedKeywordHints, type FailedHint } from "@/lib/articles/failedKeywordsView";
 import { updateSiteSettings } from "@/lib/articles/automation";
 import { fetchAccessToken, markRows, parseServiceKey, planSheetImport, type SheetPlan } from "@/lib/articles/sheets";
 import { purgeArticleFiles } from "@/lib/articles/storage";
@@ -256,7 +257,7 @@ export async function launchArticlesAction(_p: FormState, f: FormData): Promise<
 
 /* ───────── Google Таблицы ───────── */
 
-export type SheetPreview = { tab: string; total: number; taken: number; ready: Array<{ row: number; keyword: string; recipe: string; photoReview: boolean; extras: string }>; skipped: SheetPlan["skipped"] };
+export type SheetPreview = { tab: string; total: number; taken: number; ready: Array<{ row: number; keyword: string; recipe: string; photoReview: boolean; extras: string }>; skipped: SheetPlan["skipped"]; /** Ключи из «Неудачных ключей» сайта — только предупреждение */ failed?: FailedHint[] };
 
 function previewOf(plan: SheetPlan): SheetPreview {
   return {
@@ -275,7 +276,10 @@ export async function previewSheetImport(siteId: string, sheetUrl: string): Prom
     const site = await siteForUser(me, String(siteId));
     const url = String(sheetUrl ?? "").trim().slice(0, 1000) || mergeSiteSettings(site.settings).sheetUrl;
     if (!url) throw new Error("Укажите ссылку на Google Таблицу");
-    return { preview: previewOf(await planSheetImport(site, url)) };
+    const preview = previewOf(await planSheetImport(site, url));
+    // Предупреждение «уже был неудачным» не блокирует запуск; сбой подсказки не мешает предпросмотру
+    preview.failed = await failedKeywordHints(site.id, preview.ready.map((r) => r.keyword)).catch(() => []);
+    return { preview };
   } catch (e) { return { error: e instanceof Error ? e.message : String(e) }; }
 }
 
@@ -321,12 +325,14 @@ export async function removeSheetsKey(_p: FormState, _f: FormData): Promise<Form
 }
 
 /** Проверка дубликатов ключей по сайту до запуска (вызывается из KeywordsInput напрямую). */
-export async function checkKeywordDuplicates(siteId: string, keywords: string[]): Promise<{ duplicates: string[]; error?: string }> {
+export async function checkKeywordDuplicates(siteId: string, keywords: string[]): Promise<{ duplicates: string[]; failed?: FailedHint[]; error?: string }> {
   const me = await requireUser();
   try {
     await siteForUser(me, siteId);
     const list = Array.isArray(keywords) ? keywords.map(String).slice(0, 2000) : [];
-    return { duplicates: await findDuplicateKeywords(siteId, list) };
+    // «Неудачные ключи» сайта — только предупреждение; сбой подсказки не мешает проверке дубликатов
+    const [duplicates, failed] = await Promise.all([findDuplicateKeywords(siteId, list), failedKeywordHints(siteId, list).catch(() => [])]);
+    return { duplicates, failed };
   } catch (e) { return { duplicates: [], error: e instanceof Error ? e.message : String(e) }; }
 }
 

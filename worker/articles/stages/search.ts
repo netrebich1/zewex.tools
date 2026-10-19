@@ -45,16 +45,30 @@ export type PhotoCursor = ArticleCursor & {
   searchLog?: SearchLogEntry[];
   usedGeos?: string[];
   geoTopupDone?: boolean;
+  /** Сколько раз запрос (в нижнем регистре) не выполнился из-за временного сбоя провайдера. */
+  queryFails?: Record<string, number>;
 };
+
+/**
+ * После стольких временных сбоев на одном запросе он считается использованным и поиск идёт к следующему.
+ * DataForSEO 40101 «Internal SE Server Error» стабильно повторяется на одних и тех же странных формулировках
+ * (zorvianix 2026-10-15: 6 из 182 запросов, все — длинные доборы ИИ), пауза их не лечит.
+ */
+const QUERY_FAIL_LIMIT = 2;
 
 /** Единый источник ключа для поиска фото (оригинал: resolveSearchKeyword, photoSearch.ts:228-233). */
 export function articleKeyword(article: Pick<Article, "focusKeyword" | "keyword" | "seoKeyword">): string {
   return String(article.focusKeyword || article.keyword || article.seoKeyword || "").trim();
 }
 
-/** Резерв технически годных кадров до ИИ-оценки (оригинал: stage-photo-filter/index.ts:193). */
+/**
+ * Резерв технически годных кадров до ИИ-оценки (оригинал: stage-photo-filter/index.ts:193 — ×5).
+ * Для больших статей ×5 избыточен (40 фото → 200 кандидатов на поиск и vision-оценку, zorvianix 2026-10-15):
+ * при нехватке после оценки/отбора всё равно срабатывает добор (rate/select → search), поэтому от 16 фото — ×3, не меньше 75.
+ */
 export function reserveTargetFor(needed: number): number {
-  return Math.max(needed * 5, needed + 40);
+  if (needed <= 15) return Math.max(needed * 5, needed + 40);
+  return Math.max(needed * 3, 75);
 }
 
 const lower = (s: string) => s.trim().toLowerCase();
@@ -68,7 +82,7 @@ export function topupAvailable(cursor: PhotoCursor): boolean {
   return !cursor.geoTopupDone;
 }
 
-type RunOutcome = { fetched: number; added: number; error?: string; notConfigured?: boolean; transient?: boolean; keyProblem?: string; engine: string };
+type RunOutcome = { fetched: number; added: number; error?: string; notConfigured?: boolean; transient?: boolean; keyProblem?: string; engine: string; burned?: boolean };
 
 export const search: ArtStageHandler = async (ctx) => {
   const { article, recipe } = ctx;
@@ -212,10 +226,17 @@ export const search: ArtStageHandler = async (ctx) => {
     // Запрос, который не выполнился из-за провайдера (сбой, нет ключа/денег), не считается использованным:
     // иначе после повтора этапа он пропускается, и статья падает с «не найдено ни одного фото».
     const providerFailed = !!result && items.length === 0 && (!!result.transient || !!result.notConfigured || !!result.keyProblem);
-    const usedQueries = providerFailed ? (c.usedQueries ?? []) : [...new Set([...(c.usedQueries ?? []), englishQuery])];
-    await ctx.save({ cursor: { ...c, usedQueries, searchLog: [...(c.searchLog ?? []), entry].slice(-40) } });
+    // Временный сбой на конкретном запросе: считаем; после QUERY_FAIL_LIMIT запрос сжигается, чтобы не упираться в него.
+    const fails = { ...(c.queryFails ?? {}) };
+    let burned = false;
+    if (providerFailed && result?.transient && !result.keyProblem && !result.notConfigured) {
+      fails[lower(englishQuery)] = (fails[lower(englishQuery)] ?? 0) + 1;
+      burned = fails[lower(englishQuery)] >= QUERY_FAIL_LIMIT;
+    }
+    const usedQueries = providerFailed && !burned ? (c.usedQueries ?? []) : [...new Set([...(c.usedQueries ?? []), englishQuery])];
+    await ctx.save({ cursor: { ...c, usedQueries, queryFails: fails, searchLog: [...(c.searchLog ?? []), entry].slice(-40) } });
     ctx.log(`${label}: «${query}» → fetched ${items.length}, added ${rows.length}${result?.error ? `, ${result.error}` : ""}`);
-    return { fetched: items.length, added: rows.length, error: result?.error, notConfigured: result?.notConfigured, transient: result?.transient, keyProblem: result?.keyProblem, engine };
+    return { fetched: items.length, added: rows.length, error: result?.error, notConfigured: result?.notConfigured, transient: result?.transient, keyProblem: result?.keyProblem, engine, burned };
   };
 
   /**
@@ -245,11 +266,27 @@ export const search: ArtStageHandler = async (ctx) => {
 
     let outcome: RunOutcome | null = null;
     let label = "";
+    const unusedQuery = () => { const u = new Set(((ctx.cursor as PhotoCursor).usedQueries ?? []).map(lower)); return queue.find((x) => !u.has(lower(x))); };
+    let burnedAll = false;
     if (topups < PHOTO_LOOPS.maxTopups && nextQuery) {
-      const idx = queue.indexOf(nextQuery) + 1;
-      label = `добор ${topups + 1} (${idx <= (cur.searchQueries?.primary.length ?? 0) ? "primary" : "secondary"})`;
-      outcome = await runQuery(nextQuery, limit, idx, cfg, label);
-    } else if (topups < PHOTO_LOOPS.maxTopups && !cur.geoTopupDone) {
+      // Запрос «сгорел» (повторный временный сбой) — сразу следующий из очереди, без паузы; не больше 3 за проход.
+      let q: string | undefined = nextQuery;
+      for (let attempt = 0; q && attempt < 3; attempt++) {
+        const idx = queue.indexOf(q) + 1;
+        label = `добор ${topups + 1} (${idx <= (cur.searchQueries?.primary.length ?? 0) ? "primary" : "secondary"})`;
+        outcome = await runQuery(q, limit, idx, cfg, label);
+        if (!outcome.burned || outcome.added > 0) break;
+        q = unusedQuery();
+      }
+      if (outcome?.burned && outcome.added === 0) {
+        outcome = null;
+        burnedAll = true;
+        // Остались несожжённые запросы — короткая пауза и следующий проход, а не «добор исчерпан».
+        if (unusedQuery()) return { retryInMs: 10_000, retryKind: "planned", summary: `${label}: запросы не выполнились у поисковика, пробуем следующие` };
+      }
+    }
+    if (!outcome && (burnedAll || !nextQuery) && topups < PHOTO_LOOPS.maxTopups && !cur.geoTopupDone) {
+      // Запасной добор: просто ключ статьи в соседнем гео (короткий запрос без ИИ-формулировок).
       const geo = nextGeo(cfg.country, cur.usedGeos ?? []);
       if (geo) {
         label = `добор ${topups + 1} (гео ${geo})`;
@@ -305,7 +342,7 @@ export const search: ArtStageHandler = async (ctx) => {
 
   return {
     summary: ran ? `Найдено кандидатов: ${candidatesTotal} (запросов: ${ran}, цель резерва ${reserveTarget})` : `Кандидаты уже найдены (${candidatesTotal}) — продолжаем`,
-    details: { candidates: candidatesTotal, reserveTarget, queries: cur.searchQueries, usedQueries: (ctx.cursor as PhotoCursor).usedQueries, notes, geo: cfg.country, language: cfg.language, freshness: cfg.freshness },
+    details: { candidates: candidatesTotal, reserveTarget, queries: cur.searchQueries, usedQueries: (ctx.cursor as PhotoCursor).usedQueries, notes, geo: cfg.country, language: cfg.language, freshness: cfg.freshness, sizeFilter: cfg.size_filter },
   };
 };
 

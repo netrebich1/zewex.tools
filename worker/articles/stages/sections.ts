@@ -24,7 +24,7 @@ import { extractJsonFromResponse, extractLikelySectionObjects, toSectionList } f
 import { cleanArticleHtml } from "@/lib/articles/text/html";
 import { describePhoto } from "@/lib/articles/text/photoDescribe";
 import { buildPromptVars, factsLine, focusKeywordOf, isOutfitsNiche, loadProfile, type JsonRecord } from "@/lib/articles/text/vars";
-import { BANNED_PROMPT_LINE, findBannedPhrases, findOverused, overusedPhrases, polishHeading, polishHtml, repeatedWithinArticle, usesUsSpelling, type PolishOpts } from "@/lib/articles/text/polish";
+import { ARTICLE_QUOTAS, BANNED_PROMPT_LINE, NO_COMMAS_ISSUE, findBannedPhrases, findOverused, lacksPunctuation, overusedPhrases, plainText, polishHeading, polishHtml, quotaOveruse, repeatedWithinArticle, surfaceForm, usesUsSpelling, type PolishOpts } from "@/lib/articles/text/polish";
 import type { NicheProfile } from "@/lib/articles/photo/profile";
 import type { ArtStageCtx, ArtStageHandler } from "./index";
 import { briefOf, isWritten, loadActivePhotos, loadPhotoSections, MAX_PHOTO_POS } from "./plan";
@@ -85,7 +85,8 @@ function buildRecipeBrief(position: number, heading: string, r: JsonRecord): str
   (r.include_care ? yes : no).push("wear + upkeep");
   (r.include_occasion ? yes : no).push("season / occasion");
   (r.include_diy_vs_salon ? yes : no).push("DIY vs salon");
-  (r.include_honest_minus ? yes : no).push("honest downside");
+  // «honest downside» автор переносил в текст дословно («The honest downside…» — аудит text-v3), поэтому другими словами
+  (r.include_honest_minus ? yes : no).push("one real drawback");
   if (yes.length) lines.push(`  INCLUDE: ${yes.join(", ")}`);
   if (no.length) lines.push(`  DO NOT INCLUDE: ${no.join(", ")}`);
   if (Array.isArray(r.avoid) && r.avoid.length) lines.push(`  AVOID (already used nearby): ${(r.avoid as unknown[]).join(", ")}`);
@@ -111,12 +112,54 @@ const BRIEF_SKIP = new Set([
   "standalone_sentence", "standalone_type", "angle_note", "reaction", "hero_piece", "celebrity_inspiration",
   // структура — из рецепта секции
   "format", "register", "voice_seed", "sentence_rhythm", "disorder_element", "target_word_count", "section_angle", "bonus_type",
+  // аудит text-v3: дубли и «вода» плана (сроки в styling_tips сочинялись, подтон в color_story — «псевдонаука»),
+  // в новых планах этих полей нет, в старых — автор их больше не видит
+  "keyword_placement", "mood", "color_story", "styling_tips", "maintenance_level", "salon_vs_diy", "estimated_upkeep",
+  "problem_to_solve", "solution", "value_focus", "expertise_depth", "face_shapes", "hair_types", "color_technique",
 ]);
 /** Ключи плана, которые модель переносила в текст как термины («hero piece»): показываем автору понятным словом. */
 const BRIEF_RENAME: Record<string, string> = { hero_piece: "main_item", fashion_details: "outfit_details", interior_details: "room_details" };
 
+/**
+ * Ключ секции — только естественным английским (аудит text-v3, §1.3 и §4 п.6): «Keyword to weave» и «Keywords to use
+ * once» давали цепочки существительных («This cream knit sweater slip dress white sneakers outfit»).
+ */
+const KEYWORD_RULE =
+  `Use it at most once, only where it reads as natural English; never as a noun stack ("this X Y Z outfit", "a pearl chrome almond nails look"). ` +
+  `If it does not fit, use a shorter natural part of it or skip it.`;
+
+/**
+ * Точность по нишам поверх промтов набора (их могли править в портале) — аудит text-v3, §1 и §7 п.8–11.
+ * Ногти: подтон кожи, кошачий глаз, гель-лак без «fill» и без обновления топа. Волосы: «Ask your colorist/stylist for»
+ * в каждой секции. Одежда: обувь только из фактов, в «look for» — вещь из ключа.
+ */
+export function nicheRules(nicheCode: string, keyword: string): string {
+  const n = String(nicheCode || "").toLowerCase();
+  if (/nail|manicure|pedicure/.test(n)) {
+    return (
+      `NAIL ACCURACY: never explain why a shade suits a skin tone or undertone unless the photo facts say so; never "flatters every skin tone". ` +
+      `Cat-eye: the magnet is held over UNCURED cat-eye gel before curing, the top coat goes on after. ` +
+      `Gel polish needs no top coat refresh every few days and never gets a "fill" (fills are for acrylic, builder or hard gel extensions); it typically lasts two to three weeks and comes off with an acetone soak-off. ` +
+      `Every section has one "Ask your tech for: ..." line.\n`
+    );
+  }
+  if (n.includes("hair")) {
+    return (
+      `HAIR: EVERY section has one line that starts "Ask your colorist for:" (color topics) or "Ask your stylist for:" (cut and styling topics) with 2-6 exact words from the facts. ` +
+      `Copy base color, length and bangs exactly as the facts state; never explain why a shade suits a skin tone.\n`
+    );
+  }
+  if (isOutfitsNiche(n)) {
+    return (
+      `OUTFITS: name shoes only when the photo facts name them, with the exact type from the facts (high-top is not low-profile); if the facts name no shoes, skip shoes. ` +
+      `The "To recreate it, look for ..." line always names the item from the keyword "${keyword}" first.\n`
+    );
+  }
+  return "";
+}
+
 /** Бриф одной секции real_photo: заголовок, рецепт, план секции, SEO, направление. Фото — отдельно (вложение или описание). */
-function buildSectionBrief(sec: ArtSection, photo: ArtPhoto, previousEnding: string | undefined, boldedSoFar: string[], photoAttached: boolean, nicheCode: string): string {
+function buildSectionBrief(sec: ArtSection, photo: ArtPhoto, previousEnding: string | undefined, photoAttached: boolean, nicheCode: string): string {
   const b = briefOf(sec);
   const recipe = b.recipe && typeof b.recipe === "object" ? (b.recipe as JsonRecord) : null;
   let brief = `SECTION ${sec.position}: ${sec.heading || String(b.h2_draft || "")}\n`;
@@ -134,11 +177,8 @@ function buildSectionBrief(sec: ArtSection, photo: ArtPhoto, previousEnding: str
       brief += `${label}: ${String(v)}\n`;
     }
   }
-  brief += `\n══ SEO ══\n`;
-  const kws = Array.isArray(b.keywords_to_bold) ? (b.keywords_to_bold as unknown[]).map(String).filter(Boolean) : [];
-  if (kws.length) brief += `Keywords to use once, in plain text: ${kws.join(", ")}\n`;
-  if (b.seo_keyword) brief += `Keyword to weave: "${String(b.seo_keyword)}"\n`;
-  if (boldedSoFar.length) brief += `Already used earlier (do not repeat): ${boldedSoFar.join(", ")}\n`;
+  // keywords_to_bold больше не показываем: «используй каждую фразу» и давало вставку ключа как попало (аудит text-v3).
+  if (b.seo_keyword) brief += `\n══ SEO ══\nSection keyword (optional): "${String(b.seo_keyword)}". ${KEYWORD_RULE}\n`;
   if (previousEnding) brief += `\n══ PREVIOUS SECTION ENDED WITH ══\n"${previousEnding.slice(0, 200)}"\nTransition naturally.\n`;
   brief += `\n══ DIRECTION ══\n`;
   if (photoAttached) brief += `Photo is attached. IN DISPUTES: PHOTO WINS over brief text.\n`;
@@ -248,6 +288,8 @@ type WriterEnv = {
   pol: PolishOpts;
   /** Обороты, затёртые на сайте (последние статьи той же ниши) — автору как запрет */
   overused: string[];
+  /** Те же обороты в исходном виде, со знаками препинания (для промта) */
+  overusedShown: Map<string, string>;
 };
 
 async function writeBatch(env: WriterEnv, batch: ArtSection[], batchNumber: number): Promise<BatchOutcome> {
@@ -259,16 +301,12 @@ async function writeBatch(env: WriterEnv, batch: ArtSection[], batchNumber: numb
   // Контекст предыдущих пачек — по уже написанным секциям статьи (параллельные волны видят друг друга частично, как в оригинале).
   const all = await loadPhotoSections(article.id);
   const written = all.filter(isWritten);
-  const boldedSoFar: string[] = [];
   const briefs = batch
     .map((sec, i) => {
       const photo = photoById.get(sec.photoId!)!;
       const prev = i > 0 ? batch[i - 1] : null;
       const prevEnding = prev ? String((briefOf(prev).recipe as JsonRecord | undefined)?.primary_takeaway || "") || undefined : undefined;
-      const text = buildSectionBrief(sec, photo, prevEnding, [...boldedSoFar], env.attachPhotos, ctx.recipe.nicheCode);
-      const kws = briefOf(sec).keywords_to_bold;
-      if (Array.isArray(kws)) boldedSoFar.push(...(kws as unknown[]).map(String));
-      return text;
+      return buildSectionBrief(sec, photo, prevEnding, env.attachPhotos, ctx.recipe.nicheCode);
     })
     .join("\n\n");
   if (!briefs.trim()) throw new Error("Брифы секций пустые — автору нечего писать");
@@ -289,7 +327,9 @@ async function writeBatch(env: WriterEnv, batch: ArtSection[], batchNumber: numb
   system += `\n\n${countTokenPromptBlock()}`;
   // Стоп-лист поверх промта набора (его могли править в портале) и затёртые на сайте обороты (аудит text-v2, п. 10–11).
   system += `\n\n${BANNED_PROMPT_LINE}`;
-  if (env.overused.length) system += `\nOVERUSED ON THIS SITE (never use these phrases or close variants): ${env.overused.slice(0, 15).map((g) => `"${g}"`).join(", ")}.`;
+  system += `\n${nicheRules(ctx.recipe.nicheCode, focusKeywordOf(ctx) || article.keyword)}`;
+  // Обороты показываем в исходном виде, со знаками: образцы без запятых автор копировал вместе с потерей пунктуации.
+  if (env.overused.length) system += `\nOVERUSED ON THIS SITE (never use these phrases or close variants): ${env.overused.slice(0, 15).map((g) => `"${env.overusedShown.get(g) ?? g}"`).join(", ")}.`;
   let user = userF.user;
   if (!user.includes("SECTION BRIEFS") && !user.includes("SECTION PLANS FOR THIS BATCH")) user += `\n\nSECTION BRIEFS:\n${briefs}`;
 
@@ -519,13 +559,14 @@ export const sections: ArtStageHandler = async (ctx) => {
   }
 
   const pol: PolishOpts = { usSpelling: usesUsSpelling(recipe.photoSearch?.language, recipe.photoSearch?.country) };
-  const overused = await loadSitePhraseMemory(ctx).catch((e) => {
+  const memory = await loadSitePhraseMemory(ctx).catch((e) => {
     ctx.log(`память оборотов сайта не загружена: ${e instanceof Error ? e.message : String(e)}`);
-    return [] as string[];
+    return { grams: [] as string[], shown: new Map<string, string>() };
   });
+  const overused = memory.grams;
   const env: WriterEnv = {
     ctx, profile, sysPrompt, userPrompt, model, attachPhotos, photos, photoById, usedHeadings,
-    totalBatches: Math.ceil(all.length / batchSize), maxTokens, pol, overused,
+    totalBatches: Math.ceil(all.length / batchSize), maxTokens, pol, overused, overusedShown: memory.shown,
   };
 
   const reasons: string[] = [];
@@ -622,14 +663,22 @@ export const sections: ArtStageHandler = async (ctx) => {
 /** Сколько последних статей сайта той же ниши смотрим и в скольких должен встретиться оборот, чтобы считаться шаблоном. */
 const MEMORY_ARTICLES = 30;
 const MEMORY_MIN_ARTICLES = 3;
-/** Предел переписываемых секций на статью (защита от лишнего расхода при плохом промте). */
-const MAX_REVISIONS = 8;
+/**
+ * Предел переписываемых секций на статью: половина секций, не меньше 8 и не больше 12 (аудит text-v3: предел 8 упирался
+ * в 4 статьях из 6 — 26 секций с настоящими находками остались без переписи). Перепись ≈ $0.00005 за секцию,
+ * 12 секций ≈ $0.0006 на статью в худшем случае.
+ */
+const MIN_REVISIONS = 8;
+const MAX_REVISIONS = 12;
+export function revisionCap(sections: number): number {
+  return Math.min(MAX_REVISIONS, Math.max(MIN_REVISIONS, Math.ceil(sections / 2)));
+}
 
 /**
  * Затёртые обороты сайта: 4-граммы из текстов последних ~30 статей сайта той же ниши (секции, вступление, заключение),
  * встретившиеся в 3+ статьях. Только запрос к базе и подсчёт, без ИИ.
  */
-async function loadSitePhraseMemory(ctx: ArtStageCtx): Promise<string[]> {
+async function loadSitePhraseMemory(ctx: ArtStageCtx): Promise<{ grams: string[]; shown: Map<string, string> }> {
   const { article, recipe } = ctx;
   const recent = await prisma.article.findMany({
     where: { siteId: article.siteId, id: { not: article.id }, recipeRef: { nicheCode: recipe.nicheCode }, sections: { some: { status: "written" } } },
@@ -637,7 +686,7 @@ async function loadSitePhraseMemory(ctx: ArtStageCtx): Promise<string[]> {
     take: MEMORY_ARTICLES,
     select: { id: true },
   });
-  if (recent.length < MEMORY_MIN_ARTICLES) return [];
+  if (recent.length < MEMORY_MIN_ARTICLES) return { grams: [], shown: new Map() };
   const rows = await prisma.artSection.findMany({
     where: { articleId: { in: recent.map((a) => a.id) }, status: "written" },
     select: { articleId: true, html: true },
@@ -649,14 +698,21 @@ async function loadSitePhraseMemory(ctx: ArtStageCtx): Promise<string[]> {
     list.push(r.html);
     byArticle.set(r.articleId, list);
   }
-  return overusedPhrases([...byArticle.values()], { minArticles: MEMORY_MIN_ARTICLES, limit: 40, keyword: [article.keyword, article.focusKeyword].filter(Boolean).join(" ") });
+  const grams = overusedPhrases([...byArticle.values()], { minArticles: MEMORY_MIN_ARTICLES, limit: 40, keyword: [article.keyword, article.focusKeyword].filter(Boolean).join(" ") });
+  const texts = rows.map((r) => r.html || "");
+  const shown = new Map(grams.map((g) => [g, surfaceForm(texts, g)]));
+  return { grams, shown };
 }
 
-type RevisionReport = { checked: number; flagged: number; revised: number; kept: number; costUsd: number; items: Array<{ position: number; issues: string[]; ok: boolean; why?: string }> };
+type RevisionReport = { checked: number; flagged: number; revised: number; kept: number; costUsd: number; cap?: number; items: Array<{ position: number; issues: string[]; ok: boolean; why?: string }> };
 
-/** Найти проблемы секции: стоп-лист, затёртые на сайте обороты, обороты, повторённые в 3+ секциях статьи. */
-export function sectionIssues(html: string, overused: string[], inArticle: string[]): string[] {
-  const out = [...findBannedPhrases(html), ...findOverused(html, overused), ...findOverused(html, inArticle)];
+/**
+ * Найти проблемы секции: стоп-лист, затёртые на сайте обороты, обороты, повторённые в 3+ секциях статьи,
+ * обороты сверх потолка статьи («rather than», «reads as») и потерянная пунктуация (50+ слов без запятой).
+ */
+export function sectionIssues(html: string, overused: string[], inArticle: string[], extra: string[] = [], keyword?: string | null): string[] {
+  const out = [...findBannedPhrases(html, { keyword }), ...findOverused(html, overused), ...findOverused(html, inArticle), ...extra];
+  if (lacksPunctuation(html)) out.push(NO_COMMAS_ISSUE);
   return [...new Set(out.map((x) => x.trim()).filter(Boolean))];
 }
 
@@ -676,21 +732,28 @@ async function reviseFlagged(env: WriterEnv, written: ArtSection[]): Promise<Rev
     if (first) firstPos.set(g, first.position);
   }
   const inArticleFor = (sec: ArtSection) => repeated.filter((g) => firstPos.get(g) !== sec.position);
+  // Обороты сверх потолка статьи («rather than» > 2 и т.п.) — по порядку секций.
+  const quota = quotaOveruse(ordered.map((s) => s.html || ""));
+  const quotaFor = (sec: ArtSection) => quota.get(ordered.indexOf(sec)) ?? [];
+  const keyword = [ctx.article.keyword, ctx.article.focusKeyword].filter(Boolean).join(" ");
   const flagged = ordered
     .filter((s) => s.position >= 1 && s.position < MAX_PHOTO_POS && !briefOf(s).revised)
-    .map((s) => ({ sec: s, issues: sectionIssues(s.html || "", env.overused, inArticleFor(s)) }))
+    .map((s) => ({ sec: s, issues: sectionIssues(s.html || "", env.overused, inArticleFor(s), quotaFor(s), keyword) }))
     .filter((x) => x.issues.length)
-    .sort((a, b) => b.issues.length - a.issues.length);
+    // Сначала потерянная пунктуация и стоп-лист (это видно читателю), потом по числу находок.
+    .sort((a, b) => Number(b.issues.includes(NO_COMMAS_ISSUE)) - Number(a.issues.includes(NO_COMMAS_ISSUE)) || b.issues.length - a.issues.length);
   report.flagged = flagged.length;
   if (!flagged.length) return report;
 
-  const queue = flagged.slice(0, MAX_REVISIONS);
+  const cap = revisionCap(ordered.length);
+  report.cap = cap;
+  const queue = flagged.slice(0, cap);
   for (let i = 0; i < queue.length; i += 4) {
     await Promise.all(queue.slice(i, i + 4).map(async ({ sec, issues }) => {
       const item: RevisionReport["items"][number] = { position: sec.position, issues, ok: false };
       report.items.push(item);
       try {
-        const r = await rewriteSection(env, sec, issues, inArticleFor(sec));
+        const r = await rewriteSection(env, sec, issues, inArticleFor(sec), quotaFor(sec), keyword);
         report.costUsd += r.costUsd;
         if (!r.html) { item.why = r.why; report.kept++; return; }
         await prisma.artSection.update({
@@ -712,7 +775,7 @@ async function reviseFlagged(env: WriterEnv, written: ArtSection[]): Promise<Rev
   return report;
 }
 
-async function rewriteSection(env: WriterEnv, sec: ArtSection, issues: string[], inArticle: string[]): Promise<{ html: string | null; why?: string; costUsd: number }> {
+async function rewriteSection(env: WriterEnv, sec: ArtSection, issues: string[], inArticle: string[], quota: string[], keyword: string): Promise<{ html: string | null; why?: string; costUsd: number }> {
   const { ctx } = env;
   const photo = sec.photoId ? env.photoById.get(sec.photoId) : undefined;
   const facts = factsLine(photo?.facts) || photo?.description || "";
@@ -725,10 +788,15 @@ async function rewriteSection(env: WriterEnv, sec: ArtSection, issues: string[],
     `booking or compliments with a plain statement or general knowledge ("this finish typically lasts two to three weeks"). ` +
     `Replace a cliché with a concrete, specific sentence. Keep the length within 10% (${words} words now). ` +
     `American English, second person or plain statements, no em dashes or en dashes, no emphasis tags, no new facts ` +
-    `beyond the photo facts. ${BANNED_PROMPT_LINE}\nReturn ONLY JSON: {"html": "<p>...</p>"}`;
+    `beyond the photo facts. Keep required lines such as "Ask your tech for:", "Ask your colorist for:" or "To recreate it, look for" ` +
+    `with their punctuation. ${BANNED_PROMPT_LINE}\nReturn ONLY JSON: {"html": "<p>...</p>"}`;
+  // Обороты — в исходном виде, со знаками; потеря пунктуации — отдельной инструкцией.
+  const phrases = issues.filter((x) => x !== NO_COMMAS_ISSUE).map((x) => `"${env.overusedShown.get(x) ?? surfaceForm([before], x)}"`);
   const user =
     `SECTION HEADING: ${sec.heading}\nPHOTO FACTS (the only visual facts allowed): ${facts || "none"}\n` +
-    `PHRASES TO REMOVE (and never use close variants): ${issues.map((x) => `"${x}"`).join(", ")}\n\nSECTION HTML:\n${before}`;
+    (phrases.length ? `PHRASES TO REMOVE (and never use close variants): ${phrases.join(", ")}\n` : "") +
+    (issues.includes(NO_COMMAS_ISSUE) ? `PUNCTUATION LOST: the section has no commas. Restore normal punctuation: commas between clauses and list items, apostrophes in possessives and contractions, a question mark after a question.\n` : "") +
+    `\nSECTION HTML:\n${before}`;
   const r = await aiChat(ctx.ai, { slot: SLOTS.textMain, model: env.model, system, user, json: true, temperature: 0.6, maxTokens: 2000, timeoutMs: 120_000 });
   const cost = r.costUsd ?? 0;
   let html = "";
@@ -743,7 +811,10 @@ async function rewriteSection(env: WriterEnv, sec: ArtSection, issues: string[],
   const after = countWordsFromHtml(html);
   if (after < MIN_WORDS || after < words * 0.6 || after > words * 1.5) return { html: null, why: `объём ${after} слов против ${words}`, costUsd: cost };
   if (looksLikeFactDump(html)) return { html: null, why: "перечисление фактов вместо текста", costUsd: cost };
-  const left = sectionIssues(html, env.overused, inArticle);
+  // Потолок статьи после переписи считаем по этой секции: «rather than» дважды в ней самой — всё ещё проблема.
+  const plainNew = plainText(html);
+  const leftQuota = quota.filter((label) => !!plainNew.match(ARTICLE_QUOTAS.find((q) => q.label === label)?.re ?? /$^/));
+  const left = sectionIssues(html, env.overused, inArticle, leftQuota, keyword);
   if (left.length >= issues.length) return { html: null, why: `проблем не меньше: ${left.join(", ")}`, costUsd: cost };
   return { html, costUsd: cost };
 }

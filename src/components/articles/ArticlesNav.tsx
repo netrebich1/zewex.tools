@@ -15,6 +15,7 @@ const ITEMS: Array<{ href: string; label: string; exact?: boolean; not?: string;
   { href: "/pinterest/articles/publications", label: "Публикации" },
   { href: "/pinterest/articles/recipes", label: "Рецепты" },
   { href: "/pinterest/articles/journal", label: "Журнал" },
+  { href: "/pinterest/articles/failed-keywords", label: "Неудачные ключи" },
   { href: "/pinterest/articles/sites", label: "Сайты" },
   { href: "/pinterest/articles/runs/new", label: "Новый запуск" },
 ];

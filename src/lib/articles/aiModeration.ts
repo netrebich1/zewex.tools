@@ -18,7 +18,11 @@
  * mix3.3 (аудит круга 2, docs/articles-migration/audit-2026-10-14/ai-moderation-fixes-v3.md): третий дешёвый проход
  * «крупно» (водяные знаки и признаки ИИ на увеличенных половинах кадра), фотореалистичный ИИ в `ai_fake`, аудитория —
  * только главный герой, спор видит уже убранные фото и перепроверяет оставленные «по аналогии».
- * passCosts = [lite, flash, спор, смысл ключа, крупно].
+ *
+ * mix3.4 (аудит круга 3, docs/articles-migration/audit-2026-10-14/ai-moderation-fixes-v4.md): без перепроверки
+ * «по аналогии», резерв в основных проходах — 10 кандидатов (ещё 10 отдельным маленьким вызовом, только если норма
+ * не набирается), «крупно» по резерву — только для выбранных добавлений и 2 запасных, в «крупно» нет вопроса про ИИ.
+ * passCosts = [lite, flash, спор, смысл ключа, крупно (статья + резерв), досылка резерва (lite + flash)].
  */
 import { readFile } from "fs/promises";
 import sharp from "sharp";
@@ -36,7 +40,7 @@ import { absPath, publicUrl } from "./storage";
 import { loadArtSettings } from "./automation";
 import { addFromReserve, aiActor, approvePhotos, closeArticle, excludePhoto, markInsufficient, ModerationError, reorderPhotos, requestTopup, returnToReview, type AiActor } from "./moderation";
 import { CLAIM_TTL_MIN, MIN_PHOTOS, mergeSiteSettings, SLOTS, type ArticleFacts, type ArticleRecipeSnapshot } from "./types";
-import { classifyArticlePhotos, CONSISTENCY_REASONS, judgementsOf, KEYWORD_VISUAL_SYSTEM, KEYWORD_VISUAL_VERSION, keywordVisualRule, knownVisual, mergeDetailFlags, orderFinal, parseDetailFlags, parseDispute, parseKeywordVisual, pickAdds, removalsNeedConfirm, resolveDisputes, scoreOf, verdictFrom, type DetailFlags, type DisputeAnswer, type Judgements } from "./aiModerationRules";
+import { classifyArticlePhotos, completeVisual, judgementsOf, KEYWORD_VISUAL_SYSTEM, KEYWORD_VISUAL_VERSION, keywordVisualRule, knownVisual, literalVisual, mergeDetailFlags, orderFinal, parseDetailFlags, parseDispute, parseKeywordVisual, pickAdds, removalsNeedConfirm, reserveZoomTargets, resolveDisputes, scoreOf, verdictFrom, type DetailFlags, type DisputeAnswer, type Judgements, type PickResult } from "./aiModerationRules";
 
 /* ───────────────────────── Константы (оригинал: ai-photo-moderate/index.ts:13-18, 248, 270) ───────────────────────── */
 
@@ -47,8 +51,8 @@ export const AUTO_CONFIDENCE = 75;
 /** Резерв для модели: ≤25 одобренных оценкой + ≤15 отклонённых без жёстких причин (оригинал :17). */
 export const RESERVE_KEEP = 25;
 export const RESERVE_REJECT = 15;
-/** Предел добавлений за проверку; фактический предел — норма + 30% (`overNormCap` в ./aiModerationRules.ts). */
-export const MAX_ADDS = 12;
+/** Предел добавлений за проверку; фактический предел — 60 фото в статье (`overNormCap` в ./aiModerationRules.ts). */
+export const MAX_ADDS = 40;
 /** Причины отклонения, с которыми кандидат не предлагается резервом (оригинал :18 + водяные знаки/логотипы). */
 export const HARD_REJECT = /фигур|комплекц|body type|slim|ai[- ]?generat|render|cgi|illustrat|cartoon|drawing|audience|gender|\bmen\b|male|child|kid|off[- ]?topic|не по теме|аудитор|мужск|детск|watermark|logo|водян|логотип/i;
 /** Зависшая обработка (упавший воркер) возвращается в пул (оригинал :270). */
@@ -67,10 +71,17 @@ export const AI_THUMB_SIDE = 512;
 export const AI_DETAIL_SIDE = 1152;
 export const AI_DETAIL_PART = 768;
 export const AI_DETAIL_SHARE = 0.55;
-/** Перепроверка «по аналогии»: сколько оставленных фото показываем спору (цена ~280 токенов flash за фото). */
-export const RECHECK_MAX = 18;
-/** Сколько уже убранных обеими моделями фото показываем спору как образец. */
-export const DECIDED_REF_MAX = 4;
+/**
+ * Резерв в основных проходах lite и flash (аудит круга 3: из 15 добавлялось в среднем 3, а резерв — треть всех кадров
+ * flash). Если норма не набирается — ещё RESERVE_MORE кандидатов отдельным маленьким вызовом обеих моделей.
+ */
+export const RESERVE_FIRST = 20;
+export const RESERVE_MORE = 10;
+/** «Крупно» по резерву: выбранные добавления + столько запасных; не больше RESERVE_ZOOM_ROUNDS вызовов. */
+export const RESERVE_ZOOM_SPARE = 2;
+export const RESERVE_ZOOM_ROUNDS = 2;
+/** Сколько уже убранных обеими моделями фото показываем спору как образец (картинками; текстом — все). */
+export const DECIDED_REF_MAX = 2;
 /** Параллельность запуска по умолчанию (оригинал PARALLEL=20; у нас дефолт сайта 5 — ключи общие на портал). */
 export const DEFAULT_CONCURRENCY = 5;
 
@@ -86,6 +97,8 @@ export type AiAddedItem = { candidateId: string; url: string; sourceUrl: string;
 export type AiFinalItem = { kind: "S" | "R"; id: string; url: string; src?: "keep" | "reject" };
 export type AiReviewInfo = {
   humanReasons: string[];
+  /** Пометки при одобрении (например, «одобрено автоматически: 22 фото»): не причина отдать людям. */
+  notes?: string[];
   modelVerdict: string;
   scores: Record<string, number> | null;
   needed: number;
@@ -639,43 +652,71 @@ export function focusRules(keyword: string, niche?: string | null, motif?: strin
 // оригинал: ai-photo-moderate/index.ts:706 + аудит 2026-10-14: водяные знаки/логотипы, дубль = и тот же человек/фотосессия
 export const V2_REASONS = `"ok" | "off_topic" (different item/style/occasion) | "wrong_detail" (contradicts or misses a detail NAMED in the keyword or in KEYWORD MEANING) | "ai_fake" (AI-generated or illustrated image — obvious renders AND photorealistic AI: too-perfect poreless skin or nails, plastic/airbrushed look, impossible symmetry, melted or fused fingers/nails/jewellery, wrong finger count, inconsistent reflections or shadows, warped background, gibberish lettering, generic glossy "AI stock" look; flag it even without one obvious artifact when several signs add up) | "watermark_logo" (visible watermark, @handle/username, site or brand logo, caption or text overlay on the photo, brand advertising shot) | "collage_text" (collage, screenshot, text-heavy graphic) | "catalogue" (retail product card; white background alone is fine) | "wrong_audience" (the MAIN subject — the person wearing/showing the item — is the wrong gender/age/body type/ethnicity required by keyword; people in the background, passers-by, a partner or friend next to the subject are NOT a reason) | "duplicate" (near-copy of another photo, OR the same person in the same photoshoot / same outfit set as another photo, OR the 3rd+ photo of the same person/celebrity — mark only the extra one, never both, and give dup_of with the other photo id) | "weak_pin" (on-topic but clearly unattractive)`;
 
-// оригинал: ai-photo-moderate/index.ts:506-507; «MUST show» ключа — в focus (keywordVisualRule)
-const commonRules = (focus: string) => `${focus}IMPORTANT: you see small compressed PREVIEWS (up to 512px). Every photo already passed technical resolution filters — the original size is next to each label. NEVER flag "low resolution", "blurry" or "pixelated" unless obvious out-of-focus at preview scale.
+// оригинал: ai-photo-moderate/index.ts:506-507 — неизменная часть общих правил; «MUST show» ключа и жёсткие правила темы
+// (focusRules + keywordVisualRule) зависят от статьи и идут в конце промта.
+const COMMON_STATIC = `IMPORTANT: you see small compressed PREVIEWS (up to 512px). Every photo already passed technical resolution filters — the original size is next to each label. NEVER flag "low resolution", "blurry" or "pixelated" unless obvious out-of-focus at preview scale.
 Flag a photo ONLY for a concrete, visible fact. When in doubt, do NOT flag. Returning no flags is a perfectly good answer. All "why" texts in Russian, max 8 words.`;
 
+/**
+ * Промт модерации = `system` (неизменный для всех статей: персона, общие правила, список причин, JSON) + `lead` — первый
+ * текст user с тем, что зависит от статьи (ключ, жёсткие правила темы, тренд, норма фото). Волна 3 п.3: так системное
+ * сообщение можно кэшировать (`aiChat.cacheSystem`; сегодня эти промты короче минимума кэша ≈1024 токена, поэтому
+ * экономии пока нет — но и вреда нет). Раньше всё было одним системным текстом с ключом в первой строке; смысл тот же.
+ */
+export type ModPrompt = { system: string; lead: string };
+const articleLead = (keyword: string, focus: string) => {
+  const f = focus.trim();
+  return `ARTICLE KEYWORD: "${keyword}".` + (f ? `\nRules for this article:\n${f}` : "");
+};
+
+/** Сборщики промтов — для стенда кэша промта (scripts), в коде сервиса не использовать. */
+export const MODERATION_PROMPTS = { sysTopic: (k: string, f: string) => sysTopic(k, f), sysOpinion: (k: string, n: number, m: number, t: string, f: string) => sysOpinion(k, n, m, t, f), sysDispute: (k: string, f: string) => sysDispute(k, f) };
+
 // оригинал: ai-photo-moderate/index.ts:845-848 (sysA mix3 — дешёвая: тема/подлинность по S и R)
-const sysTopic = (keyword: string, common: string) => `You check ONLY topic relevance and authenticity of photos for a Pinterest article about "${keyword}".
-${common}
+const sysTopic = (keyword: string, focus: string): ModPrompt => ({
+  system: `You check ONLY topic relevance and authenticity of photos for a Pinterest article (the article keyword and its rules come first in the user message).
+${COMMON_STATIC}
 For EVERY S and R photo return a reason from: ${V2_REASONS}, and for R photos a pin score 0-100. Give dup_of for duplicates.
-Return ONLY JSON: {"photos":[{"id":"S1","reason":"ok"},{"id":"R2","reason":"ok","score":70}]}`;
+Return ONLY JSON: {"photos":[{"id":"S1","reason":"ok"},{"id":"R2","reason":"ok","score":70}]}`,
+  lead: articleLead(keyword, focus),
+});
 
 // оригинал: ai-photo-moderate/index.ts:849-854 (sysM mix3 — средняя: собственное мнение по каждому фото).
 // Аудит: фраза «A slightly weaker but on-topic photo is valuable» давала 80–95 почти всем — заменена шкалой оценок.
-const sysOpinion = (keyword: string, needed: number, minOk: number, trend: string, common: string) => `You are a senior Pinterest editor judging photos for an article about "${keyword}". Form your OWN opinion for EVERY photo, S and R.
-${trend ? trend + "\n" : ""}${common}
-The article needs ${needed} photos (minimum ${minOk}). Remove only for a concrete reason.
+const sysOpinion = (keyword: string, needed: number, minOk: number, trend: string, focus: string): ModPrompt => ({
+  system: `You are a senior Pinterest editor judging photos for a Pinterest article (the article keyword, its rules and the photo count come first in the user message). Form your OWN opinion for EVERY photo, S and R.
+${COMMON_STATIC}
+Remove only for a concrete reason.
 "Dated", nail length or shape are NOT reasons unless the keyword or trend notes explicitly require something else.
 SCORE must be calibrated, use the whole range: 90-100 = exceptional, would be a top pin (rare, at most 1-2 per set); 75-89 = good; 60-74 = ordinary/acceptable; 40-59 = weak; below 40 = should not be used. A typical set averages about 70-75, not 90. Score the photo itself, not the topic.
 For EVERY photo return reason from: ${V2_REASONS}, pin score 0-100, dup_of for duplicates (R may duplicate S or another R).
-Return ONLY JSON: {"photos":[{"id":"S1","reason":"ok","score":74},{"id":"R3","reason":"duplicate","score":70,"dup_of":"S2"}],"summary":"2 sentences in Russian"}`;
+For an R photo that is not a duplicate but looks nearly the same as another photo (same plain colour and design, same kind of look) give "like" with that photo id.
+Return ONLY JSON: {"photos":[{"id":"S1","reason":"ok","score":74},{"id":"R3","reason":"duplicate","score":70,"dup_of":"S2"},{"id":"R4","reason":"ok","score":82,"like":"S5"}],"summary":"2 sentences in Russian"}`,
+  lead: `${articleLead(keyword, focus)}\n${trend ? trend + "\n" : ""}The article needs ${needed} photos (minimum ${minOk}).`,
+});
 
 // оригинал: ai-photo-moderate/index.ts:885-887 (sysF mix3 — средняя: только спорные фото)
-// Аудит круга 2: спор видит уже убранные фото (образец) и при «не по теме» — оставленные, чтобы похожие решались одинаково.
-const sysDispute = (keyword: string, common: string) => `You are the final editor for "${keyword}". ${common}
+// Аудит круга 2: спор видит уже убранные фото (образец). Круг 3: перепроверка оставленных «по аналогии» убрана (0 изменений
+// за круг); оставить фото с отметкой ai_fake — только назвав признак настоящей съёмки; вывеска на фоне — не водяной знак.
+const sysDispute = (keyword: string, focus: string): ModPrompt => ({
+  system: `You are the final editor for a Pinterest article (the article keyword and its rules come first in the user message). ${COMMON_STATIC}
 For every photo under review decide KEEP or DROP. Drop only for: off_topic, wrong_detail, ai_fake, watermark_logo, collage_text, catalogue, wrong_audience, duplicate, or a truly weak pin. Two checkers disagreed on each photo — judge it yourself, do not just follow either.
-"ai_fake" includes photorealistic AI images (see the reason list): if you see such signs, drop. A "zoom check" note means a zoomed crop showed a watermark/text or AI signs — the crop is shown next to the photo; verify it yourself.
+"ai_fake" includes photorealistic AI images (see the reason list): if you see such signs, drop. Keep a photo the editor flagged as ai_fake ONLY if you can point to a concrete sign of a real photo (visible skin pores and texture, a random everyday background, natural flaws and asymmetry); a pretty, retouched or bokeh portrait is not such a sign.
+A "zoom check" note means a zoomed crop showed text — the crop is shown next to the photo; verify it yourself. Only text or a logo stamped ON the image (watermark, @handle, domain, signature, caption) is watermark_logo; shop signs, storefronts, salon or neon signs in the background, brand print on clothing or bags are NOT.
 Photos marked [removal needs confirmation] are dropped unless you keep them. Photos marked [reference] are shown only for duplicate comparison — do not list them.
-Photos marked [already removed] were removed by both checkers — do not list them; they are precedent: decide similar photos the SAME way (same item type, same problem → same decision).
-Photos marked [kept — recheck] were accepted by both checkers: list one in "drop" ONLY if it has exactly the same problem as a photo that is removed (already or by you now), and give "same_as" with that photo id; otherwise do not list it at all.
-Return ONLY JSON: {"keep":["S3"],"drop":[{"id":"S7","why":"..."},{"id":"S12","why":"...","same_as":"S7"}]}`;
+Photos marked [already removed] were removed by both checkers — do not list them; they are precedent: decide similar photos the SAME way.
+Return ONLY JSON: {"keep":["S3"],"drop":[{"id":"S7","why":"..."}]}`,
+  lead: articleLead(keyword, focus),
+});
 
-// Проход «крупно» (дешёвая модель): только водяные знаки/подписи и признаки ИИ на увеличенных половинах кадра.
-const sysDetail = (keyword: string) => `You inspect ZOOMED crops of photos for a Pinterest article about "${keyword}". Each photo id is shown as two crops: part 1 (top or left half) and part 2 (bottom or right half).
-Report ONLY photos with one of these problems:
-- "watermark": an overlaid watermark, @handle/username, website or domain, brand/salon logo, signature, caption or text overlay added on top of the photo — often small, semi-transparent, in a corner or along an edge, sometimes written across the nails or hand. Put the text you read (or "logo") in "text". Text that is a natural part of the scene (print on clothing, shop signs, product labels, book covers) is NOT a watermark.
-- "ai": the image is AI-generated: melted/fused fingers, nails or jewellery, wrong number of fingers, warped or merged objects, gibberish lettering, inconsistent reflections or shadows, impossible symmetry, poreless plastic skin, unnaturally perfect hair strands. Put the sign in "text" (Russian, max 8 words).
+// Проход «крупно» (дешёвая модель): только водяные знаки/подписи на увеличенных половинах кадра.
+// Круг 3: вопрос про ИИ не сработал ни разу — убран; вывески магазинов на фоне давали ложные находки — явный запрет.
+// Ключ статьи — первой строкой блока крупных кадров (detailBlocks), система неизменна.
+const sysDetail = (): ModPrompt => ({ lead: "", system: `You inspect ZOOMED crops of photos for a Pinterest article (the article keyword is given with the crops). Each photo id is shown as two crops: part 1 (top or left half) and part 2 (bottom or right half).
+Report ONLY watermarks stamped ON the image: an overlaid watermark, @handle/username, website or domain, creator/salon logo, signature, caption or text overlay added on top of the photo — often small, semi-transparent, in a corner or along an edge, sometimes written across the nails or hand. Put the exact text you read in "text"; for a logo without readable text describe it in 2-4 words.
+NEVER report text that is a physical part of the scene: shop signs, storefronts, salon or neon signs, posters in the background, brand names on bags, clothing, shoes or products, labels, book covers.
 Give "part" (1 or 2) where you saw it. When unsure, do not report: most photos are clean and an empty list is the usual answer.
-Return ONLY JSON: {"photos":[{"id":"S3","flag":"watermark","text":"@nickname","part":2}]}`;
+Return ONLY JSON: {"photos":[{"id":"S3","flag":"watermark","text":"@nickname","part":2}]}` });
 
 /* ───────────────────────── Проверка статьи (оригинал reviewArticle :372-633 + mixV3 :831-934) ───────────────────────── */
 
@@ -748,11 +789,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * таймаут 150/60 с, temperature 0.1, JSON). Стоимость всех попыток суммируется в `spent` — неудачные тоже оплачены.
  * Ошибки класса fatal_run (нет ключа/кредитов) не повторяем.
  */
-async function callModel(ctx: AiCtx, spent: { usd: number }, system: string, parts: ContentPart[], pass: string, big: boolean): Promise<ModelOut> {
+async function callModel(ctx: AiCtx, spent: { usd: number }, prompt: ModPrompt, parts: ContentPart[], pass: string, big: boolean): Promise<ModelOut> {
   let lastErr = "";
+  // Зависящее от статьи — первым текстом user, системное сообщение общее для всех статей (кэш провайдера).
+  const user: ContentPart[] = prompt.lead ? [{ type: "text", text: prompt.lead }, ...parts] : parts;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const r = await aiChat(ctx, { slot: SLOTS.vision, model: big ? AI_MOD_MODELS.flash : AI_MOD_MODELS.lite, system, user: parts, json: true, temperature: 0.1, maxTokens: big ? 12000 : 3000, timeoutMs: big ? 150_000 : 60_000 });
+      const r = await aiChat(ctx, { slot: SLOTS.vision, model: big ? AI_MOD_MODELS.flash : AI_MOD_MODELS.lite, system: prompt.system, user, json: true, temperature: 0.1, maxTokens: big ? 12000 : 3000, timeoutMs: big ? 150_000 : 60_000, cacheSystem: true });
       spent.usd += r.costUsd ?? 0;
       const out = (r.json ?? parseJsonLenient(r.text)) as Record<string, unknown> | null;
       if (!out || typeof out !== "object") { lastErr = `${pass}: ИИ вернул непонятный ответ`; continue; }
@@ -769,8 +812,10 @@ async function callModel(ctx: AiCtx, spent: { usd: number }, system: string, par
 /**
  * Смысл ключа для правила «MUST show» (аудит: milk bath без цветов, обычная чёлка вместо baby bangs).
  * Порядок: словарь известных трендов (бесплатно) → кэш `Article.facts.keywordVisual` для того же ключа →
- * одно дешёвое обращение text_fast (~$0.0001) с записью в кэш. Сбой — без правила, проверка идёт дальше;
- * стоимость любого обращения учитывается в `spent`.
+ * одно дешёвое обращение text_fast (~$0.0001) с записью в кэш. Стоимость любого обращения учитывается в `spent`.
+ * mix3.4 (аудит круга 3: «white sneakers» получил пустое определение): ответ модели (и кэш) проходит `completeVisual` —
+ * пустое для ключа со значимыми словами заменяется буквальными словами ключа, потерянные цвет/форма/материал дописываются;
+ * при сбое модели — тоже буквальные слова. В кэше — сырой ответ модели, поэтому версия кэша не меняется.
  */
 async function keywordVisual(ctx: AiCtx, spent: { usd: number }, articleId: string, keyword: string, facts: ArticleFacts | null): Promise<{ text: string; source: "dict" | "cache" | "model" | "none"; cost: number }> {
   const known = knownVisual(keyword);
@@ -778,7 +823,7 @@ async function keywordVisual(ctx: AiCtx, spent: { usd: number }, articleId: stri
   if (!keyword.trim()) return { text: "", source: "none", cost: 0 };
   const cached = (facts as (ArticleFacts & { keywordVisual?: { keyword?: string; text?: string } }) | null)?.keywordVisual;
   // Кэш прежней версии (v1 сужал ключ) не используем — определение спрашиваем заново.
-  if (cached && cached.keyword === keyword && typeof cached.text === "string" && (cached as { v?: number }).v === KEYWORD_VISUAL_VERSION) return { text: cached.text, source: "cache", cost: 0 };
+  if (cached && cached.keyword === keyword && typeof cached.text === "string" && (cached as { v?: number }).v === KEYWORD_VISUAL_VERSION) return { text: completeVisual(keyword, cached.text), source: "cache", cost: 0 };
   let cost = 0;
   try {
     const r = await aiChat(ctx, { slot: SLOTS.textFast, system: KEYWORD_VISUAL_SYSTEM, user: `Keyword: "${keyword}"`, json: true, temperature: 0.1, maxTokens: 300, timeoutMs: 30_000 });
@@ -789,9 +834,9 @@ async function keywordVisual(ctx: AiCtx, spent: { usd: number }, articleId: stri
     const fresh = await prisma.article.findUnique({ where: { id: articleId }, select: { facts: true } });
     const base = fresh?.facts && typeof fresh.facts === "object" && !Array.isArray(fresh.facts) ? (fresh.facts as Record<string, unknown>) : {};
     await prisma.article.update({ where: { id: articleId }, data: { facts: { ...base, keywordVisual: { keyword, text, v: KEYWORD_VISUAL_VERSION, at: new Date().toISOString() } } as Prisma.InputJsonValue } }).catch(() => {});
-    return { text, source: "model", cost };
+    return { text: completeVisual(keyword, text), source: "model", cost };
   } catch {
-    return { text: "", source: "none", cost };
+    return { text: literalVisual(keyword), source: "none", cost };
   }
 }
 
@@ -849,7 +894,8 @@ export async function reviewArticle(run: AiRunRecord, articleId: string): Promis
     return "proposed";
   }
 
-  // Резерв: ≤25 одобренных оценкой + ≤15 отклонённых без жёстких причин (оригинал :432-437); mix3 берёт первые 15.
+  // Резерв: ≤25 одобренных оценкой + ≤15 отклонённых без жёстких причин (оригинал :432-437); mix3.4 берёт первые
+  // RESERVE_FIRST (оригинал mixV3 :833 — 15), следующие — только при недоборе нормы.
   const usedCand = new Set(photos.map((p) => p.candidateId).filter(Boolean));
   const usedSha = new Set(photos.map((p) => p.sha256).filter(Boolean));
   const pool = cands.filter((c) => !usedCand.has(c.id) && !(c.sha256 && usedSha.has(c.sha256)));
@@ -863,16 +909,46 @@ export async function reviewArticle(run: AiRunRecord, articleId: string): Promis
 
   // Битые картинки роняют весь запрос к модели — заранее читаем миниатюры (оригинал :447-459 проверял превью).
   const curParts = await Promise.all(current.map((p) => loadThumbPart(p)));
-  const reserveParts0 = await Promise.all(reserveAll.slice(0, 15).map((c) => loadThumbPart(c)));
-  const reserve = reserveAll.slice(0, 15).filter((_, i) => reserveParts0[i]); // оригинал mixV3 :833 — одна порция лучших
-  const reserveParts = reserveParts0.filter((p): p is ContentPart => !!p);
-  // Проход «крупно»: две увеличенные половины каждого фото (S и R) — водяные знаки и признаки ИИ.
-  const [curDetail, resDetail] = await Promise.all([Promise.all(current.map((p) => loadDetailParts(p))), Promise.all(reserve.map((c) => loadDetailParts(c)))]);
-  const detailOf = (id: string): [ContentPart, ContentPart] | null => {
+  // Резерв читается порциями: первые RESERVE_FIRST — в основные проходы, следующие — только при недоборе нормы.
+  // Битая миниатюра пропускается и заменяется следующим кандидатом; номера R1..Rn стабильны (индекс в `reserve`).
+  const reserve: ReservePhoto[] = [];
+  const reserveParts: ContentPart[] = [];
+  let reserveCursor = 0;
+  const loadReserve = async (n: number): Promise<number> => {
+    const before = reserve.length;
+    while (reserve.length - before < n && reserveCursor < reserveAll.length) {
+      const chunk = reserveAll.slice(reserveCursor, reserveCursor + n - (reserve.length - before));
+      reserveCursor += chunk.length;
+      const parts = await Promise.all(chunk.map((c) => loadThumbPart(c)));
+      chunk.forEach((c, i) => { const part = parts[i]; if (part) { reserve.push(c); reserveParts.push(part); } });
+    }
+    return reserve.length - before;
+  };
+  await loadReserve(RESERVE_FIRST);
+  // Проход «крупно»: две увеличенные половины кадра — для всех фото статьи и только для выбранных кандидатов резерва.
+  const detailParts = new Map<string, [ContentPart, ContentPart] | null>();
+  const fileOf = (id: string): { thumbPath: string; path: string } | null => {
     const m = /^([SR])(\d+)$/.exec(id);
     if (!m) return null;
-    return (m[1] === "S" ? curDetail : resDetail)[Number(m[2]) - 1] ?? null;
+    return (m[1] === "S" ? current : reserve)[Number(m[2]) - 1] ?? null;
   };
+  const loadDetail = async (ids: string[]) => {
+    await Promise.all(ids.filter((id) => !detailParts.has(id)).map(async (id) => {
+      const f = fileOf(id);
+      detailParts.set(id, f ? await loadDetailParts(f) : null);
+    }));
+  };
+  const detailOf = (id: string) => detailParts.get(id) ?? null;
+  const detailBlocks = (ids: string[]): ContentPart[] => {
+    const b: ContentPart[] = [{ type: "text", text: `ARTICLE KEYWORD: "${keyword}". Zoomed crops, two per photo:` }];
+    for (const id of ids) {
+      const d = detailOf(id);
+      if (d) b.push({ type: "text", text: `${id} part 1` }, d[0], { type: "text", text: `${id} part 2` }, d[1]);
+    }
+    return b;
+  };
+  const sIds = current.map((_, i) => `S${i + 1}`);
+  await loadDetail(sIds);
 
   const ctx: AiCtx = { userId: run.startedById ?? run.site.createdById ?? "", teamId: run.teamId, articleId, siteId: run.siteId };
   if (!ctx.userId) throw new Error("У запуска нет пользователя для ключей ИИ: укажите владельца сайта");
@@ -882,7 +958,7 @@ export async function reviewArticle(run: AiRunRecord, articleId: string): Promis
     // Смысл ключа («MUST show») — в правила обеих моделей и спора (аудит: не тот вариант ключа).
     const kv = await keywordVisual(ctx, spent, articleId, keyword, facts);
     const focus = focusRules(keyword, niche, motif) + keywordVisualRule(keyword, kv.text);
-    const common = commonRules(focus);
+    let calls = 0;
 
     // оригинал :836-843
     const sBlocks: ContentPart[] = [{ type: "text", text: `ARTICLE KEYWORD: "${keyword}". Article photos S1..S${current.length}:` }];
@@ -896,47 +972,41 @@ export async function reviewArticle(run: AiRunRecord, articleId: string): Promis
     reserve.forEach((c, i) => { rBlocks.push({ type: "text", text: `R${i + 1}${sz(c)}` }); rBlocks.push(reserveParts[i]); });
     // Эталонов (QUALITY BAR) нет — см. шапку файла.
 
-    const dBlocks: ContentPart[] = [{ type: "text", text: `ARTICLE KEYWORD: "${keyword}". Zoomed crops, two per photo:` }];
-    for (const id of [...current.map((_, i) => `S${i + 1}`), ...reserve.map((_, i) => `R${i + 1}`)]) {
-      const d = detailOf(id);
-      if (!d) continue;
-      dBlocks.push({ type: "text", text: `${id} part 1` }, d[0], { type: "text", text: `${id} part 2` }, d[1]);
-    }
+    const dBlocks = detailBlocks(sIds);
 
-    // оригинал :855-858 + проход «крупно» параллельно; его сбой не роняет проверку (тогда без третьего сигнала).
+    // оригинал :855-858 + проход «крупно» по фото статьи параллельно; его сбой не роняет проверку (тогда без третьего сигнала).
     let detailError: string | null = null;
     const noDetail: ModelOut = { out: { photos: [] }, cost: 0, model: AI_MOD_MODELS.lite };
     const [pa, pm, pd] = await Promise.all([
-      callModel(ctx, spent, sysTopic(keyword, common), [...sBlocks, ...rBlocks], "v3 тема (lite)", false),
-      callModel(ctx, spent, sysOpinion(keyword, needed, minOk, trend, common), [...sBlocks, ...rBlocks], "v3 мнение (flash)", true),
+      callModel(ctx, spent, sysTopic(keyword, focus), [...sBlocks, ...rBlocks], "v3 тема (lite)", false),
+      callModel(ctx, spent, sysOpinion(keyword, needed, minOk, trend, focus), [...sBlocks, ...rBlocks], "v3 мнение (flash)", true),
       dBlocks.length > 1
-        ? callModel(ctx, spent, sysDetail(keyword), dBlocks, "v3 крупно (lite)", false).catch((e) => { detailError = (e instanceof Error ? e.message : String(e)).slice(0, 200); return noDetail; })
+        ? callModel(ctx, spent, sysDetail(), dBlocks, "v3 крупно (lite)", false).catch((e) => { detailError = (e instanceof Error ? e.message : String(e)).slice(0, 200); return noDetail; })
         : Promise.resolve(noDetail),
     ]);
+    calls += 2 + (dBlocks.length > 1 && !detailError ? 1 : 0);
     // Отметка «живы» для сторожа (см. watchdogRun): следующий проход может занять ещё до 150 с.
-    await prisma.artAiModerationResult.updateMany({ where: { runId: run.id, articleId, status: "processing" }, data: { error: null } }).catch(() => {});
-    const W: DetailFlags = parseDetailFlags(pd.out);
-    // Находки «крупно» — сигнал на стороне дешёвой модели (там, где она сказала «ок»), см. mergeDetailFlags.
-    const A: Judgements = mergeDetailFlags(judgementsOf(pa.out), W);
+    const touch = () => prisma.artAiModerationResult.updateMany({ where: { runId: run.id, articleId, status: "processing" }, data: { error: null } }).catch(() => {});
+    await touch();
+    // Находки «крупно» — только по фото статьи (резерв смотрится позже и только выбранный).
+    const W: DetailFlags = new Map([...parseDetailFlags(pd.out)].filter(([id]) => id.startsWith("S")));
+    // liteOwn — собственный ответ lite (для ничьей по ИИ); A — он же с находками «крупно» (сигнал на стороне дешёвой модели).
+    const liteOwn: Judgements = judgementsOf(pa.out);
+    let A: Judgements = mergeDetailFlags(liteOwn, W);
     const M = judgementsOf(pm.out);
-    const sIds = current.map((_, i) => `S${i + 1}`);
     const score = (id: string) => scoreOf(M, id);
 
     // Фото статьи (правила — ./aiModerationRules.ts): обе модели за удаление → убрать; одна против «ок» другой → спор.
     const sv = classifyArticlePhotos(sIds, A, M);
     const confirm = removalsNeedConfirm(sv, current.length);
     const look = [...new Set([...sv.disputed, ...confirm])];
-    // Причина замечания по фото (та сторона, что за удаление) — для перепроверки «по аналогии».
-    const flagReason = (id: string) => [M.get(id), A.get(id)].find((j) => j && j.reason !== "ok" && j.reason !== "weak_pin")?.reason ?? "";
     const decidedDrops = [...sv.drops.keys()].filter((id) => !confirm.includes(id));
-    const topicIssue = [...decidedDrops, ...look].some((id) => CONSISTENCY_REASONS.test(flagReason(id)));
-    // Оставленные обеими моделями фото показываем спору, только если что-то убирается по теме/аудитории/ИИ.
-    const recheck = topicIssue ? sIds.filter((id) => !look.includes(id) && !sv.drops.has(id) && curParts[Number(id.slice(1)) - 1]).slice(0, RECHECK_MAX) : [];
     let pf: ModelOut = { out: { keep: [], drop: [] }, cost: 0, model: pm.model };
     let finalUsed = false;
     let dispute: DisputeAnswer = parseDispute(null, true);
     let disputeError: string | null = null;
-    if (look.length || (recheck.length && decidedDrops.length)) {
+    // Спор — только когда есть спорные фото (mix3.4: перепроверки оставленных «по аналогии» больше нет).
+    if (look.length) {
       finalUsed = true;
       const fb: ContentPart[] = [{ type: "text", text: `ARTICLE KEYWORD: "${keyword}". Photos under review:` }];
       const shown = new Set<string>();
@@ -953,38 +1023,110 @@ export async function reviewArticle(run: AiRunRecord, articleId: string): Promis
       for (const id of look) {
         const a1 = A.get(id), m1 = M.get(id);
         const w = W.get(id);
-        pushPhoto(id, `${id} — check A: ${a1?.reason ?? "ok"} ${a1?.why || ""}; editor: ${m1?.reason ?? "ok"} ${m1?.why || ""}${m1?.dupOf || a1?.dupOf ? ` (dup_of ${m1?.dupOf || a1?.dupOf})` : ""}${w ? `; zoom check: ${w.kind} "${w.text}"` : ""}${confirm.includes(id) ? " [removal needs confirmation]" : ""}`);
-        // Увеличенная половина, где проход «крупно» нашёл подпись/признак ИИ, — рядом с фото.
+        pushPhoto(id, `${id} — check A: ${a1?.reason ?? "ok"} ${a1?.why || ""}; editor: ${m1?.reason ?? "ok"}${m1?.score != null ? ` (score ${m1.score})` : ""} ${m1?.why || ""}${m1?.dupOf || a1?.dupOf ? ` (dup_of ${m1?.dupOf || a1?.dupOf})` : ""}${w ? `; zoom check: ${w.kind} "${w.text}"` : ""}${confirm.includes(id) ? " [removal needs confirmation]" : ""}`);
+        // Увеличенная половина, где проход «крупно» нашёл подпись, — рядом с фото.
         const d = w ? detailOf(id) : null;
         if (d) fb.push({ type: "text", text: `${id} zoomed part ${w?.part === 1 ? 2 : 1}` }, d[w?.part === 1 ? 1 : 0]);
       }
-      // Образец: уже убранные обеими моделями (последовательность решений), текстом — все, картинками — первые 4.
+      // Образец: уже убранные обеими моделями (последовательность решений), текстом — все, картинками — первые DECIDED_REF_MAX.
       if (decidedDrops.length) {
         fb.push({ type: "text", text: `Already removed by both checkers: ${decidedDrops.map((id) => `${id} (${(sv.drops.get(id) || "").slice(0, 70)})`).join("; ")}` });
         for (const id of decidedDrops.slice(0, DECIDED_REF_MAX)) pushPhoto(id, `${id} [already removed] — ${(sv.drops.get(id) || "").slice(0, 90)}`);
       }
-      for (const id of recheck) pushPhoto(id, `${id} [kept — recheck]`);
       // Для дублей показываем и «оригинал», иначе спор не может проверить повтор.
       for (const id of look) {
         const ref = M.get(id)?.dupOf || A.get(id)?.dupOf;
         if (ref && !look.includes(ref)) pushPhoto(ref, `${ref} [reference] — the photo ${id} may duplicate`);
       }
       try {
-        pf = await callModel(ctx, spent, sysDispute(keyword, common), fb, "v3 спор (flash)", true);
+        pf = await callModel(ctx, spent, sysDispute(keyword, focus), fb, "v3 спор (flash)", true);
         dispute = parseDispute(pf.out, true);
+        calls++;
       } catch (e) {
         // Спор не ответил: спорные фото оставляем, решение — людям (verdictFrom), стоимость попыток уже в spent.
         disputeError = (e instanceof Error ? e.message : String(e)).slice(0, 200);
         dispute = parseDispute(null, false);
       }
     }
-    const res = resolveDisputes(sv, confirm, M, A, dispute, recheck);
+    // Сильная отметка «ИИ» основной модели против «keep» спора — ничья, фото убирается (resolveDisputes).
+    const res = resolveDisputes(sv, confirm, M, A, dispute, liteOwn);
     const drops = res.drops;
 
-    // Резерв: добор до нормы и не больше +30% сверх неё, без повторов человека/фотосессии (./aiModerationRules.ts).
+    // Резерв: добор до нормы и сильные кадры сверх неё (до MAX_ARTICLE_PHOTOS), без повторов человека/фотосессии (./aiModerationRules.ts).
     const keptS = sIds.filter((id) => !drops.has(id));
-    const rIds = reserve.map((_, i) => `R${i + 1}`);
-    const pick = pickAdds({ rIds, keptS, needed, minOk, maxAdds: MAX_ADDS, A, M });
+    const rIdsOf = () => reserve.map((_, i) => `R${i + 1}`);
+    const pickWith = (rIds: string[]): PickResult => pickAdds({ rIds, keptS, needed, minOk, maxAdds: MAX_ADDS, A, M });
+    let pick = pickWith(rIdsOf());
+
+    // Досылка резерва: норма не набирается первыми RESERVE_FIRST — ещё RESERVE_MORE кандидатов маленьким вызовом lite + flash.
+    // Фото статьи flash уже оценил, здесь видит только новых кандидатов; lite для проверки дублей видит и оставленные фото.
+    let moreCost = 0;
+    let moreError: string | null = null;
+    const moreIds: string[] = [];
+    let moreOut: { lite: Record<string, unknown> | null; flash: Record<string, unknown> | null } | null = null;
+    if (keptS.length + pick.adds.length < needed && reserveCursor < reserveAll.length) {
+      const from = reserve.length;
+      if (await loadReserve(RESERVE_MORE)) {
+        for (let i = from; i < reserve.length; i++) moreIds.push(`R${i + 1}`);
+        const mb: ContentPart[] = [{ type: "text", text: `More RESERVE candidates ${moreIds[0]}..${moreIds[moreIds.length - 1]} (not in the article yet; article photos were judged earlier — judge ONLY these R photos):` }];
+        moreIds.forEach((id, k) => { mb.push({ type: "text", text: `${id}${sz(reserve[from + k])}` }, reserveParts[from + k]); });
+        const refs: ContentPart[] = [{ type: "text", text: `ARTICLE KEYWORD: "${keyword}". Article photos kept so far — reference only, to spot duplicates (do not list them):` }];
+        for (const id of keptS) {
+          const part = curParts[Number(id.slice(1)) - 1];
+          if (part) refs.push({ type: "text", text: id }, part);
+        }
+        const cost0 = spent.usd;
+        try {
+          const [ma, mm] = await Promise.all([
+            callModel(ctx, spent, sysTopic(keyword, focus), [...refs, ...mb], "v3 резерв ещё (lite)", false),
+            callModel(ctx, spent, sysOpinion(keyword, needed, minOk, trend, focus), [{ type: "text", text: `ARTICLE KEYWORD: "${keyword}".` }, ...mb], "v3 резерв ещё (flash)", true),
+          ]);
+          calls += 2;
+          moreOut = { lite: ma.out, flash: mm.out };
+          const ja = judgementsOf(ma.out), jm = judgementsOf(mm.out);
+          const nextA: Judgements = new Map(A);
+          for (const id of moreIds) {
+            if (ja.has(id)) { liteOwn.set(id, ja.get(id)!); nextA.set(id, ja.get(id)!); }
+            if (jm.has(id)) M.set(id, jm.get(id)!);
+          }
+          A = nextA;
+        } catch (e) {
+          moreError = (e instanceof Error ? e.message : String(e)).slice(0, 200);
+        }
+        moreCost = spent.usd - cost0;
+        await touch();
+        pick = pickWith(rIdsOf());
+      }
+    }
+
+    // «Крупно» по резерву — только выбранные добавления и пара запасных (находка = кандидат не добавляется, берётся следующий).
+    const zoomedR = new Set<string>();
+    const reserveZoomOut: Array<Record<string, unknown>> = [];
+    let reserveZoomCost = 0;
+    let reserveZoomError: string | null = null;
+    for (let round = 0; round < RESERVE_ZOOM_ROUNDS && !reserveZoomError; round++) {
+      const targets = reserveZoomTargets(pick, zoomedR, RESERVE_ZOOM_SPARE);
+      if (!targets.length) break;
+      await loadDetail(targets);
+      for (const id of targets) zoomedR.add(id);
+      const zb = detailBlocks(targets);
+      if (zb.length <= 1) continue;
+      const cost0 = spent.usd;
+      try {
+        const z = await callModel(ctx, spent, sysDetail(), zb, "v3 крупно резерв (lite)", false);
+        calls++;
+        reserveZoomOut.push(z.out);
+        const wr: DetailFlags = new Map([...parseDetailFlags(z.out)].filter(([id]) => targets.includes(id)));
+        for (const [id, f] of wr) W.set(id, f);
+        A = mergeDetailFlags(A, wr);
+      } catch (e) {
+        reserveZoomError = (e instanceof Error ? e.message : String(e)).slice(0, 200);
+      }
+      reserveZoomCost += spent.usd - cost0;
+      pick = pickWith(rIdsOf());
+    }
+    // После всех раундов добавляем только просмотренных «крупно» (если «крупно» не упал — тогда как раньше, без него).
+    if (!reserveZoomError && zoomedR.size && pick.adds.some((x) => !zoomedR.has(x.id))) pick = pickWith(rIdsOf().filter((id) => zoomedR.has(id)));
     const adds = pick.adds;
     const finalIds = orderFinal(keptS, adds, M);
 
@@ -1016,16 +1158,19 @@ export async function reviewArticle(run: AiRunRecord, articleId: string): Promis
 
     // Решение и уверенность — из согласия моделей и фактов (оригинал :601-621, правила — verdictFrom).
     const removedReasons = [...drops.values()];
-    const vd = verdictFrom({ total: current.length, final: final.length, needed, minOk, agreed: sv.agreed, disputed: sv.disputed.length, flags: sv.flags.length, res, removedReasons }, AUTO_CONFIDENCE);
+    const vd = verdictFrom({ total: current.length, final: final.length, needed, minOk, agreed: sv.agreed, disputed: sv.disputed.length, flags: sv.flags.length, flashFlags: sv.flashFlags.length, res, removedReasons }, AUTO_CONFIDENCE);
     const decision: AiDecision = vd.decision;
     const confidence = vd.confidence;
     const reasons = vd.reasons;
     const modelVerdict = final.length >= minOk ? "approve" : "insufficient";
-    const passCosts = [pa.cost, pm.cost, pf.cost, kv.cost, pd.cost];
+    // Индексы 0–4 — как в mix3.3 ([4] теперь «крупно» по статье + по выбранному резерву), [5] — досылка резерва (lite + flash).
+    const passCosts = [pa.cost, pm.cost, pf.cost, kv.cost, pd.cost + reserveZoomCost, moreCost];
     const v3Log = {
-      version: "mix3.3", lite_topic: pa.out, detail_pass: pd.out, detail_flags: Object.fromEntries(W), detail_error: detailError, recheck, consistency_drops: res.consistencyDrops, flash_opinion: pm.out, final_pass: finalUsed ? pf.out : null, final_used: finalUsed, final_error: disputeError,
-      disputed: sv.disputed, disputed_by: sv.disputedBy, confirm, auto_kept: sv.autoKept.map((x) => x.id), agreed: sv.agreed, flags: sv.flags,
-      kept_after_dispute: res.keptAfterDispute, dropped_after_dispute: res.droppedAfterDispute, agree_share: Math.round(vd.agreeShare * 100) / 100,
+      version: "mix3.4", lite_topic: pa.out, detail_pass: pd.out, detail_flags: Object.fromEntries(W), detail_error: detailError, flash_opinion: pm.out, final_pass: finalUsed ? pf.out : null, final_used: finalUsed, final_error: disputeError,
+      reserve_zoom: [...zoomedR], reserve_zoom_pass: reserveZoomOut, reserve_zoom_error: reserveZoomError,
+      reserve_more: moreIds, reserve_more_pass: moreOut, reserve_more_error: moreError,
+      disputed: sv.disputed, disputed_by: sv.disputedBy, confirm, auto_kept: sv.autoKept.map((x) => x.id), agreed: sv.agreed, flags: sv.flags, flash_flags: sv.flashFlags,
+      kept_after_dispute: res.keptAfterDispute, flash_overturned: res.flashOverturned, dropped_after_dispute: res.droppedAfterDispute, tie_drops: res.tieDrops, agree_share: Math.round(vd.agreeShare * 100) / 100,
       reserve_candidates: pick.candidates, rejected_by_code: pick.rejected, reserve_total: reserve.length,
       adds: adds.map((x) => ({ id: x.id, kind: x.kind, score: score(x.id) })), extra_threshold: pick.extraThreshold, cap: pick.cap,
       keyword_visual: { text: kv.text, source: kv.source, cost: kv.cost },
@@ -1036,8 +1181,8 @@ export async function reviewArticle(run: AiRunRecord, articleId: string): Promis
     const summary = removed.length === 0 && /удален|исключен/i.test(modelSum) ? `${factLine} Все фото прошли проверку.` : `${factLine} ${modelSum}`;
 
     const review: AiReviewInfo = {
-      humanReasons: reasons, modelVerdict, scores: null, needed, minOk,
-      model: `mix3: ${pa.model} + ${pm.model}`, passes: 2 + (finalUsed ? 1 : 0) + (dBlocks.length > 1 && !detailError ? 1 : 0), flagged: sv.flags.length, overturned: res.overturned, passCosts, v3: v3Log,
+      humanReasons: decision === "human" ? reasons : [], notes: decision === "human" ? [] : reasons, modelVerdict, scores: null, needed, minOk,
+      model: `mix3: ${pa.model} + ${pm.model}`, passes: calls, flagged: sv.flags.length, overturned: res.overturned, passCosts, v3: v3Log,
     };
     await save({
       status: "proposed", decision, confidence,

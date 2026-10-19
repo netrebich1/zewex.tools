@@ -5,9 +5,14 @@
  * и обязана выстроить строгий порядок «какой сохранили бы в Pinterest первым», она различает хороший и очень
  * хороший кадр. Группы по 10 → локальный балл 95..25; «турнир чемпионов» (3 лучших из каждой группы, пул 12)
  * сшивает группы: чемпионы 100..72, остальные ≤70. Результат — `ArtPhotoCandidate.beautyRank`
- * (+ `aiBreakdown.beauty_note`), главный вес итогового ранга при отборе.
+ * (+ `aiBreakdown.beauty_note`), главный вес итогового ранга при отборе; `rankScore` пересчитывается тут же.
  *
- * Идемпотентно: сравниваются только скачанные кадры без ранга. Ошибка сравнения не фатальна
+ * С 2026-10-16 (волна 3 п.2) этап идёт ПОСЛЕ оценки `rate`: сравниваются только одобренные ею кадры
+ * (keep / промо; после прежнего отбора — selected / reserve), ~42 вместо ~130, т.е. 5–6 вызовов вместо 13.
+ * Статья, у которой оценённых кадров ещё нет (застала старый порядок на этапе rank), отправляется к `rate`;
+ * реестр затем вернёт её сюда. Второй раз подряд не отправляем (cursor.rankToRate) — цикла быть не может.
+ *
+ * Идемпотентно: сравниваются только одобренные кадры без ранга. Ошибка сравнения не фатальна
  * (direct-pipeline:499 — только warn): группа без ответа получает средний балл 50 после второй попытки.
  * Исключение — отсутствие рабочего ключа и остановка: пробрасываются наверх.
  */
@@ -27,6 +32,7 @@ import {
   RANK_WAVE,
   beautyChampionScore,
   beautyLocalScore,
+  finalPhotoRank,
   readBreakdown,
   seededShuffle,
   topicOf,
@@ -37,6 +43,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type GroupResult = { ids: string[]; notes: Record<string, string> };
 
+/** статусы «одобрен оценкой» (после прежнего отбора keep делится на selected/reserve) */
+const KEEP_STATUSES = ["keep", "selected", "reserve"];
+
 export const rank: ArtStageHandler = async (ctx) => {
   const { article, recipe } = ctx;
   const topic = topicOf(article);
@@ -45,19 +54,34 @@ export const rank: ArtStageHandler = async (ctx) => {
   // Модель — из рецепта (08-plan §3 п.4; аудит 02 п.7.9), иначе модель правила слота vision.
   const model = stageModel(recipe, "rp_photo_rate");
 
-  // Берём только ещё не сравнённые кадры (оригинал: :101-108).
+  // Оценки ещё не было (статья застала старый порядок search → filter → rank → rate) — сначала оценка, иначе
+  // реестр увёл бы её сразу к отбору без вердиктов. Один раз: после rate здесь всегда есть оценённые кадры
+  // (иначе rate сам уходит к filter / search / ожиданию), но на случай неожиданного второй раз не отправляем.
+  const rated = await prisma.artPhotoCandidate.count({ where: { articleId: article.id, aiScore: { not: null } } });
+  if (!rated && !ctx.cursor.rankToRate) {
+    await ctx.save({ cursor: { ...ctx.cursor, rankToRate: true } });
+    return { next: "rate", summary: "Кадры ещё не оценены — сначала ИИ-оценка, сравнение после неё", details: { ranked: 0, groups: 0, forced: 0, costUsd: 0, bounced: "rate" } };
+  }
+  if (ctx.cursor.rankToRate) {
+    const cursor = { ...ctx.cursor };
+    delete cursor.rankToRate;
+    await ctx.save({ cursor });
+  }
+
+  // Берём только одобренные оценкой и ещё не сравнённые кадры (оригинал: :101-108 — там были все скачанные).
   const pending = await prisma.artPhotoCandidate.findMany({
-    where: { articleId: article.id, status: "downloaded", beautyRank: null },
+    where: { articleId: article.id, status: { in: KEEP_STATUSES }, beautyRank: null },
     orderBy: { createdAt: "asc" },
   });
-  const rankedBefore = await prisma.artPhotoCandidate.count({ where: { articleId: article.id, status: "downloaded", beautyRank: { not: null } } });
+  const rankedBefore = await prisma.artPhotoCandidate.count({ where: { articleId: article.id, status: { in: KEEP_STATUSES }, beautyRank: { not: null } } });
   if (!pending.length) {
-    return { summary: `Все кадры уже сравнены (${rankedBefore})`, details: { ranked: rankedBefore, groups: 0, forced: 0, costUsd: 0 } };
+    return { summary: `Все одобренные кадры уже сравнены (${rankedBefore})`, details: { ranked: rankedBefore, groups: 0, forced: 0, costUsd: 0 } };
   }
   await ctx.tick(`Сравниваю ${pending.length} кадров`);
 
-  // оригинал: stage-photo-rank/index.ts:137-152 (дословно)
-  const SYSTEM = `You are a Pinterest content curator ranking editorial photos for an article about "${topic}".
+  // оригинал: stage-photo-rank/index.ts:137-152 (дословно по смыслу). Тема статьи — первой строкой user: системное
+  // сообщение одинаково для всех статей (кэш промта, волна 3 п.3; здесь оно короче минимума кэша), смысл правил не менялся.
+  const SYSTEM = `You are a Pinterest content curator ranking editorial photos for an article (the article topic is given in the user message).
 You will see numbered photos. Put them in ORDER from the single most save-worthy pin to the least.
 
 Judge ONLY save-appeal for a Pinterest feed:
@@ -88,13 +112,13 @@ where the FIRST element is the best pin and the LAST is the weakest.`;
     if (inlined.length < 2) return inlined.length ? { ids: [inlined[0].row.id], notes: {} } : null;
 
     const parts: ContentPart[] = [
-      { type: "text", text: `Rank these ${inlined.length} photos for Pinterest save-appeal, best first.\n` + numberedTitles(inlined.map((x) => x.row)) },
+      { type: "text", text: `Article topic: "${topic}".\nRank these ${inlined.length} photos for Pinterest save-appeal, best first.\n` + numberedTitles(inlined.map((x) => x.row)) },
       ...inlined.map((x) => x.part),
     ];
     let json: unknown;
     try {
       // оригинал: temperature 0.1, maxTokens 1024, timeout 150 с (:173-184)
-      const r = await visionJson(ctx.ai, { model, system: SYSTEM, parts, temperature: 0.1, maxTokens: 1024, timeoutMs: 150_000 });
+      const r = await visionJson(ctx.ai, { model, system: SYSTEM, parts, temperature: 0.1, maxTokens: 1024, timeoutMs: 150_000, cacheSystem: true });
       cost += r.costUsd;
       json = r.json;
     } catch (e) {
@@ -194,9 +218,10 @@ where the FIRST element is the best pin and the LAST is the weakest.`;
     const row = byId.get(id);
     if (!row) continue;
     const note = notes.get(id);
+    const b = readBreakdown(row);
     await prisma.artPhotoCandidate.update({
       where: { id },
-      data: { beautyRank: Math.round(score), aiBreakdown: { ...readBreakdown(row), ...(note ? { beauty_note: note } : {}) } as object },
+      data: { beautyRank: Math.round(score), aiBreakdown: { ...b, ...(note ? { beauty_note: note } : {}) } as object, rankScore: rankScoreOf(row, Math.round(score)) },
     });
     written++;
   }
@@ -208,7 +233,7 @@ where the FIRST element is the best pin and the LAST is the weakest.`;
       if (finalScore.has(row.id)) continue;
       await prisma.artPhotoCandidate.update({
         where: { id: row.id },
-        data: { beautyRank: RANK_FALLBACK, aiBreakdown: { ...readBreakdown(row), beauty_note: "не удалось сравнить" } as object },
+        data: { beautyRank: RANK_FALLBACK, aiBreakdown: { ...readBreakdown(row), beauty_note: "не удалось сравнить" } as object, rankScore: rankScoreOf(row, RANK_FALLBACK) },
       });
       forced++;
     }
@@ -218,7 +243,7 @@ where the FIRST element is the best pin and the LAST is the weakest.`;
     if (finalScore.has(row.id) || stillFailed.some((g) => g.includes(row))) continue;
     await prisma.artPhotoCandidate.update({
       where: { id: row.id },
-      data: { beautyRank: RANK_FALLBACK, aiBreakdown: { ...readBreakdown(row), beauty_note: "не удалось сравнить" } as object },
+      data: { beautyRank: RANK_FALLBACK, aiBreakdown: { ...readBreakdown(row), beauty_note: "не удалось сравнить" } as object, rankScore: rankScoreOf(row, RANK_FALLBACK) },
     });
     forced++;
   }
@@ -229,3 +254,9 @@ where the FIRST element is the best pin and the LAST is the weakest.`;
     details: { ranked: rankedBefore + written + forced, written, forced, groups: groups.length, champions: championsRanked, costUsd },
   };
 };
+
+/** Итоговый ранг кандидата с новым баллом красоты: оценка (`rate`) писала его без beautyRank — теперь он известен. */
+function rankScoreOf(row: ArtPhotoCandidate, beauty: number): number {
+  const b = readBreakdown(row);
+  return finalPhotoRank({ beauty_rank: beauty, ai_quality: b.ai_quality ?? null, tech_quality: row.techScore, ai_score: row.aiScore });
+}

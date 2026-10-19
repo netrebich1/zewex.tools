@@ -19,8 +19,8 @@ export const photoRel = (articleId: string, photoId: string) => `articles/${arti
 export const photoThumbRel = (articleId: string, photoId: string) => `articles/${articleId}/photos/${photoId}.thumb.webp`;
 export const generatedRel = (articleId: string, n: number, ext = "png") => `articles/${articleId}/gen/${n}.${ext}`;
 
-/** Параметры сжатия перед загрузкой на сайт (оригинал: _shared/compressImage.ts — JPEG 90, длинная сторона ≤1600). */
-export const WP_IMAGE = { maxSide: 1600, quality: 90 } as const;
+/** Параметры сжатия перед загрузкой на сайт (оригинал — JPEG 90). 85 + mozjpeg: −14% веса, PSNR 46.7 дБ к q90 на 30 реальных фото (2026-10-15), глазом не отличить. */
+export const WP_IMAGE = { maxSide: 1600, quality: 85 } as const;
 export const THUMB = { width: 400, quality: 78 } as const;
 
 /** Миниатюра WebP шириной THUMB.width (высота по пропорции). */

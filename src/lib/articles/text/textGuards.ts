@@ -7,6 +7,7 @@
  *  • stripEmphasis — полный запрет выделений
  * Единственная копия для всей цепочки (план, секции, вступление, сборка, публикация) — аудит 03, §8.
  */
+import { sanitizeFacts } from "@/lib/articles/photo/factSanitize";
 
 // оригинал: _shared/textGuards.ts:9-14
 const LABEL_WORDS = [
@@ -106,20 +107,34 @@ export function capHeading(heading: string, max = MAX_HEADING_CHARS): string {
 
 // оригинал: textGuards.ts:69-72
 const FACT_PRIORITY = [
-  "length", "shape", "finish", "color", "colour", "shade", "art", "decor", "details", "detail",
-  "technique", "occasion", "season", "vibe", "accent",
+  "length", "shape", "shape_length", "finish", "color", "colour", "colors", "shade", "art", "decor", "details", "detail",
+  "technique", "bangs", "texture", "silhouette", "accent",
 ];
 
+/**
+ * Поля фактов, которые не годятся в хвост H2: оценка исполнения, сложность, кадр, повод и «что заметно первым» —
+ * это мнение о кадре, а не признак дизайна («…, Salon-Leaning», «…, One Hand», «…, The Single Detail…»).
+ */
+const NO_TAIL_FACTS = new Set(["craft", "difficulty", "framing", "standout", "occasion", "description_facts", "healed", "size_feel"]);
+/** Хвост H2 — только короткое описание признака: без «none/any», без «/ | +», без связок-обрывков. */
+const BAD_TAIL_RE = /[/|+&]|\b(?:none|n\/?a|any|unknown|visible|not|no)\b/i;
+
 function factWords(facts: unknown): string[] {
-  if (!facts || typeof facts !== "object") return [];
-  const f = facts as Record<string, unknown>;
+  // Заглушки и копии описаний полей схемы (аудит text-v3: «Milky White Pearl Chrome Almond Nails, None»,
+  // «Soft Pink French Almonds, The Single Detail A Reader Notices First») отсеиваются до выбора хвоста.
+  const f = sanitizeFacts(facts);
+  if (!f) return [];
   const out: string[] = [];
   const push = (v: unknown) => {
-    const s = String(v ?? "").replace(/[^a-zA-Zа-яА-ЯёЁ0-9\s-]/g, " ").replace(/\s+/g, " ").trim();
-    if (s && s.length <= 40) out.push(s);
+    const raw = String(v ?? "").trim();
+    if (!raw || BAD_TAIL_RE.test(raw)) return;
+    // Только первая часть перечня: «shimmer, high gloss» → «shimmer»
+    const first = raw.split(/[,;]/)[0];
+    const s = first.replace(/[^a-zA-Zа-яА-ЯёЁ0-9\s-]/g, " ").replace(/\s+/g, " ").trim();
+    if (s && s.length <= 40 && s.split(" ").length <= 5) out.push(s);
   };
-  for (const key of FACT_PRIORITY) if (key in f) push(f[key]);
-  for (const [k, v] of Object.entries(f)) if (!FACT_PRIORITY.includes(k)) push(v);
+  for (const key of FACT_PRIORITY) if (key in f && !NO_TAIL_FACTS.has(key)) push(f[key]);
+  for (const [k, v] of Object.entries(f)) if (!FACT_PRIORITY.includes(k) && !NO_TAIL_FACTS.has(k)) push(v);
   return out;
 }
 
@@ -167,21 +182,26 @@ export function uniqueHeading(
     return base;
   }
 
-  const baseWords = new Set(headingKey(base).split(" ").filter(Boolean));
+  // Слова сравниваются без окончания -s («Almonds» и «Short Almond» — повтор).
+  const stem = (w: string) => w.replace(/(?:es|s)$/, "");
+  const baseWords = new Set(headingKey(base).split(" ").filter(Boolean).map(stem));
   // Хвост годится, если не повторяет слов заголовка и не делает его длиннее предела.
   const tailOk = (tail: string) => {
     const tw = headingKey(tail).split(" ").filter(Boolean);
-    return tw.length > 0 && !tw.some((w) => baseWords.has(w)) && `${base}, ${tail}`.length <= MAX_HEADING_CHARS;
+    return tw.length > 0 && !tw.some((w) => baseWords.has(stem(w))) && `${base}, ${tail}`.length <= MAX_HEADING_CHARS;
   };
   const candidates: string[] = [];
   for (const w of factWords(opts.facts)) {
     const tail = titleCaseWords(w);
     if (tailOk(tail)) candidates.push(`${base}, ${tail}`);
   }
+  // Из описания — только короткие признаки, не целые предложения («…, The Finish Is Glossy» — аудит text-v3).
   const desc = String(opts.description || "")
     .split(/[.,;]/)
     .map((s) => s.trim())
-    .filter((s) => s && s.length <= 40);
+    .filter((s) => s && s.length <= 40 && !/\b(?:is|are|was|were|has|have|shows?|features?|sits?|reads?|creates?|adds?|gives?)\b/i.test(s))
+    // и не про кадр: фон, рука, свет, поза, одежда в кадре («…, Slightly Textured Background»)
+    .filter((s) => !/\b(?:background|backdrop|hand|hands|finger|fingers|light|lighting|lit|posed?|shot|photo|image|frame|framed|sweater|sleeve|ring|rings|surface|fabric)\b/i.test(s));
   for (const d of desc) {
     const tail = titleCaseWords(d);
     if (tailOk(tail)) candidates.push(`${base}, ${tail}`);
@@ -223,7 +243,7 @@ export function looksLikeFactDump(text: unknown): boolean {
   // Перечисление признаков без глаголов: «Long coffin shape, filed to a sharp point, glossy red»
   const firstSentence = head.split(/(?<=[.!?])\s/)[0] || head;
   if (firstSentence.length > 40 && (firstSentence.match(/,/g) || []).length >= 2) {
-    const hasVerbOrVoice = /\b(i|you|we|it|this|these|is|are|was|were|feels?|looks?|reads?|love|hate|keep|works?|wears?|think|swear|admit|will|would|can|don't|doesn't)\b/i
+    const hasVerbOrVoice = /\b(i|you|we|it|this|these|is|are|was|were|feels?|looks?|reads?|love|hate|keep|works?|wears?|think|swear|admit|will|would|can|don't|doesn't|choose|pick|go|ask|apply|try|use|opt|add|avoid|skip|start|book|pair|let|make|get|give|take|save|swap|tuck|consider|stick|aim|reach|bring|treat|protect)\b/i
       .test(firstSentence);
     const facty = /\b(shape|shaped|length|finish|glossy|matte|filed|tips?|almond|coffin|square|oval|stiletto|chrome|glitter|nude|french)\b/i
       .test(firstSentence);

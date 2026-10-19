@@ -6,6 +6,7 @@ import { autostartTick } from "./articles/autostart";
 import { purgePublishedBacklog } from "@/lib/articles/wp/cleanup";
 import { purgeOldRuns } from "@/lib/pins/runs/cleanup";
 import { resyncSheets } from "@/lib/articles/sheets";
+import { failedKeywordsTick } from "@/lib/articles/failedKeywords";
 import { deeplPurgeCache, deeplRequeueStale } from "./deepl";
 import { analyticsPurge, analyticsRequeueStale } from "./analytics";
 
@@ -26,6 +27,9 @@ export function startCron(): () => void {
   timers.push(setInterval(() => autostartTick().then((r) => { if (r.enabled || r.disabled) log.info(`articles autostart: enabled ${r.enabled}, disabled ${r.disabled}`); }).catch((e) => log.warn("articles autostartTick failed", e)), 60_000));
   // Статьи: досылка отчётов в Google Таблицы, которые не записались при публикации (оригинал: publish-worker, каждый тик).
   timers.push(setInterval(() => resyncSheets(10).then((r) => { if (r.tried) log.info(`articles sheets resync: ${r.ok}/${r.tried}`); }).catch((e) => log.warn("articles resyncSheets failed", e)), 5 * 60_000));
+  // Статьи: список «Неудачные ключи» — полный проход через 90 с после старта (он же бэкфилл), затем изменения каждые 10 мин.
+  const failedKw = (full: boolean) => () => failedKeywordsTick(full).then((r) => { if (r.created || r.updated || r.orphansDeleted) log.info(`articles failed keywords${r.full ? " (full)" : ""}: +${r.created}, ~${r.updated}, -${r.orphansDeleted}`); }).catch((e) => log.warn("articles failedKeywords failed", e));
+  timers.push(setTimeout(failedKw(true), 90_000), setInterval(failedKw(false), 10 * 60_000));
   // DeepL Articler: статьи с истёкшей арендой — в очередь; кэш переводов старше 90 дней — раз в сутки.
   timers.push(setInterval(() => deeplRequeueStale().catch((e) => log.warn("deepl requeueStale failed", e)), 2 * 60_000));
   timers.push(setInterval(() => deeplPurgeCache().catch((e) => log.warn("deepl purgeCache failed", e)), 24 * 60 * 60_000));

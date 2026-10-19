@@ -309,7 +309,8 @@ const AI_MARKERS = [
   "playground ai", "novelai", "flux.1", "black forest labs", "bfl.ai",
   "generated with ai", "ai generated", "ai-generated", "aigc", "genai",
   "trainedalgorithmicmedia", "compositewithtrainedalgorithmicmedia",
-  "c2pa", "contentcredentials", "digitalsourcetype",
+  // «c2pa» / «contentcredentials» / «digitalsourcetype» сами по себе — история правок (камеры, Photoshop), не ИИ (2026-10-15);
+  // ИИ-источник в C2PA помечается значением trainedAlgorithmicMedia — оно выше в списке.
   "krea.ai", "seaart", "civitai", "grok-imagine", "gemini image",
 ];
 
@@ -442,11 +443,14 @@ export async function inspectPhotoBytes(bytes: Buffer | Uint8Array): Promise<Pix
   if (seams.length >= 2 || (seams.length === 1 && hardSeam)) {
     return { ...base, reject: true, reason: `коллаж: кадр разделён на панели (${seams.length} разделитель(ей))` };
   }
+  // Проверка глазами 10 статей zorvianix (2026-10-15): прежние пороги (надпись: доля ≥ 0.2 и текст ≥ 0.07; плашка ≥ 0.42)
+  // отсеивали студийный однотонный фон и текстуру волос/кос/хрома — около половины таких кадров были хорошими.
+  // Теперь отказ только при очень сильном сигнале; остальное решает vision-оценка (она видит текст/водяные знаки сама).
   const band = findTextBanner(bmp);
-  if (band.share >= 0.2 && band.textRatio >= 0.07) {
+  if (band.share >= 0.35 && band.textRatio >= 0.15) {
     return { ...base, reject: true, reason: `крупная надпись/баннер поверх фото (${Math.round(band.share * 100)}% кадра)` };
   }
-  if (band.share >= 0.42) {
+  if (band.share >= 0.85) {
     return { ...base, reject: true, reason: `однотонная плашка на ${Math.round(band.share * 100)}% кадра` };
   }
   if (sharpVal < MIN_SHARPNESS) {
@@ -523,6 +527,8 @@ export type VisionRequest = {
   temperature: number;
   maxTokens: number;
   timeoutMs: number;
+  /** Системный промт одинаков между статьями — просить кэш у провайдера (`aiChat.cacheSystem`) */
+  cacheSystem?: boolean;
 };
 
 export type VisionResult = { json: unknown; text: string; costUsd: number };
@@ -538,6 +544,7 @@ export async function visionJson(ai: AiCtx, req: VisionRequest): Promise<VisionR
     temperature: req.temperature,
     maxTokens: req.maxTokens,
     timeoutMs: req.timeoutMs,
+    cacheSystem: req.cacheSystem,
   });
   const json = r.json ?? parseJsonLenient(r.text);
   return { json, text: r.text, costUsd: r.costUsd ?? 0 };

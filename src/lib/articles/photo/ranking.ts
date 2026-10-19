@@ -10,6 +10,7 @@
  * балл модели ×10 (0–100) до обнуления чек-листом, `rankScore` = `finalPhotoRank`.
  */
 import type { Article, ArtPhotoCandidate } from "@prisma/client";
+import { sanitizeFacts } from "./factSanitize";
 
 /**
  * Тема оценки/отбора — то же поле, по которому искали фото (оригинал: photoSearch.resolveSearchKeyword —
@@ -241,17 +242,8 @@ export const FACT_LABELS: Record<string, string> = {
 
 /** Оставляем только поля фактов, заданные профилем ниши (оригинал: :94-114). */
 export function cleanFacts(raw: unknown, factKeys: string[]): Record<string, string> | null {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const obj = raw as Record<string, unknown>;
-  const keys = factKeys.length ? factKeys : Object.keys(obj);
-  const out: Record<string, string> = {};
-  for (const k of keys) {
-    const v = obj[k];
-    const text = Array.isArray(v) ? v.filter(Boolean).join(", ") : v == null ? "" : String(v);
-    const clean = text.trim();
-    if (clean && clean.toLowerCase() !== "n/a" && clean !== "-") out[k] = clean.slice(0, 300);
-  }
-  return Object.keys(out).length ? out : null;
+  // Заглушки («none», «n/a», «visible») и копии описаний полей схемы не сохраняем (аудит text-v3, §3).
+  return sanitizeFacts(raw, null, factKeys);
 }
 
 /** Читаемый текст фактов — для писателя и для описания-фолбэка (оригинал: :129-138). */

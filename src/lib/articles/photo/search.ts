@@ -27,6 +27,8 @@ export interface SearchCfg {
   exclude_domains: string[];
   query_suffix: string;
   unique_mode: "soft" | "strict" | "off";
+  /** Фильтр размера/ориентации в самом поиске (PhotoSearchConfig.searchSizeFilter; по умолчанию выключен). */
+  size_filter: boolean;
 }
 
 // оригинал: photoSearch.ts:46
@@ -103,6 +105,7 @@ export function normalizeSearchConfig(raw: Partial<PhotoSearchConfig> | null | u
     exclude_domains: list(c.excludeDomains).map(sanitizeDomain).filter(Boolean),
     query_suffix: String(c.querySuffix || ""),
     unique_mode: (["soft", "strict", "off"].includes(String(c.uniqueMode)) ? c.uniqueMode : "soft") as SearchCfg["unique_mode"],
+    size_filter: c.searchSizeFilter === true,
   };
 }
 
@@ -139,10 +142,29 @@ export function orientationVerdict(width: number, height: number, cfg: SearchCfg
   return matches ? null : "ориентация не соответствует выбранным типам";
 }
 
-/** tbs-фильтры Google Images (photoSearch.ts:237-250): одна ориентация, тип photo, лицензия, свежесть; размер не передаётся. */
+/**
+ * Ориентация для фильтра поисковика при включённом size_filter: рецепт обычно разрешает «tall + square», и раньше
+ * при двух ориентациях фильтр не передавался вовсе. Теперь просим вертикальные, если вертикаль разрешена (квадрат
+ * наш фильтр по-прежнему принимает — он просто реже попадётся в выдаче); только квадрат → iar:s; только широкие → iar:w.
+ */
+export function sizeFilterAspect(cfg: SearchCfg): "t" | "s" | "w" | null {
+  if (cfg.orientation.includes("any")) return null;
+  if (cfg.orientation.includes("tall")) return "t";
+  if (cfg.orientation.includes("wide")) return "w";
+  if (cfg.orientation.includes("square")) return "s";
+  return null;
+}
+
+/**
+ * tbs-фильтры Google Images (photoSearch.ts:237-250): одна ориентация, тип photo, лицензия, свежесть; размер не передаётся.
+ * С size_filter (cost-fixes-b): `isz:l` (крупные, у Google это ≥ ~1024 px по стороне) и ориентация по sizeFilterAspect.
+ */
 export function buildTbs(cfg: SearchCfg): string {
   const tbs: string[] = [];
-  if (cfg.orientation.length === 1 && cfg.orientation[0] === "tall") tbs.push("iar:t");
+  const aspect = cfg.size_filter ? sizeFilterAspect(cfg) : null;
+  if (cfg.size_filter) tbs.push("isz:l");
+  if (aspect) tbs.push(`iar:${aspect}`);
+  else if (cfg.orientation.length === 1 && cfg.orientation[0] === "tall") tbs.push("iar:t");
   else if (cfg.orientation.length === 1 && cfg.orientation[0] === "wide") tbs.push("iar:w");
   else if (cfg.orientation.length === 1 && cfg.orientation[0] === "square") tbs.push("iar:s");
   if (cfg.image_type === "photo") tbs.push("itp:photo");
@@ -275,14 +297,15 @@ function httpKeyProblem(status: number, error: string): string | undefined {
 
 /**
  * Код задачи DataForSEO (status_code в tasks[0] или в корне ответа):
- *  20000 — ок; 40102 — «нет результатов» (не ошибка); 40100/40101/40104 — доступ, 40200/40210 — оплата → ключ;
+ *  20000 — ок; 40102 — «нет результатов» (не ошибка); 40100/40104 — доступ, 40200/40210 — оплата → ключ;
+ *  40101 — «Internal SE Server Error» (сбой поисковика у DataForSEO, zorvianix 2026-10-15) → повтор, а не «нет средств»;
  *  40202/40209 — лимит частоты, 50000+ — сбой у них → повтор; остальные 4xxxx — ошибка запроса, повтор не поможет.
  */
 export function dfsTaskVerdict(code: number): "ok" | "empty" | "key" | "transient" | "permanent" {
   if (!code || code < 40000) return "ok";
   if (code === 40102) return "empty";
-  if (code === 40100 || code === 40101 || code === 40104 || code === 40200 || code === 40210) return "key";
-  if (code === 40202 || code === 40209 || code >= 50000) return "transient";
+  if (code === 40100 || code === 40104 || code === 40200 || code === 40210) return "key";
+  if (code === 40101 || code === 40202 || code === 40209 || code >= 50000) return "transient";
   return "permanent";
 }
 
@@ -296,6 +319,12 @@ export async function searchSerpApi(ctx: AiCtx, query: string, cfg: SearchCfg, l
     for (let page = 0; page < 3 && items.length < limit; page++) {
       const params: Record<string, string | number> = { engine: "google_images", q: query, gl: cfg.country.toLowerCase(), hl: cfg.language, ijn: page };
       if (tbs) params.tbs = tbs;
+      // У SerpApi есть и отдельные параметры размера/ориентации (imgsz=l, imgar=t|s|w) — дублируем tbs ими.
+      if (cfg.size_filter) {
+        params.imgsz = "l";
+        const aspect = sizeFilterAspect(cfg);
+        if (aspect) params.imgar = aspect;
+      }
       const res = await serpRequest(ctx, params, 60_000);
       requests++;
       if (!res.ok) {
@@ -424,8 +453,11 @@ export async function searchImagesWithFallback(ctx: AiCtx, query: string, cfg: S
   keyProblem ||= d.keyProblem;
   if (d.error) errors.push(d.error);
 
-  if (cfg.source === "dataforseo") {
-    const r = await searchSerpApi(ctx, query, cfg, limit);
+  // Запасной SerpApi (заметно дороже DataForSEO, владелец 2026-10-16): только при сбое DataForSEO (временная ошибка,
+  // нет ключа/денег), а не когда по запросу просто нет картинок; одна страница (≤100) вместо трёх.
+  const dfsFailed = !!d.transient || !!d.notConfigured || !!d.keyProblem;
+  if (cfg.source === "dataforseo" && dfsFailed) {
+    const r = await searchSerpApi(ctx, query, cfg, Math.min(limit, 100));
     requests += r.requests;
     if (r.items.length) return { items: r.items, error: `фолбэк SerpApi (${errors.join("; ")})`, requests, engine: "serpapi" };
     if (r.notConfigured) notConfigured++;

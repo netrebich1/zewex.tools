@@ -1,10 +1,12 @@
 /**
  * Реестр этапов конвейера статей. Ключи — наши, номера — из оригинала (для сверки с отчётами docs/articles-migration).
  * Цепочка строго линейная; откаты «назад» (добор фото) происходят внутри этапов через Article.cursor.
+ * Порядок rate → rank (с 2026-10-16, волна 3 п.2): сравнение кадров идёт только по одобренным оценкой (~42 вместо ~130),
+ * 5–6 vision-вызовов вместо 13. Этап rank сам отправляет к rate статью, у которой ещё нет оценённых кадров (старый порядок).
  */
 import type { ArtFormat } from "@prisma/client";
 
-export const REAL_PHOTO_STAGES = ["search", "filter", "rank", "rate", "select", "plan", "section_plan", "blueprint", "intro_outro", "sections", "meta", "assemble", "publish"] as const;
+export const REAL_PHOTO_STAGES = ["search", "filter", "rate", "rank", "select", "plan", "section_plan", "blueprint", "intro_outro", "sections", "meta", "assemble", "publish"] as const;
 export const GENERATED_PHOTO_STAGES = ["concept", "images", "image_seo", "blueprint", "intro_outro", "sections", "meta", "assemble", "publish"] as const;
 
 export type StageKey = (typeof REAL_PHOTO_STAGES)[number] | (typeof GENERATED_PHOTO_STAGES)[number];
@@ -28,8 +30,8 @@ export type StageInfo = {
 export const STAGE_INFO: Record<StageKey, StageInfo> = {
   search: { label: "Поиск фото", legacy: 11, phase: "photos", promptKeys: ["rp_photo_search"], slots: ["text_fast", "photo_dfs", "photo_serp"], description: "ИИ даёт варианты запросов, DataForSEO (или SerpAPI) — кандидатов из Google Images." },
   filter: { label: "Технический фильтр", legacy: 12, phase: "photos", promptKeys: [], slots: [], description: "Скачивание, размер, ориентация, дубли по отпечатку, коллажи, резкость." },
-  rank: { label: "Сравнение кадров", legacy: 125, phase: "photos", promptKeys: [], slots: ["vision"], description: "Группы миниатюр и турнир лучших: предварительный рейтинг красоты." },
-  rate: { label: "ИИ-оценка", legacy: 13, phase: "photos", promptKeys: ["rp_photo_rate"], slots: ["vision"], description: "Оценка 1–10, релевантность теме, аудитория, аутентичность, виральность, тренд." },
+  rank: { label: "Сравнение кадров", legacy: 125, phase: "photos", promptKeys: [], slots: ["vision"], description: "Одобренные оценкой кадры группами миниатюр и турнир лучших: рейтинг красоты для отбора." },
+  rate: { label: "ИИ-оценка", legacy: 13, phase: "photos", promptKeys: ["rp_photo_rate"], slots: ["vision"], description: "Оценка 1–10, релевантность теме, аудитория, аутентичность, виральность, тренд; идёт до сравнения кадров." },
   select: { label: "Отбор", legacy: 14, phase: "photos", promptKeys: [], slots: ["vision"], description: "Уникальность между сайтами, сеточный отбор, раскладка; ≥15 кадров — дальше." },
   plan: { label: "План по фото", legacy: 15, phase: "writing", promptKeys: ["rp_photo_plan"], slots: ["text_fast"], description: "Порядок фото, заголовки H2, H1, title, описание, URL, план вступления." },
   section_plan: { label: "План секций", legacy: 16, phase: "writing", promptKeys: ["rp_section_plan"], slots: ["text_fast"], description: "Рецепт каждой секции: угол, объём, список, уход, честный минус." },

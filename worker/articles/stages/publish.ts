@@ -14,7 +14,7 @@
 import { WpError } from "@/lib/pins/wp/client";
 import { AiError } from "@/lib/pins/ai/errors";
 import { prisma } from "@/lib/db";
-import { MediaDownError, QualityError, publishArticle, type PublishOutcome } from "@/lib/articles/wp/publish";
+import { MediaDownError, PartialUploadError, QualityError, publishArticle, type PublishOutcome } from "@/lib/articles/wp/publish";
 import { purgePublishedPhotos } from "@/lib/articles/wp/cleanup";
 import { writeArticleResult } from "@/lib/articles/sheets";
 import type { ArtStageHandler } from "./index";
@@ -25,6 +25,8 @@ export const MAX_PUBLISH_ATTEMPTS = 6;
 export const PUBLISH_BACKOFF_MIN = [1, 3, 5, 10, 15] as const;
 /** Медиатека на хостинге сломана — проверяем раз в 20 минут (оригинал :289) */
 const MEDIA_DOWN_RETRY_MS = 20 * 60_000;
+/** Паузы догрузки недостающих фото: 5, 10, 20, 30 мин, дальше раз в час (72 повтора ≈ 3 суток). */
+const PARTIAL_UPLOAD_BACKOFF_MIN = [5, 10, 20, 30, 60];
 
 const TRANSIENT_RE = /\b(408|429|500|502|503|504|52\d)\b|timeout|timed out|нет ответа|fetch failed|abort|connection|network|temporarily|econnreset|eai_again|origin unreachable|origin error/i;
 
@@ -61,6 +63,18 @@ export const publish: ArtStageHandler = async (ctx) => {
     if (ctx.signal.aborted || (e instanceof Error && e.name === "StopRequested")) throw e;
     // Нет средств / ключ ИИ отклонён — раннер поставит статью ждать рабочий ключ, а не в ошибку публикации.
     if (e instanceof AiError && e.cls.kind === "fatal_run") throw e;
+    if (e instanceof PartialUploadError) {
+      // Догрузка недостающих фото с растущей паузой; потолок — лимит «planned» этапа publish (72, errors.ts), затем ошибка публикации.
+      const n = ctx.retries.planned;
+      const minutes = PARTIAL_UPLOAD_BACKOFF_MIN[Math.min(n, PARTIAL_UPLOAD_BACKOFF_MIN.length - 1)];
+      return {
+        retryInMs: minutes * 60_000,
+        retryKind: "planned",
+        summary: `${e.message}; повтор через ${minutes} мин`,
+        giveUp: `WordPress так и не принял все фото (не хватает ${e.failed} из ${e.total}) — статья не опубликована, чтобы фото не остались ссылками на наш сервер. Проверьте хостинг (память PHP, место, лимиты загрузки) и нажмите «Повторить публикацию».`,
+        details: { failedUploads: e.failed, photosTotal: e.total, onSite: e.onSite },
+      };
+    }
     if (e instanceof MediaDownError) {
       return {
         retryInMs: MEDIA_DOWN_RETRY_MS,

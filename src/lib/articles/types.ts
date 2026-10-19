@@ -67,6 +67,18 @@ export type PhotoSearchConfig = {
   captionMode: "domain_link" | "domain" | "none";
   captionTemplate: string;
   querySuffix: string;
+  /**
+   * Режим ИИ-оценки фото (cost-fixes-b, 2026-10-16). Пусто/full — как раньше: факты и описание пишутся на каждое оценённое
+   * фото (~280 токенов вывода, из них 2/3 — у фото, которые тут же отклоняются). slim — оценка отдаёт только вердикт, баллы
+   * и поля разнообразия (`photo/rateSlim.ts`), описание 30–60 слов пишется позже, в начале этапа plan, только итоговым
+   * фото после модерации (`photo/describeLate.ts`).
+   */
+  rateMode?: "full" | "slim";
+  /**
+   * Просить у поисковика сразу крупные и вертикальные кадры (Google Images tbs `isz:l` + `iar:t`; SerpApi imgsz/imgar).
+   * Пусто/false — как раньше (46% найденного отсеивалось как мелкое/горизонтальное → доборы 2–6 на статью).
+   */
+  searchSizeFilter?: boolean;
 };
 
 export type RecipeText = { batchSize: number; personality: string | null; wordCount: WordCount; schemaEnabled: boolean };

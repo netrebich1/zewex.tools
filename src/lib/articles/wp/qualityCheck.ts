@@ -185,7 +185,11 @@ export async function checkArticleQuality(
       fixed.push(`${L}: убраны выделения жирным/курсивом`);
     }
     const firstParagraph = (sectionHtml.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? sectionHtml).slice(0, 600);
-    if (looksLikeFactDump(firstParagraph)) problems.push(`${L}: текст начинается со списка признаков фото`);
+    // У вступления/заключения это эвристика по стилю, а не поломка: не роняем готовую оплаченную статью (zorvianix, 2026-10-15).
+    if (looksLikeFactDump(firstParagraph)) {
+      if (s.position === 0 || s.position >= 9990) fixed.push(`${L}: начало похоже на перечисление признаков — оставлено`);
+      else problems.push(`${L}: текст начинается со списка признаков фото`);
+    }
 
     // Вступление (0) и заключение (9990) — не фото-секции: у вступления заголовка нет по замыслу,
     // заголовок заключения фиксированный. Их уникальность/пустоту не проверяем (иначе вступление получало «Idea — …»),
