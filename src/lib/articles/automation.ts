@@ -181,6 +181,8 @@ export type WorkerBrief = {
   pending: number;
   /** RUNNING всего (в т.ч. с истёкшей арендой) */
   running: number;
+  /** Потолок воркера ARTICLES_WORKER_CONCURRENCY (0 — воркер ещё не сообщил) */
+  cap: number;
 };
 
 export type AutomationPayload = {
@@ -257,6 +259,10 @@ export function autostartDiagnostics(site: DiagSite, counts: AutostartCounts, se
   if (settings.maxConcurrent > 0 && worker.runningTotal >= settings.maxConcurrent && anyWait) {
     out.push({ text: `Общий потолок ${settings.maxConcurrent} статей достигнут (в работе ${worker.runningTotal})` });
   }
+  // Потолок воркера: больше cap статей сразу не идёт, какие бы ни были лимиты сайтов
+  if (worker.cap > 0 && worker.runningTotal >= worker.cap && anyWait) {
+    out.push({ text: `Потолок воркера ${worker.cap} статей занят (в работе ${worker.runningTotal}) — лимиты сайтов выше него не действуют` });
+  }
   // Воркер: цепочка включена, есть старые PENDING, а живых аренд нет вовсе
   const chainsOn = (a.photoEnabled && settings.photoMaster && site.stale.photos) || (a.writingEnabled && settings.writingMaster && site.stale.writing) || (settings.publishMaster && site.stale.publish);
   if (!worker.alive && chainsOn) {
@@ -310,9 +316,10 @@ export async function siteAutostartRows(me: CurrentUser, global?: ArtGlobalSetti
       prisma.article.count({ where: { status: "RUNNING" } }),
       prisma.article.count({ where: { status: "RUNNING", leaseUntil: { gt: now } } }),
       prisma.article.count({ where: { status: "PENDING" } }),
+      prisma.artSettings.findUnique({ where: { id: "main" }, select: { workerCap: true } }),
     ]),
   ]);
-  const worker: WorkerBrief = { running: workerRows[0], runningTotal: workerRows[1], alive: workerRows[1] > 0, pending: workerRows[2] };
+  const worker: WorkerBrief = { running: workerRows[0], runningTotal: workerRows[1], alive: workerRows[1] > 0, pending: workerRows[2], cap: workerRows[3]?.workerCap ?? 0 };
 
   const counts = new Map<string, AutostartCounts>();
   for (const id of ids) counts.set(id, emptyCounts());

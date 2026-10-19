@@ -130,12 +130,20 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
       {/* Воркер и мастер-выключатели */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line px-3 py-2">
         <WorkerPill w={{ running: worker.running, alive: worker.runningTotal, pending: worker.pending, stuck: worker.running > 0 && worker.runningTotal === 0 }} />
+        {worker.cap > 0 && (
+          <span
+            className={`badge px-2.5 py-1 tabular-nums ${worker.runningTotal >= worker.cap ? "bg-warn-soft text-warn" : "bg-ink/5"}`}
+            title={`Потолок воркера (ARTICLES_WORKER_CONCURRENCY в службе zewex-worker): больше ${worker.cap} статей сразу не идёт на всех сайтах вместе — поиск, написание и публикация делят эти места. Лимиты сайтов действуют внутри него.`}
+          >
+            Потолок воркера: {worker.runningTotal} / {worker.cap}
+          </span>
+        )}
         <span className="help">Мастер-выключатели (все сайты сразу):</span>
         <MasterSwitch label="Поиск фото" on={global.photoMaster} disabled={!canEditGlobal} saving={saving === "g-photo"} onChange={(v) => saveGlobal({ photoMaster: v }, "g-photo")} />
         <MasterSwitch label="Написание" on={global.writingMaster} disabled={!canEditGlobal} saving={saving === "g-writing"} onChange={(v) => saveGlobal({ writingMaster: v }, "g-writing")} />
         <MasterSwitch label="Публикация" on={global.publishMaster} disabled={!canEditGlobal} saving={saving === "g-publish"} onChange={(v) => saveGlobal({ publishMaster: v }, "g-publish")} />
         <MasterSwitch label="ИИ-проверка фото" title="Выключено — ИИ не проверяет фото ни на одном сайте, статьи ждут сотрудника. Включено — ИИ проверяет на сайтах, где включена «ИИ-проверка фото»." on={global.aiModMaster} disabled={!canEditGlobal} saving={saving === "g-aimod"} onChange={(v) => saveGlobal({ aiModMaster: v }, "g-aimod")} />
-        <label className="inline-flex items-center gap-1.5 text-[12.5px]" title="Потолок одновременных статей «В работе» на всех сайтах. 0 — только настройка воркера ARTICLES_WORKER_CONCURRENCY.">
+        <label className="inline-flex items-center gap-1.5 text-[12.5px]" title={`Свой потолок одновременных статей «В работе» на всех сайтах (меньше потолка воркера). 0 — только потолок воркера${worker.cap ? ` (${worker.cap})` : ""}.`}>
           <span className="text-muted">Общий потолок</span>
           <NumInput value={global.maxConcurrent} min={0} max={300} disabled={!canEditGlobal} onSave={(v) => saveGlobal({ maxConcurrent: v }, "g-max")} />
         </label>

@@ -1221,6 +1221,8 @@ model ArtSettings {
   maxConcurrent    Int      @default(0)
   /// Пачка автозапуска ИИ-модерации по умолчанию
   aiModAutoBatch   Int      @default(20)
+  /// Потолок воркера статей (ARTICLES_WORKER_CONCURRENCY): воркер пишет при старте, экран «Автозапуск» показывает
+  workerCap        Int      @default(0)
   /// Google Таблицы: JSON-ключ сервисного аккаунта (зашифрован) и его e-mail — ему выдают доступ «Редактор» к таблице
   sheetsKeyEnc     String?  @db.Text
   sheetsEmail      String?

@@ -2,6 +2,7 @@
  * Цикл очереди статей (сервис «Статьи»). Живёт в том же процессе воркера, что очередь пинов и подборов доменов.
  * Одновременно ведётся не больше ARTICLES_WORKER_CONCURRENCY статей; лимиты сайтов по фазам — в claimArticle.
  */
+import { prisma } from "@/lib/db";
 import { claimArticle, requeueOrphanArticles, requeueStaleArticles } from "./queue";
 import { processArticle } from "./runner";
 import { log } from "../log";
@@ -41,6 +42,8 @@ export async function articlesLoop(workerId: string, shouldStop: () => boolean):
 }
 
 export async function articlesStartup(hostPrefix: string): Promise<void> {
+  // Экран «Автозапуск» показывает этот потолок: лимиты сайтов действуют внутри него.
+  await prisma.artSettings.upsert({ where: { id: "main" }, update: { workerCap: CONCURRENCY }, create: { id: "main", workerCap: CONCURRENCY } }).catch((e) => log.warn("articles: save workerCap failed", e));
   await requeueOrphanArticles(hostPrefix).catch((e) => log.warn("articles: requeue orphans failed", e));
   await requeueStaleArticles().catch((e) => log.warn("articles: requeue stale failed", e));
 }
