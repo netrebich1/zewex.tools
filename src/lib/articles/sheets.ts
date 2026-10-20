@@ -48,7 +48,7 @@ const COLUMNS = {
 type ColKey = keyof typeof COLUMNS;
 
 /** Статусы строки в таблице. Строка со статусом повторно в работу не берётся. */
-export const SHEET_STATUS = { queued: "в работе", draft: "черновик", published: "опубликовано", error: "ошибка" } as const;
+export const SHEET_STATUS = { queued: "в работе", draft: "черновик", published: "опубликовано", error: "ошибка", deleted: "удалено" } as const;
 export type SheetStatusKey = keyof typeof SHEET_STATUS;
 
 /** Подсказка для интерфейса: какие заголовки понимает импорт. */

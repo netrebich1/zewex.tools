@@ -21,7 +21,8 @@ import { articleWhere, canAccessArticle } from "./access";
 import { firstWritingStage } from "./stages";
 import { noPeopleInFrame } from "./photo/contracts";
 import { statusLabel } from "./labels";
-import { absPath, exists, makeThumb, photoRel, photoThumbRel, publicUrl, removePath, toWpJpeg, writeFileAtomic } from "./storage";
+import { absPath, exists, makeThumb, photoRel, photoThumbRel, publicUrl, purgeArticleFiles, removePath, toWpJpeg, writeFileAtomic } from "./storage";
+import { markArticleStatus } from "./sheets";
 import { CLAIM_TTL_MIN, MIN_PHOTOS, type ArticleCursor, type ArticleFacts } from "./types";
 
 /** Ошибка модерации с HTTP-кодом; `stale` — статья уже не в ожидаемом статусе (ожидаемая гонка, не поломка). */
@@ -961,6 +962,25 @@ export async function closeArticle(me: Actor, articleId: string): Promise<void> 
   const r = await prisma.article.updateMany({ where: { id: articleId, status: a.status }, data: { status: "STOPPED", finishedAt: new Date(), claimedById: null, claimedAt: null, aiRunId: null } });
   if (!r.count) throw new ModerationError("Статья уже сменила статус", 409, true);
   await event(articleId, me, "close");
+}
+
+/** Статусы модерации, из которых статью можно удалить совсем (решили не писать). */
+const DELETABLE_STATUSES: ArtStatus[] = ["PHOTO_REVIEW", "INSUFFICIENT_PHOTOS", "WAITING_FOR_PHOTOS", "REVIEW_PENDING", "NEEDS_REWORK"];
+
+/**
+ * Удалить статью из системы со страницы «Модерация» (владелец 2026-10-20: «решил её не писать»): строка статьи и всё,
+ * что на неё ссылается (каскад), и её файлы. Строка Google Таблицы помечается «удалено» — повторно не импортируется.
+ * Нельзя, пока статью проверяет ИИ или держит другой сотрудник.
+ */
+export async function deleteFromModeration(me: CurrentUser, articleId: string): Promise<void> {
+  const a = await load(me, articleId);
+  expectStatus(a, DELETABLE_STATUSES);
+  if (a.aiRunId && (await aiRunAlive(a.aiRunId))) throw new ModerationError("Статью сейчас проверяет ИИ — удалить можно после решения", 409);
+  if (a.claimedById && a.claimedById !== me.id && a.claimedAt && a.claimedAt >= staleBefore()) throw new ModerationError("Статью сейчас модерирует другой сотрудник", 409);
+  if (a.sheetRow) await markArticleStatus(a.id, "deleted").catch(() => null);
+  const r = await prisma.article.deleteMany({ where: { id: articleId, status: a.status } });
+  if (!r.count) throw new ModerationError("Статья уже сменила статус", 409, true);
+  await purgeArticleFiles(articleId).catch(() => {});
 }
 
 /* ───────────────────────── Модерация готовой статьи ───────────────────────── */

@@ -63,8 +63,9 @@ export function PhotoQueueList({ queue, siteId, initialGroup, minPhotos, only }:
 
   const openHref = (i: PhotoQueueItem) => `${BASE}?tab=${i.group}&article=${i.id}${siteId ? `&site=${siteId}` : ""}`;
 
-  const lowAction = async (i: PhotoQueueItem, action: "return_review" | "topup" | "close", ok: string) => {
+  const lowAction = async (i: PhotoQueueItem, action: "return_review" | "topup" | "close" | "delete", ok: string) => {
     if (action === "close" && !window.confirm(`Закрыть статью «${i.keyword}»? Она не будет написана, фото и резерв останутся.`)) return;
+    if (action === "delete" && !window.confirm(`Удалить статью «${i.keyword}» из системы совсем? Фото, оценки и история пропадут, вернуть нельзя.`)) return;
     setBusy(`${action}:${i.id}`);
     setMsg(null);
     try {
@@ -150,6 +151,9 @@ export function PhotoQueueList({ queue, siteId, initialGroup, minPhotos, only }:
                     </button>
                     <button type="button" className="btn-ghost btn-sm text-danger" disabled={!!busy} onClick={() => void lowAction(i, "close", "Статья закрыта")}>
                       Закрыть
+                    </button>
+                    <button type="button" className="btn-ghost btn-sm text-danger" disabled={!!busy} onClick={() => void lowAction(i, "delete", "Статья удалена")}>
+                      Удалить
                     </button>
                     <Link href={`/pinterest/articles/articles/${i.id}`} className="btn-ghost btn-sm">
                       Карточка

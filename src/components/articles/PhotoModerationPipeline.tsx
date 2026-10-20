@@ -244,6 +244,13 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
     }
   }, [current, show]);
 
+  /** Удалить статью из системы совсем (решили не писать). */
+  const remove = useCallback(() => {
+    if (!current || !header) return;
+    if (!window.confirm(`Удалить статью «${header.article.keyword}» из системы совсем? Фото, оценки и история пропадут, вернуть нельзя. Строка Google Таблицы (если есть) получит статус «удалено».`)) return;
+    void finish("delete", { action: "delete" }, "Статья удалена");
+  }, [current, header, finish]);
+
   const skip = useCallback(() => {
     if (!current) return;
     skipped.current.add(current.id);
@@ -324,6 +331,9 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
               </button>
               <button type="button" className="btn-ghost btn-sm" disabled={!!busy} onClick={skip} title="Пропустить: статья уйдёт в конец вашей очереди (→)">
                 Пропустить
+              </button>
+              <button type="button" className="btn-ghost btn-sm text-danger" disabled={!!busy} onClick={remove} title="Удалить статью из системы совсем — если решили её не писать">
+                Удалить
               </button>
               <button type="button" className={`btn-ghost btn-sm ${panel === "insufficient" ? "bg-ink/10" : ""}`} disabled={!!busy} onClick={() => setPanel((p) => (p === "insufficient" ? null : "insufficient"))} title="Подходящих кадров не хватает — статья уйдёт в список «Мало фото»">
                 Мало фото

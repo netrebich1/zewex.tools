@@ -8,6 +8,7 @@ import {
   approvePhotos,
   claimArticle,
   closeArticle,
+  deleteFromModeration,
   excludePhoto,
   extendClaim,
   markInsufficient,
@@ -166,6 +167,9 @@ export async function POST(req: Request) {
       case "close":
         await closeArticle(me, id);
         break;
+      case "delete":
+        await deleteFromModeration(me, id);
+        break;
       case "undo_ai":
         result = await undoAiEdits(me, id);
         break;
@@ -187,7 +191,7 @@ export async function POST(req: Request) {
   } catch (e) {
     return fail(e);
   }
-  const final = ["approve", "topup", "insufficient", "review_approve", "rework", "retry_publish", "skip", "release", "return_review", "close", "heartbeat"].includes(b.action);
+  const final = ["approve", "topup", "insufficient", "review_approve", "rework", "retry_publish", "skip", "release", "return_review", "close", "delete", "heartbeat"].includes(b.action);
   if (!final && b.action !== "claim") await extendClaim(me, id).catch(() => {});
   const state = final ? null : await stateFor(me, id, review);
   return NextResponse.json({ ok: true, result, state }, noStore);

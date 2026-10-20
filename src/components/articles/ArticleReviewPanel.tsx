@@ -153,6 +153,11 @@ export function ArticleReviewPanel({ userId, mode, items, initialId, initialStat
   );
 
   const approve = useCallback(() => void finish("approve", { action: "review_approve", publishNow }, publishNow ? "Одобрено — публикуется с приоритетом" : "Одобрено — в очереди публикации"), [finish, publishNow]);
+  const remove = useCallback(() => {
+    if (!currentId || !state) return;
+    if (!window.confirm(`Удалить статью «${state.article.keyword}» из системы совсем? Текст, фото и история пропадут, вернуть нельзя. Строка Google Таблицы (если есть) получит статус «удалено».`)) return;
+    void finish("delete", { action: "delete" }, "Статья удалена");
+  }, [currentId, state, finish]);
   const skip = useCallback(() => {
     if (!currentId) return;
     void (async () => {
@@ -301,6 +306,7 @@ export function ArticleReviewPanel({ userId, mode, items, initialId, initialStat
                 <div className="flex flex-wrap items-center gap-2">
                   <button type="button" className="btn-ghost btn-sm" disabled={!!busy || !history.length} onClick={prev} title="Назад (Backspace)">←</button>
                   <button type="button" className="btn-ghost btn-sm" disabled={!!busy} onClick={skip} title="Пропустить (S)">Пропустить</button>
+                  <button type="button" className="btn-ghost btn-sm text-danger" disabled={!!busy} onClick={remove} title="Удалить статью из системы совсем — если решили её не писать">Удалить</button>
                   {mode === "articles" && (
                     <button type="button" className={`btn-ghost btn-sm ${reworkOpen ? "bg-ink/10" : ""}`} disabled={!!busy} onClick={() => setReworkOpen((v) => !v)}>
                       В доработку
