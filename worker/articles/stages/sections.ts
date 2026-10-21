@@ -775,6 +775,105 @@ async function reviseFlagged(env: WriterEnv, written: ArtSection[]): Promise<Rev
   return report;
 }
 
+// ───────────────────────── самопочинка по проверке качества (сборка, 2026-10-21) ─────────────────────────
+
+export type QualityFixItem = { position: number; problems: string[] };
+export type QualityFixReport = { fixed: number[]; failed: Array<{ position: number; why: string }>; costUsd: number };
+
+/**
+ * Перепись секций, не прошедших проверку качества на сборке («начинается со списка признаков фото», «всего N слов»,
+ * «нет текста», «черновые размышления»). Одна попытка на секцию; новый текст принимается, только если сам проходит
+ * те же проверки (не перечисление, не меньше 40 слов, без размышлений). Иначе секция остаётся как была —
+ * сборка уберёт её из статьи. Перепись ≈ $0.0002–0.002 за секцию против ≈ $0.07 за статью целиком.
+ */
+export async function fixSectionsForQuality(ctx: ArtStageCtx, items: QualityFixItem[]): Promise<QualityFixReport> {
+  const { article, recipe } = ctx;
+  const report: QualityFixReport = { fixed: [], failed: [], costUsd: 0 };
+  if (!items.length) return report;
+  const all = await loadPhotoSections(article.id);
+  const photos = await loadActivePhotos(article.id);
+  const photoById = new Map(photos.map((p) => [p.id, p]));
+  const model = stageModel(recipe, USER_KEY) ?? stageModel(recipe, SYSTEM_KEY);
+  const pol: PolishOpts = { usSpelling: usesUsSpelling(recipe.photoSearch?.language, recipe.photoSearch?.country) };
+  const keyword = focusKeywordOf(ctx) || article.keyword;
+  for (const item of items) {
+    const sec = all.find((s) => s.position === item.position);
+    if (!sec) {
+      report.failed.push({ position: item.position, why: "секция не найдена" });
+      continue;
+    }
+    const photo = sec.photoId ? photoById.get(sec.photoId) : undefined;
+    const facts = factsLine(photo?.facts) || photo?.description || "";
+    const before = sec.html || "";
+    const words = countWordsFromHtml(before);
+    // Бесплатно: перечисление в начале просто срезается, если после него остаётся нормальный текст.
+    if (before.trim() && item.problems.some((p) => /списка признаков/.test(p))) {
+      const cut = polishHtml(stripLeadingFactDump(before), pol);
+      const firstCut = (cut.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? cut).slice(0, 600);
+      if (cut.trim() && !looksLikeFactDump(firstCut) && countWordsFromHtml(cut) >= MIN_SECTION_WORDS_QC) {
+        await prisma.artSection.update({
+          where: { id: sec.id },
+          data: { html: cut, wordCount: countWordsFromHtml(cut), brief: { ...briefOf(sec), qualityFixed: { problems: item.problems, how: "strip", at: new Date().toISOString() } } as object },
+        });
+        report.fixed.push(sec.position);
+        continue;
+      }
+    }
+    const target = Math.max(MIN_SECTION_WORDS_QC + 20, Math.min(160, words || 90));
+    await ctx.tick(`Починка секции ${sec.position}`);
+    const system =
+      `You are a copy editor for a US lifestyle blog. ${before.trim() ? "Rewrite" : "Write"} ONE article section about the idea in the photo ` +
+      `for the article "${keyword}". The section was rejected by a quality check: ${item.problems.join("; ")}. ` +
+      `Open with a natural sentence about what makes this idea appealing or how to use it, never with a list or a run of photo attributes ` +
+      `(colour, shape, finish, length…) separated by commas. Use only the photo facts below; no new facts, no first-person experience. ` +
+      `${target}-${target + 40} words, HTML with <p>, <ul>, <li> only, American English, no em dashes or en dashes, no emphasis tags. ` +
+      `Keep required lines such as "Ask your tech for:", "Ask your colorist for:" or "To recreate it, look for" if they were there. ` +
+      `${BANNED_PROMPT_LINE}\nReturn ONLY JSON: {"html": "<p>...</p>"}`;
+    const user = `SECTION HEADING: ${sec.heading}\nPHOTO FACTS (the only visual facts allowed): ${facts || "none"}\n${before.trim() ? `\nSECTION HTML:\n${before}` : ""}`;
+    try {
+      const r = await aiChat(ctx.ai, { slot: SLOTS.textMain, model, system, user, json: true, temperature: 0.6, maxTokens: 2000, timeoutMs: 120_000 });
+      report.costUsd += r.costUsd ?? 0;
+      let html = "";
+      try {
+        const parsed = extractJsonFromResponse(r.text || "{}") as JsonRecord;
+        html = String(parsed?.html ?? parsed?.html_content ?? "");
+      } catch {
+        report.failed.push({ position: sec.position, why: "ответ не JSON" });
+        continue;
+      }
+      if (!html.trim() || looksLikeRawJson(html) || looksLikeModelThinking(html)) {
+        report.failed.push({ position: sec.position, why: "пустой или сырой ответ" });
+        continue;
+      }
+      html = polishHtml(cleanArticleHtml(html), pol);
+      const after = countWordsFromHtml(html);
+      if (after < MIN_SECTION_WORDS_QC) {
+        report.failed.push({ position: sec.position, why: `всего ${after} слов` });
+        continue;
+      }
+      const firstParagraph = (html.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? html).slice(0, 600);
+      if (looksLikeFactDump(firstParagraph)) {
+        report.failed.push({ position: sec.position, why: "снова начинается с перечисления" });
+        continue;
+      }
+      await prisma.artSection.update({
+        where: { id: sec.id },
+        data: { html, wordCount: after, status: "written", error: null, brief: { ...briefOf(sec), qualityFixed: { problems: item.problems, at: new Date().toISOString() } } as object },
+      });
+      report.fixed.push(sec.position);
+    } catch (e) {
+      if (e instanceof AiError && e.cls.kind === "fatal_run") throw e;
+      if (e instanceof Error && e.name === "StopRequested") throw e;
+      report.failed.push({ position: sec.position, why: e instanceof Error ? e.message.slice(0, 200) : String(e) });
+    }
+  }
+  report.costUsd = Math.round(report.costUsd * 1e6) / 1e6;
+  return report;
+}
+
+/** Порог объёма секции — тот же, что у проверки качества (wp/qualityCheck.ts MIN_SECTION_WORDS). */
+const MIN_SECTION_WORDS_QC = 40;
+
 async function rewriteSection(env: WriterEnv, sec: ArtSection, issues: string[], inArticle: string[], quota: string[], keyword: string): Promise<{ html: string | null; why?: string; costUsd: number }> {
   const { ctx } = env;
   const photo = sec.photoId ? env.photoById.get(sec.photoId) : undefined;

@@ -1,8 +1,9 @@
 /**
  * Классы сбоев статьи и политика повторов раннера (аудит устойчивости 2026-10-14: stability §1.4, §2.1, §2.2, §2.9).
  *
- *  - transient — 429 / 5xx / таймаут / сеть / короткий сбой базы: повтор с растущей паузой 30 с → 15 мин,
- *    8 повторов ≈ 1 час ожидания, затем FAILED;
+ *  - transient — 429 / 5xx / пустой ответ / таймаут / сеть / короткий сбой базы: повтор с растущей паузой 30 с → 15 мин,
+ *    8 повторов ≈ 1 час; дальше статья НЕ падает, а ждёт провайдера (проверка раз в 30 мин) до суток от первого сбоя
+ *    серии, затем FAILED (2026-10-21: волны 429 у OpenRouter роняли оплаченные статьи на оценке и отборе);
  *  - malformed — модель ответила не в том формате, хотя этап уже переспросил её 2–3 раза с поправкой:
  *    отложенный повтор этапа (2 / 5 / 15 мин), после 3 таких повторов — FAILED;
  *  - key — нет средств на ключе, ключ отклонён или выключен, нет правила ключа: статья НЕ падает, а ждёт в очереди
@@ -110,6 +111,9 @@ const MIN = 60 * SEC;
 
 /** Паузы временных ошибок: 30 с, 1, 2, 4, 8, 15, 15, 15 мин ≈ 1 час ожидания на 8 повторов. */
 export const TRANSIENT_DELAYS_MS = [30 * SEC, 1 * MIN, 2 * MIN, 4 * MIN, 8 * MIN, 15 * MIN, 15 * MIN, 15 * MIN];
+/** После быстрых повторов — ожидание провайдера: проверка раз в 30 мин, сдаёмся через сутки от первого сбоя серии. */
+export const PROVIDER_WAIT_DELAY_MS = 30 * MIN;
+export const PROVIDER_WAIT_WINDOW_MS = 24 * 60 * MIN;
 /** Отложенные повторы при неверном формате ответа модели (каждый — после 2–3 переспросов внутри этапа). */
 export const MALFORMED_DELAYS_MS = [2 * MIN, 5 * MIN, 15 * MIN];
 /** Ожидание рабочего ключа: 10, 15, затем каждые 30 мин. */
@@ -133,9 +137,11 @@ export function retryPlan(kind: RetryKind, n: number, firstAt: Date | null, stag
   const pick = (list: number[]) => list[Math.min(n - 1, list.length - 1)];
   switch (kind) {
     case "transient": {
-      const max = TRANSIENT_DELAYS_MS.length;
-      if (n > max) return { retry: false, n, max };
-      return { retry: true, n, max, delayMs: Math.max(pick(TRANSIENT_DELAYS_MS), stageDelayMs ?? 0) };
+      const fast = TRANSIENT_DELAYS_MS.length;
+      if (n <= fast) return { retry: true, n, max: fast, delayMs: Math.max(pick(TRANSIENT_DELAYS_MS), stageDelayMs ?? 0) };
+      // Ожидание провайдера: без потолка по числу, только по времени от первого сбоя серии.
+      if (firstAt && Date.now() - firstAt.getTime() > PROVIDER_WAIT_WINDOW_MS) return { retry: false, n, max: null };
+      return { retry: true, n, max: null, delayMs: Math.max(PROVIDER_WAIT_DELAY_MS, stageDelayMs ?? 0) };
     }
     case "malformed": {
       const max = MALFORMED_DELAYS_MS.length;

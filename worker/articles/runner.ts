@@ -26,7 +26,7 @@ import { articleCost } from "@/lib/articles/ai";
 import { aiModerationOn, type ArticleCursor, type ArticleFacts, type ArticlePlan, type ArticleRecipeSnapshot } from "@/lib/articles/types";
 import { nextStage, stageLabel, type StageKey } from "@/lib/articles/stages";
 import { markArticleStatus } from "@/lib/articles/sheets";
-import { classifyFailure, inWords, isTransientError, retryPlan, type Classified, type RetryKind } from "@/lib/articles/errors";
+import { classifyFailure, inWords, isTransientError, retryPlan, TRANSIENT_DELAYS_MS, type Classified, type RetryKind } from "@/lib/articles/errors";
 import { STAGES, StopRequested, type ArtStageCtx, type ArtStageResult } from "./stages";
 import { finishLog, markDetails, recordError, retryStreak, type RetryStreak } from "./journal";
 import { MAX_ATTEMPTS, releaseArticle, renewLease } from "./queue";
@@ -279,6 +279,8 @@ async function retryOrFail(
       ? `${c.human} — статья ждёт и продолжит автоматически, когда ключ снова заработает (следующая проверка через ${inWords(delay)}).${extra ? ` ${short(c.detail)}` : ""}`
       : kind === "malformed"
         ? `Повтор ${counter} через ${inWords(delay)}: ${c.human} на этапе «${label}»${extra}`
+        : kind === "transient" && plan.max === null
+          ? `Провайдер не отвечает (${c.human}) — статья ждёт и продолжит сама, следующая проверка через ${inWords(delay)}; ошибкой станет только через сутки без ответа.${extra}`
         : kind === "transient"
           ? `Повтор ${counter} через ${inWords(delay)}: ${c.human}${extra}`
           : `Повтор ${counter} через ${inWords(delay)}: ${short(opts.summary ?? c.human)}`;
@@ -294,13 +296,17 @@ async function retryOrFail(
   if (kind === "key" && n === 1) {
     await recordError({ teamId: a.teamId, siteId: a.siteId, articleId: a.id, stage, message: `${c.human}: статья ждёт рабочий ключ и продолжит сама. ${c.detail}`, code: c.code, human: c.human });
   }
+  // Переход к ожиданию провайдера — тоже один раз за серию.
+  if (kind === "transient" && plan.max === null && n === TRANSIENT_DELAYS_MS.length + 1) {
+    await recordError({ teamId: a.teamId, siteId: a.siteId, articleId: a.id, stage, message: `${c.human}: провайдер не отвечает час, статья ждёт (проверка раз в 30 мин, до суток) и продолжит сама. ${c.detail}`, code: c.code, human: c.human });
+  }
   log.info(`article ${a.id.slice(0, 8)} ${kind} retry ${counter} at ${stage} in ${Math.round(delay / 1000)}s: ${c.human.slice(0, 160)}`);
 }
 
 function giveUpText(kind: RetryKind, label: string, tries: number, c: Classified): string {
   switch (kind) {
     case "transient":
-      return `Этап «${label}» не удался после ${tries} повторов примерно за час: ${c.human}. ${c.detail}`.trim();
+      return `Этап «${label}» не удался: провайдер не отвечал сутки (${tries} повторов): ${c.human}. ${c.detail}`.trim();
     case "malformed":
       return `Модель ${tries + 1} раз подряд вернула ответ не в том формате на этапе «${label}»: ${c.detail}. Проверьте промт и модель рецепта, затем нажмите «Повторить».`;
     case "key":

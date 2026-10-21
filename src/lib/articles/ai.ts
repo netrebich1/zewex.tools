@@ -61,6 +61,46 @@ export class ArticleAiError extends AiError {
   }
 }
 
+/**
+ * Автотормоз ключа (2026-10-21): при 429 или пустом ответе провайдера параллельность ключа в этом процессе
+ * падает вдвое (не ниже BRAKE_MIN) на BRAKE_COOL_MS; после паузы каждый успешный вызов возвращает +1 до обычной.
+ * Плюс короткие повторы на месте (429 бесплатен): статья не уходит в долгий повтор этапа из-за секундной волны.
+ */
+const BRAKE_MIN = 2;
+const BRAKE_COOL_MS = 3 * 60_000;
+const INPLACE_RETRY_MS = [3_000, 10_000];
+const brakes = new Map<string, { limit: number; coolUntil: number }>();
+
+function keyLimit(keyId: string): number {
+  return brakes.get(keyId)?.limit ?? DEFAULT_LIMITS.CHAT;
+}
+
+function brakeOn(keyId: string): void {
+  const cur = keyLimit(keyId);
+  const limit = Math.max(BRAKE_MIN, Math.floor(cur / 2));
+  brakes.set(keyId, { limit, coolUntil: Date.now() + BRAKE_COOL_MS });
+}
+
+function brakeRelax(keyId: string): void {
+  const b = brakes.get(keyId);
+  if (!b || Date.now() < b.coolUntil) return;
+  if (b.limit + 1 >= DEFAULT_LIMITS.CHAT) brakes.delete(keyId);
+  else brakes.set(keyId, { ...b, limit: b.limit + 1 });
+}
+
+/** Состояние автотормоза по ключам — для журнала и отладки. */
+export function brakeStats(): Record<string, { limit: number; coolUntil: string }> {
+  const out: Record<string, { limit: number; coolUntil: string }> = {};
+  for (const [k, v] of brakes) out[k] = { limit: v.limit, coolUntil: new Date(v.coolUntil).toISOString() };
+  return out;
+}
+
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true });
+  });
+
 /** Сколько помним «нет средств» на ключе: ждущие статьи не дёргают провайдера каждый раз. */
 const NO_CREDITS_COOLDOWN_MS = 5 * 60_000;
 const noCredits = new Map<string, { until: number; err: ArticleAiError }>();
@@ -105,9 +145,28 @@ function extractText(data: unknown): string {
 }
 
 export async function aiChat(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await aiChatOnce(ctx, req);
+    } catch (e) {
+      const keyId = (e as { keyId?: string }).keyId;
+      const code = e instanceof AiError ? e.cls.code : "";
+      const brake = code === "rate_limited" || code === "empty";
+      if (!(e instanceof AiError) || !brake || !keyId) throw e;
+      brakeOn(keyId);
+      // Пустой ответ мог стоить денег — повторяем один раз; 429 бесплатен — до двух раз.
+      const maxRetries = code === "empty" ? 1 : INPLACE_RETRY_MS.length;
+      if (attempt >= maxRetries || ctx.signal?.aborted) throw e;
+      await sleep(INPLACE_RETRY_MS[attempt] + Math.floor(Math.random() * 1500), ctx.signal);
+    }
+  }
+}
+
+async function aiChatOnce(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> {
   const resolved = await resolveOrThrow(ctx.userId, req.slot);
-  checkCooldown(resolved.binding.apiKey.id);
-  const release = await acquire(resolved.binding.apiKey.id, DEFAULT_LIMITS.CHAT);
+  const keyId = resolved.binding.apiKey.id;
+  checkCooldown(keyId);
+  const release = await acquire(keyId, keyLimit(keyId));
   try {
     const messages: Array<Record<string, unknown>> = [];
     if (req.system) {
@@ -135,9 +194,10 @@ export async function aiChat(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> 
       meta: { teamId: ctx.teamId, refId: ctx.articleId },
       pre: resolved,
     });
-    if (!res.ok) await handleFailure(res, resolved);
+    if (!res.ok) await handleFailure(res, resolved).catch((e) => { throw Object.assign(e, { keyId }); });
     const text = extractText(res.data);
-    if (!text.trim()) throw new ArticleAiError({ code: "empty", kind: "transient", message: "Модель вернула пустой ответ" }, 502, resolved.binding.provider.name);
+    if (!text.trim()) throw Object.assign(new ArticleAiError({ code: "empty", kind: "transient", message: "Модель вернула пустой ответ" }, 502, resolved.binding.provider.name), { keyId });
+    brakeRelax(keyId);
     return {
       text,
       json: req.json ? parseJsonLenient(text) : null,
