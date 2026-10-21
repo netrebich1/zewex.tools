@@ -121,7 +121,9 @@ export async function aiChat(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> 
     const payload: Record<string, unknown> = { messages, temperature: req.temperature ?? 0.7 };
     if (req.maxTokens) payload.max_tokens = req.maxTokens;
     if (req.json) payload.response_format = { type: "json_object" };
-    if (req.noReasoning !== false) payload.reasoning = { effort: "none" };
+    // Поле `reasoning` понимает только OpenRouter; OpenAI отвечает 400 «Unrecognized request argument supplied: reasoning»
+    // (2026-10-21: у OpenRouter-ключа кончились деньги, правило команды переключилось на OpenAI — вся ИИ-модерация падала).
+    if (req.noReasoning !== false && isOpenRouter(resolved.binding.provider)) payload.reasoning = { effort: "none" };
     const res = await runSlot({
       userId: ctx.userId,
       projectSlug: PROJECT_SLUG,
