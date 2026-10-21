@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import type { BlogRecipe } from "@prisma/client";
 import { slotAvailable } from "./ai";
+import { hasPrompt } from "./prompts";
 import { BLOG_STAGES, OPTIONAL_PROMPT_KEYS, STAGE_INFO } from "./stages";
 import { DEFAULT_PARAMS, DEFAULT_PHOTO_SEARCH, DEFAULT_PUBLISH, SLOTS, SLOT_LABELS, type BlogPhotoSearch, type BlogPrompt, type BlogPublish, type BlogRecipeParams, type BlogRecipeShape, type BlogRecipeSnapshot, type BlogRunSettings, type SlotKey } from "./types";
 
@@ -136,7 +137,7 @@ export function missingSlotsFor(recipe: BlogRecipeShape, have: Record<SlotKey, b
 
 export function recipeReadiness(recipe: BlogRecipeShape, have: Record<SlotKey, boolean>): RecipeReadiness {
   const missing: string[] = [];
-  for (const st of BLOG_STAGES) for (const k of STAGE_INFO[st].promptKeys) if (!OPTIONAL_PROMPT_KEYS.has(k) && !recipe.prompts[k]?.text?.trim()) missing.push(k);
+  for (const st of BLOG_STAGES) for (const k of STAGE_INFO[st].promptKeys) if (!OPTIONAL_PROMPT_KEYS.has(k) && !hasPrompt(recipe.prompts[k])) missing.push(k);
   const missingSlots = missingSlotsFor(recipe, have);
   return { missingPrompts: missing, missingSlots, ok: !missing.length && !missingSlots.length };
 }

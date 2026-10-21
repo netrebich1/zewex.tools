@@ -12,15 +12,20 @@ export class PromptMissing extends Error {
   }
 }
 
+/** Промт задан, если заполнено хотя бы одно из полей (у «постоянного блока» автора есть только system). */
+export function hasPrompt(p: Partial<BlogPrompt> | null | undefined): boolean {
+  return !!p && !!`${p.system ?? ""}${p.text ?? ""}`.trim();
+}
+
 export function resolvePrompt(recipe: BlogRecipeSnapshot, stageKey: string): BlogPrompt {
   const p = recipe.prompts?.[stageKey];
-  if (!p || !String(p.text ?? "").trim()) throw new PromptMissing(stageKey);
+  if (!p || !hasPrompt(p)) throw new PromptMissing(stageKey);
   return { system: String(p.system ?? ""), text: String(p.text ?? "") };
 }
 
 export function resolvePromptOptional(recipe: BlogRecipeSnapshot, stageKey: string): BlogPrompt | null {
   const p = recipe.prompts?.[stageKey];
-  if (!p || !String(p.text ?? "").trim()) return null;
+  if (!p || !hasPrompt(p)) return null;
   return { system: String(p.system ?? ""), text: String(p.text ?? "") };
 }
 

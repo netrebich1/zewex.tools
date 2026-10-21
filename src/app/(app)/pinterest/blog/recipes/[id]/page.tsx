@@ -8,6 +8,7 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { RecipePromptEditor } from "@/components/blog/RecipePromptEditor";
 import { copyBlogRecipe, deleteBlogRecipe, restoreBlogVersion, saveBlogPhotoSearch, saveBlogRecipeMain } from "@/actions/blogRecipes";
 import { POPULAR_MODELS, recipeReadiness, recipeShape, userSlots } from "@/lib/blog/recipes";
+import { hasPrompt } from "@/lib/blog/prompts";
 import { STAGE_VARS, VAR_HINTS, promptSteps } from "@/lib/blog/stages";
 import { BLOCKS } from "@/lib/blog/blocks";
 import { ACTIVE_STATUSES, PUBLISH_MODES, TRI_OPTIONS, VOICES } from "@/lib/blog/types";
@@ -105,7 +106,7 @@ export default async function BlogRecipePage({ params, searchParams }: { params:
           <Card className="lg:sticky lg:top-4 self-start">
             <h3 className="h2 mb-2">Шаги</h3>
             <ul className="space-y-0.5">{steps.map((s) => {
-              const ok = !!shape.prompts[s.key]?.text?.trim();
+              const ok = hasPrompt(shape.prompts[s.key]);
               return (
                 <li key={s.key}><Link href={href("prompts", `&stage=${encodeURIComponent(s.key)}`)} className={`flex items-start gap-2 rounded-lg px-3 py-2 text-[13px] ${stageKey === s.key ? "bg-ink text-bg" : "hover:bg-ink/5"}`}>
                   <span className={`mt-1 inline-block h-2.5 w-2.5 rounded-full shrink-0 ${ok ? "bg-ok" : s.required ? "bg-danger" : "bg-line-2"}`} />
