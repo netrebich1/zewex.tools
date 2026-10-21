@@ -117,6 +117,8 @@ const ok = (name: string) => { n++; console.log(`ok ${n} - ${name}`); };
   assert.ok(shopPageSignal("https://www.gosupps.com/44pcs-metal-alligator-hair-clips.html", "44pcs Metal Clips"));
   assert.ok(shopPageSignal("https://shop.example.com/products/rollers-set", ""));
   assert.equal(shopPageSignal("https://www.vogue.com/article/self-gripping-curlers-how-to", "How to use self-gripping curlers"), null);
+  assert.ok(shopPageSignal("https://condenaststore.com/featured/head-full-of-hair-rollers-lionel-kazan.html", ""));
+  assert.equal(shopPageSignal("https://www.popsugar.com/beauty/best-hot-rollers-49346499", "Best Hot Rollers"), null);
   ok("post-review fixes");
 }
 

@@ -26,7 +26,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export function shopPageSignal(pageUrl: string | null | undefined, title: string | null | undefined): string | null {
   const u = String(pageUrl ?? "").toLowerCase();
   const t = String(title ?? "").toLowerCase();
-  if (/\/(?:products?|item|items|shop|store|dp|gp\/product|p)\/[^/]+|[?&](?:sku|variant|product_id)=/.test(u)) return "адрес товара";
+  if (/\/(?:products?|item|items|shop|store|dp|gp\/product|p|featured|prints?|posters?)\/[^/]+|[?&](?:sku|variant|product_id)=/.test(u)) return "адрес товара";
+  const host = (u.match(/^https?:\/\/([^/]+)/)?.[1] ?? "").replace(/^www\./, "");
+  if (/(?:store|shop|mart|supply|supplies|outlet|supps|wholesale)\.[a-z.]+$|^(?:shop|store)\./.test(host)) return "домен магазина";
   if (/\b\d+\s?(?:pcs|pc|pieces|pack|count)\b|\bpack of \d+|\bset of \d+|\badd to cart\b|\bfree shipping\b|\$\s?\d/.test(`${u} ${t}`)) return "товарная карточка";
   return null;
 }

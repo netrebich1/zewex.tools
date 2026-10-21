@@ -60,7 +60,8 @@ function fitDescription(d: string): string {
     else {
       let acc = "";
       for (const w of out.split(" ")) { const next = acc ? `${acc} ${w}` : w; if (next.length + 1 > 158) break; acc = next; }
-      out = `${acc.replace(/[\s,;:—–-]+$/, "").replace(/[.!?]+$/, "")}.`;
+      for (let k = 0; k < 4; k++) acc = acc.replace(/[\s,;:—–-]+$/, "").replace(/\s+(?:a|an|the|and|or|for|of|to|in|on|with|at|by|from|that|your|this|plus)$/i, "");
+      out = `${acc.replace(/[.!?]+$/, "")}.`;
     }
   }
   if (!/[.!?]$/.test(out)) out = `${out.replace(/[\s,;:—–-]+$/, "")}.`;
@@ -172,7 +173,7 @@ async function writePinDescriptions(ctx: Parameters<StageHandler>[0], keyword: s
   };
   await ctx.tick("Описания пинов");
   const list = photos.map((p, i) => `${i + 1}. section: "${headingOf(p.slotKey)}"; photo shows: ${p.description || p.altText || "-"}`).join("\n");
-  const system = `You write Pinterest pin descriptions for photos inside an informational blog article. For EACH photo write one description a person would be glad to save: 150-280 characters, 1-2 natural sentences, says what the reader learns from this part of the article and why to save it, includes the keyword "${keyword}" once in natural form, may add one closely related search phrase. No hashtags, no emoji, no "click", no "link in bio", no quotes, no em dashes, American English.
+  const system = `You write Pinterest pin descriptions for photos inside an informational blog article. For EACH photo write one description a person would be glad to save: 150-280 characters, 1-2 natural sentences, says what the reader learns from this part of the article and why to save it, includes the keyword "${keyword}" once in natural form, may add one closely related search phrase. Start with the concrete benefit or the question the photo answers, not with "Learn", "Discover" or "Save this". Never use the words "pin" or "save this". No hashtags, no emoji, no "click", no "link in bio", no quotes, no em dashes, American English.
 Return ONLY JSON: {"pins":[{"n":1,"description":"..."}]}`;
   try {
     const r = await aiChat(ctx.ai, { slot: SLOTS.textFast, model: stageModel(recipe, "meta"), system, user: `Article: "${h1}"\nPhotos:\n${list}`, json: true, temperature: 0.8, maxTokens: 1500, timeoutMs: 90_000 });
