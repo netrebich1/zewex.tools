@@ -446,7 +446,7 @@ export async function approvePostAction(_p: FormState, f: FormData): Promise<For
     const a = await postForUser(me, str(f, "id"));
     if (!["REVIEW_PENDING", "NEEDS_REWORK", "FAILED", "PUBLISH_ERROR", "STOPPED"].includes(a.status)) throw new Error("Статья сейчас не ждёт проверки");
     const cursor = { ...((a.cursor ?? {}) as Record<string, unknown>), reviewApproved: true };
-    await prisma.blogPost.update({ where: { id: a.id }, data: { status: "PENDING", stage: "assemble", cursor: cursor as Prisma.InputJsonValue, reviewedById: me.id, reviewedAt: new Date(), reviewNote: str(f, "note").slice(0, 1000) || null, attempts: 0, error: null, errorStage: null, note: null, nextRunAt: new Date(), workerId: null, leaseUntil: null, stopRequested: false } });
+    await prisma.blogPost.update({ where: { id: a.id }, data: { status: "PENDING", stage: "pin_images", cursor: cursor as Prisma.InputJsonValue, reviewedById: me.id, reviewedAt: new Date(), reviewNote: str(f, "note").slice(0, 1000) || null, attempts: 0, error: null, errorStage: null, note: null, nextRunAt: new Date(), workerId: null, leaseUntil: null, stopRequested: false } });
     revalidatePost(a);
     return { ok: "Статья одобрена: пересборка и публикация в очереди" };
   } catch (e) { return fail(e); }

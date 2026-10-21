@@ -2067,6 +2067,13 @@ model BlogPhoto {
   description   String?  @db.Text
   /// Описание для пина (data-pin-description): что показано и зачем сохранить, с ключом; пишет этап meta
   pinDescription String? @db.Text
+  /// Плашка с текстом (этап pin_images): {title, kicker, source, variant}; файл blog/<postId>/photos/<id>.pin.jpg
+  overlayText      Json?
+  overlayPath      String  @default("")
+  overlayWidth     Int?
+  overlayHeight    Int?
+  overlayWpMediaId Int?
+  overlayWpUrl     String? @db.VarChar(1000)
   fileName      String   @default("")
   aiScore       Float?
   wpMediaId     Int?

@@ -84,6 +84,7 @@ export async function saveBlogRecipeMain(_p: FormState, f: FormData): Promise<Fo
       links: { mode: str(f, "linksMode") === "allowlist" ? "allowlist" : "none", allow },
       research: { serp: f.get("researchSerp") === "on" },
       review: { aiEditor: f.get("aiEditor") === "on" },
+      overlay: { mode: (["article", "pin_only", "off"].includes(str(f, "overlayMode")) ? str(f, "overlayMode") : p.overlay.mode) as BlogRecipeParams["overlay"]["mode"], photos: str(f, "overlayPhotos") === "hero" ? "hero" : str(f, "overlayPhotos") === "all" ? "all" : p.overlay.photos },
       language: str(f, "language").toLowerCase().slice(0, 5) || p.language,
       country: str(f, "country").toUpperCase().slice(0, 2) || p.country,
     };

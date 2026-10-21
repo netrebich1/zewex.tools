@@ -1,8 +1,8 @@
 /**
  * Реестр этапов конвейера инфо-статей. Цепочка линейная; фазы — для подписей и расходов.
- * research → outline → photo_search → photo_filter → photo_rate → photo_select → write → wrap → meta → assemble → publish.
+ * research → outline → photo_search → photo_filter → photo_rate → photo_select → write → wrap → meta → pin_images → assemble → publish.
  */
-export const BLOG_STAGES = ["research", "outline", "photo_search", "photo_filter", "photo_rate", "photo_select", "write", "wrap", "meta", "assemble", "publish"] as const;
+export const BLOG_STAGES = ["research", "outline", "photo_search", "photo_filter", "photo_rate", "photo_select", "write", "wrap", "meta", "pin_images", "assemble", "publish"] as const;
 export type StageKey = (typeof BLOG_STAGES)[number];
 
 export type StagePhase = "research" | "photos" | "writing" | "publish";
@@ -26,6 +26,7 @@ export const STAGE_INFO: Record<StageKey, StageInfo> = {
   write: { label: "Текст секций", phase: "writing", promptKeys: ["writer_system", "writer_user"], slots: ["text_main"], description: "Секции пачками по плану и брифу; HTML по типу блока." },
   wrap: { label: "Вступление, итоги, FAQ", phase: "writing", promptKeys: ["wrap"], slots: ["text_main"], description: "Вступление, ключевые выводы, заключение, FAQ и дисклеймер — по готовому телу." },
   meta: { label: "SEO-мета", phase: "writing", promptKeys: [], slots: ["text_fast"], description: "Проверка title/description/slug, одна починка ИИ, детерминированный запас." },
+  pin_images: { label: "Текст на фото", phase: "writing", promptKeys: [], slots: ["text_fast"], description: "Плашка с заголовком по секции над или под фото (как Canvas-пин, кадр не обрезается): разные шрифты и палитры." },
   assemble: { label: "Сборка HTML", phase: "writing", promptKeys: [], slots: ["text_main"], description: "HTML статьи с картинками, таблицами, FAQ, JSON-LD; проверка качества и самопочинка." },
   publish: { label: "Публикация", phase: "publish", promptKeys: [], slots: ["text_fast"], description: "Категория, загрузка фото в медиатеку, пост в WordPress с Yoast-мета." },
 };

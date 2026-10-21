@@ -36,6 +36,7 @@ export function mergeParams(raw: unknown): BlogRecipeParams {
     links: { mode: r.links?.mode === "allowlist" ? "allowlist" : "none", allow: Array.isArray(r.links?.allow) ? r.links!.allow.map(String).filter(Boolean) : [] },
     research: { serp: r.research?.serp === true },
     review: { aiEditor: r.review?.aiEditor === true },
+    overlay: { mode: r.overlay?.mode === "pin_only" || r.overlay?.mode === "off" ? r.overlay.mode : "article", photos: r.overlay?.photos === "hero" ? "hero" : "all" },
     language: String(r.language ?? d.language).toLowerCase().slice(0, 5) || "en",
     country: String(r.country ?? d.country).toUpperCase().slice(0, 2) || "US",
   };

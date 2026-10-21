@@ -12,6 +12,10 @@ import { shopPageSignal } from "../../worker/blog/stages/photoFilter";
 import { checkPostQuality } from "../../src/lib/blog/qualityCheck";
 import { DEFAULT_PARAMS, type BlogOutline } from "../../src/lib/blog/types";
 import type { BlogPhoto, BlogPost, BlogSection } from "@prisma/client";
+import { writeFileSync } from "node:fs";
+import { installNodeCanvasHost } from "../../src/lib/pins/canvas/host.node";
+import { getHost } from "../../src/lib/pins/canvas/host";
+import { normalizeOverlayText, renderPinOverlay } from "../../src/lib/blog/pinOverlay";
 
 let n = 0;
 const ok = (name: string) => { n++; console.log(`ok ${n} - ${name}`); };
@@ -122,4 +126,29 @@ const ok = (name: string) => { n++; console.log(`ok ${n} - ${name}`); };
   ok("post-review fixes");
 }
 
-console.log(`\n${n} checks passed`);
+// 7. Плашка с текстом: кадр целиком (ширина 1000, высота = фото + плашка), разные варианты; data-pin-media в HTML
+async function overlayCheck() {
+  installNodeCanvasHost(process.env.BLOG_FONTS || undefined);
+  const host = getHost();
+  const c = host.createCanvas(600, 900);
+  const g = c.getContext("2d");
+  g.fillStyle = "#c9a27e"; g.fillRect(0, 0, 600, 900); g.fillStyle = "#6b4b33"; g.fillRect(100, 150, 400, 600);
+  const photo = await host.encodeJpeg(c, 0.9);
+  assert.equal(normalizeOverlayText({ title: "x" }), null);
+  assert.deepEqual(normalizeOverlayText({ title: "“Roll Hair Away From Your Face.”", kicker: "Step by step!" }), { title: "Roll Hair Away From Your Face", kicker: "Step by step" });
+  const variants = new Set<string>();
+  for (const seed of ["a1", "b2", "c3", "d4", "e5", "f6"]) {
+    const r = await renderPinOverlay(photo, { title: "How to Use Hair Rollers for Bouncy Curls", kicker: "Step by step", domain: "women-club.online" }, seed);
+    assert.equal(r.width, 1000);
+    assert.ok(r.height >= 1300 + 150, `photo kept whole + band: ${r.height}`);
+    assert.ok(r.bytes.length > 10_000);
+    variants.add(`${r.variant.place}/${r.variant.style}/${r.variant.palette}`);
+    if (process.env.BLOG_OVERLAY_OUT) writeFileSync(`${process.env.BLOG_OVERLAY_OUT}/overlay-${seed}.jpg`, r.bytes);
+  }
+  assert.ok(variants.size >= 3, `variants: ${[...variants].join(", ")}`);
+  const built = assemblePostHtml({ introHtml: "<p>Intro text here.</p>", hero: { url: "https://x.test/a.jpg", width: 600, height: 900, altText: "rollers", pinMedia: "https://x.test/a.pin.jpg" }, takeawaysHtml: null, sections: [], faq: [], conclusionHtml: "<p>End.</p>", disclaimerHtml: null, closing: null, keyword: "how to use hair rollers", caption: { mode: "none", template: "" } as never, jsonLd: null });
+  assert.ok(/<img data-pin-media="https:\/\/x\.test\/a\.pin\.jpg" src="https:\/\/x\.test\/a\.jpg"/.test(built.html), built.html.slice(0, 400));
+  ok("pin overlay");
+}
+
+overlayCheck().then(() => console.log(`\n${n} checks passed`)).catch((e) => { console.error(e); process.exit(1); });

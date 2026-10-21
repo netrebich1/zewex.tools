@@ -69,6 +69,8 @@ export type BlogRecipeParams = {
   links: { mode: "none" | "allowlist"; allow: string[] };
   research: { serp: boolean };
   review: { aiEditor: boolean };
+  /** Плашка с текстом на фото (как Canvas-пин): article — в статье картинка с плашкой; pin_only — только в пине при сохранении; off */
+  overlay: { mode: "article" | "pin_only" | "off"; photos: "all" | "hero" };
   language: string;
   country: string;
 };
@@ -83,6 +85,7 @@ export const DEFAULT_PARAMS: BlogRecipeParams = {
   links: { mode: "none", allow: [] },
   research: { serp: false },
   review: { aiEditor: false },
+  overlay: { mode: "article", photos: "all" },
   language: "en",
   country: "US",
 };

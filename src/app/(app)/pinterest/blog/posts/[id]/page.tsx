@@ -193,6 +193,11 @@ async function PhotosTab({ postId, running }: { postId: string; running: boolean
                     <figcaption className="mt-1 text-[11.5px] leading-tight"><div className="flex items-center justify-between"><b>#{p.position}</b>{p.aiScore != null && <span>★ {p.aiScore.toFixed(1)}</span>}</div><div className="truncate text-muted" title={p.sourcePageUrl}>{p.sourceDomain || "—"}</div>{p.width && p.height && <div className="text-muted">{p.width}×{p.height}{p.wpMediaId ? " · в WP" : ""}</div>}</figcaption>
                   </figure>
                 ) : <div className="aspect-[3/4] w-full rounded-lg bg-ink/5 flex items-center justify-center help">нет фото</div>}
+                {p?.overlayPath && (
+                  <figure className="mt-2 rounded-xl border border-line p-1.5"><a href={publicUrl(p.overlayPath)} target="_blank" rel="noreferrer"><img src={publicUrl(p.overlayPath)} alt="" loading="lazy" className="w-full rounded-lg" /></a>
+                    <figcaption className="mt-1 text-[11.5px] leading-tight text-muted">С текстом: «{String((p.overlayText as { title?: string } | null)?.title ?? "")}»{p.overlayWpMediaId ? " · в WP" : ""}</figcaption>
+                  </figure>
+                )}
                 {p && s.key !== "hero" && !running && <ActionForm action={excludeSlotPhoto} hidden={{ photoId: p.id }} className="mt-2"><SubmitButton className="btn-ghost btn-sm" pendingText="…">Убрать из статьи</SubmitButton></ActionForm>}
               </div>
               <div className="space-y-3">

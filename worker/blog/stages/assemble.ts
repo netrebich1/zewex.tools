@@ -12,6 +12,7 @@ import { checkPostQuality, sectionProblemOf } from "@/lib/blog/qualityCheck";
 import { buildJsonLd } from "@/lib/blog/schema";
 import { cleanHeading, cleanSectionHtml, varyTipLabels } from "@/lib/blog/text";
 import { allowedTags } from "@/lib/blog/blocks";
+import { publicUrl } from "@/lib/blog/storage";
 import type { StageHandler } from "./index";
 import { rewriteSection } from "./write";
 
@@ -80,10 +81,15 @@ export const assemble: StageHandler = async (ctx) => {
   const caption = captionCfgFrom(ps.captionMode, ps.captionTemplate);
   const pol = { usSpelling: usesUsSpelling(recipe.params.language, recipe.params.country) };
   const photoBySlot = new Map(photos.map((p) => [p.slotKey, p]));
+  const ovMode = recipe.params.overlay?.mode ?? "off";
+  const shownUrl = (p: (typeof photos)[number]) => (ovMode === "article" && p.overlayPath ? p.overlayWpUrl || publicUrl(p.overlayPath) : p.wpUrl || p.publicUrl);
   const img = (slotKey: string | null | undefined) => {
     const p = slotKey ? photoBySlot.get(slotKey) : null;
     if (!p) return null;
-    return { url: p.wpUrl || p.publicUrl, width: p.width, height: p.height, sourcePageUrl: p.sourcePageUrl, sourceDomain: p.sourceDomain, altText: p.altText, pinDescription: p.pinDescription, position: p.position };
+    const base = { url: p.wpUrl || p.publicUrl, width: p.width, height: p.height, sourcePageUrl: p.sourcePageUrl, sourceDomain: p.sourceDomain, altText: p.altText, pinDescription: p.pinDescription, position: p.position };
+    if (!p.overlayPath || ovMode === "off") return base;
+    const overlayUrl = p.overlayWpUrl || publicUrl(p.overlayPath);
+    return ovMode === "article" ? { ...base, url: overlayUrl, width: p.overlayWidth, height: p.overlayHeight } : { ...base, pinMedia: overlayUrl };
   };
   const rows = await prisma.blogSection.findMany({ where: { postId: post.id, status: "written" }, orderBy: { position: "asc" } });
   const cleaned = varyTipLabels(rows.map((s) => cleanSectionHtml(s.html ?? "", allowedTags(s.kind), pol, { allowLinks: true })));
@@ -91,7 +97,7 @@ export const assemble: StageHandler = async (ctx) => {
   const faq = Array.isArray(fresh.faq) ? (fresh.faq as Array<{ question: string; answer: string }>).filter((f) => f?.question && f?.answer) : [];
   const jsonLd = recipe.publish.schema === "off" ? null : buildJsonLd({
     h1: fresh.h1 || outline.h1 || post.keyword, description: fresh.metaDescription || outline.metaDescription,
-    images: photos.map((p) => p.wpUrl || p.publicUrl).filter(Boolean), faq, sections: secs.map((s) => ({ kind: s.kind, heading: s.heading, html: s.html })),
+    images: photos.map(shownUrl).filter(Boolean), faq, sections: secs.map((s) => ({ kind: s.kind, heading: s.heading, html: s.html })),
   });
   const built = assemblePostHtml({
     introHtml: fresh.introHtml ?? "", hero: img("hero"), takeawaysHtml: fresh.takeawaysHtml, sections: secs, faq,

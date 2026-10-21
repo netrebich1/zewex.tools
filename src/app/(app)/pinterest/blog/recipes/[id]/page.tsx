@@ -78,6 +78,8 @@ export default async function BlogRecipePage({ params, searchParams }: { params:
               <Field label="FAQ"><select name="blockFaq" className="input" defaultValue={p.blocks.faq}>{TRI_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
               <Field label="Дисклеймер (health/money)"><select name="blockDisclaimer" className="input" defaultValue={p.blocks.disclaimer}>{TRI_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
               <Field label="Последняя картинка"><select name="blockClosing" className="input" defaultValue={p.blocks.closingImage}>{TRI_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
+              <Field label="Текст на фото (как Canvas-пин)" hint="Плашка сверху или снизу, фото не обрезается."><select name="overlayMode" className="input" defaultValue={p.overlay.mode}><option value="article">В статье и в пине</option><option value="pin_only">Только в пине при сохранении</option><option value="off">Не делать</option></select></Field>
+              <Field label="На каких фото"><select name="overlayPhotos" className="input" defaultValue={p.overlay.photos}><option value="all">На всех</option><option value="hero">Только на главном</option></select></Field>
               <Field label="Вопросов FAQ: от"><input name="faqMin" type="number" min={2} max={10} className="input" defaultValue={p.faqCount.min} /></Field>
               <Field label="до"><input name="faqMax" type="number" min={2} max={10} className="input" defaultValue={p.faqCount.max} /></Field>
               <Field label="Язык"><input name="language" className="input mono" defaultValue={p.language} maxLength={5} /></Field>

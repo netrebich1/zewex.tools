@@ -57,6 +57,7 @@ import { photoSelect } from "./photoSelect";
 import { write } from "./write";
 import { wrap } from "./wrap";
 import { meta } from "./meta";
+import { pinImages } from "./pinImages";
 import { assemble } from "./assemble";
 import { publish } from "./publish";
 
@@ -70,6 +71,7 @@ export const STAGES: Partial<Record<StageKey, StageHandler>> = {
   write,
   wrap,
   meta,
+  pin_images: pinImages,
   assemble,
   publish,
 };

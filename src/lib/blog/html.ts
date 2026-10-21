@@ -11,16 +11,18 @@ export const CONCLUSION_HEADING = "Final Thoughts";
 export const FAQ_HEADING = "Frequently Asked Questions";
 export const TAKEAWAYS_HEADING = "Key Takeaways";
 
-export type AssembleSection = { position: number; kind: string; heading: string; html: string; photo: ImageLike | null };
+/** Фото статьи; pinMedia — другая картинка для пина при сохранении (data-pin-media), например с плашкой текста. */
+export type BlogImage = ImageLike & { pinMedia?: string | null };
+export type AssembleSection = { position: number; kind: string; heading: string; html: string; photo: BlogImage | null };
 export type AssembleInput = {
   introHtml: string;
-  hero: ImageLike | null;
+  hero: BlogImage | null;
   takeawaysHtml: string | null;
   sections: AssembleSection[];
   faq: Array<{ question: string; answer: string }>;
   conclusionHtml: string;
   disclaimerHtml: string | null;
-  closing: ImageLike | null;
+  closing: BlogImage | null;
   keyword: string;
   caption: CaptionCfg;
   /** JSON-LD (готовый объект) — вставляется <script type="application/ld+json"> в конец */
@@ -71,7 +73,10 @@ export function assemblePostHtml(input: AssembleInput): AssembleOutput {
     const room = Math.max(40, 125 - input.keyword.length - 3);
     return base.length <= room ? base : base.slice(0, room).replace(/\s+\S*$/, "");
   };
-  const img = (p: ImageLike, heading: string) => buildImageBlock(p, { heading: altFor(p, heading), keyword: input.keyword, caption: input.caption });
+  const img = (p: BlogImage, heading: string) => {
+    const block = buildImageBlock(p, { heading: altFor(p, heading), keyword: input.keyword, caption: input.caption });
+    return p.pinMedia ? block.replace("<img ", `<img data-pin-media="${escapeHtml(p.pinMedia)}" `) : block;
+  };
 
   const intro = balanceParagraphs(input.introHtml);
   words += countWords(intro);
