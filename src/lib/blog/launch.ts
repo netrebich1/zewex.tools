@@ -7,6 +7,7 @@ import type { CurrentUser } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
 import { sanitizeTopic } from "@/lib/articles/text/textGuards";
 import { canAccessBlogSite } from "./access";
+import { searchPhraseOf } from "./text";
 import { buildSnapshot, findDuplicateKeywords, recipeShape } from "./recipes";
 import { firstStage } from "./stages";
 import type { BlogRunSettings, KeywordInput } from "./types";
@@ -26,7 +27,8 @@ export async function launchPosts(me: CurrentUser, input: LaunchInput): Promise<
   const invalid: string[] = [];
   const cleaned: KeywordInput[] = [];
   for (const k of input.keywords) {
-    const keyword = sanitizeTopic(k.keyword);
+    // Вставили готовый заголовок («How to X: The Ultimate Guide») — ключом становится поисковая фраза до двоеточия.
+    const keyword = searchPhraseOf(sanitizeTopic(k.keyword));
     if (!keyword || keyword.length < 3) { invalid.push(k.keyword); continue; }
     cleaned.push({ keyword, focusKeyword: k.focusKeyword?.trim() || undefined });
   }

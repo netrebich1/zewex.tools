@@ -2065,6 +2065,8 @@ model BlogPhoto {
   altText       String   @default("") @db.Text
   caption       String   @default("") @db.Text
   description   String?  @db.Text
+  /// Описание для пина (data-pin-description): что показано и зачем сохранить, с ключом; пишет этап meta
+  pinDescription String? @db.Text
   fileName      String   @default("")
   aiScore       Float?
   wpMediaId     Int?

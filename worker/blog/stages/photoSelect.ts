@@ -64,7 +64,12 @@ export const photoSelect: StageHandler = async (ctx) => {
     const fresh = scored.filter((x) => x.usage.count === 0);
     const reused = scored.filter((x) => x.usage.count > 0 && !x.usage.sameSite);
     const sameSite = scored.filter((x) => x.usage.sameSite);
-    const order = ps.uniqueMode === "strict" ? fresh : ps.uniqueMode === "off" ? scored : [...fresh, ...reused, ...sameSite];
+    let order = ps.uniqueMode === "strict" ? fresh : ps.uniqueMode === "off" ? scored : [...fresh, ...reused, ...sameSite];
+    // Главное фото — вертикальное (формат пина 2:3), если такое есть среди одобренных; квадрат и горизонталь — только запасом.
+    if (slot.key === "hero" && recipe.params.images.heroOrientation === "tall") {
+      const tall = (x: { c: BlogPhotoCandidate }) => !!(x.c.width && x.c.height && x.c.height / x.c.width >= 1.15);
+      order = [...order.filter(tall), ...order.filter((x) => !tall(x))];
+    }
     const best = order[0];
     if (!best) { empty.push(slot.key); continue; }
     picks.push({ slot, ...best });

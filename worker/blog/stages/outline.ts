@@ -15,7 +15,7 @@ import { headingKey, sanitizeTopic } from "@/lib/articles/text/textGuards";
 import { slugify } from "@/lib/articles/text/slug";
 import { BLOCK_BY_KIND, blockOf, blocksCatalogText } from "@/lib/blog/blocks";
 import { fillPrompt, resolvePrompt, stageModel } from "@/lib/blog/prompts";
-import { briefShort } from "@/lib/blog/text";
+import { briefShort, cleanHeading } from "@/lib/blog/text";
 import { SLOTS, VOICES, type BlogOutline, type OutlineImage, type OutlineSection, type Tri } from "@/lib/blog/types";
 import type { StageHandler } from "./index";
 
@@ -116,7 +116,7 @@ export const outline: StageHandler = async (ctx) => {
     const o = (raw && typeof raw === "object" ? raw : {}) as R;
     const kindRaw = String(o.kind ?? o.block ?? "prose").toLowerCase().replace(/[\s-]+/g, "_");
     const kind = BLOCK_BY_KIND[kindRaw] ? kindRaw : "prose";
-    let heading = sanitizeTopic(String(o.heading ?? o.h2 ?? "").trim()).slice(0, 120);
+    let heading = cleanHeading(sanitizeTopic(String(o.heading ?? o.h2 ?? "").trim())).slice(0, 120);
     if (!heading) heading = `${blockOf(kind).label} ${sections.length + 1}`;
     let key = headingKey(heading);
     if (!key || usedKeys.has(key)) {

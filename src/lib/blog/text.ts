@@ -128,9 +128,41 @@ export function briefShort(b: BlogBrief | null): string {
   return lines.join("\n");
 }
 
+/** Карта статьи: секции с типом и пунктами, которые «принадлежат» секции, — чтобы автор не повторял чужие пункты. */
 export function articleMap(o: BlogOutline | null, sections?: Array<{ position: number; kind: string; heading: string; status?: string }>): string {
+  const byPos = new Map((o?.sections ?? []).map((s) => [s.position, s]));
   const list = sections?.length ? sections : (o?.sections ?? []).map((s) => ({ position: s.position, kind: s.kind, heading: s.heading }));
-  return list.map((s) => `${s.position}. [${s.kind}] ${s.heading}${"status" in s && s.status === "written" ? " (written)" : ""}`).join("\n");
+  return list.map((s) => {
+    const kp = byPos.get(s.position)?.keyPoints ?? [];
+    return `${s.position}. [${s.kind}] ${s.heading}${"status" in s && s.status === "written" ? " (written)" : ""}${kp.length ? `\n   owns: ${kp.join("; ")}` : ""}`;
+  }).join("\n");
+}
+
+/** Поисковая фраза из ключа: если вставили готовый заголовок («How to X: The Ultimate Guide»), берём часть до двоеточия / « | » / « - ». */
+export function searchPhraseOf(raw: string): string {
+  const s = String(raw ?? "").replace(/\s+/g, " ").trim();
+  const head = s.split(/\s*(?::|\s\|\s|\s[-–—]\s)\s*/)[0]?.trim() ?? s;
+  if (head && head !== s && head.split(" ").length >= 2) return head.toLowerCase();
+  return s;
+}
+
+/** «My tip:» не больше двух раз на статью: дальше метки чередуются. */
+export function varyTipLabels(htmls: string[]): string[] {
+  const alt = ["Tip:", "Good to know:", "Pro move:", "Quick tip:"];
+  let seen = 0;
+  let k = 0;
+  return htmls.map((h) => h.replace(/<strong>\s*My tip:\s*<\/strong>/gi, (m) => (++seen <= 2 ? m : `<strong>${alt[k++ % alt.length]}</strong>`)));
+}
+
+/** Заголовок H2 без восклицаний и хайпа. */
+export function cleanHeading(h: string): string {
+  return String(h ?? "")
+    .replace(/!+/g, "")
+    .replace(/^\s*My\s+/i, "")
+    .replace(/\s*[:\-–—]?\s*Here(?:'|’)?s the (?:Quick )?Scoop\??/i, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/[\s,;:]+$/, "")
+    .trim();
 }
 
 export function sectionBriefText(s: OutlineSection, allowed: string[], hasImage: boolean): string {

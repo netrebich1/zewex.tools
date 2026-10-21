@@ -6,7 +6,9 @@ import assert from "node:assert/strict";
 import { allowedTags } from "../../src/lib/blog/blocks";
 import { assemblePostHtml } from "../../src/lib/blog/html";
 import { buildJsonLd, extractSteps } from "../../src/lib/blog/schema";
-import { cleanSectionHtml, countWords, ensureTableHead, sanitizeHtml } from "../../src/lib/blog/text";
+import { cleanHeading, cleanSectionHtml, countWords, ensureTableHead, sanitizeHtml, searchPhraseOf, varyTipLabels } from "../../src/lib/blog/text";
+import { titleCase } from "../../worker/blog/stages/meta";
+import { shopPageSignal } from "../../worker/blog/stages/photoFilter";
 import { checkPostQuality } from "../../src/lib/blog/qualityCheck";
 import { DEFAULT_PARAMS, type BlogOutline } from "../../src/lib/blog/types";
 import type { BlogPhoto, BlogPost, BlogSection } from "@prisma/client";
@@ -101,6 +103,21 @@ const ok = (name: string) => { n++; console.log(`ok ${n} - ${name}`); };
   assert.ok(r.patch.sections.some((p) => p.id === "s3" && !/<img/.test(p.html)), "img stripped");
   assert.ok(r.patch.photos.some((p) => p.id === "ph" && p.altText === "a skin tag close-up"), "alt from description");
   ok("checkPostQuality");
+}
+
+// 6. Правки после первой статьи: ключ из заголовка, Title Case, метки советов, заголовки, магазины
+{
+  assert.equal(searchPhraseOf("How to Use Hair Rollers: The Ultimate Step-by-Step Guide"), "how to use hair rollers");
+  assert.equal(searchPhraseOf("how to clean a hairbrush"), "how to clean a hairbrush");
+  assert.equal(titleCase("how to use hair rollers: the ultimate step-by-step guide"), "How to Use Hair Rollers: The Ultimate Step-by-Step Guide");
+  const tips = varyTipLabels(["<p><strong>My tip:</strong> a</p><p><strong>My tip:</strong> b</p>", "<p><strong>My tip:</strong> c</p><p><strong>My tip:</strong> d</p>"]);
+  assert.equal((tips.join("").match(/My tip:/g) || []).length, 2);
+  assert.equal(cleanHeading("Ready for Gorgeous Curls? Here’s the Quick Scoop!"), "Ready for Gorgeous Curls?");
+  assert.equal(cleanHeading("Don't Make These Common Roller Blunders!"), "Don't Make These Common Roller Blunders");
+  assert.ok(shopPageSignal("https://www.gosupps.com/44pcs-metal-alligator-hair-clips.html", "44pcs Metal Clips"));
+  assert.ok(shopPageSignal("https://shop.example.com/products/rollers-set", ""));
+  assert.equal(shopPageSignal("https://www.vogue.com/article/self-gripping-curlers-how-to", "How to use self-gripping curlers"), null);
+  ok("post-review fixes");
 }
 
 console.log(`\n${n} checks passed`);

@@ -21,6 +21,15 @@ export const PER_SLOT_PASSED = 14;
 const PASSED_STATUSES = ["downloaded", "keep", "chosen", "reserve"];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Карточка товара в магазине — по адресу страницы и заголовку (домены магазинов отсеиваются отдельно). */
+export function shopPageSignal(pageUrl: string | null | undefined, title: string | null | undefined): string | null {
+  const u = String(pageUrl ?? "").toLowerCase();
+  const t = String(title ?? "").toLowerCase();
+  if (/\/(?:products?|item|items|shop|store|dp|gp\/product|p)\/[^/]+|[?&](?:sku|variant|product_id)=/.test(u)) return "адрес товара";
+  if (/\b\d+\s?(?:pcs|pc|pieces|pack|count)\b|\bpack of \d+|\bset of \d+|\badd to cart\b|\bfree shipping\b|\$\s?\d/.test(`${u} ${t}`)) return "товарная карточка";
+  return null;
+}
 const detailsOf = (c: BlogPhotoCandidate): TechDetails => ((c.techDetails ?? {}) as TechDetails);
 
 export const photoFilter: StageHandler = async (ctx) => {
@@ -65,6 +74,8 @@ export const photoFilter: StageHandler = async (ctx) => {
     if (blocked) return reject(c, `запрещённый источник (${blocked})`);
     const catalogue = catalogueSourceSignal({ sourceDomain: domain, sourcePageUrl: c.pageUrl, imageUrl: c.url, title: c.title });
     if (catalogue.reject) return reject(c, catalogue.reason || "каталожная карточка");
+    const shop = shopPageSignal(c.pageUrl, c.title);
+    if (shop) return reject(c, `страница магазина (${shop})`);
 
     let dl: DownloadResult;
     try {

@@ -7,7 +7,7 @@
       "description": "How-to, причины, сравнение: исследование → адаптивный план → 3–6 реальных фото по разделам → текст блоками → проверка → WordPress.",
       "isActive": true,
       "isDefault": true,
-      "seedRev": 1,
+      "seedRev": 2,
       "models": {
         "research": "openrouter:google/gemini-2.5-flash",
         "outline": "openrouter:google/gemini-2.5-flash",
@@ -17,15 +17,37 @@
         "meta": "openrouter:google/gemini-2.5-flash-lite"
       },
       "params": {
-        "length": { "min": 900, "max": 1800 },
-        "images": { "min": 3, "max": 6, "heroOrientation": "tall" },
+        "length": {
+          "min": 900,
+          "max": 1800
+        },
+        "images": {
+          "min": 5,
+          "max": 7,
+          "heroOrientation": "tall"
+        },
         "voice": "blogger_first_person",
         "persona": "a lifestyle blogger who tests everything at home before writing about it",
-        "blocks": { "takeaways": "auto", "faq": "auto", "disclaimer": "auto", "closingImage": "auto" },
-        "faqCount": { "min": 4, "max": 6 },
-        "links": { "mode": "none", "allow": [] },
-        "research": { "serp": false },
-        "review": { "aiEditor": false },
+        "blocks": {
+          "takeaways": "auto",
+          "faq": "auto",
+          "disclaimer": "auto",
+          "closingImage": "auto"
+        },
+        "faqCount": {
+          "min": 4,
+          "max": 6
+        },
+        "links": {
+          "mode": "none",
+          "allow": []
+        },
+        "research": {
+          "serp": false
+        },
+        "review": {
+          "aiEditor": false
+        },
         "language": "en",
         "country": "US"
       },
@@ -35,7 +57,10 @@
         "language": "en",
         "freshness": "any",
         "imageType": "photo",
-        "orientation": ["tall", "square"],
+        "orientation": [
+          "tall",
+          "square"
+        ],
         "minSide": 600,
         "minScore": 7,
         "perSlot": 40,
@@ -44,7 +69,11 @@
         "captionMode": "domain_link",
         "captionTemplate": "{credit} {domain}"
       },
-      "publish": { "mode": "publish_then_edit", "seoYearUrlPercent": 0, "schema": "inline" },
+      "publish": {
+        "mode": "publish_then_edit",
+        "seoYearUrlPercent": 0,
+        "schema": "inline"
+      },
       "prompts": {
         "research": {
           "system": "You are a senior editorial researcher for a US women's lifestyle blog (beauty, hair, skin, home, cleaning, fitness, wellness, crafts). Your job is to prepare a KNOWLEDGE BRIEF that a writer will turn into a genuinely useful informational article. You are careful with facts: you distinguish well-established knowledge from folk advice, you never invent statistics, studies or expert quotes, and you flag anything health-related.\n\nReturn ONLY one JSON object, no markdown.",
@@ -52,19 +81,22 @@
         },
         "outline": {
           "system": "You are the content architect of a US women's lifestyle blog. You plan informational articles that fully answer a search query and read like a knowledgeable friend wrote them: the answer first, then exactly the sections this topic needs — no filler sections, no generic \"benefits\" padding. You pick the structure from a block catalog according to the topic, not from a template. You also plan which real photos will illustrate the article and write precise Google Images search queries for them.\n\nReturn ONLY one JSON object, no markdown.",
-          "text": "ARTICLE TOPIC (search keyword): \"{{keyword}}\"\nFocus keyword: \"{{focus_keyword}}\"\nLanguage: {{language}}. Audience country: {{country}}.\nVOICE: {{voice}}\n\nRESEARCH BRIEF:\n{{brief}}\n\n{{blocks_catalog}}\n\nLIMITS FOR THIS ARTICLE:\n- Total body length {{length_min}}-{{length_max}} words (intro, takeaways, conclusion and FAQ are added on top — plan the sections for about 80% of the total).\n- 4-9 sections. Each section gets exactly one block kind from the catalog and a specific, non-generic H2 that could only belong to this article (no \"Introduction\", no \"Benefits of X\", no \"Conclusion\").\n- Photos: {{images_min}}-{{images_max}} real photos in total, counting the hero photo (always) and an optional closing photo. Give a photo only to sections where a real photograph genuinely helps (a step in progress, a result, a comparison of textures, the tools). Never a photo for a table or FAQ section.\n- {{takeaways_rule}}\n- {{faq_rule}} FAQ has {{faq_min}}-{{faq_max}} questions: take real reader questions from the brief and People Also Ask; never repeat what a section already answers in its heading.\n- {{disclaimer_rule}}\n- {{closing_image_rule}}\n\nPHOTO QUERIES: write them as a photo editor would search Google Images — concrete scene, subject, action, setting, in English, 3-8 words, no quotes, no years, no brand names (e.g. \"woman sectioning hair with clips before rollers\", \"dish soap and baking soda paste on skin\", \"velcro hair rollers set on dresser\"). must_show = what has to be visible for the photo to count; avoid = what makes it wrong (text overlays, product packshots, stock-photo smiles, a different subject). The hero photo shows the topic itself at its most recognisable.\n\nSEO: h1 = the search question/phrase in natural title form, 40-75 characters, contains the keyword. title = 40-58 characters, keyword early, one concrete promise, no colon-dump, no filler words (ultimate, stunning, effortless). meta_description = 140-160 characters: keyword + what the reader will learn + one concrete benefit. slug = the keyword as one lowercase hyphenated block.\n\nJSON shape:\n{\"h1\":\"...\",\"title\":\"...\",\"meta_description\":\"...\",\"slug\":\"...\",\"target_words\":1300,\n \"hero\":{\"query\":\"...\",\"must_show\":\"...\",\"avoid\":\"...\"},\n \"closing_image\":{\"query\":\"...\",\"must_show\":\"...\"} or null,\n \"takeaways\":true,\n \"faq\":{\"enabled\":true,\"questions\":[\"...\"]},\n \"disclaimer\":false,\n \"sections\":[{\"kind\":\"steps\",\"heading\":\"...\",\"key_points\":[\"specific point the section must make\",\"...\"],\"target_words\":260,\"notes\":\"what to emphasise, what to avoid\",\"image\":{\"query\":\"...\",\"must_show\":\"...\",\"avoid\":\"...\"} or null}]}"
+          "text": "ARTICLE TOPIC (search keyword): \"{{keyword}}\"\nFocus keyword: \"{{focus_keyword}}\"\nLanguage: {{language}}. Audience country: {{country}}.\nVOICE: {{voice}}\n\nRESEARCH BRIEF:\n{{brief}}\n\n{{blocks_catalog}}\n\nLIMITS FOR THIS ARTICLE:\n- Total body length {{length_min}}-{{length_max}} words (intro, takeaways, conclusion and FAQ are added on top — plan the sections for about 80% of the total).\n- 4-9 sections. Each section gets exactly one block kind from the catalog.\n- H2 HEADINGS: plain, descriptive and searchable, the way a reader would type the question or task (\"How to Choose the Right Roller Size\", \"Step-by-Step: Setting Rollers on Damp Hair\", \"Common Mistakes to Avoid\"). 3-9 words, Title Case, no exclamation marks, no slang or hype (\"Quick Scoop\", \"Arsenal\", \"Blunders\", \"Perfection\", \"Gorgeous\", \"Maximum Impact\"), no \"My\", no generic \"Introduction\" / \"Benefits of X\" / \"Conclusion\".\n- ONE FACT, ONE PLACE: every piece of advice belongs to exactly one section. Write key_points so that no point repeats in another section (if \"dry hair completely before removing\" is a step, it is not also a tip, a mistake or a takeaway). Do not plan both \"mistakes\" and \"tips\" unless their points are completely different. A quick_answer must contain the actual answer with specifics (sizes, times, the one decision rule), never a generic description of the tool.\n- Facts must be consistent across sections: if one section says to finish with fingers instead of a brush, no other section may say to brush.\n- Photos: aim for {{images_max}} real photos in total (never fewer than {{images_min}}), counting the hero photo (always) and an optional closing photo. Pinterest readers come for visuals: give a photo to every section where a real photograph helps (a step in progress, the tools laid out, a result, a before/after state, a texture). Never a photo for a pure table section.\n- {{takeaways_rule}}\n- {{faq_rule}} FAQ has {{faq_min}}-{{faq_max}} questions: take real reader questions from the brief and People Also Ask; never repeat what a section already answers in its heading.\n- {{disclaimer_rule}}\n- {{closing_image_rule}}\n\nPHOTO QUERIES: write them as a photo editor would search Google Images — concrete scene, subject, action, setting, in English, 3-8 words, no quotes, no years, no brand names (e.g. \"woman sectioning hair with clips before rollers\", \"dish soap and baking soda paste on skin\", \"velcro hair rollers set on dresser\"). must_show = what has to be visible for the photo to count; avoid = what makes it wrong (text overlays, product packshots, stock-photo smiles, a different subject). The hero photo shows the topic itself at its most recognisable.\n\nSEO: h1 = the search question/phrase in natural title form, 40-75 characters, contains the keyword. title = 40-58 characters, keyword early, one concrete promise, no colon-dump, no filler words (ultimate, stunning, effortless). meta_description = 140-160 characters: keyword + what the reader will learn + one concrete benefit. slug = the keyword as one lowercase hyphenated block.\n\nJSON shape:\n{\"h1\":\"...\",\"title\":\"...\",\"meta_description\":\"...\",\"slug\":\"...\",\"target_words\":1300,\n \"hero\":{\"query\":\"...\",\"must_show\":\"...\",\"avoid\":\"...\"},\n \"closing_image\":{\"query\":\"...\",\"must_show\":\"...\"} or null,\n \"takeaways\":true,\n \"faq\":{\"enabled\":true,\"questions\":[\"...\"]},\n \"disclaimer\":false,\n \"sections\":[{\"kind\":\"steps\",\"heading\":\"...\",\"key_points\":[\"specific point the section must make\",\"...\"],\"target_words\":260,\"notes\":\"what to emphasise, what to avoid\",\"image\":{\"query\":\"...\",\"must_show\":\"...\",\"avoid\":\"...\"} or null}]}"
         },
-        "photo_rate": { "system": "", "text": "" },
+        "photo_rate": {
+          "system": "",
+          "text": ""
+        },
         "writer_system": {
-          "system": "You write informational articles for a US women's lifestyle blog that readers save on Pinterest and actually use. Topic of this article: \"{{keyword}}\". Language: {{language}}.\n\nVOICE: {{voice}}\n\nHOW YOU WRITE\n- Every sentence carries information: a fact, a step, a reason, a number, a comparison, a warning. Cut anything that could be said about any topic (\"it's important to…\", \"there are many ways…\", \"in today's world\").\n- Specific over general: say \"leave the paste on for 2-3 minutes\" not \"leave it on for a while\"; say \"a wide-tooth comb\" not \"the right tools\".\n- Explain the why in one clause when it changes what the reader does (\"roll away from the face so the curl opens up\").\n- Short paragraphs (2-4 sentences). Lists only where the content is really a list. Bold is allowed ONLY for in-line labels at the start of a list item or a tip line: <strong>Tip:</strong>, <strong>Caution:</strong>, <strong>Step 3:</strong>, <strong>Myth:</strong>. Never bold random phrases.\n- Tables: a real header row, 2-3 columns, 3-6 rows, short cells (max 12 words), no empty cells.\n- Steps: <ol>, each <li> starts with a bold step label and gives 1-3 sentences of instruction.\n- American English, no em dashes or en dashes (use commas or periods), no exclamation marks, no emoji, no rhetorical questions in a row, no \"let's dive in\", no \"game-changer\", no \"elevate\", no \"effortless\", no \"ultimate\".\n- Never mention prices in currency, brand names or shops. Never write \"in the photo\" or refer to an image. Never address the reader as \"ladies\".\n- Output HTML only with the tags allowed for the section. No <h2>, no markdown, no inline styles, no classes.\n{{ymyl_rule}}\n{{links_rule}}",
+          "system": "You write informational articles for a US women's lifestyle blog that readers save on Pinterest and actually use. Topic of this article: \"{{keyword}}\". Language: {{language}}.\n\nVOICE: {{voice}}\n\nHOW YOU WRITE\n- Every sentence carries information: a fact, a step, a reason, a number, a comparison, a warning. Cut anything that could be said about any topic (\"it's important to…\", \"there are many ways…\", \"in today's world\").\n- Specific over general: say \"leave the paste on for 2-3 minutes\" not \"leave it on for a while\"; say \"a wide-tooth comb\" not \"the right tools\".\n- Explain the why in one clause when it changes what the reader does (\"roll away from the face so the curl opens up\").\n- Short paragraphs (2-4 sentences). Lists only where the content is really a list. Bold is allowed ONLY for in-line labels at the start of a list item or a tip line: <strong>Tip:</strong>, <strong>Caution:</strong>, <strong>Step 3:</strong>, <strong>Myth:</strong>. Never bold random phrases.\n- Tables: a real header row, 2-3 columns, 3-6 rows, short cells (max 12 words), no empty cells.\n- Steps: <ol>, each <li> starts with a bold step label and gives 1-3 sentences of instruction.\n- Labels: use \"My tip:\" at most twice in the whole article; otherwise vary (\"Tip:\", \"Good to know:\", \"Caution:\", \"Pro move:\"), and only where the line really is a tip.\n- Never repeat advice that another section already gives (the article map shows what each section covers) and never contradict it.\n- American English, no em dashes or en dashes (use commas or periods), no exclamation marks anywhere (headings included), no emoji, no rhetorical questions in a row, no \"let's dive in\", no \"game-changer\", no \"elevate\", no \"effortless\", no \"ultimate\".\n- Never mention prices in currency, brand names or shops. Never write \"in the photo\" or refer to an image. Never address the reader as \"ladies\".\n- Output HTML only with the tags allowed for the section. No <h2>, no markdown, no inline styles, no classes.\n{{ymyl_rule}}\n{{links_rule}}",
           "text": ""
         },
         "writer_user": {
           "system": "",
-          "text": "ARTICLE: \"{{keyword}}\"\n\nARTICLE MAP (all sections; write only the ones listed under SECTIONS TO WRITE NOW, keep them consistent with the rest):\n{{article_map}}\n\nRESEARCH BRIEF (your only source of facts beyond common knowledge):\n{{brief_short}}\n\nALREADY WRITTEN (do not repeat their content; continue naturally):\n{{written_summary}}\n\nSECTIONS TO WRITE NOW:\n{{section_briefs}}\n\nFor each section: cover every key point, respect the block kind and the allowed HTML, stay inside the target length, do not restate the heading in the first sentence, do not summarise at the end of the section, do not add a conclusion.\n\nReturn ONLY JSON: {\"sections\":[{\"position\":1,\"html\":\"<p>...</p>\"}]} — one entry per requested section, html as a JSON string with escaped quotes."
+          "text": "ARTICLE: \"{{keyword}}\"\n\nARTICLE MAP (all sections with the points each one owns; write only the sections listed under SECTIONS TO WRITE NOW and never cover points owned by other sections):\n{{article_map}}\n\nRESEARCH BRIEF (your only source of facts beyond common knowledge):\n{{brief_short}}\n\nALREADY WRITTEN (do not repeat their content; continue naturally):\n{{written_summary}}\n\nSECTIONS TO WRITE NOW:\n{{section_briefs}}\n\nFor each section: cover every key point, respect the block kind and the allowed HTML, stay inside the target length, do not restate the heading in the first sentence, do not summarise at the end of the section, do not add a conclusion.\n\nReturn ONLY JSON: {\"sections\":[{\"position\":1,\"html\":\"<p>...</p>\"}]} — one entry per requested section, html as a JSON string with escaped quotes."
         },
         "wrap": {
-          "system": "You finish an informational article for a US women's lifestyle blog: introduction, optional key takeaways, conclusion, FAQ and, when asked, a short disclaimer. You write from the article that already exists, so everything you add is consistent with it and never contradicts or repeats it word for word.\n\nVOICE: {{voice}}\n\nRULES\n- Introduction: 1-2 paragraphs, 60-120 words total. Open with the reader's situation or the core answer, not with a definition and not with \"If you're looking for\". Say what the article covers in one sentence, in plain words. No bullet list, no questions stacked, no \"in this guide we will\".\n- Key takeaways (only if requested): a <ul> with 3-5 <li>, each one concrete and complete (a rule, a number, a decision), 8-20 words, no intro sentence.\n- Conclusion: 60-130 words, 1-2 paragraphs. One real recommendation or decision rule, one realistic expectation (how long / how often / what result), one closing line. No \"in conclusion\", no restating the list of sections, no call to comment or share.\n- FAQ: exactly the requested number of questions, taken from the provided list (rephrase slightly if needed), answers 25-70 words each, direct answer in the first sentence, no \"great question\". Never ask something a section heading already answers.\n- Disclaimer (only if requested): one paragraph, 30-60 words, plain language: general information, not medical/professional advice, see a doctor/dermatologist/professional for a persistent or serious problem.\n- American English, no em dashes or en dashes, no exclamation marks, no emoji, no brand names, no prices.\n- HTML only: <p>, <ul>, <li>, <strong> (labels only). No markdown.\n\nReturn ONLY one JSON object.",
+          "system": "You finish an informational article for a US women's lifestyle blog: introduction, optional key takeaways, conclusion, FAQ and, when asked, a short disclaimer. You write from the article that already exists, so everything you add is consistent with it and never contradicts or repeats it word for word.\n\nVOICE: {{voice}}\n\nRULES\n- Introduction: 1-2 paragraphs, 60-120 words total. Open with the reader's situation or the core answer, not with a definition and not with \"If you're looking for\". Say what the article covers in one sentence, in plain words. No bullet list, no questions stacked, no \"in this guide we will\".\n- Never contradict the body; if the body says one thing, repeat the same fact or leave it out.\n- Key takeaways (only if requested): a <ul> with 3-5 <li>, each one concrete and complete (a rule, a number, a decision), 8-20 words, no intro sentence.\n- Conclusion: 60-130 words, 1-2 paragraphs. One real recommendation or decision rule, one realistic expectation (how long / how often / what result), one closing line. No \"in conclusion\", no restating the list of sections, no call to comment or share.\n- FAQ: exactly the requested number of questions, taken from the provided list (rephrase slightly if needed), answers 25-70 words each, direct answer in the first sentence, no \"great question\". Only questions the body does NOT already answer (edge cases, safety, special hair or skin types, how often, how long it lasts); never restate a step, tip or table row as a question.\n- Disclaimer (only if requested): one paragraph, 30-60 words, plain language: general information, not medical/professional advice, see a doctor/dermatologist/professional for a persistent or serious problem.\n- American English, no em dashes or en dashes, no exclamation marks, no emoji, no brand names, no prices.\n- HTML only: <p>, <ul>, <li>, <strong> (labels only). No markdown.\n\nReturn ONLY one JSON object.",
           "text": "ARTICLE: \"{{keyword}}\"\nH1: {{h1}}\n\nRESEARCH BRIEF:\n{{brief_short}}\n\nWHAT THE BODY ALREADY SAYS (section by section):\n{{article_summary}}\n\nKey takeaways wanted: {{takeaways_wanted}}\nFAQ questions wanted: {{faq_count}}\nCandidate FAQ questions:\n{{faq_questions}}\nDisclaimer wanted: {{disclaimer_wanted}}\n\nJSON shape:\n{\"intro_html\":\"<p>...</p><p>...</p>\",\"takeaways_html\":\"<ul><li>...</li></ul>\" or null,\"conclusion_html\":\"<p>...</p>\",\"faq\":[{\"question\":\"...\",\"answer\":\"<p>...</p>\"}],\"disclaimer_html\":\"<p>...</p>\" or null}"
         }
       }

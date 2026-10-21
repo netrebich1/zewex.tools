@@ -64,7 +64,14 @@ export function assemblePostHtml(input: AssembleInput): AssembleOutput {
   const parts: string[] = [];
   let words = 0;
   // Alt — описание кадра от vision-оценки (что на фото), а не заголовок секции; ключ buildImageBlock допишет сам.
-  const img = (p: ImageLike, heading: string) => buildImageBlock(p, { heading: (p.altText || "").trim() || heading, keyword: input.keyword, caption: input.caption });
+  // Alt — описание кадра (что на фото), обрезанное по слову так, чтобы с ключом уложиться в 125 символов.
+  const altFor = (p: ImageLike, heading: string) => {
+    const base = (p.altText || "").trim().replace(/[.\s]+$/, "") || heading;
+    if (base.toLowerCase().includes(input.keyword.toLowerCase())) return base.slice(0, 125);
+    const room = Math.max(40, 125 - input.keyword.length - 3);
+    return base.length <= room ? base : base.slice(0, room).replace(/\s+\S*$/, "");
+  };
+  const img = (p: ImageLike, heading: string) => buildImageBlock(p, { heading: altFor(p, heading), keyword: input.keyword, caption: input.caption });
 
   const intro = balanceParagraphs(input.introHtml);
   words += countWords(intro);
@@ -96,6 +103,9 @@ export function assemblePostHtml(input: AssembleInput): AssembleOutput {
   if (input.closing?.url) parts.push(img(input.closing, `${input.keyword} result`));
   if (input.jsonLd) parts.push(`<script type="application/ld+json">${JSON.stringify(input.jsonLd).replace(/<\/script/gi, "<\\/script")}</script>`);
 
-  const html = dedupeImageBlocks(normalizeArticleHtml(parts.join("\n\n"))).replace(/<\/p>(\s*)<\/p>/gi, "</p>$1");
+  const html = dedupeImageBlocks(normalizeArticleHtml(parts.join("\n\n")))
+    .replace(/<\/p>(\s*)<\/p>/gi, "</p>$1")
+    // buildImageBlock и normalizeArticleHtml оба ставят центрирование — оставляем одно
+    .replace(/(display:block; margin-left:auto; margin-right:auto;)(\s*display:block; margin-left:auto; margin-right:auto;)+/g, "$1");
   return { html, toc, wordCount: words };
 }

@@ -10,7 +10,7 @@ import { usesUsSpelling } from "@/lib/articles/text/polish";
 import { assemblePostHtml, type AssembleSection } from "@/lib/blog/html";
 import { checkPostQuality, sectionProblemOf } from "@/lib/blog/qualityCheck";
 import { buildJsonLd } from "@/lib/blog/schema";
-import { cleanSectionHtml } from "@/lib/blog/text";
+import { cleanHeading, cleanSectionHtml, varyTipLabels } from "@/lib/blog/text";
 import { allowedTags } from "@/lib/blog/blocks";
 import type { StageHandler } from "./index";
 import { rewriteSection } from "./write";
@@ -83,10 +83,11 @@ export const assemble: StageHandler = async (ctx) => {
   const img = (slotKey: string | null | undefined) => {
     const p = slotKey ? photoBySlot.get(slotKey) : null;
     if (!p) return null;
-    return { url: p.wpUrl || p.publicUrl, width: p.width, height: p.height, sourcePageUrl: p.sourcePageUrl, sourceDomain: p.sourceDomain, altText: p.altText, pinDescription: p.description, position: p.position };
+    return { url: p.wpUrl || p.publicUrl, width: p.width, height: p.height, sourcePageUrl: p.sourcePageUrl, sourceDomain: p.sourceDomain, altText: p.altText, pinDescription: p.pinDescription, position: p.position };
   };
   const rows = await prisma.blogSection.findMany({ where: { postId: post.id, status: "written" }, orderBy: { position: "asc" } });
-  const secs: AssembleSection[] = rows.map((s) => ({ position: s.position, kind: s.kind, heading: s.heading, html: cleanSectionHtml(s.html ?? "", allowedTags(s.kind), pol, { allowLinks: true }), photo: img(s.slotKey) }));
+  const cleaned = varyTipLabels(rows.map((s) => cleanSectionHtml(s.html ?? "", allowedTags(s.kind), pol, { allowLinks: true })));
+  const secs: AssembleSection[] = rows.map((s, i) => ({ position: s.position, kind: s.kind, heading: cleanHeading(s.heading), html: cleaned[i], photo: img(s.slotKey) }));
   const faq = Array.isArray(fresh.faq) ? (fresh.faq as Array<{ question: string; answer: string }>).filter((f) => f?.question && f?.answer) : [];
   const jsonLd = recipe.publish.schema === "off" ? null : buildJsonLd({
     h1: fresh.h1 || outline.h1 || post.keyword, description: fresh.metaDescription || outline.metaDescription,

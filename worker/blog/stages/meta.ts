@@ -16,15 +16,21 @@ import type { StageHandler } from "./index";
 type Meta = { h1: string; title: string; description: string; slug: string };
 
 const SMALL = new Set(["a", "an", "and", "the", "for", "of", "to", "in", "on", "with", "or", "at", "by", "from", "vs", "that", "off", "up"]);
+/** Title Case: маленькие слова строчными, кроме первого слова и слова после двоеточия; части через дефис — с заглавной, кроме маленьких слов в середине («Step-by-Step»). */
 export function titleCase(s: string): string {
   let i = -1;
+  let afterColon = false;
+  const cap = (part: string) => part.replace(/([a-z])/, (c) => c.toUpperCase());
   return s.trim().split(/(\s+)/).map((w) => {
     if (/^\s+$/.test(w)) return w;
     i++;
+    const first = i === 0 || afterColon;
+    afterColon = /:$/.test(w);
     if (/^\d/.test(w) || /[A-Z]{2,}/.test(w)) return w;
     const core = w.toLowerCase();
-    if (i > 0 && SMALL.has(core.replace(/[^a-z']/g, ""))) return core;
-    return core.replace(/([a-z])/, (c) => c.toUpperCase());
+    if (!first && SMALL.has(core.replace(/[^a-z']/g, ""))) return core;
+    if (!core.includes("-")) return cap(core);
+    return core.split("-").map((part, j) => (j > 0 && SMALL.has(part.replace(/[^a-z']/g, "")) ? part : cap(part))).join("-");
   }).join("");
 }
 
@@ -143,8 +149,47 @@ Rules: title 40-58 characters, Title Case, contains the keyword naturally, no co
   await prisma.blogPost.update({ where: { id: post.id }, data: { h1: m.h1, metaTitle: m.title, metaDescription: m.description, slug: m.slug } });
   if (outline) await ctx.save({ outline: { ...outline, h1: m.h1, title: m.title, metaDescription: m.description, slug: m.slug } });
   problems = validate(m);
+  const pins = await writePinDescriptions(ctx, kwNoYear, m.h1);
   return {
-    summary: `${usedAi ? "ИИ" : "Из плана"}: «${m.title}» · /${m.slug}${problems.length ? ` (остались: ${problems.length})` : ""}`,
-    details: { ...m, usedAi, model: usedModel, year: year || null, yearInSlug, remaining: problems },
+    summary: `${usedAi ? "ИИ" : "Из плана"}: «${m.title}» · /${m.slug}${problems.length ? ` (остались: ${problems.length})` : ""}${pins.written ? ` · описания пинов: ${pins.written}` : ""}`,
+    details: { ...m, usedAi, model: usedModel, year: year || null, yearInSlug, remaining: problems, pins },
   };
 };
+
+/**
+ * Описание пина для каждого фото статьи (data-pin-description): когда читатель сохраняет картинку с сайта, в его пине
+ * будет этот текст, а не описание кадра. Один вызов text_fast на все фото; уже написанные не трогаем; сбой не роняет этап.
+ */
+async function writePinDescriptions(ctx: Parameters<StageHandler>[0], keyword: string, h1: string): Promise<{ written: number; error?: string }> {
+  const { post, outline, recipe } = ctx;
+  const photos = await prisma.blogPhoto.findMany({ where: { postId: post.id, excluded: false, pinDescription: null }, orderBy: { position: "asc" } });
+  if (!photos.length) return { written: 0 };
+  const headingOf = (slotKey: string) => {
+    if (slotKey === "hero") return h1;
+    if (slotKey === "closing") return "the finished result";
+    const pos = Number(slotKey.replace(/^s/, ""));
+    return outline?.sections.find((s) => s.position === pos)?.heading ?? h1;
+  };
+  await ctx.tick("Описания пинов");
+  const list = photos.map((p, i) => `${i + 1}. section: "${headingOf(p.slotKey)}"; photo shows: ${p.description || p.altText || "-"}`).join("\n");
+  const system = `You write Pinterest pin descriptions for photos inside an informational blog article. For EACH photo write one description a person would be glad to save: 150-280 characters, 1-2 natural sentences, says what the reader learns from this part of the article and why to save it, includes the keyword "${keyword}" once in natural form, may add one closely related search phrase. No hashtags, no emoji, no "click", no "link in bio", no quotes, no em dashes, American English.
+Return ONLY JSON: {"pins":[{"n":1,"description":"..."}]}`;
+  try {
+    const r = await aiChat(ctx.ai, { slot: SLOTS.textFast, model: stageModel(recipe, "meta"), system, user: `Article: "${h1}"\nPhotos:\n${list}`, json: true, temperature: 0.8, maxTokens: 1500, timeoutMs: 90_000 });
+    const parsed = parseModelJsonSafe(r.text) as { pins?: Array<{ n?: unknown; description?: unknown }> } | null;
+    let written = 0;
+    for (const it of parsed?.pins ?? []) {
+      const ph = photos[Number(it.n) - 1];
+      const d = fixDashesText(String(it.description ?? "").replace(/#\S+/g, "").replace(/\s+/g, " ").trim()).slice(0, 480);
+      if (!ph || d.length < 60) continue;
+      await prisma.blogPhoto.update({ where: { id: ph.id }, data: { pinDescription: d } });
+      written++;
+    }
+    return { written };
+  } catch (e) {
+    if (e instanceof AiError && e.cls.kind === "fatal_run") throw e;
+    const error = e instanceof Error ? e.message.slice(0, 200) : String(e);
+    ctx.log(`описания пинов не получены: ${error}`);
+    return { written: 0, error };
+  }
+}

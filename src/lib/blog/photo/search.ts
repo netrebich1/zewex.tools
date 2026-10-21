@@ -15,7 +15,7 @@ export { buildSearchQuery, hostOf, isBlockedDomain, orientationVerdict, sizeVerd
 
 /** Настройки поиска рецепта → SearchCfg статей (общие фильтры размера/ориентации/доменов). orientation — на слот. */
 export function searchCfgFor(ps: BlogPhotoSearch, orientation: "tall" | "square" | "any" | "wide"): SearchCfg {
-  const orient = orientation === "any" ? ["any" as const] : orientation === "tall" ? ["tall" as const, "square" as const] : orientation === "square" ? ["square" as const] : ["wide" as const];
+  const orient = orientation === "any" ? ["any" as const] : orientation === "tall" ? ["tall" as const] : orientation === "square" ? ["square" as const] : ["wide" as const];
   return normalizeSearchConfig({
     source: ps.source,
     country: ps.country,
