@@ -1,0 +1,150 @@
+/**
+ * Этап `meta`: title ≤60 (≥35), description 120–160, H1 с ключом, slug из ключа (год по политике запуска, как у статей).
+ * Сначала мета из плана; если не проходит проверку — одна починка ИИ (text_fast) с перечнем проблем; затем детерминированные
+ * правки и запасной вариант: пост никогда не остаётся без меты. Без {{COUNT}} и прочих листикл-правил.
+ */
+import { prisma } from "@/lib/db";
+import { AiError } from "@/lib/pins/ai/errors";
+import { aiChat } from "@/lib/blog/ai";
+import { parseModelJsonSafe } from "@/lib/articles/text/jsonRepair";
+import { applySlugYear, keywordYear, normalizeMetaYear, slugify, stripYear, yearInSlugFor, yearPercentOf } from "@/lib/articles/text/slug";
+import { fixDashesText, polishHeading, toUsSpellingText, usesUsSpelling } from "@/lib/articles/text/polish";
+import { stageModel } from "@/lib/blog/prompts";
+import { SLOTS } from "@/lib/blog/types";
+import type { StageHandler } from "./index";
+
+type Meta = { h1: string; title: string; description: string; slug: string };
+
+const SMALL = new Set(["a", "an", "and", "the", "for", "of", "to", "in", "on", "with", "or", "at", "by", "from", "vs", "that", "off", "up"]);
+export function titleCase(s: string): string {
+  let i = -1;
+  return s.trim().split(/(\s+)/).map((w) => {
+    if (/^\s+$/.test(w)) return w;
+    i++;
+    if (/^\d/.test(w) || /[A-Z]{2,}/.test(w)) return w;
+    const core = w.toLowerCase();
+    if (i > 0 && SMALL.has(core.replace(/[^a-z']/g, ""))) return core;
+    return core.replace(/([a-z])/, (c) => c.toUpperCase());
+  }).join("");
+}
+
+function hasKeyword(text: string, kw: string): boolean {
+  const words = kw.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+  const t = text.toLowerCase();
+  const stem = (w: string) => w.replace(/(ies|es|s)$/, "");
+  return words.every((w) => t.includes(stem(w)));
+}
+
+function trimTitle(t: string, max = 60): string {
+  if (t.length <= max) return t;
+  let s = t.slice(0, max);
+  s = s.replace(/[\s\-–—:,]+\S*$/, "");
+  return s.replace(/\s+(?:a|an|the|for|of|to|with|and|or|in|on|at|by|from|that|your)$/i, "").trim();
+}
+
+function fitDescription(d: string): string {
+  let out = d.trim().replace(/\s+/g, " ").replace(/^([a-z])/, (c) => c.toUpperCase());
+  if (out.length > 160) {
+    let best = "";
+    for (const m of out.matchAll(/[.!?](?=\s|$)/g)) {
+      const head = out.slice(0, (m.index ?? 0) + 1);
+      if (head.length <= 160) best = head; else break;
+    }
+    if (best.length >= 100) out = best;
+    else {
+      let acc = "";
+      for (const w of out.split(" ")) { const next = acc ? `${acc} ${w}` : w; if (next.length + 1 > 158) break; acc = next; }
+      out = `${acc.replace(/[\s,;:—–-]+$/, "").replace(/[.!?]+$/, "")}.`;
+    }
+  }
+  if (!/[.!?]$/.test(out)) out = `${out.replace(/[\s,;:—–-]+$/, "")}.`;
+  return out;
+}
+
+export const meta: StageHandler = async (ctx) => {
+  const { post, recipe, outline, brief } = ctx;
+  const keywordRaw = post.keyword.trim();
+  const year = keywordYear(keywordRaw);
+  const keyword = normalizeMetaYear(keywordRaw, year);
+  const kwNoYear = stripYear(keyword);
+  const us = usesUsSpelling(recipe.params.language, recipe.params.country);
+  const yearPercent = yearPercentOf(recipe.run?.yearInUrlPercent, recipe.publish?.seoYearUrlPercent);
+  const yearInSlug = yearInSlugFor(post.id, year, yearPercent);
+  const kwSlug = slugify(kwNoYear, 90);
+
+  const validate = (m: Meta): string[] => {
+    const p: string[] = [];
+    if (m.title.length > 60) p.push(`title is ${m.title.length} characters — rewrite it to 60 or fewer`);
+    if (m.title.length < 35) p.push(`title is only ${m.title.length} characters — make it 40-58 characters with one concrete benefit`);
+    if (m.description.length < 120) p.push(`description is ${m.description.length} characters — expand to 140-160`);
+    if (m.description.length > 160) p.push(`description is ${m.description.length} characters — shorten to 160 or fewer`);
+    if (!hasKeyword(m.title, kwNoYear)) p.push(`title must contain the keyword "${kwNoYear}" in recognisable form`);
+    if (!hasKeyword(m.h1, kwNoYear)) p.push(`h1 must contain the keyword "${kwNoYear}"`);
+    if (!hasKeyword(m.description, kwNoYear)) p.push(`description must contain the keyword "${kwNoYear}"`);
+    if (/\|/.test(m.title)) p.push("title must not contain a | separator or site name");
+    if (/[Ѐ-ӿ]/.test(`${m.h1}${m.title}${m.description}${m.slug}`)) p.push("meta must be in English (Latin letters only)");
+    if (/\b(stunning|elevate|effortless(?:ly)?|ultimate guide|must-know)\b/i.test(`${m.title} ${m.h1}`)) p.push("avoid marketing filler (stunning, elevate, effortless, ultimate guide)");
+    return p;
+  };
+
+  const fromPlan: Meta = {
+    h1: (outline?.h1 || post.h1 || keyword).trim(),
+    title: (outline?.title || post.metaTitle || outline?.h1 || keyword).trim(),
+    description: (outline?.metaDescription || post.metaDescription || "").trim(),
+    slug: (outline?.slug || post.slug || kwSlug).trim(),
+  };
+  let m: Meta = { ...fromPlan };
+  let problems = validate(m);
+  let usedAi = false;
+  let usedModel: string | null = null;
+  if (problems.length) {
+    await ctx.tick("SEO-мета: починка");
+    const system = `You write SEO metadata for an informational article on a US lifestyle blog. Return ONLY JSON: {"h1":"...","title":"...","description":"...","slug":"..."}.
+Rules: title 40-58 characters, Title Case, contains the keyword naturally, no colon-dump templates, no site name, no "|", no filler (ultimate, stunning, effortless, elevate, must-know); h1 40-75 characters, contains the exact keyword, may differ from the title; description 140-160 characters, contains the keyword, states what the reader will learn and one concrete benefit, no em dashes; slug = the keyword as one hyphenated block, lowercase, no extra words. ${year ? `Use the year ${year} in title, h1 and description.` : "No years anywhere."} American English.`;
+    const user = `Keyword: "${keyword}"\nIntent: ${brief?.intent ?? "informational"}. Summary: ${brief?.summary?.slice(0, 400) ?? ""}\nSection headings:\n${(outline?.sections ?? []).map((s) => `- ${s.heading}`).join("\n")}\n\nCurrent draft:\n${JSON.stringify(fromPlan)}\nProblems to fix:\n- ${problems.join("\n- ")}`;
+    try {
+      const r = await aiChat(ctx.ai, { slot: SLOTS.textFast, model: stageModel(recipe, "meta"), system, user, json: true, temperature: 0.8, maxTokens: 600, timeoutMs: 90_000 });
+      usedAi = true;
+      usedModel = r.model;
+      const parsed = parseModelJsonSafe(r.text) as Partial<Meta> | null;
+      if (parsed && typeof parsed === "object") {
+        const cand: Meta = { h1: String(parsed.h1 ?? m.h1), title: String(parsed.title ?? m.title), description: String(parsed.description ?? m.description), slug: String(parsed.slug ?? m.slug) };
+        if (validate(cand).length <= problems.length) m = cand;
+      }
+    } catch (e) {
+      if (e instanceof AiError && e.cls.kind === "fatal_run") throw e;
+      ctx.log(`починка меты ИИ не удалась: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // Детерминированные правки
+  if (/[Ѐ-ӿ]/.test(m.h1)) m.h1 = keyword;
+  if (/[Ѐ-ӿ]/.test(m.title)) m.title = keyword;
+  if (/[Ѐ-ӿ]/.test(m.description)) m.description = "";
+  m.h1 = normalizeMetaYear(m.h1, year);
+  m.title = normalizeMetaYear(m.title, year);
+  m.description = normalizeMetaYear(m.description, year);
+  if (!hasKeyword(m.h1, kwNoYear)) m.h1 = `${titleCase(kwNoYear)}: ${m.h1}`.slice(0, 120);
+  if (!hasKeyword(m.title, kwNoYear)) m.title = titleCase(kwNoYear);
+  if (m.title.length < 35 && m.h1.length >= 35 && m.h1.length <= 60) m.title = m.h1;
+  m.title = trimTitle(titleCase(polishHeading(m.title.replace(/\s*\|\s*.*$/, ""), { usSpelling: us })), 60);
+  m.h1 = titleCase(polishHeading(m.h1, { usSpelling: us })).slice(0, 120);
+  if (!m.description.trim() || m.description.length < 60) m.description = `${titleCase(kwNoYear)}: what works, what to avoid and how to do it right, step by step, with practical tips you can use today.`;
+  if (!hasKeyword(m.description, kwNoYear)) m.description = `${kwNoYear.charAt(0).toUpperCase()}${kwNoYear.slice(1)}: ${m.description}`;
+  m.description = fitDescription(us ? toUsSpellingText(fixDashesText(m.description)) : fixDashesText(m.description));
+  if (m.description.length < 120) m.description = fitDescription(`${m.description.replace(/[.!?]$/, "")}. Clear steps, common mistakes and practical tips in one guide.`);
+  if (year && !m.title.includes(year)) m.title = trimTitle(`${m.title} ${year}`, 60).includes(year) ? trimTitle(`${m.title} ${year}`, 60) : `${trimTitle(m.title, 60 - year.length - 1)} ${year}`;
+  // Slug: ключ одним блоком; план мог добавить слова — оставляем, если ключ внутри и длина разумная
+  let slug = slugify(m.slug, 90);
+  if (!slug.includes(kwSlug) || slug.length > kwSlug.length + 30) slug = kwSlug;
+  slug = applySlugYear(slug.replace(/-?\b20\d{2}\b/g, "").replace(/-{2,}/g, "-").replace(/^-|-$/g, ""), year, yearInSlug) || kwSlug;
+  m.slug = slug;
+
+  await prisma.blogPost.update({ where: { id: post.id }, data: { h1: m.h1, metaTitle: m.title, metaDescription: m.description, slug: m.slug } });
+  if (outline) await ctx.save({ outline: { ...outline, h1: m.h1, title: m.title, metaDescription: m.description, slug: m.slug } });
+  problems = validate(m);
+  return {
+    summary: `${usedAi ? "ИИ" : "Из плана"}: «${m.title}» · /${m.slug}${problems.length ? ` (остались: ${problems.length})` : ""}`,
+    details: { ...m, usedAi, model: usedModel, year: year || null, yearInSlug, remaining: problems },
+  };
+};

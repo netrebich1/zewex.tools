@@ -2,6 +2,7 @@ import { requeueStale } from "./queue";
 import { log } from "./log";
 import { domainsRequeueStale } from "./domains";
 import { requeueStaleArticles } from "./articles";
+import { requeueStalePosts } from "./blog";
 import { autostartTick } from "./articles/autostart";
 import { purgePublishedBacklog } from "@/lib/articles/wp/cleanup";
 import { measureStorage } from "@/lib/articles/storage";
@@ -22,6 +23,8 @@ export function startCron(): () => void {
   timers.push(setTimeout(purge, 60_000));
   timers.push(setInterval(purge, 24 * 60 * 60_000));
   timers.push(setInterval(() => requeueStaleArticles().catch((e) => log.warn("articles requeueStale failed", e)), 5 * 60_000));
+  // Инфо-статьи (Pin Blog Article): посты с истёкшей арендой — в очередь.
+  timers.push(setInterval(() => requeueStalePosts().catch((e) => log.warn("blog requeueStale failed", e)), 5 * 60_000));
   // Статьи: файлы фото опубликованных статей — каждые 30 мин. Строки опубликованных статей НЕ удаляются (аудит 2026-10-14):
   // журнал, расходы, защита от повторного ключа и досылка в Google Таблицу живут на них.
   timers.push(setInterval(() => purgePublishedBacklog(50).catch((e) => log.warn("articles purgePublishedBacklog failed", e)), 30 * 60_000));

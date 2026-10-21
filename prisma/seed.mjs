@@ -203,6 +203,57 @@ for (const r of artCfg.recipes) {
   }
 }
 console.log(`articles seed: ${artCfg.niches.length} niches, ${artCfg.profiles.length} profiles, ${artPrompts.sets.length} sets, ${artPrompts.prompts.length} prompts (${promptsCreated} new, ${promptsVersioned} new seed versions), ${artCfg.recipes.length} recipes (${recipesPatched} with new stage models)`);
+
+// ───────────────────────────── Pin Blog Article (инфо-статьи) ─────────────────────────────
+// Отдельный сервис рядом со «Статьями»: проект `blog`, свои слоты ключей, рецепт по умолчанию с промтами всех этапов
+// (prisma/seed-data/blog/recipes.json). Идемпотентно: рецепт создаётся, если его нет; промты и параметры обновляются
+// только пока их никто не правил в портале (нет BlogRecipeVersion) или при новой метке seedRev (новая версия).
+const blogProject = await prisma.project.upsert({
+  where: { slug: "blog" },
+  update: {},
+  create: { sectionId: pinterest.id, slug: "blog", name: "Pin Blog Article", description: "Инфо-статьи под Pinterest: исследование темы → адаптивный план → реальные фото по разделам → текст → проверка → WordPress", url: "/pinterest/blog", status: "ACTIVE", order: 4 },
+});
+const blogSlots = [
+  { key: "text_main", name: "Тексты статьи (писатель)", capability: "CHAT", description: "План, секции, вступление и заключение, FAQ (модель по рецепту)", preferProviders: "openrouter,laozhang,openai" },
+  { key: "text_fast", name: "Быстрые шаги", capability: "CHAT", description: "Исследование темы, починка меты, категория WordPress (gemini-2.5-flash по рецепту)", preferProviders: "openrouter,laozhang,openai" },
+  { key: "vision", name: "Оценка фото (vision)", capability: "CHAT", description: "Релевантность кадра разделу статьи, качество, настоящее ли фото", preferProviders: "openrouter,laozhang,openai" },
+  { key: "photo_dfs", name: "Поиск фото (DataForSEO)", capability: "SEO_DATA", description: "Google Images через DataForSEO — основной источник реальных фото", preferProviders: "dataforseo" },
+  { key: "photo_serp", name: "Поиск фото (SerpAPI)", capability: "SERP", description: "Запасной источник Google Images", preferProviders: "serpapi" },
+  { key: "serp_organic", name: "Выдача Google (SerpAPI)", capability: "SERP", description: "People Also Ask и заголовки топа для исследования темы (необязательно, включается в рецепте)", preferProviders: "serpapi" },
+];
+for (const sl of blogSlots) {
+  await prisma.slot.upsert({ where: { projectId_key: { projectId: blogProject.id, key: sl.key } }, update: { preferProviders: sl.preferProviders }, create: { ...sl, projectId: blogProject.id } });
+}
+{
+  const blogSeed = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "seed-data", "blog", "recipes.json"), "utf8"));
+  let created = 0, updated = 0;
+  for (const r of blogSeed.recipes) {
+    const { seedRev, ...data } = r;
+    const ex = await prisma.blogRecipe.findUnique({ where: { id: r.id }, select: { id: true, prompts: true, params: true, versions: { orderBy: { version: "desc" }, take: 1, select: { version: true, changeSummary: true } } } });
+    if (!ex) {
+      await prisma.blogRecipe.create({ data });
+      created++;
+      continue;
+    }
+    const mark = `seed:${seedRev ?? 0}`;
+    const applied = await prisma.blogRecipeVersion.findFirst({ where: { recipeId: r.id, changeSummary: { startsWith: mark } }, select: { id: true } });
+    if (!ex.versions.length) {
+      // Никто не правил в портале — подтягиваем свежие промты и параметры из сида (модели и настройки поиска не трогаем).
+      await prisma.blogRecipe.update({ where: { id: r.id }, data: { prompts: r.prompts, params: r.params } });
+      updated++;
+    } else if (seedRev && !applied) {
+      const next = ex.versions[0].version + 1;
+      await prisma.$transaction([
+        prisma.blogRecipeVersion.create({ data: { recipeId: r.id, version: next, prompts: ex.prompts, params: ex.params, changeSummary: "seed: снимок текущих промтов перед обновлением" } }),
+        prisma.blogRecipe.update({ where: { id: r.id }, data: { prompts: r.prompts, params: r.params } }),
+        prisma.blogRecipeVersion.create({ data: { recipeId: r.id, version: next + 1, prompts: r.prompts, params: r.params, changeSummary: `${mark} — обновление из recipes.json; прежние промты — версия ${next}` } }),
+      ]);
+      updated++;
+    }
+  }
+  console.log(`blog seed: ${blogSeed.recipes.length} recipes (${created} new, ${updated} updated)`);
+}
+
 // Финансы Wexora: закрытый инструмент (PRIVATE_TOOLS), видят владелец и те, кому он выдал доступ.
 const wexora = await prisma.section.findUnique({ where: { slug: "wexora" } });
 await prisma.project.upsert({

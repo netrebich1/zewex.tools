@@ -11,8 +11,10 @@ import { setSiteToolActive, testSiteAccess, type FormState } from "@/actions/acc
 import { siteDeletionImpact } from "@/lib/sites/delete";
 import { enablePinsForSite } from "@/actions/pins";
 import { enableArticlesForSite } from "@/actions/articles";
+import { enableBlogForSite } from "@/actions/blog";
 import { PROJECT_SLUG } from "@/lib/pins/types";
 import { PROJECT_SLUG as ARTICLES_SLUG } from "@/lib/articles/types";
+import { PROJECT_SLUG as BLOG_SLUG } from "@/lib/blog/types";
 import { fmtDate } from "@/lib/utils";
 import { SiteAccessForm } from "@/components/sites/SiteAccessForm";
 import { DeleteSiteForm } from "@/components/sites/DeleteSiteForm";
@@ -39,10 +41,11 @@ export default async function SitePage({ params, searchParams }: { params: Promi
   }
   if (!canSeeAccess(me, access)) notFound();
 
-  const [{ teams, projects, members }, pins, articles] = await Promise.all([
+  const [{ teams, projects, members }, pins, articles, blog] = await Promise.all([
     accessFormData(me),
     prisma.pinSite.findFirst({ where: { wpConnectionId: access.id }, select: { id: true, isActive: true } }),
     prisma.artSite.findFirst({ where: { accessId: access.id }, select: { id: true, isActive: true } }),
+    prisma.blogSite.findFirst({ where: { accessId: access.id }, select: { id: true, isActive: true } }),
   ]);
   const teamName = (tid: string) => teams.find((t) => t.id === tid)?.name ?? "другая команда";
   const canDelete = canManageTeam(me, access.teamId);
@@ -51,6 +54,7 @@ export default async function SitePage({ params, searchParams }: { params: Promi
   const pr = (access.projects as string[] | null) ?? [];
   const pinsAllowed = !pr.length || pr.includes(PROJECT_SLUG);
   const articlesAllowed = !pr.length || pr.includes(ARTICLES_SLUG);
+  const blogAllowed = !pr.length || pr.includes(BLOG_SLUG);
 
   return (
     <>
@@ -77,6 +81,12 @@ export default async function SitePage({ params, searchParams }: { params: Promi
                 settingsHref={articles ? `/pinterest/articles/sites/${articles.id}?tab=settings` : ""} enable={enableArticlesForSite}
                 offWarning="Сайт пропадёт из Статей: новые запуски и автозапуск остановятся, статьи в очереди будут ждать. Настройки, запуски и статьи сохранятся, подключить снова можно в любой момент. Отключить?"
               />
+              <ToolRow
+                accessId={access.id} canEdit={canEdit} tool="blog" name="Pin Blog Article" allowed={blogAllowed} site={blog}
+                hint="Инфо-статьи (how-to, причины, сравнение): рецепт, проверка, публикация, категории — в настройках сайта внутри инструмента."
+                settingsHref={blog ? `/pinterest/blog/sites/${blog.id}?tab=settings` : ""} enable={enableBlogForSite}
+                offWarning="Сайт пропадёт из Pin Blog Article: воркер не будет брать его статьи. Настройки и история сохранятся. Отключить?"
+              />
             </div>
           </Card>
         </div>
@@ -91,6 +101,7 @@ export default async function SitePage({ params, searchParams }: { params: Promi
               <div className="flex justify-between gap-3"><dt className="text-muted">Подключение</dt><dd>{access.lastCheckOk == null ? <span className="text-muted">не проверялось</span> : access.lastCheckOk ? <Badge tone="ok">работает</Badge> : <Badge tone="danger">ошибка</Badge>}</dd></div>
               {pins && <div className="flex justify-between gap-3"><dt className="text-muted">Pinterest Pins</dt><dd>{pins.isActive ? <Badge tone="ok">подключён</Badge> : <Badge>отключён</Badge>}</dd></div>}
               {articles && <div className="flex justify-between gap-3"><dt className="text-muted">Статьи</dt><dd>{articles.isActive ? <Badge tone="ok">подключён</Badge> : <Badge>отключён</Badge>}</dd></div>}
+              {blog && <div className="flex justify-between gap-3"><dt className="text-muted">Pin Blog Article</dt><dd>{blog.isActive ? <Badge tone="ok">подключён</Badge> : <Badge>отключён</Badge>}</dd></div>}
               <div className="flex justify-between gap-3"><dt className="text-muted">Создан</dt><dd>{fmtDate(access.createdAt)}</dd></div>
             </dl>
             <div className="mt-4 space-y-2">
@@ -120,7 +131,7 @@ export default async function SitePage({ params, searchParams }: { params: Promi
 
 /** Строка инструмента: подключить / открыть настройки и отключить / подключить снова. Отключение = архив в инструменте, данные сохраняются. */
 function ToolRow({ accessId, canEdit, tool, name, hint, allowed, site, settingsHref, enable, offWarning }: {
-  accessId: string; canEdit: boolean; tool: "pins" | "articles"; name: string; hint: string; allowed: boolean;
+  accessId: string; canEdit: boolean; tool: "pins" | "articles" | "blog"; name: string; hint: string; allowed: boolean;
   site: { id: string; isActive: boolean } | null; settingsHref: string; offWarning: string;
   enable: (p: FormState, f: FormData) => Promise<FormState>;
 }) {

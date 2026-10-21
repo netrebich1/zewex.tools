@@ -157,12 +157,12 @@ export async function setSiteToolActive(_p: FormState, f: FormData): Promise<For
   const accessId = str(f, "accessId");
   const tool = str(f, "tool");
   const on = str(f, "on") === "1";
-  if (tool !== "pins" && tool !== "articles") return { error: "Неизвестный инструмент" };
+  if (tool !== "pins" && tool !== "articles" && tool !== "blog") return { error: "Неизвестный инструмент" };
   const access = await prisma.siteAccess.findUnique({ where: { id: accessId }, select: { id: true, projects: true } });
   if (!access || !(await canAccessSiteAccess(me, accessId))) return { error: "Сайт не найден" };
   if (!(await canEditSiteAccess(me, accessId))) return { error: "Подключать и отключать инструменты может лидер команды-владельца или админ" };
-  const label = tool === "pins" ? "Pinterest Pins" : "Статьи";
-  const slug = tool === "pins" ? "pins" : "articles";
+  const label = tool === "pins" ? "Pinterest Pins" : tool === "blog" ? "Pin Blog Article" : "Статьи";
+  const slug = tool === "pins" ? "pins" : tool === "blog" ? "blog" : "articles";
   const pr = (access.projects as string[] | null) ?? [];
   if (on && pr.length && !pr.includes(slug)) return { error: `Сначала отметьте «${label}» в списке инструментов сайта выше и сохраните сайт` };
   try {
@@ -177,6 +177,17 @@ export async function setSiteToolActive(_p: FormState, f: FormData): Promise<For
       await prisma.pinSite.updateMany({ where: { id: { in: ids } }, data: { isActive: on } });
       ids.forEach((id) => revalidatePath(`/pinterest/pins/sites/${id}`));
       revalidatePath("/pinterest/pins");
+    } else if (tool === "blog") {
+      const sites = await prisma.blogSite.findMany({ where: { accessId }, select: { id: true } });
+      if (!sites.length) return { error: "Pin Blog Article для этого сайта ещё не включали" };
+      const ids = sites.map((s) => s.id);
+      if (!on) {
+        const busy = await prisma.blogPost.count({ where: { siteId: { in: ids }, status: { in: ["RUNNING", "PUBLISHING"] } } });
+        if (busy) return { error: `Сейчас пишутся или публикуются инфо-статьи сайта (${busy}). Дождитесь окончания, потом отключайте.` };
+      }
+      await prisma.blogSite.updateMany({ where: { id: { in: ids } }, data: { isActive: on } });
+      ids.forEach((id) => revalidatePath(`/pinterest/blog/sites/${id}`));
+      revalidatePath("/pinterest/blog");
     } else {
       const sites = await prisma.artSite.findMany({ where: { accessId }, select: { id: true } });
       if (!sites.length) return { error: "Статьи для этого сайта ещё не включали" };

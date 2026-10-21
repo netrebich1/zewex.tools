@@ -497,6 +497,7 @@ model SiteAccess {
   /// Если не пусто — сайт видят только эти сотрудники (плюс админы и лидеры команды-владельца)
   viewers             SiteAccessViewer[]
   artSites            ArtSite[]
+  blogSites           BlogSite[]
 
   @@index([teamId])
   @@map("PinWpConnection")
@@ -1772,4 +1773,371 @@ model GaDimDaily {
 
   @@id([propertyId, date, kind, value])
   @@index([kind, date])
+}
+
+// ═══════════════════════════ Pin Blog Article — инфо-статьи (сервис `blog`, src/lib/blog, worker/blog) ═══════════════════════════
+// Отдельный сервис рядом со «Статьями»: текст-первичные статьи (how-to, причины, сравнение) с 3–7 реальными фото под разделы.
+// Пост (BlogPost) — одновременно строка очереди воркера, как Article у статей. Все модели с префиксом Blog.
+
+enum BlogStatus {
+  PENDING
+  RUNNING
+  REVIEW_PENDING
+  NEEDS_REWORK
+  PUBLISHING
+  COMPLETED
+  PUBLISH_ERROR
+  FAILED
+  STOPPED
+}
+
+/// Сайт в сервисе инфо-статей: привязка к доступу WordPress (SiteAccess), рецепт по умолчанию, настройки (BlogSiteSettings)
+model BlogSite {
+  id              String      @id @default(uuid()) @db.Char(36)
+  teamId          String
+  accessId        String?     @db.Char(36)
+  name            String
+  slug            String
+  isActive        Boolean     @default(true)
+  defaultRecipeId String?     @db.Char(36)
+  /// BlogSiteSettings (src/lib/blog/types.ts): concurrency, review, publishMode, categories, search
+  settings        Json
+  /// Кэш категорий WordPress [{id, name, slug, parent}]
+  wpCategories    Json?
+  createdById     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  access          SiteAccess? @relation(fields: [accessId], references: [id], onDelete: SetNull)
+  defaultRecipe   BlogRecipe? @relation(fields: [defaultRecipeId], references: [id], onDelete: SetNull)
+  runs            BlogRun[]
+  posts           BlogPost[]
+
+  @@unique([teamId, slug])
+  @@index([teamId])
+  @@index([accessId])
+}
+
+/// Рецепт инфо-статьи: промты по этапам (JSON {stageKey: {system, text}}), модели, параметры (BlogRecipeParams), поиск фото, публикация
+model BlogRecipe {
+  id          String              @id @default(uuid()) @db.Char(36)
+  number      Int?
+  name        String
+  description String?             @db.Text
+  isActive    Boolean             @default(true)
+  isDefault   Boolean             @default(false)
+  /// {stage_key: "provider:model"}
+  models      Json
+  /// {stage_key: {system, text}}
+  prompts     Json
+  /// BlogRecipeParams
+  params      Json
+  /// BlogPhotoSearch
+  photoSearch Json
+  /// {mode, seoYearUrlPercent, schema}
+  publish     Json
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  sites       BlogSite[]
+  runs        BlogRun[]
+  posts       BlogPost[]
+  versions    BlogRecipeVersion[]
+}
+
+/// История правок рецепта (промты + параметры) — пишется при каждом сохранении в UI
+model BlogRecipeVersion {
+  id            String     @id @default(uuid()) @db.Char(36)
+  recipeId      String     @db.Char(36)
+  version       Int
+  prompts       Json
+  params        Json
+  changeSummary String?
+  createdById   String?
+  createdAt     DateTime   @default(now())
+  recipe        BlogRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([recipeId, version])
+}
+
+/// Запуск: партия ключей на один сайт с одним рецептом и параметрами
+model BlogRun {
+  id          String      @id @default(uuid()) @db.Char(36)
+  teamId      String
+  siteId      String      @db.Char(36)
+  recipeId    String?     @db.Char(36)
+  createdById String?
+  name        String      @default("")
+  /// BlogRunSettings
+  settings    Json
+  createdAt   DateTime    @default(now())
+  site        BlogSite    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  recipe      BlogRecipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  posts       BlogPost[]
+
+  @@index([siteId, createdAt])
+  @@index([teamId, createdAt])
+}
+
+/// Инфо-статья: ключ, состояние конвейера, бриф исследования, план, тексты, мета, публикация. Одновременно строка очереди воркера.
+model BlogPost {
+  id              String      @id @default(uuid()) @db.Char(36)
+  teamId          String
+  siteId          String      @db.Char(36)
+  runId           String?     @db.Char(36)
+  recipeId        String?     @db.Char(36)
+  createdById     String?
+  keyword         String
+  focusKeyword    String      @default("")
+  /// Снимок рецепта и настроек запуска (BlogRecipeSnapshot) — его исполняет воркер
+  recipe          Json
+  status          BlogStatus  @default(PENDING)
+  /// Текущий этап реестра (research, outline, …, publish, done)
+  stage           String      @default("research")
+  /// Служебные данные этапов (BlogCursor)
+  cursor          Json?
+  /// Исследование темы (BlogBrief): интент, аудитория, факты, вопросы, YMYL
+  brief           Json?
+  /// План статьи (BlogOutline): H1/мета, секции с типами блоков, слоты картинок, флаги
+  outline         Json?
+  introHtml       String?     @db.MediumText
+  takeawaysHtml   String?     @db.MediumText
+  conclusionHtml  String?     @db.MediumText
+  /// [{question, answer}]
+  faq             Json?
+  disclaimerHtml  String?     @db.Text
+  html            String?     @db.LongText
+  /// JSON-LD (Article / FAQPage / HowTo), собирается на сборке
+  schema          Json?
+  h1              String      @default("")
+  metaTitle       String      @default("")
+  metaDescription String      @default("") @db.Text
+  slug            String      @default("")
+  wordCount       Int         @default(0)
+  wpPostId        Int?
+  wpUrl           String?     @db.VarChar(1000)
+  wpCategoryId    Int?
+  wpStatus        String?
+  publishAttempts Int         @default(0)
+  error           String?     @db.Text
+  errorStage      String?
+  note            String?     @db.Text
+  attempts        Int         @default(0)
+  priority        Int         @default(0)
+  nextRunAt       DateTime?
+  leaseUntil      DateTime?
+  workerId        String?
+  stopRequested   Boolean     @default(false)
+  reviewedById    String?
+  reviewedAt      DateTime?
+  reviewNote      String?     @db.Text
+  costUsd         Float       @default(0)
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  publishedAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  site            BlogSite    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  run             BlogRun?    @relation(fields: [runId], references: [id], onDelete: SetNull)
+  recipeRef       BlogRecipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  sections        BlogSection[]
+  slots           BlogImageSlot[]
+  candidates      BlogPhotoCandidate[]
+  photos          BlogPhoto[]
+  stageLogs       BlogStageLog[]
+  errors          BlogError[]
+
+  @@index([siteId, status])
+  @@index([teamId, status])
+  @@index([status, priority, createdAt])
+  @@index([runId])
+  @@index([siteId, keyword])
+}
+
+/// Секция статьи по плану: тип блока (kind из каталога src/lib/blog/blocks.ts), заголовок, бриф, HTML
+model BlogSection {
+  id        String   @id @default(uuid()) @db.Char(36)
+  postId    String   @db.Char(36)
+  position  Int
+  kind      String   @default("prose")
+  heading   String   @default("") @db.Text
+  /// План секции: key_points, target_words, notes…
+  brief     Json?
+  html      String?  @db.MediumText
+  wordCount Int      @default(0)
+  /// planned | written | failed
+  status    String   @default("planned")
+  error     String?  @db.Text
+  /// Ключ слота картинки (BlogImageSlot.key), если у секции есть фото
+  slotKey   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  post      BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, position])
+}
+
+/// Слот картинки по плану: что должно быть на фото, к какой секции относится, выбранное фото
+model BlogImageSlot {
+  id              String   @id @default(uuid()) @db.Char(36)
+  postId          String   @db.Char(36)
+  /// hero | s<position> | closing
+  key             String
+  sectionPosition Int?
+  /// Поисковый запрос Google Images (английский) и что обязательно/нельзя видеть в кадре
+  query           String   @db.Text
+  altQuery        String?  @db.Text
+  mustShow        String?  @db.Text
+  avoid           String?  @db.Text
+  /// tall | square | any
+  orientation     String   @default("tall")
+  /// Обязательный слот (hero): без него статья не выходит
+  required        Boolean  @default(false)
+  /// pending | searched | rated | chosen | empty
+  status          String   @default("pending")
+  chosenPhotoId   String?  @db.Char(36)
+  /// Сколько раз искали (основной запрос, запасной)
+  searches        Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  post            BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  candidates      BlogPhotoCandidate[]
+
+  @@unique([postId, key])
+}
+
+/// Кандидат фото слота (все найденные, включая отбракованные с причиной)
+model BlogPhotoCandidate {
+  id            String        @id @default(uuid()) @db.Char(36)
+  postId        String        @db.Char(36)
+  slotId        String        @db.Char(36)
+  url           String        @db.VarChar(2000)
+  pageUrl       String        @default("") @db.VarChar(2000)
+  domain        String        @default("")
+  thumbUrl      String        @default("") @db.VarChar(2000)
+  title         String        @default("") @db.Text
+  searchQuery   String        @default("") @db.VarChar(500)
+  position      Int           @default(0)
+  width         Int?
+  height        Int?
+  bytes         Int?
+  sha256        String?
+  phash         String?
+  /// storage/blog/<postId>/cand/<id>.jpg и миниатюра
+  path          String        @default("")
+  thumbPath     String        @default("")
+  /// found | downloaded | rejected | keep | chosen | reserve
+  status        String        @default("found")
+  rejectStage   String?
+  rejectReason  String?       @db.Text
+  techScore     Int?
+  techDetails   Json?
+  /// Vision-оценка: релевантность слоту 0–10 и итоговый балл
+  aiScore       Float?
+  relevance     Float?
+  aiBreakdown   Json?
+  aiDescription String?       @db.Text
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  post          BlogPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  slot          BlogImageSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  @@index([postId, status])
+  @@index([slotId, status])
+  @@index([sha256])
+}
+
+/// Фото статьи (выбранное для слота; position — порядок в статье)
+model BlogPhoto {
+  id            String   @id @default(uuid()) @db.Char(36)
+  postId        String   @db.Char(36)
+  slotKey       String
+  candidateId   String?  @db.Char(36)
+  position      Int
+  path          String   @default("")
+  thumbPath     String   @default("")
+  publicUrl     String   @default("") @db.VarChar(1000)
+  sourceUrl     String   @default("") @db.VarChar(2000)
+  sourcePageUrl String   @default("") @db.VarChar(2000)
+  sourceDomain  String   @default("")
+  width         Int?
+  height        Int?
+  sha256        String?
+  phash         String?
+  altText       String   @default("") @db.Text
+  caption       String   @default("") @db.Text
+  description   String?  @db.Text
+  fileName      String   @default("")
+  aiScore       Float?
+  wpMediaId     Int?
+  wpUrl         String?  @db.VarChar(1000)
+  excluded      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  post          BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, position])
+  @@index([sha256])
+}
+
+/// Отпечатки использованных фото: уникальность между постами и сайтами
+model BlogPhotoFingerprint {
+  id        String   @id @default(uuid()) @db.Char(36)
+  teamId    String
+  siteId    String   @db.Char(36)
+  postId    String?  @db.Char(36)
+  sha256    String?
+  phash     String?
+  sourceUrl String   @default("") @db.VarChar(2000)
+  createdAt DateTime @default(now())
+
+  @@index([teamId, sha256])
+  @@index([postId])
+  @@index([teamId, createdAt])
+}
+
+/// Журнал этапов поста
+model BlogStageLog {
+  id         String    @id @default(uuid()) @db.Char(36)
+  postId     String    @db.Char(36)
+  stage      String
+  /// running | done | error | skipped
+  status     String    @default("running")
+  summary    String?   @db.Text
+  error      String?   @db.Text
+  details    Json?
+  costUsd    Float     @default(0)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  post       BlogPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, startedAt])
+}
+
+/// Ошибки конвейера инфо-статей: группировка по сигнатуре
+model BlogError {
+  id         String    @id @default(uuid()) @db.Char(36)
+  teamId     String
+  siteId     String?   @db.Char(36)
+  postId     String?   @db.Char(36)
+  stage      String
+  message    String    @db.Text
+  signature  String
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  post       BlogPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, createdAt])
+  @@index([signature, createdAt])
+  @@index([siteId, createdAt])
+}
+
+/// Глобальные настройки сервиса инфо-статей (singleton, id = "main")
+model BlogSettings {
+  id            String   @id @default("main")
+  /// Мастер-выключатель: при false воркер не берёт посты ни одного сайта
+  master        Boolean  @default(true)
+  /// Потолок одновременных постов на всех сайтах (0 — только BLOG_WORKER_CONCURRENCY)
+  maxConcurrent Int      @default(0)
+  /// Потолок воркера (BLOG_WORKER_CONCURRENCY): воркер пишет при старте
+  workerCap     Int      @default(0)
+  updatedAt     DateTime @updatedAt
 }

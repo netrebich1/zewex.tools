@@ -1,0 +1,276 @@
+/**
+ * Раннер инфо-статьи: ведёт захваченный пост по этапам реестра подряд, пока не дойдёт до ожидания (проверка перед
+ * публикацией), конца или ошибки. Копия worker/articles/runner.ts под модели Blog*, те же классы сбоев и политика
+ * повторов (src/lib/articles/errors.ts): временные — пауза и повтор; формат ответа — до 3 отложенных повторов;
+ * ключ — пост ждёт рабочий ключ; окончательная ошибка — FAILED (на publish — PUBLISH_ERROR).
+ * Развилка одна: после `assemble` при review=before_publish у сайта пост ждёт человека (REVIEW_PENDING),
+ * кроме повторной сборки после одобрения (cursor.reviewApproved).
+ */
+import { prisma } from "@/lib/db";
+import type { BlogPost, BlogStatus } from "@prisma/client";
+import { decryptSecret } from "@/lib/crypto";
+import { postCost } from "@/lib/blog/ai";
+import { mergeSiteSettings, type BlogBrief, type BlogCursor, type BlogOutline, type BlogRecipeSnapshot } from "@/lib/blog/types";
+import { nextStage, stageLabel, type StageKey } from "@/lib/blog/stages";
+import { classifyFailure, inWords, isTransientError, retryPlan, TRANSIENT_DELAYS_MS, type Classified, type RetryKind } from "@/lib/articles/errors";
+import { STAGES, StopRequested, type StageCtx, type StageResult } from "./stages";
+import { finishLog, markDetails, recordError, retryStreak, type RetryStreak } from "./journal";
+import { MAX_ATTEMPTS, releasePost, renewLease } from "./queue";
+import { log } from "../log";
+
+const OUTER_RETRY_MS = 30_000;
+
+export async function processPost(post: BlogPost, workerId: string, shuttingDown: () => boolean): Promise<void> {
+  const ac = new AbortController();
+  let stopping = false;
+  const heartbeat = setInterval(async () => {
+    try {
+      const r = await renewLease(post.id, workerId);
+      if (r.lost && !ac.signal.aborted) {
+        log.warn(`blog post ${post.id}: lease lost; aborting local execution`);
+        ac.abort(new Error("lease lost"));
+      } else if (r.stopping && !stopping) {
+        stopping = true;
+        ac.abort(new StopRequested());
+      }
+      if (shuttingDown() && !ac.signal.aborted) ac.abort(new Error("worker shutting down"));
+    } catch (e) {
+      log.warn(`heartbeat failed for blog post ${post.id}`, e);
+    }
+  }, 20_000);
+
+  let current: BlogPost = post;
+  let openLogId: string | null = null;
+  try {
+    const site = await prisma.blogSite.findUnique({ where: { id: current.siteId } });
+    if (!site) { await fail(current, "Сайт поста не найден"); return; }
+    const access = site.accessId ? await prisma.siteAccess.findUnique({ where: { id: site.accessId } }) : null;
+    const userId = current.createdById ?? "";
+    if (!userId) { await fail(current, "У поста не указан пользователь: некому выбрать ключи ИИ"); return; }
+
+    for (let guard = 0; guard < 40; guard++) {
+      const stage = current.stage as StageKey;
+      const handler = STAGES[stage];
+      if (!handler) {
+        await fail(current, `Этап «${stageLabel(stage)}» ещё не реализован. Всё сделанное сохранено.`);
+        return;
+      }
+      const started = await prisma.blogStageLog.create({ data: { postId: current.id, stage, status: "running" } });
+      openLogId = started.id;
+      const streak = await retryStreak(current.id, stage, started.id);
+      const costBefore = await postCost(current.id);
+      log.info(`blog post ${current.id.slice(0, 8)} stage=${stage} attempt=${current.attempts}${streakText(streak)}`);
+
+      const recipe = current.recipe as unknown as BlogRecipeSnapshot;
+      let cursor = (current.cursor ?? {}) as BlogCursor;
+      let brief = (current.brief ?? null) as BlogBrief | null;
+      let outline = (current.outline ?? null) as BlogOutline | null;
+      let lastLabel = "";
+
+      const ctx: StageCtx = {
+        post: current,
+        site,
+        access,
+        creds: () => {
+          if (!access || !access.username || !access.appPasswordEnc) throw new Error("У сайта нет доступа WordPress: укажите логин и Application Password в разделе «Сайты».");
+          return { baseUrl: access.baseUrl, username: access.username, appPassword: decryptSecret(access.appPasswordEnc) };
+        },
+        recipe,
+        cursor,
+        brief,
+        outline,
+        ai: { userId, teamId: current.teamId, postId: current.id, siteId: site.id, signal: ac.signal },
+        signal: ac.signal,
+        tick: async (label) => {
+          if (ac.signal.aborted) throw ac.signal.reason instanceof StopRequested ? ac.signal.reason : new Error("aborted");
+          const r = await renewLease(current.id, workerId);
+          if (r.lost) { ac.abort(new Error("lease lost")); throw new Error("lease lost"); }
+          if (r.stopping) { stopping = true; ac.abort(new StopRequested()); throw new StopRequested(); }
+          if (label && label !== lastLabel) {
+            lastLabel = label;
+            await prisma.blogStageLog.update({ where: { id: started.id }, data: { summary: label } }).catch(() => {});
+          }
+        },
+        log: (msg, extra) => log.info(`[blog ${stage} ${current.id.slice(0, 8)}] ${msg}`, extra),
+        save: async (patch) => {
+          if (patch.cursor) cursor = patch.cursor;
+          if (patch.brief !== undefined) brief = patch.brief;
+          if (patch.outline !== undefined) outline = patch.outline;
+          ctx.cursor = cursor; ctx.brief = brief; ctx.outline = outline;
+          await prisma.blogPost.update({
+            where: { id: current.id },
+            data: {
+              ...(patch.cursor ? { cursor: cursor as object } : {}),
+              ...(patch.brief !== undefined ? { brief: (brief ?? undefined) as object | undefined } : {}),
+              ...(patch.outline !== undefined ? { outline: (outline ?? undefined) as object | undefined } : {}),
+              ...(patch.note !== undefined ? { note: patch.note } : {}),
+            },
+          });
+        },
+        retries: streak.counts,
+      };
+
+      let result: StageResult;
+      try {
+        result = await handler(ctx);
+      } catch (e) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        if (err instanceof StopRequested || (ac.signal.aborted && ac.signal.reason instanceof StopRequested)) {
+          await finishLog(started.id, "skipped", "Остановлено пользователем", undefined, markDetails(undefined, { boundary: true }));
+          openLogId = null;
+          await prisma.blogPost.update({ where: { id: current.id }, data: { status: "STOPPED", workerId: null, leaseUntil: null, stopRequested: false } });
+          log.info(`blog post ${current.id} stopped by user`);
+          return;
+        }
+        const leaseLost = /lease lost/.test(err.message) || (ac.signal.aborted && /lease lost/.test(String((ac.signal.reason as Error | undefined)?.message ?? "")));
+        if (shuttingDown() || leaseLost) {
+          await finishLog(started.id, "skipped", "Воркер перезапускается");
+          openLogId = null;
+          if (!leaseLost) await releasePost(current.id, 0, undefined, { refund: current.attempts > 0, workerId });
+          return;
+        }
+        const cost = (await postCost(current.id).catch(() => costBefore)) - costBefore;
+        const c = classifyFailure(err);
+        if (c.kind === "fatal") {
+          await finishLog(started.id, "error", undefined, err.message, markDetails(undefined, { final: true }), cost);
+          openLogId = null;
+          await fail(current, err.message, stage, c);
+          return;
+        }
+        await retryOrFail(current, workerId, stage, started.id, streak, c.kind, c, { cost });
+        openLogId = null;
+        return;
+      }
+
+      const cost = (await postCost(current.id)) - costBefore;
+      if (result.fatal) {
+        await finishLog(started.id, "error", result.summary, result.fatal, markDetails(result.details, { final: true }), cost);
+        openLogId = null;
+        await fail(current, result.fatal, stage, { code: "stage", human: result.fatal });
+        return;
+      }
+      if (result.retryInMs && result.retryInMs > 0) {
+        const kind: RetryKind = result.retryKind ?? "planned";
+        const text = result.summary ?? "Повтор позже";
+        const c: Classified = { kind, code: kind, human: text, detail: text };
+        await retryOrFail(current, workerId, stage, started.id, streak, kind, c, { cost, stageDelayMs: result.retryInMs, details: result.details, giveUp: result.giveUp, summary: result.summary });
+        openLogId = null;
+        return;
+      }
+      await finishLog(started.id, "done", result.summary, undefined, result.details, cost);
+      openLogId = null;
+
+      let next: StageKey | null;
+      let wait: { wait: BlogStatus; note?: string } | null = null;
+      if (result.next && typeof result.next === "object") {
+        wait = result.next;
+        next = null;
+      } else if (typeof result.next === "string") {
+        next = result.next;
+      } else {
+        next = nextStage(stage);
+        if (stage === "assemble" && !cursor.reviewApproved) {
+          const review = mergeSiteSettings(site.settings).review;
+          if (review === "before_publish") wait = { wait: "REVIEW_PENDING", note: "Статья собрана, ждёт проверки" };
+        }
+      }
+
+      if (wait) {
+        const after = next ?? nextStage(stage) ?? stage;
+        await prisma.blogPost.update({ where: { id: current.id }, data: { status: wait.wait, stage: after, workerId: null, leaseUntil: null, attempts: 0, note: wait.note ?? null, costUsd: await postCost(current.id) } });
+        log.info(`blog post ${current.id} waits in ${wait.wait} (next stage ${after})`);
+        return;
+      }
+      if (!next) {
+        await prisma.blogPost.update({ where: { id: current.id }, data: { status: "COMPLETED", stage: "done", workerId: null, leaseUntil: null, attempts: 0, finishedAt: new Date(), note: null, costUsd: await postCost(current.id) } });
+        log.info(`blog post ${current.id} completed`);
+        return;
+      }
+      current = await prisma.blogPost.update({ where: { id: current.id }, data: { stage: next, attempts: 0, note: null, costUsd: await postCost(current.id) } });
+      if (ac.signal.aborted) { await releasePost(current.id, 0, undefined, { workerId }); return; }
+    }
+    await fail(current, "Слишком много переходов между этапами за один проход — проверьте журнал поста");
+  } catch (e) {
+    const err = e instanceof Error ? e : new Error(String(e));
+    log.error(`blog post ${current.id} crashed`, err);
+    if (isTransientError(err) && current.attempts < MAX_ATTEMPTS && !ac.signal.aborted) {
+      if (openLogId) await finishLog(openLogId, "skipped", "Короткий сбой — повтор через 30 с", err.message).catch(() => {});
+      await releasePost(current.id, OUTER_RETRY_MS, `Повтор через 30 с: короткий сбой (${err.message.slice(0, 200)})`, { workerId }).catch((e2) => log.warn(`blog post ${current.id}: release after crash failed`, e2));
+      return;
+    }
+    if (openLogId) await finishLog(openLogId, "error", undefined, err.message, markDetails(undefined, { final: true })).catch(() => {});
+    await fail(current, err.message).catch((e2) => log.warn(`blog post ${current.id}: не удалось записать ошибку`, e2));
+  } finally {
+    clearInterval(heartbeat);
+  }
+}
+
+async function retryOrFail(
+  a: BlogPost, workerId: string, stage: StageKey, logId: string, streak: RetryStreak, kind: RetryKind, c: Classified,
+  opts: { cost?: number; stageDelayMs?: number; details?: unknown; giveUp?: string; summary?: string },
+): Promise<void> {
+  const n = streak.counts[kind] + 1;
+  const plan = retryPlan(kind, n, streak.firstAt[kind] ?? new Date(), stage, opts.stageDelayMs);
+  const label = stageLabel(stage);
+  if (!plan.retry) {
+    const reason = opts.giveUp ?? giveUpText(kind, label, n - 1, c);
+    await finishLog(logId, "error", opts.summary, reason, markDetails(opts.details, { final: true }), opts.cost);
+    await fail(a, reason, stage, { code: kind === "planned" ? "planned" : c.code, human: giveUpHuman(kind, c) });
+    return;
+  }
+  const delay = plan.delayMs;
+  const counter = plan.max ? `${n}/${plan.max}` : `${n}`;
+  const extra = c.detail && c.detail !== c.human ? ` — ${short(c.detail)}` : "";
+  const note =
+    kind === "key"
+      ? `${c.human} — пост ждёт и продолжит автоматически, когда ключ снова заработает (следующая проверка через ${inWords(delay)}).${extra ? ` ${short(c.detail)}` : ""}`
+      : kind === "malformed"
+        ? `Повтор ${counter} через ${inWords(delay)}: ${c.human} на этапе «${label}»${extra}`
+        : kind === "transient" && plan.max === null
+          ? `Провайдер не отвечает (${c.human}) — пост ждёт и продолжит сам, следующая проверка через ${inWords(delay)}.${extra}`
+          : kind === "transient"
+            ? `Повтор ${counter} через ${inWords(delay)}: ${c.human}${extra}`
+            : `Повтор ${counter} через ${inWords(delay)}: ${short(opts.summary ?? c.human)}`;
+  const mark = { kind, n, max: plan.max, delayMs: delay, code: c.code };
+  const logError = kind === "planned" ? undefined : kind === "key" ? `Ожидание ключа: ${c.human}. ${c.detail}` : `Временная ошибка, повтор через ${Math.round(delay / 1000)} с: ${c.human}${extra}`;
+  await finishLog(logId, kind === "planned" ? "skipped" : "error", opts.summary ?? (kind === "planned" ? "Повтор позже" : undefined), logError, markDetails(opts.details, { retry: mark }), opts.cost);
+  await releasePost(a.id, delay, note.slice(0, 1000), { refund: a.attempts > 0, workerId });
+  if (kind === "key" && n === 1) {
+    await recordError({ teamId: a.teamId, siteId: a.siteId, postId: a.id, stage, message: `${c.human}: пост ждёт рабочий ключ и продолжит сам. ${c.detail}`, code: c.code, human: c.human });
+  }
+  if (kind === "transient" && plan.max === null && n === TRANSIENT_DELAYS_MS.length + 1) {
+    await recordError({ teamId: a.teamId, siteId: a.siteId, postId: a.id, stage, message: `${c.human}: провайдер не отвечает час, пост ждёт (проверка раз в 30 мин, до суток). ${c.detail}`, code: c.code, human: c.human });
+  }
+  log.info(`blog post ${a.id.slice(0, 8)} ${kind} retry ${counter} at ${stage} in ${Math.round(delay / 1000)}s: ${c.human.slice(0, 160)}`);
+}
+
+function giveUpText(kind: RetryKind, label: string, tries: number, c: Classified): string {
+  switch (kind) {
+    case "transient": return `Этап «${label}» не удался: провайдер не отвечал сутки (${tries} повторов): ${c.human}. ${c.detail}`.trim();
+    case "malformed": return `Модель ${tries + 1} раз подряд вернула ответ не в том формате на этапе «${label}»: ${c.detail}. Проверьте промт и модель рецепта, затем нажмите «Повторить».`;
+    case "key": return `${c.human}: ключ не заработал за 7 дней ожидания. Пополните баланс или назначьте рабочий ключ, затем нажмите «Повторить». ${c.detail}`.trim();
+    case "planned": return `Этап «${label}» откладывался ${tries} раз подряд и не завершился: ${c.detail}`;
+  }
+}
+
+function giveUpHuman(kind: RetryKind, c: Classified): string {
+  if (kind === "malformed") return "ответ модели не в том формате";
+  if (kind === "planned") return "повторы этапа исчерпаны";
+  return c.human;
+}
+
+function streakText(s: RetryStreak): string {
+  const parts = (Object.keys(s.counts) as RetryKind[]).filter((k) => s.counts[k] > 0).map((k) => `${k}=${s.counts[k]}`);
+  return parts.length ? ` retries(${parts.join(",")})` : "";
+}
+
+const short = (t: string, n = 200) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+
+async function fail(a: BlogPost, reason: string, stage?: string, c?: { code: string; human: string }) {
+  const text = reason.slice(0, 4000);
+  const st = stage ?? a.stage;
+  const status: BlogStatus = st === "publish" ? "PUBLISH_ERROR" : "FAILED";
+  await prisma.blogPost.update({ where: { id: a.id }, data: { status, workerId: null, leaseUntil: null, error: text, errorStage: st, note: null, costUsd: await postCost(a.id).catch(() => a.costUsd) } });
+  await recordError({ teamId: a.teamId, siteId: a.siteId, postId: a.id, stage: st, message: text, code: c?.code, human: c?.human });
+  log.warn(`blog post ${a.id} ${status === "PUBLISH_ERROR" ? "publish error" : "failed"} at ${st}: ${text.slice(0, 200)}`);
+}
