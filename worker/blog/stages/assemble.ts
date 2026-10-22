@@ -39,13 +39,17 @@ export const assemble: StageHandler = async (ctx) => {
     ctx.log(`починка: ${quality.fixed.join("; ")}`);
   }
   // Согласованность цифр и советов между частями (один раз на пост): находки идут в ту же самопочинку
-  if (quality.ok && !ctx.cursor.consistencyChecked) {
+  // Согласованность — совет, а не стоп: что осталось после одной переписи, статью не останавливает.
+  // Для большого списка и чеклиста не проверяем: «пункт лучше в другой группе» и повторы — не противоречия.
+  const advisory: string[] = [];
+  if (quality.ok && !ctx.cursor.consistencyChecked && recipe.scenario?.structure !== "big_list") {
     await ctx.tick("Проверка согласованности");
     const c = await consistencyProblems(ctx, fresh, sections);
     await ctx.save({ cursor: { ...ctx.cursor, consistencyChecked: true } });
     if (c.problems.length) {
       ctx.log(`согласованность: ${c.problems.join("; ")} ($${c.costUsd.toFixed(4)})`);
       quality.problems.push(...c.problems);
+      advisory.push(...c.problems);
       quality.ok = false;
     }
   }
@@ -83,10 +87,14 @@ export const assemble: StageHandler = async (ctx) => {
       await prisma.blogPost.update({ where: { id: post.id }, data: { introHtml: null, conclusionHtml: null } });
       return { next: "wrap", summary: `Проверка качества: ${other.join("; ")} — обвязка пишется заново` };
     }
-    return {
-      fatal: `Статья не прошла проверку качества: ${quality.problems.join("; ")}. Исправьте текст в карточке статьи и нажмите «Повторить этап» → «Сборка HTML».`,
-      details: { problems: quality.problems, fixed: quality.fixed },
-    };
+    const hard = quality.problems.filter((x) => !advisory.includes(x));
+    if (hard.length) {
+      return {
+        fatal: `Статья не прошла проверку качества: ${hard.join("; ")}. Исправьте текст в карточке статьи и нажмите «Повторить этап» → «Сборка HTML».`,
+        details: { problems: hard, advisory, fixed: quality.fixed },
+      };
+    }
+    ctx.log(`согласованность: осталось после переписи, статья идёт дальше: ${advisory.join("; ").slice(0, 600)}`);
   }
 
   // ── Сборка ──
