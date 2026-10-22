@@ -23,6 +23,14 @@ async function refreshRunCost(runId: string): Promise<void> {
   await prisma.pinRun.update({ where: { id: runId }, data: { costUsd: agg._sum.costUsd ?? 0 } }).catch(() => {});
 }
 
+/** Пауза до ближайшего отложенного пина прогона (+5 с), в границах 5 с … 10 мин; без отложенных — обычный backoff. */
+async function deferredDelayMs(runId: string, attempts: number): Promise<number> {
+  const agg = await prisma.pinRunItem.aggregate({ _min: { nextRetryAt: true }, where: { runId, status: "PENDING", nextRetryAt: { gt: new Date() } } });
+  const at = agg._min.nextRetryAt;
+  if (!at) return backoffMs(attempts);
+  return Math.min(10 * 60_000, Math.max(5_000, at.getTime() - Date.now() + 5_000));
+}
+
 function asPinStage(s: string): PinStage {
   return (PIN_STAGES as readonly string[]).includes(s) ? (s as PinStage) : "pages";
 }
@@ -96,9 +104,11 @@ export async function processJob(job: PinJob, shuttingDown: () => boolean): Prom
       log.warn(`job ${job.id} blocked: ${result.fatal}`);
       return;
     }
-    if (result.retryLater && result.retryLater > 0 && job.attempts < MAX_ATTEMPTS) {
-      const delay = backoffMs(job.attempts);
-      await releaseJob(job.id, delay);
+    if (result.retryLater && result.retryLater > 0) {
+      // Ждём ровно до ближайшего отложенного пина (nextRetryAt), а не по счётчику попыток задачи:
+      // при лимите провайдера пины отложены на 1…10 мин, и задача должна проснуться к этому сроку.
+      const delay = await deferredDelayMs(run.id, job.attempts);
+      await releaseJob(job.id, delay, { resetAttempts: true });
       log.info(`job ${job.id} retry later (${result.retryLater} items) in ${Math.round(delay / 1000)}s`);
       return;
     }

@@ -18,6 +18,8 @@ const toExportItem = (r: Row): ExportItem => ({
   altText: r.altText,
   imageUrl: r.wpMediaUrl || (r.imagePath ? publicUrl(r.imagePath) : r.sourceImageUrl),
   link: r.targetLink,
+  /** Фото-пины без ссылки — по рецепту («Фото со ссылкой, %»), а не ошибка. */
+  linkOptional: r.kind === "photo",
   boardName: r.boardName,
   scheduledAt: r.scheduledAt,
   keywords: r.page.keyword,

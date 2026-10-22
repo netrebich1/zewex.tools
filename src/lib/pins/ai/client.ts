@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { resolveSlot, runSlot, disableKey, type ResolvedSlot } from "@/lib/run";
 import { PROJECT_SLUG, SLOT_IMAGE_MAIN, SLOT_TEXT_FAST, SLOT_TEXT_MAIN } from "../types";
 import { AiError, classifyAiError } from "./errors";
-import { acquire, DEFAULT_LIMITS } from "./limiter";
+import { acquire, DEFAULT_LIMITS, keyOk, pauseKey } from "./limiter";
 import { parseJsonLenient } from "./json";
 
 /**
@@ -31,6 +31,8 @@ async function resolveOrThrow(userId: string, slotKey: string): Promise<Resolved
 
 async function handleFailure(ctx: AiCtx, res: { status: number; error?: string }, apiKeyId: string, keyLabel: string): Promise<never> {
   const cls = classifyAiError(res.status, res.error ?? "");
+  // Лимит провайдера (TPM/RPM) общий на ключ: ставим ключ на паузу для всех прогонов, а не долбим дальше.
+  if (cls.code === "rate_limited") pauseKey(apiKeyId);
   if (cls.kind === "fatal_run" && (cls.code === "no_credits" || cls.code === "auth")) {
     await disableKey(apiKeyId, `Автоотключён: ${cls.code === "no_credits" ? "закончился баланс" : "ключ отклонён провайдером"} (${cls.message.slice(0, 120)})`);
     cls.message = `Ключ «${keyLabel}»: ${cls.message}`;
@@ -40,7 +42,7 @@ async function handleFailure(ctx: AiCtx, res: { status: number; error?: string }
 
 export async function aiChat(ctx: AiCtx, slot: typeof SLOT_TEXT_MAIN | typeof SLOT_TEXT_FAST, req: ChatRequest): Promise<ChatResult> {
   const resolved = await resolveOrThrow(ctx.userId, slot);
-  const release = await acquire(resolved.binding.apiKey.id, DEFAULT_LIMITS.CHAT);
+  const release = await acquire(resolved.binding.apiKey.id, DEFAULT_LIMITS.CHAT, { owner: ctx.runId, signal: ctx.signal });
   try {
     const messages: Array<Record<string, unknown>> = [];
     if (req.system) messages.push({ role: "system", content: req.system });
@@ -59,6 +61,7 @@ export async function aiChat(ctx: AiCtx, slot: typeof SLOT_TEXT_MAIN | typeof SL
       pre: resolved,
     });
     if (!res.ok) await handleFailure(ctx, res, resolved.binding.apiKey.id, resolved.binding.apiKey.label);
+    keyOk(resolved.binding.apiKey.id);
     const data = res.data as { choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }> };
     const raw = data?.choices?.[0]?.message?.content;
     const text = typeof raw === "string" ? raw : Array.isArray(raw) ? raw.map((p) => p?.text ?? "").join("") : "";
@@ -73,7 +76,7 @@ export type ImageResult = { bytes: Buffer; mime: string; costUsd: number | null;
 
 export async function aiImage(ctx: AiCtx, req: ImageRequest): Promise<ImageResult> {
   const resolved = await resolveOrThrow(ctx.userId, SLOT_IMAGE_MAIN);
-  const release = await acquire(resolved.binding.apiKey.id, DEFAULT_LIMITS.IMAGE);
+  const release = await acquire(resolved.binding.apiKey.id, DEFAULT_LIMITS.IMAGE, { owner: ctx.runId, signal: ctx.signal });
   try {
     const res = await runSlot({
       userId: ctx.userId,
@@ -86,6 +89,7 @@ export async function aiImage(ctx: AiCtx, req: ImageRequest): Promise<ImageResul
       pre: resolved,
     });
     if (!res.ok) await handleFailure(ctx, res, resolved.binding.apiKey.id, resolved.binding.apiKey.label);
+    keyOk(resolved.binding.apiKey.id);
     const data = res.data as { data?: Array<{ b64_json?: string; url?: string }> };
     const first = data?.data?.[0];
     if (first?.b64_json) return { bytes: Buffer.from(first.b64_json, "base64"), mime: "image/png", costUsd: res.meta?.costUsd ?? null, model: res.meta?.model ?? null };

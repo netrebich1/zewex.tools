@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { PinRun, PinRunItem, PinRunPage, PinSite } from "@prisma/client";
 import { mergeRecipe, type Recipe, type RunSettings } from "@/lib/pins/types";
-import { AiError, backoffMs } from "@/lib/pins/ai/errors";
+import { AiError, backoffMs, RATE_LIMIT_MAX_ATTEMPTS, rateLimitDelayMs } from "@/lib/pins/ai/errors";
 import type { StageCtx } from "./index";
 
 /** Контекст прогона для этапов: сайт, рецепт (снимок из прогона), страницы. */
@@ -72,9 +72,13 @@ export async function failItem(item: Pick<PinRunItem, "id" | "attempts">, stage:
     return;
   }
   const attempts = item.attempts + 1;
-  if (cls.kind === "transient" && attempts < 5) {
+  // Лимит провайдера — не поломка: ждём дольше и повторяем больше раз (1…10 мин, до 10 попыток), чем при сбое сети.
+  const rateLimited = cls.code === "rate_limited";
+  const maxAttempts = rateLimited ? RATE_LIMIT_MAX_ATTEMPTS : 5;
+  if (cls.kind === "transient" && attempts < maxAttempts) {
     acc.retry++;
-    await prisma.pinRunItem.update({ where: { id: item.id }, data: { attempts, nextRetryAt: new Date(Date.now() + backoffMs(attempts)), error: cls.message.slice(0, 2000), errorStage: stage, errorKind: cls.code } });
+    const delay = rateLimited ? rateLimitDelayMs(attempts) : backoffMs(attempts);
+    await prisma.pinRunItem.update({ where: { id: item.id }, data: { attempts, nextRetryAt: new Date(Date.now() + delay), error: cls.message.slice(0, 2000), errorStage: stage, errorKind: cls.code } });
     return;
   }
   await prisma.pinRunItem.update({ where: { id: item.id }, data: { attempts, status: "ERROR", error: cls.message.slice(0, 2000), errorStage: stage, errorKind: cls.kind === "transient" ? "permanent_after_retries" : cls.code } });

@@ -49,9 +49,13 @@ export async function finishJob(jobId: string, status: "DONE" | "ERROR" | "STOPP
   await prisma.pinJob.update({ where: { id: jobId }, data: { status, error: error?.slice(0, 4000) ?? null, finishedAt: new Date(), leaseUntil: null, workerId: null } });
 }
 
-/** Вернуть задачу в очередь (graceful stop воркера или временный сбой). */
-export async function releaseJob(jobId: string, delayMs = 0) {
-  await prisma.pinJob.update({ where: { id: jobId }, data: { status: "PENDING", workerId: null, leaseUntil: null, nextRunAt: new Date(Date.now() + delayMs) } });
+/**
+ * Вернуть задачу в очередь (graceful stop воркера или временный сбой).
+ * `resetAttempts` — плановое ожидание отложенных пинов, а не сбой: счётчик попыток задачи не растёт,
+ * иначе 10 кругов ожидания лимита провайдера упёрлись бы в MAX_ATTEMPTS.
+ */
+export async function releaseJob(jobId: string, delayMs = 0, opts: { resetAttempts?: boolean } = {}) {
+  await prisma.pinJob.update({ where: { id: jobId }, data: { status: "PENDING", workerId: null, leaseUntil: null, nextRunAt: new Date(Date.now() + delayMs), ...(opts.resetAttempts ? { attempts: 0 } : {}) } });
 }
 
 /** Задачи, чей воркер умер: lease истёк, статус всё ещё RUNNING. */

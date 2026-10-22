@@ -89,6 +89,8 @@ export type ExportItem = {
   boardName: string;
   scheduledAt: Date | null;
   keywords?: string;
+  /** Пустая ссылка допустима (фото-пины «без ссылки» по рецепту): колонка Link в CSV остаётся пустой. */
+  linkOptional?: boolean;
 };
 
 export type PrepareOptions = {
@@ -163,6 +165,7 @@ function titleFromDescription(desc: string, keywords: string): string {
 
 /**
  * Единый preflight: валидирует, чистит тексты и строит строки, которые безопасно писать в CSV.
+ * Ссылка на страницу обязательна, кроме строк с `linkOptional` (фото без ссылки) — у них Link пустой.
  * Даты: не раньше `now + 15 мин`; одинаковые времена разводятся с шагом 5 минут.
  * Строки с проблемами в `rows` не попадают — только в `issues`.
  */
@@ -210,8 +213,9 @@ export function preparePinterestExport(items: readonly ExportItem[], opts: Prepa
     else if (!isHttpUrl(mediaUrl)) problems.push("bad_media_url");
     if (!board) problems.push("missing_board");
     if (!description.text) problems.push("missing_description");
-    if (!link) problems.push("missing_link");
-    else if (!isHttpUrl(link)) problems.push("bad_link_url");
+    if (!link) {
+      if (!it.linkOptional) problems.push("missing_link");
+    } else if (!isHttpUrl(link)) problems.push("bad_link_url");
 
     let publishDate: Date | null = null;
     const ts = it.scheduledAt ? it.scheduledAt.getTime() : Number.NaN;
