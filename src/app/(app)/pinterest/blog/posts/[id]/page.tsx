@@ -5,7 +5,8 @@ import { requireUser } from "@/lib/auth";
 import { Alert, Badge, Card, Field, PageHeader, type SearchParams, sp } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { approvePostAction, deletePostAction, excludeSlotPhoto, requeuePostAction, retryPostAction, reworkPostAction, saveBlogSectionHtml, savePostMeta, savePostParts, saveSlotQuery, stopPostAction, swapSlotPhoto } from "@/actions/blog";
+import { approvePostAction, deletePostAction, excludeSlotPhoto, requeuePostAction, retryPostAction, reworkPostAction, saveBlogSectionHtml, savePostMeta, savePostParts, saveSlotQuery, setPostVideo, stopPostAction, swapSlotPhoto } from "@/actions/blog";
+import type { BlogVideoState } from "@/lib/blog/video";
 import { canAccessBlogPost } from "@/lib/blog/access";
 import { STATUS_LABELS } from "@/lib/blog/labels";
 import { BLOG_STAGES, stageLabel } from "@/lib/blog/stages";
@@ -93,11 +94,12 @@ export default async function BlogPostPage({ params, searchParams }: { params: P
         <div className="flex flex-wrap gap-2">{TABS.map(([k, l]) => <Link key={k} href={`/pinterest/blog/posts/${id}?tab=${k}`} className={`badge px-3 py-1 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}</div>
 
         {tab === "plan" && <PlanTab brief={(a.brief as BlogBrief | null) ?? null} outline={(a.outline as BlogOutline | null) ?? null} />}
+        {tab === "photos" && <VideoCard postId={id} video={(a.video ?? null) as BlogVideoState | null} running={running} />}
         {tab === "photos" && <PhotosTab postId={id} running={running} />}
         {tab === "text" && <TextTab a={{ id, h1: a.h1, metaTitle: a.metaTitle, metaDescription: a.metaDescription, slug: a.slug, introHtml: a.introHtml, takeawaysHtml: a.takeawaysHtml, conclusionHtml: a.conclusionHtml, disclaimerHtml: a.disclaimerHtml, faq: a.faq, running }} />}
         {tab === "preview" && (
           <Card title="Предпросмотр" description="Так статья уходит в WordPress (стили темы сайта не учитываются).">
-            {a.html ? <article className="zx-preview prose max-w-none text-[15px] leading-relaxed [&_h2]:mt-7 [&_h2]:text-[1.35em] [&_h2]:font-semibold [&_h3]:mt-4 [&_h3]:font-semibold [&_p]:my-3 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_img]:my-3 [&_img]:max-w-[480px] [&_img]:rounded-xl [&_table]:my-4 [&_script]:hidden" dangerouslySetInnerHTML={{ __html: a.html }} /> : <p className="help">HTML ещё не собран: появится после этапа «Сборка HTML».</p>}
+            {a.html ? <article className="zx-preview prose max-w-none text-[15px] leading-relaxed [&_h2]:mt-7 [&_h2]:text-[1.35em] [&_h2]:font-semibold [&_h3]:mt-4 [&_h3]:font-semibold [&_p]:my-3 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_img]:my-3 [&_img]:max-w-[480px] [&_img]:rounded-xl [&_table]:my-4 [&_script]:hidden" dangerouslySetInnerHTML={{ __html: previewHtml(a.html) }} /> : <p className="help">HTML ещё не собран: появится после этапа «Сборка HTML».</p>}
             {a.html && <details className="mt-4"><summary className="help cursor-pointer">Показать HTML ({Math.round(a.html.length / 1024)} КБ)</summary><pre className="mono mt-2 max-h-[480px] overflow-auto rounded-lg bg-surface-2 p-3 text-[11.5px] whitespace-pre-wrap break-words">{a.html}</pre></details>}
           </Card>
         )}
@@ -169,7 +171,49 @@ function PlanTab({ brief, outline }: { brief: BlogBrief | null; outline: BlogOut
   );
 }
 
+/** Только для предпросмотра: WordPress разворачивает [caption]…[/caption] сам, в портале показываем как figure. */
+function previewHtml(html: string): string {
+  return html.replace(/\[caption[^\]]*\]([\s\S]*?)\[\/caption\]/g, (_m, inner: string) => {
+    const img = inner.match(/<img[^>]*>/)?.[0] ?? "";
+    const rest = inner.replace(img, "").trim();
+    return `<figure style="margin:16px auto;text-align:center">${img}${rest ? `<figcaption style="font-size:12px;color:#888;margin-top:4px">${rest}</figcaption>` : ""}</figure>`;
+  });
+}
+
 const thumb = (p: { thumbPath: string; path: string; wpUrl?: string | null; thumbUrl?: string }) => (p.thumbPath ? publicUrl(p.thumbPath) : p.path ? publicUrl(p.path) : p.wpUrl || p.thumbUrl || "");
+
+function VideoCard({ postId, video, running }: { postId: string; video: BlogVideoState | null; running: boolean }) {
+  if (!video) return null;
+  const c = video.chosen;
+  return (
+    <Card title="Видео YouTube" description={`${video.videoFirst ? "Статья по видео" : "Вставка видео"} · проверено по субтитрам · $${video.costUsd}${video.note ? ` · ${video.note}` : ""}`} className="mb-4">
+      {c ? (
+        <div className="grid gap-3 sm:grid-cols-[240px_1fr]">
+          <a href={`https://www.youtube.com/watch?v=${c.id}&t=${c.judge?.startAt ?? 0}s`} target="_blank" rel="noreferrer"><img src={c.thumbnail} alt="" className="w-full rounded-lg" /></a>
+          <div className="text-[13.5px] space-y-1">
+            <div><b>{c.title}</b> · {c.channel}</div>
+            <div className="text-muted">{Math.round(c.sec / 60)} мин · {c.views.toLocaleString("ru-RU")} просмотров · старт {c.judge?.startAt ?? 0} с · релевантность {c.judge?.relevance}/10 · качество {c.judge?.quality}/10</div>
+            <div>{c.judge?.why}</div>
+            {!running && <ActionForm action={setPostVideo} hidden={{ postId, videoId: "" }}><SubmitButton className="btn-ghost btn-sm" pendingText="…">Убрать видео</SubmitButton></ActionForm>}
+          </div>
+        </div>
+      ) : <p className="help">Видео в статье нет.</p>}
+      {video.candidates.length > 0 && (
+        <details className="mt-3"><summary className="help cursor-pointer">Кандидаты ({video.candidates.length})</summary>
+          <ul className="mt-2 space-y-1 text-[13px]">
+            {video.candidates.map((v) => (
+              <li key={v.id} className="flex flex-wrap items-center gap-2">
+                <a className="underline" href={`https://www.youtube.com/watch?v=${v.id}`} target="_blank" rel="noreferrer">{v.title}</a>
+                <span className="text-muted">{v.channel} · {v.decision === "embed" ? "подходит" : `нет: ${v.reason ?? "—"}`}{v.judge?.redFlags?.length ? ` · флаги: ${v.judge.redFlags.join(", ")}` : ""}</span>
+                {!running && v.decision === "embed" && v.id !== c?.id && <ActionForm action={setPostVideo} hidden={{ postId, videoId: v.id }}><SubmitButton className="btn-ghost btn-sm" pendingText="…">Поставить</SubmitButton></ActionForm>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </Card>
+  );
+}
 
 async function PhotosTab({ postId, running }: { postId: string; running: boolean }) {
   const [slots, photos, reserve] = await Promise.all([

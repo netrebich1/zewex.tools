@@ -9,6 +9,8 @@ import { buildJsonLd, extractSteps } from "../../src/lib/blog/schema";
 import { cleanHeading, cleanSectionHtml, countWords, ensureTableHead, sanitizeHtml, searchPhraseOf, varyTipLabels } from "../../src/lib/blog/text";
 import { titleCase } from "../../worker/blog/stages/meta";
 import { shopPageSignal } from "../../worker/blog/stages/photoFilter";
+import { offPuttingSignal } from "../../src/lib/blog/photo/ratePrompt";
+import { isoDuration, judgeDecision, prefilterVideos, videoEmbedHtml, videoObject, type VideoCandidate } from "../../src/lib/blog/video";
 import { checkPostQuality } from "../../src/lib/blog/qualityCheck";
 import { DEFAULT_PARAMS, type BlogOutline } from "../../src/lib/blog/types";
 import type { BlogPhoto, BlogPost, BlogSection } from "@prisma/client";
@@ -124,6 +126,10 @@ const ok = (name: string) => { n++; console.log(`ok ${n} - ${name}`); };
   assert.equal(shopPageSignal("https://www.vogue.com/article/self-gripping-curlers-how-to", "How to use self-gripping curlers"), null);
   assert.ok(shopPageSignal("https://condenaststore.com/featured/head-full-of-hair-rollers-lionel-kazan.html", ""));
   assert.equal(shopPageSignal("https://www.popsugar.com/beauty/best-hot-rollers-49346499", "Best Hot Rollers"), null);
+  assert.ok(offPuttingSignal("A young woman with a swollen face after an allergic reaction to hair dye"));
+  assert.ok(offPuttingSignal("close-up of a red rash on the forehead"));
+  assert.equal(offPuttingSignal("Woman gently wiping her hairline with a cotton pad and micellar water"), null);
+  assert.equal(offPuttingSignal("Hairbrush soaking in a bowl of soapy water"), null);
   ok("post-review fixes");
 }
 
@@ -163,4 +169,25 @@ function aiStepsCheck() {
   ok("ai step image helpers");
 }
 
-overlayCheck().then(aiStepsCheck).then(() => console.log(`\n${n} checks passed`)).catch((e) => { console.error(e); process.exit(1); });
+// 9. Видео: правила оценки, фильтр, встраивание, VideoObject
+function videoCheck() {
+  const j = { relevance: 9, quality: 8, startAt: 55, covers: ["steps"], redFlags: [] as string[], verdict: "embed", why: "clear tutorial" };
+  assert.equal(judgeDecision(j, { videoFirst: false, words: 900 }).ok, true);
+  assert.equal(judgeDecision({ ...j, redFlags: ["mostly a product ad or haul"] }, { videoFirst: false, words: 900 }).ok, false);
+  assert.equal(judgeDecision({ ...j, redFlags: ["heavy sponsor reads"] }, { videoFirst: false, words: 900 }).ok, false);
+  assert.equal(judgeDecision({ ...j, redFlags: ["long rambling intro"] }, { videoFirst: false, words: 900 }).ok, true);
+  assert.equal(judgeDecision({ ...j, relevance: 7 }, { videoFirst: false, words: 900 }).ok, false);
+  assert.equal(judgeDecision(j, { videoFirst: true, words: 300 }).ok, false);
+  const base: VideoCandidate = { id: "dOqutR6aY3Y", title: "Easy Hair Rollers Tutorial", channel: "Tina Engeo", views: 1320795, sec: 484, date: "2023-05-01", shorts: false, judge: j };
+  const pre = prefilterVideos([base, { ...base, id: "s1", shorts: true }, { ...base, id: "s2", sec: 40 }, { ...base, id: "s3", views: 100 }]);
+  assert.deepEqual(pre.map((v) => v.id), ["dOqutR6aY3Y"]);
+  const html = videoEmbedHtml(base, "post-1");
+  assert.ok(/youtube-nocookie\.com\/embed\/dOqutR6aY3Y\?start=55/.test(html) && /loading="lazy"/.test(html) && /Tina Engeo/.test(html) && /starts at 0:55/.test(html), html);
+  assert.equal(isoDuration(484), "PT8M4S");
+  const vo = videoObject(base);
+  assert.equal(vo["@type"], "VideoObject");
+  assert.equal(vo.duration, "PT8M4S");
+  ok("video rules + embed");
+}
+
+overlayCheck().then(aiStepsCheck).then(videoCheck).then(() => console.log(`\n${n} checks passed`)).catch((e) => { console.error(e); process.exit(1); });

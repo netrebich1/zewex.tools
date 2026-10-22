@@ -11,6 +11,8 @@ export type SchemaInput = {
   faq: Array<{ question: string; answer: string }>;
   sections: Array<{ kind: string; heading: string; html: string }>;
   datePublished?: string;
+  /** VideoObject встроенного видео */
+  video?: Record<string, unknown> | null;
 };
 
 const text = (html: string) => String(html ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -54,5 +56,6 @@ export function buildJsonLd(input: SchemaInput): Record<string, unknown> {
       step: steps.map((s, i) => ({ "@type": "HowToStep", position: i + 1, name: s.name, text: s.text })),
     });
   }
+  if (input.video) graph.push(input.video);
   return { "@context": "https://schema.org", "@graph": graph };
 }

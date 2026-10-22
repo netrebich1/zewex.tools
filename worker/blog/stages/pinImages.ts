@@ -55,6 +55,7 @@ export const pinImages: StageHandler = async (ctx) => {
     const system = `You write the text that is printed on a band above or below a photo from a blog article, so the image works as a Pinterest pin when someone saves it. Each image gets:
 - "title": 3-8 words, the hook people search and save for. It must match THIS section and what the photo shows, and make the reader want the article (a clear benefit, a fix, a mistake to avoid, a how-to). The MAIN IMAGE title must contain the article keyword "${post.keyword}" or its core words. Use a number only when the section really has that many items. No clickbait promises, no question marks unless it is a real search question, no emoji, no quotes, no final period.
 - "kicker": 1-3 words above the title that label the content (e.g. "Step by step", "Beginner guide", "Avoid these", "Quick fix", "Hair care"). Never repeat the title words.
+Tone: calm, benefit-first, inviting. Never alarmist: no "Important warning", "Danger", "Warning", "Avoid this", "Stop" on the MAIN IMAGE or the LAST IMAGE. Only a section about mistakes or safety may hint at caution, in neutral words ("Skin-safe tips", "Common slip-ups").
 Every title must be different from the others and from the section heading wording where possible. American English.
 Return ONLY JSON: {"items":[{"n":1,"title":"...","kicker":"..."}]}`;
     try {

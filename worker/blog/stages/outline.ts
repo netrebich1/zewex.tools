@@ -79,6 +79,8 @@ export const outline: StageHandler = async (ctx) => {
     country: params.country,
   };
   const filled = fillPrompt(prompt, vars, { name: STAGE_KEY });
+  const chosenVideo = ((post.video ?? null) as { chosen?: { title: string; channel: string; sec: number; judge?: { covers?: string[] } } | null } | null)?.chosen ?? null;
+  const videoBlock = chosenVideo ? `\n\nVIDEO: a YouTube video "${chosenVideo.title}" by ${chosenVideo.channel} (${Math.max(1, Math.round(chosenVideo.sec / 60))} min) will be embedded in one section. It covers: ${(chosenVideo.judge?.covers ?? []).join("; ") || "the method"}. Add to the JSON "video_section": the position (1-based) of the section this video supports best, usually the steps section.` : "";
   const model = stageModel(recipe, STAGE_KEY);
 
   let lastWhy = "";
@@ -89,7 +91,7 @@ export const outline: StageHandler = async (ctx) => {
     await ctx.tick(`План: запрос ${i + 1}/${TRIES}`);
     let text = "";
     try {
-      const r = await aiChat(ctx.ai, { slot: SLOTS.textMain, model, system: filled.system, user: filled.user + correction, json: true, temperature: i === 0 ? 0.6 : 0.3, maxTokens: 8000, timeoutMs: 240_000 });
+      const r = await aiChat(ctx.ai, { slot: SLOTS.textMain, model, system: filled.system, user: filled.user + videoBlock + correction, json: true, temperature: i === 0 ? 0.6 : 0.3, maxTokens: 8000, timeoutMs: 240_000 });
       text = r.text;
       usedModel = r.model;
     } catch (e) {
@@ -194,6 +196,7 @@ export const outline: StageHandler = async (ctx) => {
     faq: { enabled: faqEnabled, count: faqCount, questions: pool.slice(0, Math.max(faqCount, params.faqCount.max)) },
     disclaimer,
     sections,
+    videoSection: chosenVideo ? pickVideoSection(out.video_section, sections) : null,
     model: usedModel,
     plannedAt: new Date().toISOString(),
   };
@@ -224,6 +227,13 @@ export const outline: StageHandler = async (ctx) => {
     details: { sections: sections.map((s) => ({ position: s.position, kind: s.kind, heading: s.heading, words: s.targetWords, image: !!s.image })), images: countImages(), targetWords, faq: plan.faq, takeaways, disclaimer, h1, title, slug, model: usedModel },
   };
 };
+
+/** Секция для видео: ответ плана, иначе первая с шагами/методами, иначе вторая. */
+function pickVideoSection(raw: unknown, sections: OutlineSection[]): number | null {
+  const n = Math.round(Number(raw));
+  if (sections.some((s) => s.position === n && s.kind !== "comparison_table")) return n;
+  return (sections.find((s) => s.kind === "steps") ?? sections.find((s) => s.kind === "methods") ?? sections[1] ?? sections[0])?.position ?? null;
+}
 
 function rank(kind: string): number {
   const im = blockOf(kind).image;

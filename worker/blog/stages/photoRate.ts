@@ -14,7 +14,7 @@ import { parseJsonLenient } from "@/lib/pins/ai/json";
 import { SLOTS } from "@/lib/blog/types";
 import type { StageHandler } from "./index";
 import { MAX_SLOT_SEARCHES } from "./photoSearch";
-import { RATE_SYSTEM } from "@/lib/blog/photo/ratePrompt";
+import { RATE_SYSTEM, offPuttingSignal } from "@/lib/blog/photo/ratePrompt";
 
 const STAGE_KEY = "photo_rate";
 const BATCH = 6;
@@ -28,7 +28,8 @@ export { RATE_SYSTEM };
 type Rated = Record<string, unknown>;
 
 function leadFor(keyword: string, slot: BlogImageSlot): string {
-  return `ARTICLE: "${keyword}".\nSLOT "${slot.key}" — the photo must show: ${slot.query}.${slot.mustShow ? `\nMUST BE VISIBLE: ${slot.mustShow}.` : ""}${slot.avoid ? `\nMUST NOT SHOW: ${slot.avoid}.` : ""}\nWhen in doubt, reject: an off-topic or fake photo is far worse than a missing one.`;
+  const hero = slot.key === "hero" ? `\nTHIS IS THE MAIN PHOTO at the top of the article and on Pinterest: it must be inviting and pleasant (the solution in progress or a nice result, a calm person), never the problem at its worst.` : "";
+  return `ARTICLE: "${keyword}".\nSLOT "${slot.key}" — the photo must show: ${slot.query}.${slot.mustShow ? `\nMUST BE VISIBLE: ${slot.mustShow}.` : ""}\nMUST NOT SHOW: ${slot.avoid ? `${slot.avoid}; ` : ""}injury, rash, swelling, allergic reaction, distress, gross close-up.${hero}\nWhen in doubt, reject: an off-topic, fake or unpleasant photo is far worse than a missing one.`;
 }
 
 export const photoRate: StageHandler = async (ctx) => {
@@ -87,13 +88,17 @@ export const photoRate: StageHandler = async (ctx) => {
       answered.add(row.c.id);
       const relevance = clamp10(it.relevance);
       const quality = clamp10(it.quality);
+      // appeal: если модель поле не вернула — берём качество (старые промты рецепта без appeal)
+      const appeal = it.appeal == null ? quality : clamp10(it.appeal);
       const real = it.real_photo !== false;
       const issues = Array.isArray(it.issues) ? it.issues.map((x) => String(x)).slice(0, 6) : [];
       const score = Math.round((relevance * 0.6 + quality * 0.4) * 10) / 10;
       const verdictKeep = String(it.verdict ?? "").toLowerCase() === "keep";
-      const keep = verdictKeep && real && relevance >= 6 && quality >= 4 && score >= minScore;
-      const reason = String(it.reason ?? "").slice(0, 200);
       const description = String(it.description ?? "").trim().slice(0, 400);
+      const unpleasant = offPuttingSignal(`${description} ${issues.join(" ")}`) ?? (issues.some((x) => /off-putting|disturbing|gross/i.test(x)) ? "неприятный кадр" : null);
+      const appealOk = appeal >= (slot.key === "hero" ? 7 : 6);
+      const keep = verdictKeep && real && !unpleasant && appealOk && relevance >= 6 && quality >= 4 && score >= minScore;
+      const reason = unpleasant ?? (!appealOk && verdictKeep ? `не вызывает желания сохранить (appeal ${appeal})` : String(it.reason ?? "").slice(0, 200));
       if (keep) kept++; else rejected++;
       await prisma.blogPhotoCandidate.update({
         where: { id: row.c.id },
@@ -103,7 +108,7 @@ export const photoRate: StageHandler = async (ctx) => {
           rejectReason: keep ? null : (issues.length ? `${reason} (${issues.join(", ")})` : reason || `балл ${score} ниже порога ${minScore}`),
           aiScore: score, relevance,
           aiDescription: description || null,
-          aiBreakdown: { relevance, quality, real, issues, verdict: keep ? "keep" : "reject", reason, score, slot: slot.key } as Prisma.InputJsonValue,
+          aiBreakdown: { relevance, quality, appeal, real, issues, verdict: keep ? "keep" : "reject", reason, score, slot: slot.key } as Prisma.InputJsonValue,
         },
       });
     }

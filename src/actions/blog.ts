@@ -376,6 +376,24 @@ export async function saveSlotQuery(_p: FormState, f: FormData): Promise<FormSta
 }
 
 /** Заменить фото слота кандидатом из резерва: файл статьи и строка BlogPhoto пересоздаются. */
+/** Видео статьи: «Убрать» (videoId пустой) или «Поставить другое» из кандидатов, прошедших правила. Сборка — при одобрении. */
+export async function setPostVideo(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  try {
+    const a = await postForUser(me, str(f, "postId"));
+    if (a.status === "RUNNING") throw new Error("Статья выполняется: дождитесь окончания этапа или остановите её");
+    const row = await prisma.blogPost.findUniqueOrThrow({ where: { id: a.id }, select: { video: true } });
+    const st = (row.video ?? null) as { candidates?: Array<{ id: string; decision?: string }>; chosen?: unknown } | null;
+    if (!st) throw new Error("Видео для статьи не подбиралось");
+    const videoId = str(f, "videoId");
+    const next = videoId ? st.candidates?.find((c) => c.id === videoId && c.decision === "embed") : null;
+    if (videoId && !next) throw new Error("Это видео не прошло проверку — поставить нельзя");
+    await prisma.blogPost.update({ where: { id: a.id }, data: { video: { ...st, chosen: next ?? null, manual: true } as Prisma.InputJsonValue } });
+    revalidatePost(a);
+    return { ok: next ? "Видео заменено. Одобрите статью — сборка пройдёт заново." : "Видео убрано. Одобрите статью — сборка пройдёт заново." };
+  } catch (e) { return fail(e); }
+}
+
 export async function swapSlotPhoto(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   try {

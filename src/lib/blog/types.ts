@@ -76,6 +76,10 @@ export type BlogRecipeParams = {
   overlay: { mode: "article" | "pin_only" | "off"; photos: "all" | "hero" };
   /** ИИ-картинка «по шагам» в секциях-инструкциях (реальные фото остаются): off | steps; max — на статью; quality — gpt-image */
   aiImages: { mode: "off" | "steps"; max: number; quality: "low" | "medium" | "high" };
+  /** Основа статьи: research — исследование темы; video — метод из лучшего видео YouTube (только инструкции, не YMYL) */
+  source: "research" | "video";
+  /** Видео в статье: off; auto — одно видео, если найдётся достойное по содержанию */
+  video: { embed: "off" | "auto" };
   language: string;
   country: string;
 };
@@ -92,6 +96,8 @@ export const DEFAULT_PARAMS: BlogRecipeParams = {
   review: { aiEditor: false },
   overlay: { mode: "article", photos: "all" },
   aiImages: { mode: "off", max: 2, quality: "medium" },
+  source: "research",
+  video: { embed: "off" },
   language: "en",
   country: "US",
 };
@@ -231,6 +237,8 @@ export type BlogBrief = {
   questions: string[];
   /** Из SerpApi (если включено): People Also Ask и заголовки топа */
   serp?: { questions: string[]; titles: string[]; headings: string[] } | null;
+  /** «Статья по видео»: метод из лучшего видео (этап video) — основной источник метода */
+  video?: { id: string; title: string; channel: string; steps: string[]; tips: string[]; mistakes: string[]; notCovered: string[] } | null;
   model?: string | null;
 };
 
@@ -261,6 +269,8 @@ export type BlogOutline = {
   faq: { enabled: boolean; count: number; questions: string[] };
   disclaimer: boolean;
   sections: OutlineSection[];
+  /** Секция, где стоит видео YouTube (если оно выбрано) */
+  videoSection?: number | null;
   model?: string | null;
   plannedAt?: string;
 };

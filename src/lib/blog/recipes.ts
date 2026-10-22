@@ -38,6 +38,8 @@ export function mergeParams(raw: unknown): BlogRecipeParams {
     review: { aiEditor: r.review?.aiEditor === true },
     overlay: { mode: r.overlay?.mode === "pin_only" || r.overlay?.mode === "off" ? r.overlay.mode : "article", photos: r.overlay?.photos === "hero" ? "hero" : "all" },
     aiImages: { mode: r.aiImages?.mode === "steps" ? "steps" : "off", max: num(r.aiImages?.max, d.aiImages.max, 1, 4), quality: r.aiImages?.quality === "low" || r.aiImages?.quality === "high" ? r.aiImages.quality : "medium" },
+    source: r.source === "video" ? "video" : "research",
+    video: { embed: r.video?.embed === "auto" ? "auto" : "off" },
     language: String(r.language ?? d.language).toLowerCase().slice(0, 5) || "en",
     country: String(r.country ?? d.country).toUpperCase().slice(0, 2) || "US",
   };

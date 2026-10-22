@@ -2,6 +2,7 @@
  * Текстовые помощники инфо-статей: чистка HTML секции до разрешённых тегов, таблицы с <thead>, подсчёт слов,
  * короткие сводки для промтов. Тире, американское написание и парность <p> — общие функции статей (polish.ts).
  */
+import { videoBriefText } from "./video";
 import { polishHtml, type PolishOpts } from "@/lib/articles/text/polish";
 import { balanceParagraphs } from "@/lib/articles/text/textGuards";
 import type { BlogBrief, BlogOutline, OutlineSection } from "./types";
@@ -125,6 +126,7 @@ export function briefShort(b: BlogBrief | null): string {
   if (b.safety?.length) lines.push(`Safety: ${b.safety.join("; ")}`);
   if (b.materials?.length) lines.push(`Materials/tools: ${b.materials.join("; ")}`);
   if (b.timeline) lines.push(`Timeline: ${b.timeline}`);
+  if (b.video?.steps?.length) lines.push(videoBriefText({ id: b.video.id, title: b.video.title, channel: b.video.channel, views: 0, sec: 0, date: "", shorts: false }, b.video));
   return lines.join("\n");
 }
 

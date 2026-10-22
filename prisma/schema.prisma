@@ -1907,6 +1907,8 @@ model BlogPost {
   html            String?     @db.LongText
   /// JSON-LD (Article / FAQPage / HowTo), собирается на сборке
   schema          Json?
+  /// Видео YouTube (этап video): кандидаты с оценкой, выбранное видео, режим «статья по видео» (src/lib/blog/video.ts)
+  video           Json?
   h1              String      @default("")
   metaTitle       String      @default("")
   metaDescription String      @default("") @db.Text

@@ -13,7 +13,7 @@ export const TAKEAWAYS_HEADING = "Key Takeaways";
 
 /** Фото статьи; pinMedia — другая картинка для пина при сохранении (data-pin-media), например с плашкой текста. */
 export type BlogImage = ImageLike & { pinMedia?: string | null };
-export type AssembleSection = { position: number; kind: string; heading: string; html: string; photo: BlogImage | null; stepsPhoto?: BlogImage | null };
+export type AssembleSection = { position: number; kind: string; heading: string; html: string; photo: BlogImage | null; stepsPhoto?: BlogImage | null; videoHtml?: string | null };
 export type AssembleInput = {
   introHtml: string;
   hero: BlogImage | null;
@@ -91,6 +91,7 @@ export function assemblePostHtml(input: AssembleInput): AssembleOutput {
     if (s.photo?.url) block += img(s.photo, s.heading);
     const body = balanceParagraphs(styleTables(s.html));
     block += body + "\n";
+    if (s.videoHtml) block += s.videoHtml;
     if (s.stepsPhoto?.url) block += img(s.stepsPhoto, s.heading);
     words += countWords(s.html);
     parts.push(block);

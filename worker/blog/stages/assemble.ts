@@ -13,6 +13,7 @@ import { buildJsonLd } from "@/lib/blog/schema";
 import { cleanHeading, cleanSectionHtml, varyTipLabels } from "@/lib/blog/text";
 import { allowedTags } from "@/lib/blog/blocks";
 import { publicUrl } from "@/lib/blog/storage";
+import { videoEmbedHtml, videoObject, type BlogVideoState } from "@/lib/blog/video";
 import type { StageHandler } from "./index";
 import { rewriteSection } from "./write";
 
@@ -93,11 +94,14 @@ export const assemble: StageHandler = async (ctx) => {
   };
   const rows = await prisma.blogSection.findMany({ where: { postId: post.id, status: "written" }, orderBy: { position: "asc" } });
   const cleaned = varyTipLabels(rows.map((s) => cleanSectionHtml(s.html ?? "", allowedTags(s.kind), pol, { allowLinks: true })));
-  const secs: AssembleSection[] = rows.map((s, i) => ({ position: s.position, kind: s.kind, heading: cleanHeading(s.heading), html: cleaned[i], photo: img(s.slotKey), stepsPhoto: img(`ai${s.position}`) }));
+  const chosenVideo = ((fresh.video ?? null) as BlogVideoState | null)?.chosen ?? null;
+  const videoPos = chosenVideo ? (outline.videoSection ?? rows.find((r) => r.kind === "steps")?.position ?? null) : null;
+  const secs: AssembleSection[] = rows.map((s, i) => ({ videoHtml: chosenVideo && s.position === videoPos ? videoEmbedHtml(chosenVideo, post.id) : null, position: s.position, kind: s.kind, heading: cleanHeading(s.heading), html: cleaned[i], photo: img(s.slotKey), stepsPhoto: img(`ai${s.position}`) }));
   const faq = Array.isArray(fresh.faq) ? (fresh.faq as Array<{ question: string; answer: string }>).filter((f) => f?.question && f?.answer) : [];
   const jsonLd = recipe.publish.schema === "off" ? null : buildJsonLd({
     h1: fresh.h1 || outline.h1 || post.keyword, description: fresh.metaDescription || outline.metaDescription,
     images: photos.map(shownUrl).filter(Boolean), faq, sections: secs.map((s) => ({ kind: s.kind, heading: s.heading, html: s.html })),
+    video: chosenVideo && videoPos ? videoObject(chosenVideo) : null,
   });
   const built = assemblePostHtml({
     introHtml: fresh.introHtml ?? "", hero: img("hero"), takeawaysHtml: fresh.takeawaysHtml, sections: secs, faq,
