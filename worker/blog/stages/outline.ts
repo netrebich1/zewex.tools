@@ -115,6 +115,11 @@ export const outline: StageHandler = async (ctx) => {
     if (!parsed || typeof parsed !== "object") { lastWhy = "ответ не JSON"; correction = "\n\nIMPORTANT: your previous answer was not valid JSON. Return ONLY one JSON object."; continue; }
     const secs = Array.isArray(parsed.sections) ? parsed.sections : [];
     if (secs.length < MIN_SECTIONS) { lastWhy = `секций ${secs.length}, нужно не меньше ${MIN_SECTIONS}`; correction = `\n\nIMPORTANT: "sections" must contain at least ${MIN_SECTIONS} entries.`; continue; }
+    // Формат со списком: пунктов (list_item) должно быть N — модель часто даёт меньше; повторная попытка с поправкой
+    if (st && LIST_STRUCTURES.includes(st) && N && i + 1 < TRIES) {
+      const items = secs.filter((x) => String((x as R)?.kind ?? "").toLowerCase() === "list_item").length;
+      if (items < Math.ceil(N * 0.9)) { lastWhy = `пунктов ${items}, нужно ${N}`; correction = `\n\nIMPORTANT: you planned ${items} sections of kind "list_item", but EXACTLY ${N} are required (one per item). Return the full plan again with ${N} list_item sections.`; continue; }
+    }
     out = parsed;
     break;
   }
@@ -152,8 +157,9 @@ export const outline: StageHandler = async (ctx) => {
 
   // Формат: число пунктов, фото у пунктов подборки, заметки автору к пунктам и группам
   const shaped = enforceStructure(sections, st, N, fmt?.key);
+  const nextSections = [...shaped.sections]; // enforceStructure может вернуть тот же массив — копия до очистки
   sections.length = 0;
-  sections.push(...shaped.sections);
+  sections.push(...nextSections);
   const listCount = shaped.count;
 
   // Объём статьи: сумма секций приводится к [min,max] с учётом вступления/итогов/заключения/FAQ (~15 %).

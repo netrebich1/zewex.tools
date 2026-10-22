@@ -10,7 +10,7 @@ import { parseModelJsonSafe } from "@/lib/articles/text/jsonRepair";
 import { applySlugYear, keywordYear, normalizeMetaYear, slugify, stripYear, yearInSlugFor, yearPercentOf } from "@/lib/articles/text/slug";
 import { fixDashesText, polishHeading, toUsSpellingText, usesUsSpelling } from "@/lib/articles/text/polish";
 import { stageModel } from "@/lib/blog/prompts";
-import { fixLeadingNumber, LIST_STRUCTURES } from "@/lib/blog/structure";
+import { countListItems, fixLeadingNumber, LIST_STRUCTURES } from "@/lib/blog/structure";
 import { SLOTS } from "@/lib/blog/types";
 import type { StageHandler } from "./index";
 
@@ -152,7 +152,7 @@ Rules: title 40-58 characters, Title Case, contains the keyword naturally, no co
   const st = recipe.scenario?.structure;
   if (st && (LIST_STRUCTURES.includes(st) || st === "big_list")) {
     const secs = await prisma.blogSection.findMany({ where: { postId: post.id, status: "written" }, select: { kind: true, html: true } });
-    const count = st === "big_list" ? secs.filter((s) => s.kind === "list_group").reduce((n, s) => n + ((s.html ?? "").match(/<li\b/gi)?.length ?? 0), 0) : secs.filter((s) => s.kind === "list_item").length;
+    const count = countListItems(st, secs) ?? 0;
     if (count >= 3) { m.h1 = fixLeadingNumber(m.h1, count); m.title = fixLeadingNumber(m.title, count); m.description = fixLeadingNumber(m.description, count); }
   }
   await prisma.blogPost.update({ where: { id: post.id }, data: { h1: m.h1, metaTitle: m.title, metaDescription: m.description, slug: m.slug } });

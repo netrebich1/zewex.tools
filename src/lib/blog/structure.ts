@@ -88,3 +88,11 @@ export function fixLeadingNumber(title: string, count: number | null | undefined
   if (!count) return title;
   return String(title ?? "").replace(/^(\s*)\d{1,3}\+?(?=\s)/, `$1${count}`);
 }
+
+/** Реальное число пунктов по написанным секциям: список/тренировка — секции list_item, большой список/чеклист — строки <li>. */
+export function countListItems(st: Structure | undefined, secs: Array<{ kind: string; html: string | null }>): number | null {
+  if (!st) return null;
+  if (st === "big_list") return secs.filter((s) => s.kind === "list_group").reduce((n, s) => n + ((s.html ?? "").match(/<li\b/gi)?.length ?? 0), 0);
+  if (LIST_STRUCTURES.includes(st)) return secs.filter((s) => s.kind === "list_item").length;
+  return null;
+}

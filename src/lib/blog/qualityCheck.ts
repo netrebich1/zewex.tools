@@ -74,6 +74,12 @@ export function checkPostQuality(post: BlogPost, outline: BlogOutline | null, pa
     if (/```|^#{1,6}\s/m.test(html)) problems.push(`Секция ${s.position}: markdown вместо HTML`);
     if (wantsTable(s.kind) && !/<table\b/i.test(html)) problems.push(`Секция ${s.position}: блок «${spec.label}» без таблицы`);
     if (s.kind === "steps" && !/<ol\b/i.test(html)) problems.push(`Секция ${s.position}: шаги без нумерованного списка`);
+    // Группа большого списка/чеклиста: пунктов столько, сколько задал план («Write exactly K items»)
+    if (s.kind === "list_group") {
+      const want = Number(String((s.brief as { notes?: string } | null)?.notes ?? "").match(/exactly (\d+) items/)?.[1] ?? 0);
+      const got = (html.match(/<li\b/gi) ?? []).length;
+      if (want && got < Math.floor(want * 0.85)) problems.push(`Секция ${s.position}: пунктов ${got}, нужно ${want} — допишите группу до ${want} пунктов, каждый в одну строку`);
+    }
     if (/\b(in the photo|pictured above|as you can see in the image|the image shows)\b/i.test(html)) problems.push(`Секция ${s.position}: ссылается на картинку словами`);
     const inv = inventedExperience(html);
     if (inv) problems.push(`Секция ${s.position}: выдуманный личный опыт («${inv}») — убрать, первое лицо только для мнения или совета`);

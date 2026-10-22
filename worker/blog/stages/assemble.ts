@@ -14,6 +14,7 @@ import { cleanHeading, cleanSectionHtml, varyTipLabels } from "@/lib/blog/text";
 import { allowedTags } from "@/lib/blog/blocks";
 import { publicUrl } from "@/lib/blog/storage";
 import { videoEmbedHtml, videoObject, type BlogVideoState } from "@/lib/blog/video";
+import { countListItems, fixLeadingNumber } from "@/lib/blog/structure";
 import type { StageHandler } from "./index";
 import { rewriteSection } from "./write";
 import { consistencyProblems } from "./consistency";
@@ -137,7 +138,10 @@ export const assemble: StageHandler = async (ctx) => {
     conclusionHtml: fresh.conclusionHtml ?? "", disclaimerHtml: fresh.disclaimerHtml, closing: img("closing"),
     keyword: post.keyword, caption, jsonLd,
   });
-  await prisma.blogPost.update({ where: { id: post.id }, data: { html: built.html, wordCount: built.wordCount, schema: jsonLd ? (jsonLd as Prisma.InputJsonValue) : Prisma.DbNull } });
+  // Число в H1/title/description = реальному числу пунктов (после самопочинки групп оно могло измениться)
+  const itemCount = countListItems(recipe.scenario?.structure, rows);
+  const numberFix = itemCount && itemCount >= 3 ? { h1: fixLeadingNumber(fresh.h1, itemCount), metaTitle: fixLeadingNumber(fresh.metaTitle, itemCount), metaDescription: fixLeadingNumber(fresh.metaDescription, itemCount) } : {};
+  await prisma.blogPost.update({ where: { id: post.id }, data: { html: built.html, wordCount: built.wordCount, schema: jsonLd ? (jsonLd as Prisma.InputJsonValue) : Prisma.DbNull, ...numberFix } });
   return {
     summary: `Собрано: ${secs.length} секций, ${photos.length} фото, ${built.wordCount} слов${faq.length ? `, FAQ ${faq.length}` : ""}${quality.fixed.length ? `; починено: ${quality.fixed.length}` : ""}`,
     details: { sections: secs.length, photos: photos.length, wordCount: built.wordCount, toc: built.toc, faq: faq.length, schema: jsonLd ? (jsonLd as { "@graph": unknown[] })["@graph"].map((g) => (g as { "@type": string })["@type"]) : [], fixed: quality.fixed },
