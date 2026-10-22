@@ -98,12 +98,14 @@ function contextBlock(ctx?: EditContext): string {
 
 const resolved = new Map<string, { at: number; value: ResolvedSlot }>();
 
-async function resolveFor(userId: string): Promise<ResolvedSlot> {
-  const hit = resolved.get(userId);
+/** Правило на минуту: по пользователю и команде задания (списание с ключей этой команды). */
+async function resolveFor(userId: string, teamId: string | null | undefined): Promise<ResolvedSlot> {
+  const cacheKey = `${userId}|${teamId ?? ""}`;
+  const hit = resolved.get(cacheKey);
   if (hit && Date.now() - hit.at < 60_000) return hit.value;
-  const r = await resolveSlot(userId, PROJECT_SLUG, EDIT_SLOT);
+  const r = await resolveSlot(userId, PROJECT_SLUG, EDIT_SLOT, teamId);
   if (!r.ok) throw new AiError({ code: r.status === 409 ? "no_binding" : "resolve", kind: "fatal_run", message: r.error }, r.status);
-  resolved.set(userId, { at: Date.now(), value: r.value });
+  resolved.set(cacheKey, { at: Date.now(), value: r.value });
   return r.value;
 }
 
@@ -119,7 +121,7 @@ function extractText(data: unknown): string {
 export async function chat(ctx: AiCtx, system: string, user: string, temperature: number): Promise<string> {
   let lastErr: unknown = null;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const pre = await resolveFor(ctx.userId);
+    const pre = await resolveFor(ctx.userId, ctx.teamId);
     const release = await acquire(`deepl:${pre.binding.apiKey.id}`, KEY_CONCURRENCY);
     try {
       const res = await runSlot({

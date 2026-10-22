@@ -20,8 +20,12 @@ export type Permissions = {
   teams: "none" | "view" | "manage" | "all";
   /** Провайдеры и модели: раздел скрыт / смотреть / менять настройки, модели и цены. */
   providers: "none" | "view" | "manage";
-  /** Сайты: только сайты своих команд / все сайты. */
-  sites: "team" | "all";
+  /**
+   * Сайты: только свои (где отмечен) / все сайты, но только на вкладке «Сайты» / все сайты везде.
+   * «system» — сотрудник видит и правит любой сайт в разделе «Сайты» (REST API, команды, видимость, подключение инструментов),
+   * а в самих инструментах (пины, статьи, DeepL) видит только свои сайты, как при «team».
+   */
+  sites: "team" | "system" | "all";
   /** Балансы в шапке: скрыты / только ключи своей команды в открытых сотруднику инструментах / все провайдеры. */
   balances: "none" | "own" | "all";
   /** Список пользователей: скрыт / только смотреть. Добавлять людей и менять права может только админ. */
@@ -90,7 +94,7 @@ export const PERMISSION_FIELDS: Array<FieldMeta<PermissionKey>> = [
   { key: "keysCreate", label: "Добавляет и меняет ключи", options: [{ value: "none", label: "Нельзя" }, { value: "personal", label: "Только личные" }, { value: "team", label: "Личные и своих команд" }, { value: "all", label: "Любые, включая общие" }] },
   { key: "keysAssign", label: "Назначает ключи (правила)", hint: "Подключение ключей к сервисам и командам, правила на страницах инструментов.", options: [{ value: "none", label: "Только личные правила" }, { value: "team", label: "Правила своих команд" }, { value: "all", label: "Любые: сервисы, команды, глобальные" }] },
   { key: "teams", label: "Команды", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }, { value: "manage", label: "Состав своих команд" }, { value: "all", label: "Создавать и управлять всеми" }] },
-  { key: "sites", label: "Сайты", options: [{ value: "team", label: "Только свои сайты (где отмечен)" }, { value: "all", label: "Все сайты" }] },
+  { key: "sites", label: "Сайты", hint: "«Только на вкладке „Сайты“» — заводит доступы и подключает любые сайты к инструментам, а внутри инструментов видит только свои.", options: [{ value: "team", label: "Только свои сайты (где отмечен)" }, { value: "system", label: "Все сайты — только на вкладке «Сайты»" }, { value: "all", label: "Все сайты" }] },
   { key: "providers", label: "Провайдеры и модели", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }, { value: "manage", label: "Менять настройки и модели" }] },
   { key: "balances", label: "Балансы в шапке", hint: "«Свои» — ключи команды сотрудника в открытых ему инструментах.", options: [{ value: "none", label: "Не показывать" }, { value: "own", label: "Только свои ключи" }, { value: "all", label: "Все провайдеры" }] },
   { key: "users", label: "Пользователи", hint: "Добавлять людей и менять их права может только админ.", options: [{ value: "none", label: "Раздел скрыт" }, { value: "view", label: "Только смотреть" }] },
@@ -300,8 +304,17 @@ export function canCreateTeam(u: Actor): boolean {
 }
 
 /* Прочее */
+/** Все сайты везде: в разделе «Сайты» и во всех инструментах. */
 export function seesAllSites(u: Actor): boolean {
   return u.role === "ADMIN" || u.perms.sites === "all";
+}
+/**
+ * Пользователь для страниц и действий раздела «Сайты»: право «system» там действует как «all».
+ * Применять только в `/sites/*` и в действиях, которые вызываются с этих страниц (сохранить доступ,
+ * проверить подключение, подключить/отключить инструмент). В инструментах — обычный `me`.
+ */
+export function forSitesTab<T extends Actor>(u: T): T {
+  return u.perms.sites === "system" ? { ...u, perms: { ...u.perms, sites: "all" } } : u;
 }
 export function canViewProviders(u: Actor): boolean {
   return u.role === "ADMIN" || u.perms.providers !== "none";

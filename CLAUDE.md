@@ -4,7 +4,7 @@
 
 ## Стек и структура
 - Next.js 15 (App Router, `output: standalone`), React 19, Tailwind 4, Prisma 6, MariaDB.
-- `src/lib/resolve.ts` — выбор правила для слота (USER_PROJECT → TEAM_PROJECT → PROJECT → TEAM → GLOBAL).
+- `src/lib/resolve.ts` — выбор правила для слота (USER_PROJECT → TEAM_PROJECT → PROJECT → TEAM → GLOBAL). Третий аргумент `teamId` — команда работы (команда сайта/прогона): уровни «команда» смотрят только её правила, деньги списываются строго с её ключей, даже если сотрудник состоит в нескольких командах (инцидент 2026-10-22: сайт WexOra, ключи Zewex). Все инструменты передают `ctx.teamId` в `resolveSlot`; `runSlot` без `pre` берёт `meta.teamId`.
 - `src/lib/adapters.ts` — вызовы провайдеров (OpenAI-совместимые, DataForSEO, SerpAPI); `src/lib/run.ts` — прокси + журнал расхода.
 - `src/actions/*.ts` — все мутации (server actions), формы через `components/ActionForm.tsx`.
 - `prisma/seed.mjs` — провайдеры, модели Perplexity, разделы (идемпотентен).

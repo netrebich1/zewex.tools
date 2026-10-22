@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/auth";
+import { forSitesTab } from "@/lib/permissions";
 import { accessFormData } from "@/lib/sites/form";
 import { Card, PageHeader } from "@/components/ui";
 import { SiteAccessForm } from "@/components/sites/SiteAccessForm";
@@ -6,7 +7,7 @@ import { SiteAccessForm } from "@/components/sites/SiteAccessForm";
 export const dynamic = "force-dynamic";
 
 export default async function NewSitePage() {
-  const me = await requireUser();
+  const me = forSitesTab(await requireUser());
   const { teams, projects, members } = await accessFormData(me);
   return (
     <>

@@ -94,6 +94,8 @@ model Session {
   memberView  Boolean @default(false)
   /// Главный админ вошёл в кабинет этого пользователя; вернуться может только он сам (флаг живёт в его сессии).
   actAsUserId String?
+  /// Активная команда (переключатель в шапке у сотрудника, который состоит в нескольких командах); null — все его команды.
+  activeTeamId String?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 

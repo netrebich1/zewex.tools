@@ -18,7 +18,7 @@ import { PROJECT_SLUG as BLOG_SLUG } from "@/lib/blog/types";
 import { fmtDate } from "@/lib/utils";
 import { SiteAccessForm } from "@/components/sites/SiteAccessForm";
 import { DeleteSiteForm } from "@/components/sites/DeleteSiteForm";
-import { canManageTeam } from "@/lib/permissions";
+import { canManageTeam, forSitesTab } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +29,7 @@ const accessInclude = { teams: { select: { teamId: true } }, viewers: { select: 
  * Настройки сервисов — в самих сервисах (Pinterest Pins → Сайты). id — доступ; старые ссылки по id сайта Pinterest перенаправляются.
  */
 export default async function SitePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<SearchParams> }) {
-  const me = await requireUser();
+  const me = forSitesTab(await requireUser());
   const { id } = await params;
   const query = await searchParams;
 

@@ -24,8 +24,9 @@ function sumAccounts(keys: MyKeyBalance[]): number | null {
 /**
  * Балансы в шапке: плашка с остатками, по клику — подробности.
  * Админам и сотрудникам с правом «все провайдеры» — все провайдеры; остальным (`mine`) — ключи их команды в открытых им инструментах.
+ * `teamName` — активная команда из шапки: подпись в окне; при смене команды компонент пересоздаётся (key в Shell) и грузит заново.
  */
-export function HeaderBalances({ mine = false }: { mine?: boolean }) {
+export function HeaderBalances({ mine = false, teamName = null }: { mine?: boolean; teamName?: string | null }) {
   const [rows, setRows] = useState<ProviderBalance[] | null>(null);
   const [keys, setKeys] = useState<MyKeyBalance[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +68,7 @@ export function HeaderBalances({ mine = false }: { mine?: boolean }) {
         .map((slug) => { const list = keys!.filter((k) => k.providerSlug === slug); return { id: slug, label: SHORT[slug] ?? list[0].provider, remaining: sumAccounts(list) }; })
         .filter((c) => c.remaining != null)
     : (rows ?? []).filter((p) => p.remaining != null).map((p) => ({ id: p.slug, label: SHORT[p.slug] ?? p.name, remaining: p.remaining }));
-  const title = mine ? "Балансы ваших ключей" : "Балансы провайдеров";
+  const title = mine ? (teamName ? `Балансы ключей команды «${teamName}»` : "Балансы ваших ключей") : "Балансы провайдеров";
   const total = mine && keys ? sumAccounts(keys) : null;
 
   return (
@@ -100,7 +101,7 @@ export function HeaderBalances({ mine = false }: { mine?: boolean }) {
         <div className="menu overflow-hidden" style={{ width: 340, padding: 0 }} role="dialog" aria-label={title}>
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-line">
             <div>
-              <div className="text-[14px] font-semibold">{mine ? "Балансы ваших ключей" : "Балансы"}</div>
+              <div className="text-[14px] font-semibold">{mine ? (teamName ? `Ключи команды «${teamName}»` : "Балансы ваших ключей") : "Балансы"}</div>
               <div className="help">{at ? `Обновлено ${at.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : "Загружаем…"}</div>
             </div>
             <button type="button" onClick={() => void load(true)} disabled={busy} className="btn-ghost btn-sm" title="Запросить у провайдеров заново">
@@ -110,7 +111,7 @@ export function HeaderBalances({ mine = false }: { mine?: boolean }) {
           {error && <div className="px-4 py-3 text-[13px] text-danger">{error}</div>}
           {mine && keys && (
             <>
-              {keys.length === 0 && <div className="px-4 py-3 help">У вашей команды пока нет ключей в открытых вам инструментах.</div>}
+              {keys.length === 0 && <div className="px-4 py-3 help">{teamName ? `У команды «${teamName}» пока нет ключей в открытых вам инструментах.` : "У вашей команды пока нет ключей в открытых вам инструментах."}</div>}
               {keys.length > 1 && total != null && (
                 <div className="flex items-baseline justify-between gap-3 px-4 py-3 border-b border-line">
                   <div className="text-[14px] font-semibold">Всего на ключах</div>

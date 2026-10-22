@@ -213,10 +213,10 @@ const SCOPE_ORDER: BindingScope[] = ["USER_PROJECT", "TEAM_PROJECT", "PROJECT", 
  * с остатком на счёте. Только свои: правила его команд и личные; если слот обслуживает общий ключ сервиса
  * (уровни PROJECT / GLOBAL), он не показывается — чужие балансы сотруднику не видны.
  * Остаток общий для ключа: в нём учтён расход всех инструментов и команд.
+ * `scopeTeamIds` — команды, по которым считать (у сотрудника с активной командой в шапке — только она); без них — все команды из базы.
  */
-export async function myKeyBalances(userId: string, tools: "all" | string[], force = false): Promise<MyKeyBalance[]> {
-  const memberships = await prisma.teamMember.findMany({ where: { userId }, orderBy: { createdAt: "asc" }, select: { teamId: true } });
-  const teamIds = memberships.map((m) => m.teamId);
+export async function myKeyBalances(userId: string, tools: "all" | string[], force = false, scopeTeamIds?: string[]): Promise<MyKeyBalance[]> {
+  const teamIds = scopeTeamIds ?? (await prisma.teamMember.findMany({ where: { userId }, orderBy: { createdAt: "asc" }, select: { teamId: true } })).map((m) => m.teamId);
   const [slots, bindings] = await Promise.all([
     prisma.slot.findMany({ where: tools === "all" ? {} : { project: { slug: { in: tools } } }, select: { id: true, capability: true, preferProviders: true, project: { select: { name: true, order: true } } } }),
     prisma.binding.findMany({

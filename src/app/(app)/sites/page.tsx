@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { siteAccessWhere, pinSiteWhere } from "@/lib/sites/access";
-import { canManageTeam, seesAllSites, publicToolWhere } from "@/lib/permissions";
+import { canManageTeam, forSitesTab, seesAllSites, publicToolWhere } from "@/lib/permissions";
 import { Badge, Card, Empty, PageHeader } from "@/components/ui";
 import { Icon } from "@/components/Icons";
 import { fmtDate } from "@/lib/utils";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 /** Уровень системы: сайты = доступ по REST API WordPress + команды + сервисы + видимость. Настройки сервисов — внутри сервисов. */
 export default async function SitesPage() {
-  const me = await requireUser();
+  const me = forSitesTab(await requireUser());
   const isAdmin = seesAllSites(me);
   const [teams, projects, rows, pinSites] = await Promise.all([
     prisma.team.findMany({ where: isAdmin ? {} : { id: { in: me.teamIds } }, orderBy: { name: "asc" } }),

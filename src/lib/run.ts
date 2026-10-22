@@ -33,13 +33,16 @@ export type ResolvedSlot = {
 
 export type ResolveSlotResult = { ok: true; value: ResolvedSlot } | { ok: false; status: number; error: string };
 
-/** Находит проект, слот и правило (ключ + модель) для пользователя. Без вызова провайдера. */
-export async function resolveSlot(userId: string, projectSlug: string, slotKey: string): Promise<ResolveSlotResult> {
+/**
+ * Находит проект, слот и правило (ключ + модель) для пользователя. Без вызова провайдера.
+ * `teamId` — команда, с ключей которой списывать (команда сайта / прогона); см. `resolveBinding`.
+ */
+export async function resolveSlot(userId: string, projectSlug: string, slotKey: string, teamId?: string | null): Promise<ResolveSlotResult> {
   const project = await prisma.project.findUnique({ where: { slug: projectSlug }, include: { slots: true } });
   if (!project) return { ok: false, status: 404, error: `Проект «${projectSlug}» не найден` };
   const slot = project.slots.find((s) => s.key === slotKey);
   if (!slot) return { ok: false, status: 404, error: `Слот «${slotKey}» не найден в проекте «${project.name}»` };
-  const resolved = await resolveBinding(userId, slot.id);
+  const resolved = await resolveBinding(userId, slot.id, teamId);
   if (!resolved.binding) {
     return { ok: false, status: 409, error: `Для слота «${slot.name}» не настроено ни одного правила (ключ + модель). Откройте страницу проекта и добавьте привязку.` };
   }
@@ -81,7 +84,8 @@ export async function monthSpendForKey(apiKeyId: string): Promise<number> {
 export async function runSlot(req: RunRequest): Promise<RunResponse> {
   let pre = req.pre;
   if (!pre) {
-    const r = await resolveSlot(req.userId, req.projectSlug, req.slotKey);
+    // Без готового правила ключ ищется по команде из meta: списание идёт с её ключей.
+    const r = await resolveSlot(req.userId, req.projectSlug, req.slotKey, req.meta?.teamId);
     if (!r.ok) return { ok: false, status: r.status, error: r.error };
     pre = r.value;
   }

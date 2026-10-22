@@ -72,7 +72,8 @@ export async function costRates(force = false): Promise<CostRates> {
   return out;
 }
 
-export type EstimateInput = { pages: number; mix: { ai: number; photos: number; canvas: number; pinora: number } };
+/** `teamId` — команда сайта: ключи (и остатки) берутся по её правилам, как при самом прогоне. */
+export type EstimateInput = { pages: number; mix: { ai: number; photos: number; canvas: number; pinora: number }; teamId?: string | null };
 
 export type EstimatePart = { slot: string; slotName: string; unit: SlotUnit; units: number; rate: number | null; costUsd: number | null; providerSlug: string; providerName: string; keyLabel: string; keyId: string; note: string | null };
 export type EstimateProvider = { slug: string; name: string; keys: string[]; costUsd: number; remainingUsd: number | null; balanceNote: string | null; enough: boolean | null };
@@ -105,7 +106,7 @@ export async function runEstimate(me: CurrentUser, input: EstimateInput): Promis
     const unit = SLOT_UNIT[slotKey];
     const units = unitsOf[unit];
     if (units <= 0) continue;
-    const r = await resolveSlot(me.id, PROJECT_SLUG, slotKey);
+    const r = await resolveSlot(me.id, PROJECT_SLUG, slotKey, input.teamId);
     if (!r.ok) {
       errors.push(r.error);
       continue;

@@ -19,8 +19,10 @@ export async function GET(req: Request) {
     }
   }
   if (!slotId) return NextResponse.json({ error: "slotId обязателен" }, { status: 400 });
+  // teamId — проверить маршрут от имени команды (как при прогоне сайта этой команды).
+  const teamId = url.searchParams.get("teamId") || null;
   try {
-    const r = await resolveBinding(userId, slotId);
+    const r = await resolveBinding(userId, slotId, teamId);
     return NextResponse.json(r);
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });

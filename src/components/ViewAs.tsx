@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { impersonationCandidates, setMemberView, startImpersonation, stopImpersonation } from "@/actions/viewAs";
+import { impersonationCandidates, setActiveTeam, setMemberView, startImpersonation, stopImpersonation } from "@/actions/viewAs";
 import { Icon } from "./Icons";
 
 /** Переключатель «Админ / Сотрудник» у аватарки главного админа. */
@@ -124,6 +124,53 @@ export function ImpersonationBar({ name, email, by }: { name: string; email: str
           </button>
         </form>
       </div>
+    </div>
+  );
+}
+
+type TeamOption = { id: string; name: string };
+
+/**
+ * Переключатель команд у аватарки: для сотрудника в нескольких командах и для главного админа в режиме сотрудника.
+ * «Все» — как раньше, все команды сразу; команда — портал показывает только её сайты, ключи, расход и прогоны.
+ */
+export function TeamSwitch({ teams, activeTeamId }: { teams: TeamOption[]; activeTeamId: string | null }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const set = (id: string | null) => {
+    if (id === activeTeamId || pending) return;
+    start(async () => { await setActiveTeam(id); router.refresh(); });
+  };
+  const btn = (id: string | null, label: string, hint: string) => {
+    const active = id === activeTeamId;
+    return (
+      <button key={id ?? "all"} type="button" onClick={() => set(id)} aria-pressed={active} title={hint}
+        className={`h-7 rounded-full px-3 text-[12.5px] font-semibold transition max-w-[160px] truncate ${active ? "bg-ink text-bg" : "text-muted hover:text-ink"}`}>
+        {label}
+      </button>
+    );
+  };
+  return (
+    <div className={`hidden md:inline-flex items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 ${pending ? "opacity-60" : ""}`} role="group" aria-label="Активная команда">
+      {btn(null, "Все", "Все ваши команды сразу")}
+      {teams.map((t) => btn(t.id, t.name, `Только команда «${t.name}»: её сайты, ключи, расход и прогоны`))}
+    </div>
+  );
+}
+
+/** Те же команды в меню под аватаркой — для узких экранов, где переключатель у аватарки скрыт. */
+export function TeamMenuItems({ teams, activeTeamId }: { teams: TeamOption[]; activeTeamId: string | null }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const pick = (id: string | null) => start(async () => { await setActiveTeam(id); router.refresh(); });
+  return (
+    <div className="md:hidden border-b border-line mb-1 pb-1">
+      <div className="px-3 pt-1.5 pb-1 help">Команда</div>
+      {[{ id: null as string | null, name: "Все команды" }, ...teams].map((t) => (
+        <button key={t.id ?? "all"} type="button" disabled={pending} className={`menu-item ${t.id === activeTeamId ? "bg-ink/5 text-ink font-semibold" : ""}`} onClick={() => pick(t.id)}>
+          <Icon.users width={16} height={16} /> {t.name}
+        </button>
+      ))}
     </div>
   );
 }

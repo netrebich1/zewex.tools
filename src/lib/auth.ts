@@ -58,6 +58,10 @@ export type CurrentUser = {
   leadTeamIds: string[];
   /** Effective permissions (admins get everything). See src/lib/permissions.ts. */
   perms: Permissions;
+  /** Все команды пользователя (для переключателя в шапке), независимо от активной. */
+  teams: { id: string; name: string; lead: boolean }[];
+  /** Активная команда из сессии: `teamIds`/`leadTeamIds` сужены до неё; null — все команды. */
+  activeTeamId: string | null;
   /** Вошедший — главный админ (переключатели режима и вход в кабинеты). В чужом кабинете false: там это `impersonator`. */
   superAdmin: boolean;
   /** Главный админ смотрит портал как сотрудник: роль MEMBER, его команды и права из `User.permissions`. */
@@ -81,7 +85,19 @@ function memberViewPermissions(raw: unknown): Permissions {
   return raw == null ? { ...parsePermissions(null), tools: "all" } : parsePermissions(raw);
 }
 
-const withTeams = { memberships: { select: { teamId: true, role: true } }, toolAccess: { select: { slug: true } } } as const;
+const withTeams = { memberships: { select: { teamId: true, role: true, team: { select: { name: true } } } }, toolAccess: { select: { slug: true } } } as const;
+
+type MembershipRow = { teamId: string; role: string; team: { name: string } };
+/**
+ * Команды пользователя с учётом активной команды из сессии: если она среди его команд, `teamIds` и `leadTeamIds`
+ * сужаются до неё — и все проверки по командам (сайты, ключи, расход, прогоны) видят только её. Иначе — все команды.
+ */
+function teamScope(memberships: MembershipRow[], activeTeamId: string | null) {
+  const teams = memberships.map((m) => ({ id: m.teamId, name: m.team.name, lead: m.role === "LEAD" }));
+  const active = activeTeamId && teams.some((t) => t.id === activeTeamId) ? activeTeamId : null;
+  const scoped = active ? teams.filter((t) => t.id === active) : teams;
+  return { teams, activeTeamId: active, teamIds: scoped.map((t) => t.id), leadTeamIds: scoped.filter((t) => t.lead).map((t) => t.id) };
+}
 
 /** Закрытые инструменты человека: владелец портала видит все, остальные — только выданные (роль не важна). */
 function privateToolsOf(u: { email: string; toolAccess: { slug: string }[] }): string[] {
@@ -109,8 +125,7 @@ const sessionUser = cache(async (): Promise<CurrentUser | null> => {
     if (t && t.isActive && !isSuperAdmin(t)) {
       return {
         id: t.id, email: t.email, name: t.name, role: t.role,
-        teamIds: t.memberships.map((m) => m.teamId),
-        leadTeamIds: t.memberships.filter((m) => m.role === "LEAD").map((m) => m.teamId),
+        ...teamScope(t.memberships, session.activeTeamId),
         perms: resolvePermissions(t.role, t.permissions),
         superAdmin: false, memberView: false,
         impersonator: { id: real.id, name: real.name, email: real.email },
@@ -122,8 +137,7 @@ const sessionUser = cache(async (): Promise<CurrentUser | null> => {
   return {
     id: real.id, email: real.email, name: real.name,
     role: memberView ? "MEMBER" : real.role,
-    teamIds: real.memberships.map((m) => m.teamId),
-    leadTeamIds: real.memberships.filter((m) => m.role === "LEAD").map((m) => m.teamId),
+    ...teamScope(real.memberships, session.activeTeamId),
     perms: memberView ? memberViewPermissions(real.permissions) : resolvePermissions(real.role, real.permissions),
     superAdmin: session.superAdmin, memberView, impersonator: null,
     privateTools: privateToolsOf(real),

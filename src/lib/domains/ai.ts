@@ -46,7 +46,7 @@ export function buildPrompt(input: RankInput): string {
 export type RankResult = { picks: AiPick[]; note: string | null; costUsd: number | null; model: string | null };
 
 export async function rankDomainsWithAi(ctx: { userId: string; teamId?: string | null; refId?: string }, input: RankInput): Promise<RankResult> {
-  const resolved = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOT_AI);
+  const resolved = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOT_AI, ctx.teamId);
   if (!resolved.ok) throw new Error(resolved.status === 409 ? "ИИ не подключён к сервису «Подбор доменов»: откройте страницу ключа ИИ и отметьте этот сервис." : resolved.error);
   const res = await runSlot({
     userId: ctx.userId,

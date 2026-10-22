@@ -52,7 +52,7 @@ async function main() {
   if (!owner || owner.role !== "ADMIN") throw new Error("Автор сайта не админ — запускайте от админа (--user пока не поддерживается)");
   const me = {
     id: owner.id, email: "", name: "", role: "ADMIN", teamIds: owner.memberships.map((t) => t.teamId), leadTeamIds: owner.memberships.filter((t) => t.role === "LEAD").map((t) => t.teamId),
-    perms: {} as CurrentUser["perms"], superAdmin: true, memberView: false, impersonator: null, privateTools: [],
+    perms: {} as CurrentUser["perms"], superAdmin: true, memberView: false, impersonator: null, privateTools: [], teams: [], activeTeamId: null,
   } as CurrentUser;
 
   // Список ключей: --keywords=a;b;c (ниша угадывается по слову) или встроенные по `per` на нишу.

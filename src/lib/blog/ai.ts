@@ -68,8 +68,9 @@ const sleep = (ms: number, signal?: AbortSignal) =>
 const NO_CREDITS_COOLDOWN_MS = 5 * 60_000;
 const noCredits = new Map<string, { until: number; err: BlogAiError }>();
 
-async function resolveOrThrow(userId: string, slotKey: string): Promise<ResolvedSlot> {
-  const r = await resolveSlot(userId, PROJECT_SLUG, slotKey);
+/** Ключ ищется по команде статьи (`ctx.teamId` = команда сайта): списание только с её ключей. */
+async function resolveOrThrow(ctx: { userId: string; teamId: string }, slotKey: string): Promise<ResolvedSlot> {
+  const r = await resolveSlot(ctx.userId, PROJECT_SLUG, slotKey, ctx.teamId);
   if (!r.ok) throw new BlogAiError({ code: r.status === 409 ? "no_binding" : "resolve", kind: "fatal_run", message: r.error }, r.status);
   return r.value;
 }
@@ -123,7 +124,7 @@ export async function aiChat(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> 
 }
 
 async function aiChatOnce(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> {
-  const resolved = await resolveOrThrow(ctx.userId, req.slot);
+  const resolved = await resolveOrThrow(ctx, req.slot);
   const keyId = resolved.binding.apiKey.id;
   checkCooldown(keyId);
   const release = await acquire(keyId, keyLimit(keyId));
@@ -183,7 +184,7 @@ export type ImageResult = { bytes: Buffer; mime: string; costUsd: number | null;
 
 /** Генерация картинки через слот image_main (копия aiImage статей под проект blog). */
 export async function aiImage(ctx: AiCtx, req: ImageRequest): Promise<ImageResult> {
-  const resolved = await resolveOrThrow(ctx.userId, SLOTS.image);
+  const resolved = await resolveOrThrow(ctx, SLOTS.image);
   const keyId = resolved.binding.apiKey.id;
   checkCooldown(keyId);
   const release = await acquire(keyId, DEFAULT_LIMITS.IMAGE);
@@ -227,7 +228,7 @@ export function imagePart(bytes: Buffer, mime = "image/jpeg", detail: "low" | "h
 
 /** DataForSEO: произвольный endpoint v3 через слот photo_dfs. */
 export async function dfsRequest(ctx: AiCtx, endpoint: string, body: unknown[], timeoutMs = 130_000): Promise<{ ok: boolean; status: number; data: unknown; error?: string; costUsd: number | null }> {
-  const r = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOTS.photoDfs);
+  const r = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOTS.photoDfs, ctx.teamId);
   if (!r.ok) return { ok: false, status: r.status, data: null, error: r.error, costUsd: null };
   const res = await runSlot({ userId: ctx.userId, projectSlug: PROJECT_SLUG, slotKey: SLOTS.photoDfs, payload: { endpoint, body }, timeoutMs, signal: ctx.signal, meta: { teamId: ctx.teamId, refId: ctx.postId }, pre: r.value });
   return { ok: res.ok, status: res.status, data: res.data, error: res.error, costUsd: res.meta?.costUsd ?? null };
@@ -235,15 +236,15 @@ export async function dfsRequest(ctx: AiCtx, endpoint: string, body: unknown[], 
 
 /** SerpAPI: параметры запроса через слот (photo_serp — картинки, serp_organic — органика). */
 export async function serpRequest(ctx: AiCtx, params: Record<string, string | number | undefined>, slot: typeof SLOTS.photoSerp | typeof SLOTS.serpOrganic = SLOTS.photoSerp, timeoutMs = 60_000): Promise<{ ok: boolean; status: number; data: unknown; error?: string }> {
-  const r = await resolveSlot(ctx.userId, PROJECT_SLUG, slot);
+  const r = await resolveSlot(ctx.userId, PROJECT_SLUG, slot, ctx.teamId);
   if (!r.ok) return { ok: false, status: r.status, data: null, error: r.error };
   const res = await runSlot({ userId: ctx.userId, projectSlug: PROJECT_SLUG, slotKey: slot, payload: params, timeoutMs, signal: ctx.signal, meta: { teamId: ctx.teamId, refId: ctx.postId }, pre: r.value });
   return { ok: res.ok, status: res.status, data: res.data, error: res.error };
 }
 
 /** Есть ли у пользователя правило для слота (без вызова). */
-export async function slotAvailable(userId: string, slot: SlotKey): Promise<boolean> {
-  const r = await resolveSlot(userId, PROJECT_SLUG, slot);
+export async function slotAvailable(userId: string, slot: SlotKey, teamId?: string | null): Promise<boolean> {
+  const r = await resolveSlot(userId, PROJECT_SLUG, slot, teamId);
   return r.ok;
 }
 

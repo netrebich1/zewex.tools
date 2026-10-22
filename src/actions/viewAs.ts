@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { isOwnerEmail, realSession } from "@/lib/auth";
+import { getCurrentUser, isOwnerEmail, realSession } from "@/lib/auth";
 import type { FormState } from "./admin";
 
 /**
@@ -79,4 +79,18 @@ export async function setSuperAdmin(_p: FormState, f: FormData): Promise<FormSta
   revalidatePath(`/users/${id}`);
   revalidatePath("/users");
   return { ok: on ? "Теперь это главный админ" : "Отметка снята" };
+}
+
+/**
+ * Активная команда в шапке: сотрудник в нескольких командах (и главный админ в режиме сотрудника) смотрит портал
+ * от одной команды. Хранится в строке сессии; в чужом кабинете проверяется по командам того, чей кабинет открыт.
+ * null — все команды.
+ */
+export async function setActiveTeam(teamId: string | null): Promise<void> {
+  const s = await realSession();
+  if (!s) redirect("/login");
+  const me = await getCurrentUser();
+  const next = teamId && me?.teams.some((t) => t.id === teamId) ? teamId : null;
+  await prisma.session.update({ where: { id: s.id }, data: { activeTeamId: next } });
+  revalidatePath("/", "layout");
 }

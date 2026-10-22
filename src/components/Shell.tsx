@@ -6,7 +6,7 @@ import { LogoFull, LogoMark } from "./Logo";
 import { Icon, type IconName } from "./Icons";
 import { ThemeSwitch } from "./ThemeSwitch";
 import { HeaderBalances } from "./HeaderBalances";
-import { ImpersonationBar, ViewAsPicker, ViewModeMenuItem, ViewModeSwitch } from "./ViewAs";
+import { ImpersonationBar, TeamMenuItems, TeamSwitch, ViewAsPicker, ViewModeMenuItem, ViewModeSwitch } from "./ViewAs";
 import { stopImpersonation } from "@/actions/viewAs";
 import { canSeeBalances, showsBalances, canViewKeys, canViewProviders, canViewTeams, canViewUsage, canViewUsers, type Actor } from "@/lib/permissions";
 
@@ -35,6 +35,9 @@ type ShellUser = Actor & {
   memberView: boolean;
   /** Кто вошёл в этот кабинет (только в сессии вошедшего главного админа). */
   impersonator: { id: string; name: string; email: string } | null;
+  /** Все команды пользователя и активная (переключатель в шапке, если команд больше одной и он не админ). */
+  teams: { id: string; name: string }[];
+  activeTeamId: string | null;
 };
 
 export function Shell({ user, children }: { user: ShellUser; children: ReactNode }) {
@@ -42,6 +45,8 @@ export function Shell({ user, children }: { user: ShellUser; children: ReactNode
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const items = MENU.filter((n) => !n.show || n.show(user));
+  // Админу переключатель не нужен: он видит всё независимо от команд. В режиме сотрудника — нужен.
+  const teamSwitch = user.role !== "ADMIN" && user.teams.length > 1;
   const isTools = pathname === "/" || pathname.startsWith("/projects") || pathname.startsWith("/pinterest") || pathname.startsWith("/gambling") || pathname.startsWith("/finance") || pathname.startsWith("/discovery") || pathname.startsWith("/analytics");
 
   useEffect(() => {
@@ -68,8 +73,9 @@ export function Shell({ user, children }: { user: ShellUser; children: ReactNode
           </nav>
           <div className="ml-auto flex items-center gap-2">
             {user.impersonator && <span className="view-chip hidden lg:inline-flex">Кабинет сотрудника</span>}
-            {showsBalances(user) && <HeaderBalances mine={!canSeeBalances(user)} />}
+            {showsBalances(user) && <HeaderBalances key={user.activeTeamId ?? "all"} mine={!canSeeBalances(user)} teamName={user.teams.find((t) => t.id === user.activeTeamId)?.name ?? null} />}
             {user.superAdmin && <ViewModeSwitch memberView={user.memberView} />}
+            {teamSwitch && <TeamSwitch teams={user.teams} activeTeamId={user.activeTeamId} />}
             <ThemeSwitch />
           </div>
           <div className="relative flex items-center gap-2" ref={ref}>
@@ -94,6 +100,7 @@ export function Shell({ user, children }: { user: ShellUser; children: ReactNode
                 {user.superAdmin && <ViewModeMenuItem memberView={user.memberView} />}
                 {user.superAdmin && <ViewAsPicker />}
                 {user.superAdmin && <div className="border-b border-line my-1" />}
+                {teamSwitch && <TeamMenuItems teams={user.teams} activeTeamId={user.activeTeamId} />}
                 {items.map((n) => {
                   const I = Icon[n.icon];
                   const active = pathname.startsWith(n.href);

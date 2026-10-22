@@ -23,8 +23,9 @@ export type ChatRequest = {
 
 export type ChatResult = { text: string; json: unknown; costUsd: number | null; model: string | null };
 
-async function resolveOrThrow(userId: string, slotKey: string): Promise<ResolvedSlot> {
-  const r = await resolveSlot(userId, PROJECT_SLUG, slotKey);
+/** Ключ ищется по команде прогона (`ctx.teamId` = команда сайта): списание только с её ключей. */
+async function resolveOrThrow(ctx: { userId: string; teamId: string }, slotKey: string): Promise<ResolvedSlot> {
+  const r = await resolveSlot(ctx.userId, PROJECT_SLUG, slotKey, ctx.teamId);
   if (!r.ok) throw new AiError({ code: r.status === 409 ? "no_binding" : "resolve", kind: "fatal_run", message: r.error }, r.status);
   return r.value;
 }
@@ -41,7 +42,7 @@ async function handleFailure(ctx: AiCtx, res: { status: number; error?: string }
 }
 
 export async function aiChat(ctx: AiCtx, slot: typeof SLOT_TEXT_MAIN | typeof SLOT_TEXT_FAST, req: ChatRequest): Promise<ChatResult> {
-  const resolved = await resolveOrThrow(ctx.userId, slot);
+  const resolved = await resolveOrThrow(ctx, slot);
   const release = await acquire(resolved.binding.apiKey.id, DEFAULT_LIMITS.CHAT, { owner: ctx.runId, signal: ctx.signal });
   try {
     const messages: Array<Record<string, unknown>> = [];
@@ -75,7 +76,7 @@ export type ImageRequest = { prompt: string; size?: "1024x1536" | "1024x1024"; q
 export type ImageResult = { bytes: Buffer; mime: string; costUsd: number | null; model: string | null };
 
 export async function aiImage(ctx: AiCtx, req: ImageRequest): Promise<ImageResult> {
-  const resolved = await resolveOrThrow(ctx.userId, SLOT_IMAGE_MAIN);
+  const resolved = await resolveOrThrow(ctx, SLOT_IMAGE_MAIN);
   const release = await acquire(resolved.binding.apiKey.id, DEFAULT_LIMITS.IMAGE, { owner: ctx.runId, signal: ctx.signal });
   try {
     const res = await runSlot({

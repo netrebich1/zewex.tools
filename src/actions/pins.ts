@@ -5,6 +5,7 @@ import { canAccessTeam } from "@/lib/pins/runs/actions";
 import { canAccessPinSite, canAccessRun, canAccessSiteAccess, canEditSiteAccess } from "@/lib/sites/access";
 import { redirect } from "next/navigation";
 import { canManageTeam, requireUser } from "@/lib/auth";
+import { forSitesTab } from "@/lib/permissions";
 import { createRun, continueRun, deleteRun, parseUrls, redoMissing, skipFailed, stopRun } from "@/lib/pins/runs/actions";
 import type { ModerationMode } from "@/lib/pins/types";
 
@@ -166,7 +167,8 @@ export async function saveBoards(_p: FormState, f: FormData): Promise<FormState>
 
 /** Включить Pinterest Pins для сайта: создаёт PinSite с рецептом по умолчанию, привязанный к доступу WordPress. */
 export async function enablePinsForSite(_p: FormState, f: FormData): Promise<FormState> {
-  const me = await requireUser();
+  // Вызывается с вкладки «Сайты»: право «все сайты только там» действует как «все сайты».
+  const me = forSitesTab(await requireUser());
   const accessId = str(f, "accessId");
   try {
     const access = await prisma.siteAccess.findUnique({ where: { id: accessId } });

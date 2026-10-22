@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { requireUser, type CurrentUser } from "@/lib/auth";
+import { forSitesTab } from "@/lib/permissions";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { canAccessSiteAccess } from "@/lib/sites/access";
 import { canAccessArtSite, canAccessArticle } from "@/lib/articles/access";
@@ -44,7 +45,8 @@ async function siteForUser(me: CurrentUser, id: string) {
 
 /** Включить сервис «Статьи» для сайта системы: создаёт ArtSite с настройками по умолчанию, привязанный к доступу WordPress. */
 export async function enableArticlesForSite(_p: FormState, f: FormData): Promise<FormState> {
-  const me = await requireUser();
+  // Вызывается с вкладки «Сайты»: право «все сайты только там» действует как «все сайты».
+  const me = forSitesTab(await requireUser());
   const accessId = str(f, "accessId");
   try {
     const access = await prisma.siteAccess.findUnique({ where: { id: accessId } });

@@ -81,8 +81,8 @@ export type Top10Result = {
 
 /** Снимает TOP-10 по списку запросов; по каждому запросу сначала DataForSEO, при сбое — SerpAPI. */
 export async function fetchTop10(ctx: SerpCtx, queries: string[], countryCode: string): Promise<Top10Result> {
-  const dfs = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOT_SERP_DFS);
-  const serp = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOT_SERP_API);
+  const dfs = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOT_SERP_DFS, ctx.teamId);
+  const serp = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOT_SERP_API, ctx.teamId);
   if (!dfs.ok && !serp.ok) {
     return { ok: false, error: "Не подключён ни DataForSEO, ни SerpAPI: откройте страницу ключа и отметьте сервис «Подбор доменов».", byQuery: {}, provider: null, failed: [] };
   }

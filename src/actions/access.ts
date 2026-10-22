@@ -11,7 +11,7 @@ import { removePath, runDir } from "@/lib/pins/storage";
 import { purgeArticleFiles } from "@/lib/articles/storage";
 import { siteDeletionImpact } from "@/lib/sites/delete";
 import { canAccessSiteAccess, canEditAccess, canEditSiteAccess } from "@/lib/sites/access";
-import { seesAllSites } from "@/lib/permissions";
+import { forSitesTab, seesAllSites } from "@/lib/permissions";
 
 export type FormState = { error?: string; ok?: string };
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -22,10 +22,11 @@ const fail = (e: unknown): FormState => ({ error: e instanceof Error ? e.message
  * сервисы (projects, пусто = всем) и видимость — список сотрудников (пусто = вся команда).
  */
 export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormState> {
-  const me = await requireUser();
+  // Право «все сайты только на вкладке „Сайты“» здесь действует как «все сайты»: действие вызывается с этой вкладки.
+  const me = forSitesTab(await requireUser());
   const id = str(f, "id");
   const teamId = str(f, "teamId");
-  if (!canManageTeam(me, teamId) && !me.teamIds.includes(teamId)) return { error: "Нет доступа к команде" };
+  if (!seesAllSites(me) && !canManageTeam(me, teamId) && !me.teamIds.includes(teamId)) return { error: "Нет доступа к команде" };
   const before = id ? await prisma.siteAccess.findUnique({ where: { id }, select: { teamId: true, teams: { select: { teamId: true } }, viewers: { select: { userId: true } } } }) : null;
   if (id && !before) return { error: "Доступ не найден" };
   if (before && !canEditAccess(me, before)) return { error: "Менять этот сайт может лидер команды-владельца или админ" };
@@ -50,8 +51,9 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
     ? (await prisma.teamMember.findMany({ where: { teamId: { in: allTeams }, userId: { in: wantViewers } }, select: { userId: true }, distinct: ["userId"] })).map((m) => m.userId)
     : [];
   // Сотрудник видит только свои сайты: тот, кто создаёт или правит сайт, остаётся в списке видящих
-  // (иначе он сам потеряет сайт). Администратору и лидеру команды-владельца это не нужно — они видят всё.
-  const keepsSelf = me.role !== "ADMIN" && !canManageTeam(me, teamId);
+  // (иначе он сам потеряет сайт). Админу, лидеру команды-владельца и тому, кто видит все сайты, это не нужно —
+  // а сотруднику с правом «все сайты только на вкладке „Сайты“» нельзя: иначе он получил бы сайт и в инструментах.
+  const keepsSelf = !seesAllSites(me) && !canManageTeam(me, teamId);
   // Сотрудники других команд, которых форма этому пользователю не показывает, тоже сохраняются как были.
   const formUsers = seesAllSites(me) ? null : new Set((await prisma.teamMember.findMany({ where: { teamId: { in: me.teamIds } }, select: { userId: true } })).map((m) => m.userId));
   const hiddenViewers = formUsers ? (before?.viewers ?? []).map((v) => v.userId).filter((u) => !formUsers.has(u)) : [];
@@ -98,7 +100,7 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
 }
 
 export async function testSiteAccess(_p: FormState, f: FormData): Promise<FormState> {
-  const me = await requireUser();
+  const me = forSitesTab(await requireUser());
   const id = str(f, "id");
   const c = await prisma.siteAccess.findUnique({ where: { id } });
   if (!c || !(await canAccessSiteAccess(me, id))) return { error: "Доступ не найден" };
@@ -153,7 +155,7 @@ export async function deleteSiteAccess(_p: FormState, f: FormData): Promise<Form
  * и «Подключить снова» возвращает всё как было. Пока по сайту в инструменте идёт работа, отключить нельзя.
  */
 export async function setSiteToolActive(_p: FormState, f: FormData): Promise<FormState> {
-  const me = await requireUser();
+  const me = forSitesTab(await requireUser());
   const accessId = str(f, "accessId");
   const tool = str(f, "tool");
   const on = str(f, "on") === "1";

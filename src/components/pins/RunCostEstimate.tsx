@@ -41,7 +41,7 @@ export function RunCostEstimate({ pages, pagesLabel, siteId }: { pages: number; 
     const t = setTimeout(async () => {
       setBusy(true); setError("");
       try {
-        const q = new URLSearchParams({ pages: String(pages), ai: String(mix.ai), photos: String(mix.photos), canvas: String(mix.canvas), pinora: String(mix.pinora) });
+        const q = new URLSearchParams({ site: siteId, pages: String(pages), ai: String(mix.ai), photos: String(mix.photos), canvas: String(mix.canvas), pinora: String(mix.pinora) });
         const r = await fetch(`/api/pins/estimate?${q}`, { cache: "no-store" });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error || "Ошибка");
