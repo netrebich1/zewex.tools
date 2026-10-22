@@ -6,7 +6,8 @@
  * фото снова могло попасть на другой сайт; журнал расходов (UsageLog по refId) тоже остаётся.
  */
 import { prisma } from "@/lib/db";
-import { compactKeptCandidates, purgeRejectedCandidateFiles } from "@/lib/articles/storage";
+import { stat } from "node:fs/promises";
+import { absPath, compactKeptCandidates, purgeRejectedCandidateFiles, removePath } from "@/lib/articles/storage";
 
 /** Кандидаты, файлы которых храним всегда: одобренные ИИ-оценкой (под будущий мешап статей, решение 2026-10-19). */
 export const KEPT_CANDIDATE_STATUSES = ["keep", "selected", "reserve"];
@@ -35,13 +36,45 @@ export async function purgePublishedPhotos(articleId: string, opts: { force?: bo
   const kept = await prisma.artPhotoCandidate.findMany({ where: { articleId, status: { in: KEPT_CANDIDATE_STATUSES } }, select: { id: true, status: true } });
   const keepCand = new Set([...kept.map((c) => c.id), ...aiResults.flatMap((r) => ((r.added as Array<{ candidateId?: string }> | null) ?? []).map((x) => String(x?.candidateId || ""))).filter(Boolean)]);
   await purgeRejectedCandidateFiles(articleId, keepCand);
-  // Одобренных храним сжатыми «как для WordPress»; у вошедших в статью оригинал не нужен — сжатая копия в photos/.
-  await compactKeptCandidates(articleId, keepCand, new Set(kept.filter((c) => c.status === "selected").map((c) => c.id))).catch((e) => console.warn(`[articles cleanup] compact ${articleId} failed: ${e instanceof Error ? e.message : String(e)}`));
   await prisma.$transaction([
     prisma.artPhotoCandidate.updateMany({ where: { articleId, id: { notIn: [...keepCand] } }, data: { path: "", thumbPath: "" } }),
     prisma.article.update({ where: { id: articleId }, data: { purgedAt: new Date() } }),
   ]);
+  // При вызове из этапа publish статус COMPLETED ставит раннер позже — облегчение доделает cron (purgePublishedBacklog).
+  await slimPublishedFiles(articleId, { force: opts.force }).catch((e) => console.warn(`[articles cleanup] slim ${articleId} failed: ${e instanceof Error ? e.message : String(e)}`));
   return { purged: true, photos: article.photos.length };
+}
+
+/**
+ * Облегчение опубликованной статьи (решение 2026-10-22, без потери данных для мешапа). Идемпотентно — зовётся при
+ * публикации и скриптом scripts/articles/slim-published.ts для уже опубликованных:
+ *  1. наша копия фото статьи удаляется, если фото есть в медиатеке WordPress (ArtPhoto.publicUrl → wpUrl); миниатюра,
+ *     факты, описание, источник остаются — для мешапа файл берётся с wpUrl;
+ *  2. у кандидатов, вошедших в статью, удаляются оригинал и миниатюра (дубль фото статьи), если их не добавила ИИ-модерация;
+ *  3. резерв и keep хранятся в банке: JPEG ≤1200 px, q80 (BANK_IMAGE).
+ * Только для статьи с записью на сайте, где все фото уже в медиатеке: иначе запись ссылается на наше хранилище.
+ */
+export async function slimPublishedFiles(articleId: string, opts: { force?: boolean } = {}): Promise<{ savedBytes: number; photos: number } | null> {
+  const article = await prisma.article.findUnique({ where: { id: articleId }, include: { photos: true } });
+  if (!article?.wpUrl || (!opts.force && article.status !== "COMPLETED")) return null;
+  const live = article.photos.filter((p) => !p.excluded);
+  if (live.some((p) => !p.wpUrl)) return null;
+  let saved = 0;
+  let photos = 0;
+  for (const p of live) {
+    if (!p.path) continue;
+    saved += await stat(absPath(p.path)).then((s) => s.size).catch(() => 0);
+    await removePath(p.path).catch(() => {});
+    await prisma.artPhoto.update({ where: { id: p.id }, data: { path: "", publicUrl: p.wpUrl! } });
+    photos++;
+  }
+  const aiResults = await prisma.artAiModerationResult.findMany({ where: { articleId }, select: { added: true } });
+  const aiAdded = new Set(aiResults.flatMap((r) => ((r.added as Array<{ candidateId?: string }> | null) ?? []).map((x) => String(x?.candidateId || ""))).filter(Boolean));
+  const kept = await prisma.artPhotoCandidate.findMany({ where: { articleId, status: { in: KEPT_CANDIDATE_STATUSES } }, select: { id: true, status: true } });
+  const selected = new Set(kept.filter((c) => c.status === "selected" && !aiAdded.has(c.id)).map((c) => c.id));
+  saved += await compactKeptCandidates(articleId, kept.map((c) => c.id), selected);
+  if (selected.size) await prisma.artPhotoCandidate.updateMany({ where: { id: { in: [...selected] } }, data: { path: "", thumbPath: "" } });
+  return { savedBytes: saved, photos };
 }
 
 /**
@@ -71,6 +104,7 @@ export async function purgePublishedBacklog(limit = 100): Promise<{ checked: num
  * Article удалялась через сутки после публикации) убрано по аудиту 2026-10-14 (stability.md §0). Вместе со строкой
  * каскадом пропадали журнал этапов, ошибки, события модерации, решения ИИ-модерации, расходы на экранах, защита от
  * повторного ключа и от пересжатых копий фото, досылка отчёта в Google Таблицу. Строки весят килобайты — храним всё.
- * Место освобождают только файлы отклонённых кандидатов: purgePublishedPhotos (сразу после публикации) и purgePublishedBacklog (cron).
+ * Место освобождают файлы отклонённых кандидатов, копии фото, уже лежащие в WordPress, и сжатие банка одобренных кадров:
+ * purgePublishedPhotos + slimPublishedFiles (сразу после публикации) и purgePublishedBacklog (cron).
  * Файлы статей, у которых не все фото загрузились в медиатеку, не трогаем: запись на сайте ссылается на наше хранилище.
  */

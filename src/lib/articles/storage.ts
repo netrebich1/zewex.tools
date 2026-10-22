@@ -7,7 +7,7 @@
  *   articles/<articleId>/gen/<n>.png                      сгенерированные картинки (формат «ИИ-фото»)
  */
 import { execFile } from "node:child_process";
-import { readFile, readdir, statfs } from "node:fs/promises";
+import { readFile, readdir, stat, statfs } from "node:fs/promises";
 import { promisify } from "node:util";
 import sharp from "sharp";
 import { absPath, ensureDir, exists, publicUrl, removePath, writeFileAtomic } from "@/lib/pins/storage";
@@ -90,25 +90,39 @@ export async function purgeRejectedCandidateFiles(articleId: string, keepCandIds
 }
 
 /**
- * Хранить одобренных кандидатов в сжатом виде (идея владельца 2026-10-19): оригинал заменяется версией «как для WordPress»
- * (JPEG ≤1600 px, q85), если она меньше. У вошедших в статью (`selectedIds`) оригинал удаляется совсем — та же картинка
- * уже лежит сжатой в photos/. Миниатюры не трогаем. Возвращает, сколько байт освободили.
+ * Банк одобренных кадров под мешап (решение владельца 2026-10-22, диск рос на ~11 ГБ/сутки): JPEG ≤1200 px, q80 —
+ * для статьи-подборки на Pinterest этого хватает, вес ≈ вдвое меньше копии «как для WordPress» (≤1600, q85).
+ */
+export const BANK_IMAGE = { maxSide: 1200, quality: 80 } as const;
+
+/** Кадр банка: уже JPEG не больше BANK_IMAGE.maxSide — не пережимаем (без потерь от повторного сжатия). */
+async function toBankJpeg(src: Buffer): Promise<Buffer | null> {
+  const meta = await sharp(src).metadata();
+  if (meta.format === "jpeg" && (meta.width ?? 0) <= BANK_IMAGE.maxSide && (meta.height ?? 0) <= BANK_IMAGE.maxSide) return null;
+  return sharp(src).rotate().resize({ width: BANK_IMAGE.maxSide, height: BANK_IMAGE.maxSide, fit: "inside", withoutEnlargement: true }).jpeg({ quality: BANK_IMAGE.quality, mozjpeg: true }).toBuffer();
+}
+
+/**
+ * Хранить одобренных кандидатов в банке (BANK_IMAGE). У вошедших в статью (`selectedIds`) оригинал и миниатюра удаляются:
+ * тот же кадр есть у фото статьи (миниатюра в photos/, файл — в медиатеке WordPress). Возвращает, сколько байт освободили.
  */
 export async function compactKeptCandidates(articleId: string, keepIds: Iterable<string>, selectedIds: Set<string>): Promise<number> {
   let saved = 0;
   for (const id of keepIds) {
     const rel = candidateRel(articleId, id);
-    let src: Buffer;
-    try { src = await readFile(absPath(rel)); } catch { continue; }
     if (selectedIds.has(id)) {
-      await removePath(rel).catch(() => {});
-      saved += src.length;
+      for (const r of [rel, candidateThumbRel(articleId, id)]) {
+        const size = await stat(absPath(r)).then((s) => s.size).catch(() => 0);
+        if (size) { await removePath(r).catch(() => {}); saved += size; }
+      }
       continue;
     }
-    const out = await toWpJpeg(src).catch(() => null);
-    if (out && out.bytes.length < src.length) {
-      await writeFileAtomic(rel, out.bytes);
-      saved += src.length - out.bytes.length;
+    let src: Buffer;
+    try { src = await readFile(absPath(rel)); } catch { continue; }
+    const out = await toBankJpeg(src).catch(() => null);
+    if (out && out.length < src.length) {
+      await writeFileAtomic(rel, out);
+      saved += src.length - out.length;
     }
   }
   return saved;
