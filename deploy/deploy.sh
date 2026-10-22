@@ -16,6 +16,10 @@ CRLF=$(git ls-files -co --exclude-standard --eol | awk '$2 == "w/crlf" || $2 == 
 if [ -n "$CRLF" ]; then
   echo "Files with CRLF line endings (need LF, see .gitattributes):"; echo "$CRLF"; exit 1
 fi
+# Two deploys at once break node_modules and .next (2026-10-22: a parallel npm ci + build ended in a dead portal). Refuse while another one runs.
+if $SSH $HOST 'ps -eo args | grep -E "npm (ci|install)|next build|rsync -a --delete" | grep -v grep -q'; then
+  echo "Another deploy/install/build is running on the server right now. Wait for it to finish and run again."; exit 2
+fi
 COPYFILE_DISABLE=1 tar -czf - "${EXCLUDES[@]}" . | $SSH $HOST "set -e
 rm -rf $STAGE && mkdir -p $STAGE
 tar -xzf - -C $STAGE --no-same-owner
