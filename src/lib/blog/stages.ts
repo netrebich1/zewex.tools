@@ -1,8 +1,8 @@
 /**
  * Реестр этапов конвейера инфо-статей. Цепочка линейная; фазы — для подписей и расходов.
- * research → video → outline → photo_search → photo_filter → photo_rate → photo_select → write → ai_images → wrap → meta → pin_images → assemble → publish.
+ * research → scenario → video → outline → photo_search → photo_filter → photo_rate → photo_select → write → ai_images → wrap → meta → pin_images → assemble → publish.
  */
-export const BLOG_STAGES = ["research", "video", "outline", "photo_search", "photo_filter", "photo_rate", "photo_select", "write", "ai_images", "wrap", "meta", "pin_images", "assemble", "publish"] as const;
+export const BLOG_STAGES = ["research", "scenario", "video", "outline", "photo_search", "photo_filter", "photo_rate", "photo_select", "write", "ai_images", "wrap", "meta", "pin_images", "assemble", "publish"] as const;
 export type StageKey = (typeof BLOG_STAGES)[number];
 
 export type StagePhase = "research" | "photos" | "writing" | "publish";
@@ -18,6 +18,7 @@ export type StageInfo = {
 
 export const STAGE_INFO: Record<StageKey, StageInfo> = {
   research: { label: "Исследование", phase: "research", promptKeys: ["research"], slots: ["text_fast", "serp_organic"], description: "Интент ключа, аудитория, бриф знаний: факты, ошибки, безопасность, вопросы читателей; при включённом SerpAPI — People Also Ask." },
+  scenario: { label: "Сценарий", phase: "research", promptKeys: [], slots: [], description: "Тип статьи по брифу (инструкция, здоровье, сравнение…) → стратегия: основа, видео, ИИ-картинки, подсказка плану." },
   video: { label: "Видео YouTube", phase: "research", promptKeys: [], slots: ["photo_dfs", "text_fast"], description: "Выдача YouTube → фильтр → субтитры топ-3 → оценка содержания ИИ и правила; одно видео в статью или «статья по видео»." },
   outline: { label: "План", phase: "research", promptKeys: ["outline"], slots: ["text_main"], description: "Адаптивная структура из каталога блоков: H1 и мета, секции с типами, объём, слоты картинок, FAQ, дисклеймер." },
   photo_search: { label: "Поиск фото", phase: "photos", promptKeys: [], slots: ["photo_dfs", "photo_serp"], description: "Запросы Google Images по каждому слоту картинки." },

@@ -7,7 +7,7 @@
       "description": "How-to, причины, сравнение: исследование → адаптивный план → 3–6 реальных фото по разделам → текст блоками → проверка → WordPress.",
       "isActive": true,
       "isDefault": true,
-      "seedRev": 6,
+      "seedRev": 7,
       "models": {
         "research": "openrouter:google/gemini-2.5-flash",
         "outline": "openrouter:google/gemini-2.5-flash",
@@ -59,10 +59,11 @@
           "max": 2,
           "quality": "medium"
         },
-        "source": "research",
+        "source": "video",
         "video": {
-          "embed": "off"
-        }
+          "embed": "auto"
+        },
+        "scenario": "auto"
       },
       "photoSearch": {
         "source": "dataforseo",
@@ -109,7 +110,7 @@
           "text": "ARTICLE: \"{{keyword}}\"\n\nARTICLE MAP (all sections with the points each one owns; write only the sections listed under SECTIONS TO WRITE NOW and never cover points owned by other sections):\n{{article_map}}\n\nRESEARCH BRIEF (your only source of facts beyond common knowledge):\n{{brief_short}}\n\nALREADY WRITTEN (do not repeat their content; continue naturally):\n{{written_summary}}\n\nSECTIONS TO WRITE NOW:\n{{section_briefs}}\n\nFor each section: cover every key point, respect the block kind and the allowed HTML, stay inside the target length, do not restate the heading in the first sentence, do not summarise at the end of the section, do not add a conclusion.\n\nReturn ONLY JSON: {\"sections\":[{\"position\":1,\"html\":\"<p>...</p>\"}]} — one entry per requested section, html as a JSON string with escaped quotes."
         },
         "wrap": {
-          "system": "You finish an informational article for a US women's lifestyle blog: introduction, optional key takeaways, conclusion, FAQ and, when asked, a short disclaimer. You write from the article that already exists, so everything you add is consistent with it and never contradicts or repeats it word for word.\n\nVOICE: {{voice}}\n\nRULES\n- Introduction: 1-2 paragraphs, 60-120 words total. Open with the reader's situation or the core answer, not with a definition and not with \"If you're looking for\". Say what the article covers in one sentence, in plain words. No bullet list, no questions stacked, no \"in this guide we will\".\n- Never contradict the body; if the body says one thing, repeat the same fact or leave it out.\n- Key takeaways (only if requested): a <ul> with 3-5 <li>, each one concrete and complete (a rule, a number, a decision), 8-20 words, no intro sentence.\n- Conclusion: 60-130 words, 1-2 paragraphs. One real recommendation or decision rule, one realistic expectation (how long / how often / what result), one closing line. No \"in conclusion\", no restating the list of sections, no call to comment or share.\n- FAQ: exactly the requested number of questions, taken from the provided list (rephrase slightly if needed), answers 25-70 words each, direct answer in the first sentence, no \"great question\". Only questions the body does NOT already answer (edge cases, safety, special hair or skin types, how often, how long it lasts); never restate a step, tip or table row as a question.\n- Disclaimer (only if requested): one paragraph, 30-60 words, plain language: general information, not medical/professional advice, see a doctor/dermatologist/professional for a persistent or serious problem.\n- American English, no em dashes or en dashes, no exclamation marks, no emoji, no brand names, no prices.\n- HTML only: <p>, <ul>, <li>, <strong> (labels only). No markdown.\n\nReturn ONLY one JSON object.",
+          "system": "You finish an informational article for a US women's lifestyle blog: introduction, optional key takeaways, conclusion, FAQ and, when asked, a short disclaimer. You write from the article that already exists, so everything you add is consistent with it and never contradicts or repeats it word for word.\n\nVOICE: {{voice}}\n\nRULES\n- Introduction: 1-2 paragraphs, 60-120 words total. Open with the reader's situation or the core answer, not with a definition and not with \"If you're looking for\". Say what the article covers in one sentence, in plain words. No bullet list, no questions stacked, no \"in this guide we will\".\n- Never contradict the body; if the body says one thing, repeat the same fact or leave it out.\n- Never invent personal experience: no \"I've tried\", \"I tested\", \"I've learned from trying it at home\", \"in my experience\", no claims of testing products or methods. First person only for an opinion or a tip (\"My tip: …\").\n- Numbers (temperatures, sizes, times, amounts) must match the body exactly; never widen a range or add a higher maximum than the body gives.\n- Key takeaways (only if requested): a <ul> with 3-5 <li>, each one concrete and complete (a rule, a number, a decision), 8-20 words, no intro sentence.\n- Conclusion: 60-130 words, 1-2 paragraphs. One real recommendation or decision rule, one realistic expectation (how long / how often / what result), one closing line. No \"in conclusion\", no restating the list of sections, no call to comment or share.\n- FAQ: exactly the requested number of questions, taken from the provided list (rephrase slightly if needed), answers 25-70 words each, direct answer in the first sentence, no \"great question\". Only questions the body does NOT already answer (edge cases, safety, special hair or skin types, how often, how long it lasts); never restate a step, tip or table row as a question.\n- Disclaimer (only if requested): one paragraph, 30-60 words, plain language: general information, not medical/professional advice, see a doctor/dermatologist/professional for a persistent or serious problem.\n- American English, no em dashes or en dashes, no exclamation marks, no emoji, no brand names, no prices.\n- HTML only: <p>, <ul>, <li>, <strong> (labels only). No markdown.\n\nReturn ONLY one JSON object.",
           "text": "ARTICLE: \"{{keyword}}\"\nH1: {{h1}}\n\nRESEARCH BRIEF:\n{{brief_short}}\n\nWHAT THE BODY ALREADY SAYS (section by section):\n{{article_summary}}\n\nKey takeaways wanted: {{takeaways_wanted}}\nFAQ questions wanted: {{faq_count}}\nCandidate FAQ questions:\n{{faq_questions}}\nDisclaimer wanted: {{disclaimer_wanted}}\n\nJSON shape:\n{\"intro_html\":\"<p>...</p><p>...</p>\",\"takeaways_html\":\"<ul><li>...</li></ul>\" or null,\"conclusion_html\":\"<p>...</p>\",\"faq\":[{\"question\":\"...\",\"answer\":\"<p>...</p>\"}],\"disclaimer_html\":\"<p>...</p>\" or null}"
         }
       }

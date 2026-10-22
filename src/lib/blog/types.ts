@@ -4,6 +4,7 @@
  * Этапы выполняет только воркер; Next.js ставит посты в очередь и читает агрегаты.
  * Три уровня настроек: система (/sites) → сайт сервиса (BlogSite.settings) → запуск (BlogRun.settings → снимок в BlogPost.recipe).
  */
+import type { AppliedScenario } from "./scenarios";
 import type { BlogStatus } from "@prisma/client";
 
 export const PROJECT_SLUG = "blog";
@@ -76,6 +77,8 @@ export type BlogRecipeParams = {
   overlay: { mode: "article" | "pin_only" | "off"; photos: "all" | "hero" };
   /** ИИ-картинка «по шагам» в секциях-инструкциях (реальные фото остаются): off | steps; max — на статью; quality — gpt-image */
   aiImages: { mode: "off" | "steps"; max: number; quality: "low" | "medium" | "high" };
+  /** Сценарий статьи: auto — система выбирает по типу статьи (src/lib/blog/scenarios.ts); ключ сценария — закреплён; manual — параметры ниже как есть */
+  scenario: string;
   /** Основа статьи: research — исследование темы; video — метод из лучшего видео YouTube (только инструкции, не YMYL) */
   source: "research" | "video";
   /** Видео в статье: off; auto — одно видео, если найдётся достойное по содержанию */
@@ -96,8 +99,9 @@ export const DEFAULT_PARAMS: BlogRecipeParams = {
   review: { aiEditor: false },
   overlay: { mode: "article", photos: "all" },
   aiImages: { mode: "off", max: 2, quality: "medium" },
-  source: "research",
-  video: { embed: "off" },
+  scenario: "auto",
+  source: "video",
+  video: { embed: "auto" },
   language: "en",
   country: "US",
 };
@@ -212,6 +216,8 @@ export type KeywordInput = { keyword: string; focusKeyword?: string };
 /** Снимок рецепта и настроек запуска, который сохраняется в BlogPost.recipe и исполняется воркером. */
 export type BlogRecipeSnapshot = BlogRecipeShape & {
   run: { review: ReviewMode; publishMode: PublishMode; yearInUrlPercent: number; testLabel: string };
+  /** Выбранный сценарий (этап scenario) */
+  scenario?: AppliedScenario;
 };
 
 /* ───────── Данные этапов ───────── */

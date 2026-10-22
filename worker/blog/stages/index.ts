@@ -51,6 +51,7 @@ export class StopRequested extends Error {
 import { research } from "./research";
 import { outline } from "./outline";
 import { videoStage } from "./video";
+import { scenarioStage } from "./scenario";
 import { photoSearch } from "./photoSearch";
 import { photoFilter } from "./photoFilter";
 import { photoRate } from "./photoRate";
@@ -65,6 +66,7 @@ import { publish } from "./publish";
 
 export const STAGES: Partial<Record<StageKey, StageHandler>> = {
   research,
+  scenario: scenarioStage,
   video: videoStage,
   outline,
   photo_search: photoSearch,

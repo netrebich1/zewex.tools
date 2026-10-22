@@ -89,10 +89,20 @@ export function assemblePostHtml(input: AssembleInput): AssembleOutput {
     toc.push({ heading: s.heading, anchor });
     let block = `<h2 id="${anchor}">${escapeHtml(s.heading)}</h2>\n`;
     if (s.photo?.url) block += img(s.photo, s.heading);
-    const body = balanceParagraphs(styleTables(s.html));
-    block += body + "\n";
-    if (s.videoHtml) block += s.videoHtml;
-    if (s.stepsPhoto?.url) block += img(s.stepsPhoto, s.heading);
+    let body = balanceParagraphs(styleTables(s.html));
+    // ИИ-картинка шагов — перед списком шагов, если до него есть текст (иначе после списка); видео — в конце секции.
+    // Видео и ИИ-картинка в одной секции не стоят подряд: assemble переносит видео в следующую секцию (videoHtml там).
+    if (s.stepsPhoto?.url) {
+      const steps = img(s.stepsPhoto, s.heading);
+      const olAt = body.search(/<ol\b/i);
+      const textBefore = olAt > 0 && /<p\b/i.test(body.slice(0, olAt));
+      if (textBefore) body = body.slice(0, olAt) + steps + body.slice(olAt);
+      else {
+        const end = body.search(/<\/ol>/i);
+        body = end >= 0 ? body.slice(0, end + 5) + "\n" + steps + body.slice(end + 5) : body + steps;
+      }
+    }
+    block += body + "\n" + (s.videoHtml ?? "");
     words += countWords(s.html);
     parts.push(block);
   }

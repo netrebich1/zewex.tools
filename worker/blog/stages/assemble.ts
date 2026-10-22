@@ -16,6 +16,7 @@ import { publicUrl } from "@/lib/blog/storage";
 import { videoEmbedHtml, videoObject, type BlogVideoState } from "@/lib/blog/video";
 import type { StageHandler } from "./index";
 import { rewriteSection } from "./write";
+import { consistencyProblems } from "./consistency";
 
 export const assemble: StageHandler = async (ctx) => {
   const { post, recipe, outline } = ctx;
@@ -35,6 +36,17 @@ export const assemble: StageHandler = async (ctx) => {
       ...quality.patch.photos.map((p) => prisma.blogPhoto.update({ where: { id: p.id }, data: { altText: p.altText } })),
     ]);
     ctx.log(`починка: ${quality.fixed.join("; ")}`);
+  }
+  // Согласованность цифр и советов между частями (один раз на пост): находки идут в ту же самопочинку
+  if (quality.ok && !ctx.cursor.consistencyChecked) {
+    await ctx.tick("Проверка согласованности");
+    const c = await consistencyProblems(ctx, fresh, sections);
+    await ctx.save({ cursor: { ...ctx.cursor, consistencyChecked: true } });
+    if (c.problems.length) {
+      ctx.log(`согласованность: ${c.problems.join("; ")} ($${c.costUsd.toFixed(4)})`);
+      quality.problems.push(...c.problems);
+      quality.ok = false;
+    }
   }
   if (!quality.ok) {
     const bad = new Map<number, string[]>();
@@ -95,7 +107,13 @@ export const assemble: StageHandler = async (ctx) => {
   const rows = await prisma.blogSection.findMany({ where: { postId: post.id, status: "written" }, orderBy: { position: "asc" } });
   const cleaned = varyTipLabels(rows.map((s) => cleanSectionHtml(s.html ?? "", allowedTags(s.kind), pol, { allowLinks: true })));
   const chosenVideo = ((fresh.video ?? null) as BlogVideoState | null)?.chosen ?? null;
-  const videoPos = chosenVideo ? (outline.videoSection ?? rows.find((r) => r.kind === "steps")?.position ?? null) : null;
+  let videoPos = chosenVideo ? (outline.videoSection ?? rows.find((r) => r.kind === "steps")?.position ?? null) : null;
+  // Видео не ставим в секцию с ИИ-картинкой шагов (два больших блока подряд) — в следующую секцию без неё и не таблицу
+  const hasStepsImg = (pos: number) => photoBySlot.has(`ai${pos}`);
+  if (videoPos != null && hasStepsImg(videoPos)) {
+    const next = rows.find((r) => r.position > videoPos! && !hasStepsImg(r.position) && r.kind !== "comparison_table");
+    if (next) videoPos = next.position;
+  }
   const secs: AssembleSection[] = rows.map((s, i) => ({ videoHtml: chosenVideo && s.position === videoPos ? videoEmbedHtml(chosenVideo, post.id) : null, position: s.position, kind: s.kind, heading: cleanHeading(s.heading), html: cleaned[i], photo: img(s.slotKey), stepsPhoto: img(`ai${s.position}`) }));
   const faq = Array.isArray(fresh.faq) ? (fresh.faq as Array<{ question: string; answer: string }>).filter((f) => f?.question && f?.answer) : [];
   const jsonLd = recipe.publish.schema === "off" ? null : buildJsonLd({

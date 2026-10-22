@@ -86,6 +86,7 @@ export async function saveBlogRecipeMain(_p: FormState, f: FormData): Promise<Fo
       review: { aiEditor: f.get("aiEditor") === "on" },
       overlay: { mode: (["article", "pin_only", "off"].includes(str(f, "overlayMode")) ? str(f, "overlayMode") : p.overlay.mode) as BlogRecipeParams["overlay"]["mode"], photos: str(f, "overlayPhotos") === "hero" ? "hero" : str(f, "overlayPhotos") === "all" ? "all" : p.overlay.photos },
       aiImages: { mode: str(f, "aiImagesMode") === "steps" ? "steps" : str(f, "aiImagesMode") === "off" ? "off" : p.aiImages.mode, max: num(f, "aiImagesMax", p.aiImages.max, 1, 4), quality: (["low", "medium", "high"].includes(str(f, "aiImagesQuality")) ? str(f, "aiImagesQuality") : p.aiImages.quality) as BlogRecipeParams["aiImages"]["quality"] },
+      scenario: str(f, "scenario") || p.scenario,
       source: str(f, "source") === "video" ? "video" : str(f, "source") === "research" ? "research" : p.source,
       video: { embed: str(f, "videoEmbed") === "auto" ? "auto" : str(f, "videoEmbed") === "off" ? "off" : p.video.embed },
       language: str(f, "language").toLowerCase().slice(0, 5) || p.language,

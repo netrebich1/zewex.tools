@@ -16,6 +16,14 @@ export type QualityResult = {
 
 const JUNK_RE = /\b(as an ai|i cannot|i can't help|let me think|the user wants|here is the json|lorem ipsum)\b/i;
 
+/** Выдуманный личный опыт («I've tried both methods»): автору запрещено, проверяем детерминированно. */
+export const INVENTED_EXPERIENCE = /\b(I(?:'ve| have) (?:tried|tested|used|been using|learned from trying)|I tested|I tried (?:both|every|all|it|them|this)|in my (?:own )?(?:experience|testing|tests)|after (?:years|months|weeks) of (?:testing|trying))\b/i;
+
+export function inventedExperience(html: string | null | undefined): string | null {
+  const m = String(html ?? "").replace(/<[^>]+>/g, " ").match(INVENTED_EXPERIENCE);
+  return m ? m[0] : null;
+}
+
 export function checkPostQuality(post: BlogPost, outline: BlogOutline | null, params: BlogRecipeParams, sections: BlogSection[], photos: BlogPhoto[]): QualityResult {
   const problems: string[] = [];
   const fixed: string[] = [];
@@ -32,7 +40,12 @@ export function checkPostQuality(post: BlogPost, outline: BlogOutline | null, pa
   else if (cw < 25) problems.push(`Заключение: всего ${cw} слов (минимум 25)`);
   for (const [label, html] of [["Вступление", intro], ["Заключение", concl], ["Выводы", post.takeawaysHtml ?? ""], ["Дисклеймер", post.disclaimerHtml ?? ""]] as const) {
     if (html && (/\{\{|\}\}/.test(html) || JUNK_RE.test(html))) problems.push(`${label}: служебный текст или плейсхолдеры`);
+    const inv = inventedExperience(html);
+    if (inv) problems.push(`${label}: выдуманный личный опыт («${inv}»)`);
   }
+  const faqHtml = (Array.isArray(post.faq) ? (post.faq as Array<{ answer?: string }>) : []).map((f) => f.answer ?? "").join(" ");
+  const invFaq = inventedExperience(faqHtml);
+  if (invFaq) problems.push(`FAQ: выдуманный личный опыт («${invFaq}»)`);
 
   const live = sections.filter((s) => s.position >= 1).sort((a, b) => a.position - b.position);
   if (live.length < 3) problems.push(`Секций всего ${live.length} (минимум 3)`);
@@ -62,6 +75,8 @@ export function checkPostQuality(post: BlogPost, outline: BlogOutline | null, pa
     if (wantsTable(s.kind) && !/<table\b/i.test(html)) problems.push(`Секция ${s.position}: блок «${spec.label}» без таблицы`);
     if (s.kind === "steps" && !/<ol\b/i.test(html)) problems.push(`Секция ${s.position}: шаги без нумерованного списка`);
     if (/\b(in the photo|pictured above|as you can see in the image|the image shows)\b/i.test(html)) problems.push(`Секция ${s.position}: ссылается на картинку словами`);
+    const inv = inventedExperience(html);
+    if (inv) problems.push(`Секция ${s.position}: выдуманный личный опыт («${inv}») — убрать, первое лицо только для мнения или совета`);
   }
   const faq = Array.isArray(post.faq) ? (post.faq as Array<{ question?: string; answer?: string }>) : [];
   total += faq.reduce((n, f) => n + countWords(f.question ?? "") + countWords(f.answer ?? ""), 0);

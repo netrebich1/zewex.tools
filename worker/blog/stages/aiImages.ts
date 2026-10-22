@@ -21,7 +21,7 @@ import { getHost, asImageSource } from "@/lib/pins/canvas/host";
 import { cleanHeading } from "@/lib/blog/text";
 import type { StageHandler } from "./index";
 
-type Panel = { step: number; shows: string };
+type Panel = { step: number; shows: string; label: string };
 type Plan = { subject: string; setting: string; panels: Panel[] };
 
 /** Шаги из HTML секции: текст пунктов первого <ol> (метка <strong> + первое предложение). */
@@ -55,7 +55,8 @@ ${panels}
 Absolutely no text, letters, numbers, arrows, captions, labels, logos or watermarks anywhere in the image. Leave the top-left corner of each panel uncluttered.`;
 }
 
-async function drawNumbers(src: Buffer, steps: number[]): Promise<Buffer> {
+/** Номера панелей 1..N (по порядку на картинке) и короткая подпись действия внизу каждой панели. */
+async function drawNumbers(src: Buffer, labels: string[]): Promise<Buffer> {
   const host = getHost();
   // Ответ провайдера → PNG через sharp: canvas не всегда узнаёт формат буфера (иначе «Invalid SVG image»)
   const png = await sharp(src).png().toBuffer();
@@ -63,7 +64,7 @@ async function drawNumbers(src: Buffer, steps: number[]): Promise<Buffer> {
   const c = host.createCanvas(img.width, img.height);
   const g = c.getContext("2d");
   g.drawImage(asImageSource(img), 0, 0, img.width, img.height);
-  const cells = panelLayout(steps.length, img.width, img.height);
+  const cells = panelLayout(labels.length, img.width, img.height);
   const r = Math.round(Math.min(img.width, img.height) * 0.045);
   cells.forEach((cell, i) => {
     const cx = cell.x + r + 22, cy = cell.y + r + 22;
@@ -71,7 +72,19 @@ async function drawNumbers(src: Buffer, steps: number[]): Promise<Buffer> {
     g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fillStyle = "#1f1f1f"; g.fill();
     g.fillStyle = "#ffffff"; g.textAlign = "center"; g.textBaseline = "middle";
     g.font = `700 ${Math.round(r * 1.15)}px "Montserrat", "Inter", sans-serif`;
-    g.fillText(String(steps[i]), cx, cy + 1);
+    g.fillText(String(i + 1), cx, cy + 1);
+    const label = (labels[i] ?? "").trim();
+    if (label) {
+      const fs = Math.round(Math.min(cell.w, cell.h) * 0.07);
+      g.font = `700 ${fs}px "Montserrat", "Inter", sans-serif`;
+      let text = label;
+      while (g.measureText(text).width > cell.w - 60 && text.length > 4) text = text.slice(0, -2).trimEnd() + "…";
+      const tw = g.measureText(text).width + fs * 1.4, th = fs * 1.7;
+      const bx = cell.x + cell.w / 2 - tw / 2, by = cell.y + cell.h - th - 18;
+      g.globalAlpha = 0.92; g.fillStyle = "#ffffff"; g.fillRect(bx, by, tw, th); g.globalAlpha = 1;
+      g.fillStyle = "#1f1f1f"; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(text, cell.x + cell.w / 2, by + th / 2 + 1);
+    }
   });
   return host.encodeJpeg(c, 0.9);
 }
@@ -98,14 +111,14 @@ export const aiImagesStage: StageHandler = async (ctx) => {
     let plan: Plan | null = null;
     try {
       const system = `You plan one step-by-step illustration for a blog article. It will be a single photorealistic image split into 2-4 panels, one panel per step, with NO text in the image (step numbers are added later).
-Pick the 2-4 steps from the list that are the most visual and together show the process from start to result (prefer 4 when there are 4 or more visual steps). For each chosen step describe in one sentence exactly what the camera sees: hands, tool, hair or object, the action in progress. Describe one consistent person and one consistent place for all panels (age range, hair, clothing, room). Only things that really belong to this process; no brands, no text, no screens.
-Return ONLY JSON: {"subject":"...","setting":"...","panels":[{"step":1,"shows":"..."}]} where "step" is the number of the step in the list.`;
+Pick the 2-4 steps from the list that are the most visual and together show the process from start to result, in the list's order (prefer 4 when there are 4 or more visual steps). Panels will be numbered 1-N on the image with your short label, so each label must make sense on its own. For each chosen step describe in one sentence exactly what the camera sees: hands, tool, hair or object, the action in progress. Describe one consistent person and one consistent place for all panels (age range, hair, clothing, room). Only things that really belong to this process; no brands, no text, no screens.
+Return ONLY JSON: {"subject":"...","setting":"...","panels":[{"step":1,"label":"2-4 word action, e.g. Clamp and twist","shows":"..."}]} where "step" is the number of the step in the list.`;
       const user = `Article: "${h1}"\nSection: "${heading}"\nSteps:\n${steps.map((t, i) => `${i + 1}. ${t.slice(0, 220)}`).join("\n")}`;
       const r = await aiChatRetry(ctx.ai, { slot: SLOTS.textFast, model: stageModel(recipe, "meta"), system, user, json: true, temperature: 0.6, maxTokens: 700, timeoutMs: 90_000 });
       cost += r.costUsd ?? 0;
       const j = parseModelJsonSafe(r.text) as Partial<Plan> | null;
       const panels = (Array.isArray(j?.panels) ? j!.panels : [])
-        .map((p) => ({ step: Math.round(Number(p?.step)), shows: String(p?.shows ?? "").trim().slice(0, 300) }))
+        .map((p) => ({ step: Math.round(Number(p?.step)), shows: String(p?.shows ?? "").trim().slice(0, 300), label: String((p as { label?: unknown })?.label ?? "").replace(/[.!]+$/, "").trim().slice(0, 32) }))
         .filter((p) => p.step >= 1 && p.step <= steps.length && p.shows.length > 10)
         .filter((p, i, a) => a.findIndex((q) => q.step === p.step) === i)
         .sort((a, b) => a.step - b.step)
@@ -138,7 +151,7 @@ Return ONLY JSON: {"subject":"...","setting":"...","panels":[{"step":1,"shows":"
     // 3) Номера шагов и файлы
     let numbered: Buffer;
     try {
-      numbered = await drawNumbers(bytes, plan.panels.map((p) => p.step));
+      numbered = await drawNumbers(bytes, plan.panels.map((p) => p.label));
     } catch (e) {
       const head = bytes.subarray(0, 16).toString("hex");
       ctx.log(`картинка секции ${s.position} не читается (${bytes.length} байт, начало ${head}): ${e instanceof Error ? e.message : String(e)}`);
@@ -151,12 +164,12 @@ Return ONLY JSON: {"subject":"...","setting":"...","panels":[{"step":1,"shows":"
     const thumbPath = photoThumbRel(post.id, photoId);
     await writeFileAtomic(path, jpeg.bytes);
     await writeFileAtomic(thumbPath, await makeThumb(jpeg.bytes));
-    const shows = plan.panels.map((p) => `step ${p.step}: ${p.shows.replace(/\.$/, "")}`).join("; ");
+    const shows = plan.panels.map((p, i) => `${i + 1}. ${p.label || p.shows.replace(/\.$/, "")}`).join("; ");
     await prisma.blogPhoto.create({
       data: {
         id: photoId, postId: post.id, slotKey: `ai${s.position}`, position: 100 + s.position, path, thumbPath, publicUrl: publicUrl(path),
         width: jpeg.width, height: jpeg.height, aiGenerated: true, aiPrompt: prompt,
-        altText: `Step-by-step photos: ${heading}`.slice(0, 300), description: `Step-by-step illustration for "${heading}" — ${shows}`.slice(0, 1000),
+        altText: `Step-by-step photos: ${heading}`.slice(0, 300), description: `Step-by-step illustration (${plan.panels.length} panels) for "${heading}" — ${shows}`.slice(0, 1000),
         fileName: `ai-${s.position}.jpg`,
       },
     });

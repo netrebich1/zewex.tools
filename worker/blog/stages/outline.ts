@@ -80,7 +80,8 @@ export const outline: StageHandler = async (ctx) => {
   };
   const filled = fillPrompt(prompt, vars, { name: STAGE_KEY });
   const chosenVideo = ((post.video ?? null) as { chosen?: { title: string; channel: string; sec: number; judge?: { covers?: string[] } } | null } | null)?.chosen ?? null;
-  const videoBlock = chosenVideo ? `\n\nVIDEO: a YouTube video "${chosenVideo.title}" by ${chosenVideo.channel} (${Math.max(1, Math.round(chosenVideo.sec / 60))} min) will be embedded in one section. It covers: ${(chosenVideo.judge?.covers ?? []).join("; ") || "the method"}. Add to the JSON "video_section": the position (1-based) of the section this video supports best, usually the steps section.` : "";
+  const scenarioHint = recipe.scenario?.outlineHint ? `\n\nARTICLE TYPE: ${recipe.scenario.label}. ${recipe.scenario.outlineHint}` : "";
+  const videoBlock = scenarioHint + (chosenVideo ? `\n\nVIDEO: a YouTube video "${chosenVideo.title}" by ${chosenVideo.channel} (${Math.max(1, Math.round(chosenVideo.sec / 60))} min) will be embedded in one section. It covers: ${(chosenVideo.judge?.covers ?? []).join("; ") || "the method"}. Add to the JSON "video_section": the position (1-based) of the section this video supports best, usually the steps section.` : "");
   const model = stageModel(recipe, STAGE_KEY);
 
   let lastWhy = "";

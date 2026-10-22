@@ -15,7 +15,7 @@ import { AiError } from "@/lib/pins/ai/errors";
 import { SLOTS } from "@/lib/blog/types";
 import type { StageHandler } from "./index";
 import { MAX_SLOT_SEARCHES } from "./photoSearch";
-import { RATE_SYSTEM, offPuttingSignal } from "@/lib/blog/photo/ratePrompt";
+import { RATE_SYSTEM, junkPhotoSignal, offPuttingSignal } from "@/lib/blog/photo/ratePrompt";
 
 const STAGE_KEY = "photo_rate";
 const BATCH = 6;
@@ -99,7 +99,8 @@ export const photoRate: StageHandler = async (ctx) => {
       const score = Math.round((relevance * 0.6 + quality * 0.4) * 10) / 10;
       const verdictKeep = String(it.verdict ?? "").toLowerCase() === "keep";
       const description = String(it.description ?? "").trim().slice(0, 400);
-      const unpleasant = offPuttingSignal(`${description} ${issues.join(" ")}`) ?? (issues.some((x) => /off-putting|disturbing|gross/i.test(x)) ? "неприятный кадр" : null);
+      const unpleasant = offPuttingSignal(`${description} ${issues.join(" ")}`) ?? (issues.some((x) => /off-putting|disturbing|gross/i.test(x)) ? "неприятный кадр" : null)
+        ?? junkPhotoSignal(`${description} ${issues.join(" ")}`);
       const appealOk = appeal >= (slot.key === "hero" ? 7 : 6);
       const keep = verdictKeep && real && !unpleasant && appealOk && relevance >= 6 && quality >= 4 && score >= minScore;
       const reason = unpleasant ?? (!appealOk && verdictKeep ? `не вызывает желания сохранить (appeal ${appeal})` : String(it.reason ?? "").slice(0, 200));

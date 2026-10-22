@@ -37,7 +37,7 @@ export const videoStage: StageHandler = async (ctx) => {
   const brief = ctx.brief as (BlogBrief & { video?: unknown }) | null;
   let videoFirst = source === "video";
   let note = "";
-  if (videoFirst && brief && (brief.intent !== "how_to" || brief.ymyl)) {
+  if (videoFirst && brief && (!["how_to", "problem_fix"].includes(brief.intent) || brief.ymyl)) {
     videoFirst = false;
     note = brief.ymyl ? "тема здоровья/денег — статья по исследованию, видео только как вставка" : `интент «${brief.intent}» — статья по исследованию, видео только как вставка`;
   }

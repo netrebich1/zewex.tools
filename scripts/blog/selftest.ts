@@ -9,7 +9,10 @@ import { buildJsonLd, extractSteps } from "../../src/lib/blog/schema";
 import { cleanHeading, cleanSectionHtml, countWords, ensureTableHead, sanitizeHtml, searchPhraseOf, varyTipLabels } from "../../src/lib/blog/text";
 import { titleCase } from "../../worker/blog/stages/meta";
 import { shopPageSignal } from "../../worker/blog/stages/photoFilter";
-import { offPuttingSignal } from "../../src/lib/blog/photo/ratePrompt";
+import { junkPhotoSignal, offPuttingSignal } from "../../src/lib/blog/photo/ratePrompt";
+import { applyScenario, pickScenario } from "../../src/lib/blog/scenarios";
+import { inventedExperience } from "../../src/lib/blog/qualityCheck";
+import type { BlogBrief } from "../../src/lib/blog/types";
 import { isoDuration, judgeDecision, prefilterVideos, videoEmbedHtml, videoObject, type VideoCandidate } from "../../src/lib/blog/video";
 import { checkPostQuality } from "../../src/lib/blog/qualityCheck";
 import { DEFAULT_PARAMS, type BlogOutline } from "../../src/lib/blog/types";
@@ -190,4 +193,32 @@ function videoCheck() {
   ok("video rules + embed");
 }
 
-overlayCheck().then(aiStepsCheck).then(videoCheck).then(() => console.log(`\n${n} checks passed`)).catch((e) => { console.error(e); process.exit(1); });
+// 10. Сценарии, выдуманный опыт, «не фото», место ИИ-картинки шагов
+function scenarioCheck() {
+  const b = (intent: string, ymyl = false) => ({ intent, ymyl, topicDomain: "hair", audience: "", summary: "", facts: [], dos: [], donts: [], mistakes: [], safety: [], materials: [], timeline: "", questions: [] } as unknown as BlogBrief);
+  assert.equal(pickScenario("auto", b("how_to"), "how to curl hair")!.scenario.key, "how_to_video");
+  assert.equal(pickScenario("auto", b("problem_fix"), "how to get dye off skin")!.scenario.key, "how_to_video");
+  assert.equal(pickScenario("auto", b("how_to", true), "how to remove a skin tag")!.scenario.key, "health_money");
+  assert.equal(pickScenario("auto", b("which"), "which hair roller")!.scenario.key, "comparison");
+  assert.equal(pickScenario("auto", b("why"), "why hair falls out")!.scenario.key, "explainer");
+  assert.equal(pickScenario("comparison", b("how_to"), "x")!.auto, false);
+  assert.equal(pickScenario("manual", b("how_to"), "x"), null);
+  const p = applyScenario({ ...DEFAULT_PARAMS, aiImages: { mode: "steps", max: 2, quality: "medium" } }, pickScenario("auto", b("how_to", true), "x")!.scenario);
+  assert.equal(p.source, "research"); assert.equal(p.video.embed, "off"); assert.equal(p.aiImages.mode, "off"); assert.equal(p.blocks.disclaimer, "always");
+  const v = applyScenario({ ...DEFAULT_PARAMS, aiImages: { mode: "steps", max: 2, quality: "medium" } }, pickScenario("auto", b("how_to"), "x")!.scenario);
+  assert.equal(v.source, "video"); assert.equal(v.aiImages.mode, "steps");
+  assert.ok(inventedExperience("<p>I've tried both methods, and once you learn…</p>"));
+  assert.ok(inventedExperience("the tips I've learned from trying it at home"));
+  assert.equal(inventedExperience("<p><strong>My tip:</strong> practice on a cold iron first.</p>"), null);
+  assert.ok(junkPhotoSignal("Woman curling hair; watermark ABlossomingLife.com in the corner"));
+  assert.ok(junkPhotoSignal("A 2x2 grid of curl results"));
+  assert.ok(junkPhotoSignal("Heat-resistant gloves and clips in their packaging"));
+  assert.equal(junkPhotoSignal("Woman twisting a flat iron through a section of brown hair"), null);
+  const built = assemblePostHtml({ introHtml: "<p>Intro text here for the article.</p>", hero: null, takeawaysHtml: null,
+    sections: [{ position: 1, kind: "steps", heading: "Steps", html: "<p>Before you start.</p><ol><li>A</li><li>B</li><li>C</li></ol><p>After.</p>", photo: null, stepsPhoto: { url: "https://x.test/ai.jpg", width: 1024, height: 1536, altText: "steps" } }],
+    faq: [], conclusionHtml: "<p>End.</p>", disclaimerHtml: null, closing: null, keyword: "how to curl hair", caption: { mode: "none", template: "" } as never, jsonLd: null });
+  assert.ok(built.html.indexOf("ai.jpg") < built.html.indexOf("<ol"), "step image before the list when text precedes it");
+  ok("scenarios + guards");
+}
+
+overlayCheck().then(aiStepsCheck).then(videoCheck).then(scenarioCheck).then(() => console.log(`\n${n} checks passed`)).catch((e) => { console.error(e); process.exit(1); });

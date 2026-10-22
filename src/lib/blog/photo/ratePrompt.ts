@@ -15,7 +15,7 @@ RELEVANCE 0-10: how well the photo illustrates the SLOT description (what must b
 QUALITY 0-10: lighting, sharpness, composition; would a reader trust this blog from this photo.
 APPEAL 0-10: would a Pinterest user happily save this photo to a board? Calm, pleasant, aspirational scenes score high; unflattering, unpleasant or alarming ones score low.
 real_photo: true only for a genuine photograph of a real scene.
-description: 15-35 words, factual, what is visible (for alt text), no opinions.
+description: 15-35 words, factual, what is visible (for alt text), no opinions. ALWAYS mention any visible text, watermark, website or photographer name, logo, collage/grid layout, packaging or price tag if present (the editor checks the description).
 
 Return ONLY JSON:
 {"photos":[{"n":1,"relevance":8,"quality":7,"appeal":8,"real_photo":true,"issues":[],"verdict":"keep","reason":"max 10 words","description":"..."}]}
@@ -23,6 +23,14 @@ verdict: "keep" or "reject". issues: short codes like "text overlay", "collage",
 
 /** Слова в описании кадра, при которых фото не ставим, что бы ни сказала модель (страховка к п.7 промта). */
 const OFF_PUTTING = /\b(swollen|swelling|rash(?:es)?|hives|allergic reaction|burn(?:ed|s|t)?|scald|wound(?:s|ed)?|blood(?:y)?|bleeding|bruis(?:e|ed|es|ing)|lice|nits|infect(?:ed|ion)|blister(?:s|ed)?|injur(?:y|ed|ies)|lesion(?:s)?|scab(?:s)?|pus|inflamed|inflammation|eczema|psoriasis|crying|in pain|vomit\w*|mold(?:y)?|mould(?:y)?|maggots?)\b/i;
+
+/** Признаки «не фото для статьи» в описании кадра: водяной знак, текст, коллаж, упаковка товара. */
+const JUNK_PHOTO = /\b(watermark(?:ed)?|logo|website (?:name|address|url)|photographer(?:'s)? name|text (?:overlay|reading|that reads|says)|caption text|collage|grid of (?:four|four|several|multiple|\d+)|\d\s?x\s?\d grid|side[- ]by[- ]side (?:photos|images)|split[- ]screen|before and after|packag(?:e|ing)|product box|price tag|blister pack|in (?:its|their) (?:box|packaging)|\.com\b)/i;
+
+export function junkPhotoSignal(text: string | null | undefined): string | null {
+  const m = String(text ?? "").match(JUNK_PHOTO);
+  return m ? `не фото для статьи («${m[1].toLowerCase()}»)` : null;
+}
 
 export function offPuttingSignal(text: string | null | undefined): string | null {
   const m = String(text ?? "").match(OFF_PUTTING);
