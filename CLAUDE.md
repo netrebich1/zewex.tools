@@ -13,6 +13,7 @@
 ## Сборка и деплой
 Рабочее место — Windows (`D:\Projects\zewex-tools`, Git Bash), Node локально не нужен: только редактируем, собираем на сервере.
 - Деплой одной командой: `bash deploy/deploy.sh` (tar по ssh во временную папку → rsync --delete на сервере → npm install → prisma db push → seed → build → systemd + nginx). Локально нужны только ssh и tar, rsync не нужен. Скрипт отказывает, если в файлах есть CRLF; LF закреплён `.gitattributes` (`eol=lf`) и локально `core.autocrlf false`, `core.filemode false`.
+- npm 11.19+ на сервере не запускает install-скрипты пакетов без одобрения: `prisma`, `@prisma/*`, `esbuild` перечислены в `allowScripts` в `package.json` (2026-10-22 деплой падал на `npx prisma db push`: prisma не ставился). При смене версий этих пакетов обновить ключи `allowScripts` (`npm install-scripts ls` на сервере покажет, что не одобрено).
 - Проверка типов на сервере: `ssh -i ~/.ssh/fastvps_ed25519 root@159.69.234.194 'cd /var/www/zewex_tools_usr/data/app && sudo -u zewex_tools_usr npx tsc --noEmit'`.
 - Логи: `journalctl -u zewex-tools -n 100`. Сервис слушает 127.0.0.1:3100.
 - Секреты только в `.env` на сервере (не в git). Никогда не печатать APP_ENCRYPTION_KEY и пароли в чат.
