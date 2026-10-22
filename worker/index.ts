@@ -25,11 +25,22 @@ setDefaultResultOrder("ipv4first");
 process.on("unhandledRejection", (e) => log.error("unhandled rejection", e));
 
 const WORKER_ID = `${hostname()}-${process.pid}`;
-const CONCURRENCY = Number(process.env.PINS_WORKER_CONCURRENCY || 2);
+/**
+ * Места воркера пинов (2026-10-22): всего `CONCURRENCY` задач разом, из них тяжёлых этапов (картинки ИИ и Canvas —
+ * длинные, держат место по часу) не больше `HEAVY_CAP`. Остальные места всегда свободны для лёгких этапов
+ * (ключи и доски, фото, план, промты, тексты, WordPress, расписание), иначе новый прогон часами стоит «В очереди»
+ * за чужими картинками. Canvas грузит процессор (на сервере 2 ядра), поэтому тяжёлых мест не больше, чем раньше.
+ */
+const CONCURRENCY = Number(process.env.PINS_WORKER_CONCURRENCY || 4);
+const HEAVY_CAP = Math.max(1, Math.min(CONCURRENCY, Number(process.env.PINS_WORKER_HEAVY || 2)));
+export const HEAVY_STAGES = ["images", "canvas"] as const;
 const IDLE_MS = 2_000;
 
 let shuttingDown = false;
 const inflight = new Set<Promise<void>>();
+/** Этап каждой выполняемой задачи — чтобы считать занятые тяжёлые места. */
+const inflightStage = new Map<Promise<void>, string>();
+const heavyInflight = () => [...inflightStage.values()].filter((s) => (HEAVY_STAGES as readonly string[]).includes(s)).length;
 
 async function loop() {
   while (!shuttingDown) {
@@ -39,7 +50,7 @@ async function loop() {
     }
     let job = null;
     try {
-      job = await claimNextJob(WORKER_ID);
+      job = await claimNextJob(WORKER_ID, { skipStages: heavyInflight() >= HEAVY_CAP ? HEAVY_STAGES : [] });
     } catch (e) {
       log.warn("claim failed", e);
       await sleep(5_000);
@@ -49,17 +60,18 @@ async function loop() {
       await sleep(IDLE_MS);
       continue;
     }
-    const p = processJob(job, () => shuttingDown)
+    const p: Promise<void> = processJob(job, () => shuttingDown)
       .catch((e) => log.error(`processJob crashed for ${job!.id}`, e))
-      .finally(() => inflight.delete(p));
+      .finally(() => { inflight.delete(p); inflightStage.delete(p); });
     inflight.add(p);
+    inflightStage.set(p, job.stage);
   }
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  log.info(`worker ${WORKER_ID} starting (concurrency ${CONCURRENCY})`);
+  log.info(`worker ${WORKER_ID} starting (concurrency ${CONCURRENCY}, heavy ${HEAVY_CAP}: ${HEAVY_STAGES.join("/")})`);
   await prisma.$queryRaw`SELECT 1`;
   try {
     const f = installNodeCanvasHost(join(storageRoot(), "pins/fonts"));

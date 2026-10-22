@@ -12,15 +12,21 @@ export const LEASE_SECONDS = 90;
 export const TEAM_CAP = Number(process.env.PINS_TEAM_CAP || 2);
 export const MAX_ATTEMPTS = 5;
 
-export async function claimNextJob(workerId: string): Promise<PinJob | null> {
+/**
+ * `skipStages` — этапы, которые сейчас брать нельзя (у воркера заняты все места для тяжёлых этапов):
+ * такие задачи пропускаются, и место достаётся следующей лёгкой задаче очереди.
+ */
+export async function claimNextJob(workerId: string, opts: { skipStages?: readonly string[] } = {}): Promise<PinJob | null> {
+  const skip = new Set(opts.skipStages ?? []);
   return prisma.$transaction(
     async (tx) => {
-      const cand = await tx.$queryRaw<Array<{ id: string; teamId: string }>>`
-        SELECT id, teamId FROM PinJob
+      const cand = await tx.$queryRaw<Array<{ id: string; teamId: string; stage: string }>>`
+        SELECT id, teamId, stage FROM PinJob
         WHERE status = 'PENDING' AND (nextRunAt IS NULL OR nextRunAt <= NOW(3))
         ORDER BY priority DESC, createdAt ASC
-        LIMIT 20 FOR UPDATE SKIP LOCKED`;
+        LIMIT 50 FOR UPDATE SKIP LOCKED`;
       for (const j of cand) {
+        if (skip.has(j.stage)) continue;
         const running = await tx.pinJob.count({ where: { teamId: j.teamId, status: { in: ["RUNNING", "STOPPING"] }, leaseUntil: { gt: new Date() } } });
         if (running >= TEAM_CAP) continue;
         const r = await tx.$executeRaw`
