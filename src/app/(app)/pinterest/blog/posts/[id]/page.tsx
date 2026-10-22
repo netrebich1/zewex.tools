@@ -179,8 +179,22 @@ async function PhotosTab({ postId, running }: { postId: string; running: boolean
   ]);
   if (!slots.length) return <Card title="Фото"><p className="help">Слоты картинок появятся после этапа «План».</p></Card>;
   const photoBySlot = new Map(photos.filter((p) => !p.excluded).map((p) => [p.slotKey, p]));
+  const aiPhotos = photos.filter((p) => p.aiGenerated && !p.excluded);
   return (
     <div className="space-y-4">
+      {aiPhotos.length > 0 && (
+        <Card title="ИИ-картинки шагов" description="gpt-image-2, номера шагов нарисованы поверх; стоят в конце своей секции.">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {aiPhotos.map((p) => (
+              <figure key={p.id} className="rounded-xl border border-line p-1.5">
+                <a href={publicUrl(p.overlayPath || p.path)} target="_blank" rel="noreferrer"><img src={publicUrl(p.path)} alt={p.altText} loading="lazy" className="w-full rounded-lg" /></a>
+                <figcaption className="mt-1 text-[11.5px] leading-tight text-muted">Секция {p.slotKey.replace(/^ai/, "")}{p.overlayPath ? " · с плашкой" : ""}</figcaption>
+                {!running && <ActionForm action={excludeSlotPhoto} hidden={{ photoId: p.id }} className="mt-1"><SubmitButton className="btn-ghost btn-sm" pendingText="…">Убрать из статьи</SubmitButton></ActionForm>}
+              </figure>
+            ))}
+          </div>
+        </Card>
+      )}
       {slots.map((s) => {
         const p = photoBySlot.get(s.key);
         const res = reserve.filter((c) => c.slotId === s.id).slice(0, 12);

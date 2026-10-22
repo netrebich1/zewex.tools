@@ -37,6 +37,7 @@ export function mergeParams(raw: unknown): BlogRecipeParams {
     research: { serp: r.research?.serp === true },
     review: { aiEditor: r.review?.aiEditor === true },
     overlay: { mode: r.overlay?.mode === "pin_only" || r.overlay?.mode === "off" ? r.overlay.mode : "article", photos: r.overlay?.photos === "hero" ? "hero" : "all" },
+    aiImages: { mode: r.aiImages?.mode === "steps" ? "steps" : "off", max: num(r.aiImages?.max, d.aiImages.max, 1, 4), quality: r.aiImages?.quality === "low" || r.aiImages?.quality === "high" ? r.aiImages.quality : "medium" },
     language: String(r.language ?? d.language).toLowerCase().slice(0, 5) || "en",
     country: String(r.country ?? d.country).toUpperCase().slice(0, 2) || "US",
   };
@@ -132,6 +133,7 @@ export function missingSlotsFor(recipe: BlogRecipeShape, have: Record<SlotKey, b
   need.delete(SLOTS.photoDfs); need.delete(SLOTS.photoSerp);
   if (!have.photo_dfs && !have.photo_serp) out.push("Поиск фото (DataForSEO или SerpAPI)");
   if (!recipe.params.research.serp) need.delete(SLOTS.serpOrganic);
+  if (recipe.params.aiImages?.mode !== "steps") need.delete(SLOTS.image);
   for (const s of need) if (!have[s as SlotKey]) out.push(SLOT_LABELS[s as SlotKey] ?? s);
   return out;
 }

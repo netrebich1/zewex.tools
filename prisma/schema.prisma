@@ -2074,6 +2074,9 @@ model BlogPhoto {
   overlayHeight    Int?
   overlayWpMediaId Int?
   overlayWpUrl     String? @db.VarChar(1000)
+  /// ИИ-картинка шагов (этап ai_images, slotKey ai<position>): без источника, промт генерации — для разбора
+  aiGenerated      Boolean @default(false)
+  aiPrompt         String? @db.Text
   fileName      String   @default("")
   aiScore       Float?
   wpMediaId     Int?

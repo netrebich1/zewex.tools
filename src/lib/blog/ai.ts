@@ -178,6 +178,36 @@ function cacheableSystem(resolved: ResolvedSlot, modelSpec?: string): boolean {
   return /gemini|claude/i.test(model);
 }
 
+export type ImageRequest = { prompt: string; size?: string; quality?: "low" | "medium" | "high"; model?: string; timeoutMs?: number };
+export type ImageResult = { bytes: Buffer; mime: string; costUsd: number | null; model: string | null };
+
+/** Генерация картинки через слот image_main (копия aiImage статей под проект blog). */
+export async function aiImage(ctx: AiCtx, req: ImageRequest): Promise<ImageResult> {
+  const resolved = await resolveOrThrow(ctx.userId, SLOTS.image);
+  const keyId = resolved.binding.apiKey.id;
+  checkCooldown(keyId);
+  const release = await acquire(keyId, DEFAULT_LIMITS.IMAGE);
+  try {
+    const res = await runSlot({
+      userId: ctx.userId, projectSlug: PROJECT_SLUG, slotKey: SLOTS.image,
+      payload: { prompt: req.prompt, n: 1, size: req.size ?? "1024x1536", quality: req.quality ?? "medium" },
+      model: req.model, timeoutMs: req.timeoutMs ?? 240_000, signal: ctx.signal, meta: { teamId: ctx.teamId, refId: ctx.postId }, pre: resolved,
+    });
+    if (!res.ok) await handleFailure(res, resolved);
+    const data = res.data as { data?: Array<{ b64_json?: string; url?: string }> };
+    const first = data?.data?.[0];
+    if (first?.b64_json) return { bytes: Buffer.from(first.b64_json, "base64"), mime: "image/png", costUsd: res.meta?.costUsd ?? null, model: res.meta?.model ?? null };
+    if (first?.url) {
+      const r = await fetch(first.url, { signal: AbortSignal.timeout(60_000) });
+      if (!r.ok) throw new AiError(classifyAiError(r.status, `image download ${r.status}`), r.status);
+      return { bytes: Buffer.from(await r.arrayBuffer()), mime: r.headers.get("content-type") || "image/png", costUsd: res.meta?.costUsd ?? null, model: res.meta?.model ?? null };
+    }
+    throw new AiError({ code: "empty", kind: "transient", message: "Провайдер вернул пустой ответ без картинки" }, 502);
+  } finally {
+    release();
+  }
+}
+
 export function imagePart(bytes: Buffer, mime = "image/jpeg", detail: "low" | "high" | "auto" = "auto"): ContentPart {
   return { type: "image_url", image_url: { url: `data:${mime};base64,${bytes.toString("base64")}`, detail } };
 }

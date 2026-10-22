@@ -41,8 +41,8 @@ export const pinImages: StageHandler = async (ctx) => {
   if (!photos.length) return { summary: "Нет фото для плашек" };
   const h1 = post.h1 || outline?.h1 || post.keyword;
   const sectionOf = (slotKey: string) => {
-    const pos = Number(slotKey.replace(/^s/, ""));
-    return slotKey.startsWith("s") ? outline?.sections.find((s) => s.position === pos) ?? null : null;
+    const pos = Number(slotKey.replace(/^(?:s|ai)/, ""));
+    return /^(?:s|ai)\d/.test(slotKey) ? outline?.sections.find((s) => s.position === pos) ?? null : null;
   };
   const headingOf = (slotKey: string) => (slotKey === "hero" ? h1 : slotKey === "closing" ? `${h1}: the result` : cleanHeading(sectionOf(slotKey)?.heading ?? h1));
 
@@ -51,7 +51,7 @@ export const pinImages: StageHandler = async (ctx) => {
   let aiTexts = 0, fallbackTexts = 0, textError: string | undefined;
   if (needText.length) {
     await ctx.tick("Тексты плашек");
-    const list = needText.map((p, i) => `${i + 1}. ${p.slotKey === "hero" ? "MAIN IMAGE (top of the article)" : p.slotKey === "closing" ? "LAST IMAGE (end of the article)" : `section type ${sectionOf(p.slotKey)?.kind ?? "-"}`}; section heading: "${headingOf(p.slotKey)}"; photo shows: ${p.description || p.altText || "-"}`).join("\n");
+    const list = needText.map((p, i) => `${i + 1}. ${p.slotKey === "hero" ? "MAIN IMAGE (top of the article)" : p.slotKey === "closing" ? "LAST IMAGE (end of the article)" : p.aiGenerated ? `STEP-BY-STEP PANELS for section type ${sectionOf(p.slotKey)?.kind ?? "-"} (title should promise the steps, e.g. "4 Steps to …")` : `section type ${sectionOf(p.slotKey)?.kind ?? "-"}`}; section heading: "${headingOf(p.slotKey)}"; photo shows: ${p.description || p.altText || "-"}`).join("\n");
     const system = `You write the text that is printed on a band above or below a photo from a blog article, so the image works as a Pinterest pin when someone saves it. Each image gets:
 - "title": 3-8 words, the hook people search and save for. It must match THIS section and what the photo shows, and make the reader want the article (a clear benefit, a fix, a mistake to avoid, a how-to). The MAIN IMAGE title must contain the article keyword "${post.keyword}" or its core words. Use a number only when the section really has that many items. No clickbait promises, no question marks unless it is a real search question, no emoji, no quotes, no final period.
 - "kicker": 1-3 words above the title that label the content (e.g. "Step by step", "Beginner guide", "Avoid these", "Quick fix", "Hair care"). Never repeat the title words.
@@ -76,7 +76,7 @@ Return ONLY JSON: {"items":[{"n":1,"title":"...","kicker":"..."}]}`;
     }
     for (const ph of needText.filter((p) => !p.overlayText)) {
       const heading = headingOf(ph.slotKey).replace(/:.*$/, "").slice(0, 60);
-      const text = { title: titleCase(heading), kicker: ph.slotKey === "hero" ? "Complete guide" : KICKER_BY_KIND[sectionOf(ph.slotKey)?.kind ?? ""] ?? "", source: "fallback" };
+      const text = { title: titleCase(heading), kicker: ph.slotKey === "hero" ? "Complete guide" : ph.aiGenerated ? "Step by step" : KICKER_BY_KIND[sectionOf(ph.slotKey)?.kind ?? ""] ?? "", source: "fallback" };
       await prisma.blogPhoto.update({ where: { id: ph.id }, data: { overlayText: text as Prisma.InputJsonValue } });
       ph.overlayText = text;
       fallbackTexts++;

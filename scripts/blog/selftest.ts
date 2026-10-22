@@ -16,6 +16,7 @@ import { writeFileSync } from "node:fs";
 import { installNodeCanvasHost } from "../../src/lib/pins/canvas/host.node";
 import { getHost } from "../../src/lib/pins/canvas/host";
 import { normalizeOverlayText, renderPinOverlay } from "../../src/lib/blog/pinOverlay";
+import { buildImagePrompt, panelLayout, stepsOf } from "../../worker/blog/stages/aiImages";
 
 let n = 0;
 const ok = (name: string) => { n++; console.log(`ok ${n} - ${name}`); };
@@ -151,4 +152,15 @@ async function overlayCheck() {
   ok("pin overlay");
 }
 
-overlayCheck().then(() => console.log(`\n${n} checks passed`)).catch((e) => { console.error(e); process.exit(1); });
+// 8. ИИ-картинка шагов: шаги из <ol>, раскладка панелей, промт без текста
+function aiStepsCheck() {
+  const html = "<p>Intro</p><ol><li><strong>Section your hair:</strong> Split it.</li><li><strong>Roll:</strong> Roll up.</li><li><strong>Set:</strong> Wait.</li></ol><ul><li>x</li></ul>";
+  assert.deepEqual(stepsOf(html), ["Section your hair: Split it.", "Roll: Roll up.", "Set: Wait."]);
+  assert.deepEqual(panelLayout(4, 1024, 1536)[3], { x: 512, y: 768, w: 512, h: 768 });
+  assert.deepEqual(panelLayout(3, 1024, 1536)[2], { x: 0, y: 1024, w: 1024, h: 512 });
+  const pr = buildImagePrompt({ subject: "a woman in her 30s", setting: "bathroom", panels: [{ step: 1, shows: "a" }, { step: 2, shows: "b" }, { step: 3, shows: "c" }, { step: 4, shows: "d" }] }, "Set rollers");
+  assert.ok(/2x2 grid/.test(pr) && /no text/i.test(pr) && /Panel 4 \(bottom-right\)/.test(pr), pr);
+  ok("ai step image helpers");
+}
+
+overlayCheck().then(aiStepsCheck).then(() => console.log(`\n${n} checks passed`)).catch((e) => { console.error(e); process.exit(1); });

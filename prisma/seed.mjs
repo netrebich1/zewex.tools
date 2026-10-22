@@ -220,6 +220,7 @@ const blogSlots = [
   { key: "photo_dfs", name: "Поиск фото (DataForSEO)", capability: "SEO_DATA", description: "Google Images через DataForSEO — основной источник реальных фото", preferProviders: "dataforseo" },
   { key: "photo_serp", name: "Поиск фото (SerpAPI)", capability: "SERP", description: "Запасной источник Google Images", preferProviders: "serpapi" },
   { key: "serp_organic", name: "Выдача Google (SerpAPI)", capability: "SERP", description: "People Also Ask и заголовки топа для исследования темы (необязательно, включается в рецепте)", preferProviders: "serpapi" },
+  { key: "image_main", name: "ИИ-картинки шагов", capability: "IMAGE", description: "gpt-image-2: картинка из панелей для секций-инструкций (включается в рецепте)", preferProviders: "openai,laozhang,openrouter" },
 ];
 for (const sl of blogSlots) {
   await prisma.slot.upsert({ where: { projectId_key: { projectId: blogProject.id, key: sl.key } }, update: { preferProviders: sl.preferProviders }, create: { ...sl, projectId: blogProject.id } });

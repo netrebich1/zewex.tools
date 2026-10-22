@@ -18,6 +18,8 @@ export const SLOTS = {
   photoSerp: "photo_serp",
   /** SerpApi Google organic: People Also Ask и заголовки топа для исследования (необязательно) */
   serpOrganic: "serp_organic",
+  /** Генерация ИИ-картинок шагов (gpt-image-2) */
+  image: "image_main",
 } as const;
 export type SlotKey = (typeof SLOTS)[keyof typeof SLOTS];
 
@@ -28,6 +30,7 @@ export const SLOT_LABELS: Record<SlotKey, string> = {
   photo_dfs: "Поиск фото (DataForSEO)",
   photo_serp: "Поиск фото (SerpAPI)",
   serp_organic: "Поисковая выдача (SerpAPI, для исследования)",
+  image_main: "ИИ-картинки шагов (gpt-image-2)",
 };
 
 export type PublishMode = "moderate_first" | "publish_then_edit";
@@ -71,6 +74,8 @@ export type BlogRecipeParams = {
   review: { aiEditor: boolean };
   /** Плашка с текстом на фото (как Canvas-пин): article — в статье картинка с плашкой; pin_only — только в пине при сохранении; off */
   overlay: { mode: "article" | "pin_only" | "off"; photos: "all" | "hero" };
+  /** ИИ-картинка «по шагам» в секциях-инструкциях (реальные фото остаются): off | steps; max — на статью; quality — gpt-image */
+  aiImages: { mode: "off" | "steps"; max: number; quality: "low" | "medium" | "high" };
   language: string;
   country: string;
 };
@@ -86,6 +91,7 @@ export const DEFAULT_PARAMS: BlogRecipeParams = {
   research: { serp: false },
   review: { aiEditor: false },
   overlay: { mode: "article", photos: "all" },
+  aiImages: { mode: "off", max: 2, quality: "medium" },
   language: "en",
   country: "US",
 };

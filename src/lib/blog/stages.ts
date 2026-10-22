@@ -1,8 +1,8 @@
 /**
  * Реестр этапов конвейера инфо-статей. Цепочка линейная; фазы — для подписей и расходов.
- * research → outline → photo_search → photo_filter → photo_rate → photo_select → write → wrap → meta → pin_images → assemble → publish.
+ * research → outline → photo_search → photo_filter → photo_rate → photo_select → write → ai_images → wrap → meta → pin_images → assemble → publish.
  */
-export const BLOG_STAGES = ["research", "outline", "photo_search", "photo_filter", "photo_rate", "photo_select", "write", "wrap", "meta", "pin_images", "assemble", "publish"] as const;
+export const BLOG_STAGES = ["research", "outline", "photo_search", "photo_filter", "photo_rate", "photo_select", "write", "ai_images", "wrap", "meta", "pin_images", "assemble", "publish"] as const;
 export type StageKey = (typeof BLOG_STAGES)[number];
 
 export type StagePhase = "research" | "photos" | "writing" | "publish";
@@ -24,6 +24,7 @@ export const STAGE_INFO: Record<StageKey, StageInfo> = {
   photo_rate: { label: "Оценка фото", phase: "photos", promptKeys: ["photo_rate"], slots: ["vision"], description: "Vision-модель: релевантность описанию слота, настоящее фото, качество." },
   photo_select: { label: "Выбор фото", phase: "photos", promptKeys: [], slots: [], description: "Лучший кадр и резерв на слот, уникальность между постами, файлы статьи." },
   write: { label: "Текст секций", phase: "writing", promptKeys: ["writer_system", "writer_user"], slots: ["text_main"], description: "Секции пачками по плану и брифу; HTML по типу блока." },
+  ai_images: { label: "ИИ-картинки шагов", phase: "writing", promptKeys: [], slots: ["text_fast", "image_main"], description: "Для секций-инструкций: одна картинка из 2–4 панелей (gpt-image-2, без текста), номера шагов рисуются канвой; реальные фото остаются." },
   wrap: { label: "Вступление, итоги, FAQ", phase: "writing", promptKeys: ["wrap"], slots: ["text_main"], description: "Вступление, ключевые выводы, заключение, FAQ и дисклеймер — по готовому телу." },
   meta: { label: "SEO-мета", phase: "writing", promptKeys: [], slots: ["text_fast"], description: "Проверка title/description/slug, одна починка ИИ, детерминированный запас." },
   pin_images: { label: "Текст на фото", phase: "writing", promptKeys: [], slots: ["text_fast"], description: "Плашка с заголовком по секции над или под фото (как Canvas-пин, кадр не обрезается): разные шрифты и палитры." },

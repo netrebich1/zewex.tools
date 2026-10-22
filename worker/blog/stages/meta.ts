@@ -168,7 +168,7 @@ async function writePinDescriptions(ctx: Parameters<StageHandler>[0], keyword: s
   const headingOf = (slotKey: string) => {
     if (slotKey === "hero") return h1;
     if (slotKey === "closing") return "the finished result";
-    const pos = Number(slotKey.replace(/^s/, ""));
+    const pos = Number(slotKey.replace(/^(?:s|ai)/, ""));
     return outline?.sections.find((s) => s.position === pos)?.heading ?? h1;
   };
   await ctx.tick("Описания пинов");

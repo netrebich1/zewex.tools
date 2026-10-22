@@ -7,7 +7,7 @@
       "description": "How-to, причины, сравнение: исследование → адаптивный план → 3–6 реальных фото по разделам → текст блоками → проверка → WordPress.",
       "isActive": true,
       "isDefault": true,
-      "seedRev": 4,
+      "seedRev": 5,
       "models": {
         "research": "openrouter:google/gemini-2.5-flash",
         "outline": "openrouter:google/gemini-2.5-flash",
@@ -53,6 +53,11 @@
         "overlay": {
           "mode": "article",
           "photos": "all"
+        },
+        "aiImages": {
+          "mode": "off",
+          "max": 2,
+          "quality": "medium"
         }
       },
       "photoSearch": {

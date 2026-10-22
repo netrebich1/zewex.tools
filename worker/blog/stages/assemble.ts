@@ -93,7 +93,7 @@ export const assemble: StageHandler = async (ctx) => {
   };
   const rows = await prisma.blogSection.findMany({ where: { postId: post.id, status: "written" }, orderBy: { position: "asc" } });
   const cleaned = varyTipLabels(rows.map((s) => cleanSectionHtml(s.html ?? "", allowedTags(s.kind), pol, { allowLinks: true })));
-  const secs: AssembleSection[] = rows.map((s, i) => ({ position: s.position, kind: s.kind, heading: cleanHeading(s.heading), html: cleaned[i], photo: img(s.slotKey) }));
+  const secs: AssembleSection[] = rows.map((s, i) => ({ position: s.position, kind: s.kind, heading: cleanHeading(s.heading), html: cleaned[i], photo: img(s.slotKey), stepsPhoto: img(`ai${s.position}`) }));
   const faq = Array.isArray(fresh.faq) ? (fresh.faq as Array<{ question: string; answer: string }>).filter((f) => f?.question && f?.answer) : [];
   const jsonLd = recipe.publish.schema === "off" ? null : buildJsonLd({
     h1: fresh.h1 || outline.h1 || post.keyword, description: fresh.metaDescription || outline.metaDescription,

@@ -55,6 +55,7 @@ import { photoFilter } from "./photoFilter";
 import { photoRate } from "./photoRate";
 import { photoSelect } from "./photoSelect";
 import { write } from "./write";
+import { aiImagesStage } from "./aiImages";
 import { wrap } from "./wrap";
 import { meta } from "./meta";
 import { pinImages } from "./pinImages";
@@ -69,6 +70,7 @@ export const STAGES: Partial<Record<StageKey, StageHandler>> = {
   photo_rate: photoRate,
   photo_select: photoSelect,
   write,
+  ai_images: aiImagesStage,
   wrap,
   meta,
   pin_images: pinImages,
