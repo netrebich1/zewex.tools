@@ -8,9 +8,11 @@ import { launchRun } from "@/actions/pins";
 import { RecipeFields, type RecipeFieldsData } from "@/components/pins/RecipeFields";
 import { PagesSourceFields } from "@/components/pins/PagesSourceFields";
 import { describePagesSource, pagesDateWindow, type PagesSource, type Recipe } from "@/lib/pins/types";
+import { foreignHosts } from "@/lib/pins/siteDomains";
+import { RunCostEstimate } from "@/components/pins/RunCostEstimate";
 
 /** recipe — настройки для нового прогона: сайтовые поля сайта + поля прогона из последнего прогона (или по умолчанию). */
-export type NewRunSite = { id: string; name: string; per: number; perDay: number; boards: number; hasWp: boolean; aiSets: number; canvasStyles: number; mix: { ai: number; photos: number; canvas: number; pinora: number }; recipe: Recipe; lastRun: { name: string | null; at: string } | null; fields: RecipeFieldsData };
+export type NewRunSite = { id: string; name: string; domains: string[]; per: number; perDay: number; boards: number; hasWp: boolean; aiSets: number; canvasStyles: number; mix: { ai: number; photos: number; canvas: number; pinora: number }; recipe: Recipe; lastRun: { name: string | null; at: string } | null; fields: RecipeFieldsData };
 type Post = { id: number; url: string; title: string; date: string; used: boolean };
 type Term = { id: number; name: string; count: number };
 
@@ -31,6 +33,11 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
   const [loading, setLoading] = useState(false);
   const [wpError, setWpError] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [manualText, setManualText] = useState("");
+  // Ссылки, вставленные вручную, с доменом не этого сайта — большое предупреждение и обязательное подтверждение.
+  const manualUrls = useMemo(() => manualText.split(/\r?\n|,|\s+/).map((x) => x.trim()).filter(Boolean), [manualText]);
+  const foreign = useMemo(() => (source === "manual" && site ? foreignHosts(manualUrls, site.domains) : []), [source, site, manualUrls]);
+  const foreignCount = foreign.reduce((s, x) => s + x.count, 0);
 
   // Смена сайта: источник и фильтр берём из его рецепта, найденные статьи сбрасываем.
   useEffect(() => {
@@ -74,6 +81,10 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
   }, [filter.skipUsed]);
   const togglePick = (u: string) => setPicked((p) => { const n = new Set(p); if (n.has(u)) n.delete(u); else n.add(u); return n; });
   const pickedList = [...picked];
+
+  // Сколько статей пойдёт в прогон — для оценки стоимости: вручную — уникальные ссылки, из WordPress — выбранные или лимит фильтра.
+  const pagesForEstimate = source === "manual" ? new Set(manualUrls).size : posts ? picked.size : filter.limit;
+  const pagesLabel = source === "manual" ? "ссылок" : posts ? "выбранных статей" : "статей (не больше лимита фильтра)";
 
   const recipeWarnings: string[] = [];
   if (site) {
@@ -125,8 +136,20 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
           <>
             <input type="hidden" name="pagesSource" value="manual" />
             <Field label="Ссылки" hint="По одной в строке. Дубли убираются автоматически.">
-              <textarea name="urls" className="input font-mono text-[13px]" rows={10} required placeholder={"https://site.com/article-1\nhttps://site.com/article-2"} />
+              <textarea name="urls" className="input font-mono text-[13px]" rows={10} required value={manualText} onChange={(e) => setManualText(e.target.value)} placeholder={"https://site.com/article-1\nhttps://site.com/article-2"} />
             </Field>
+            {foreignCount > 0 && site && (
+              <div className="rounded-xl border-2 border-red-500 bg-red-500/10 p-4 space-y-2">
+                <div className="text-[16px] font-bold text-red-600">Внимание: {foreignCount} из {manualUrls.length} ссылок ведут НЕ на сайт {site.name}</div>
+                <ul className="text-[14px] list-disc pl-5">
+                  {foreign.slice(0, 5).map((x) => <li key={x.host}><b>{x.host}</b> — {x.count} ссыл.</li>)}
+                </ul>
+                <p className="text-[13px]">Пины получат доски, домен и подписи сайта {site.name}, картинки загрузятся в его медиатеку, а ссылки поведут на чужой сайт. Скорее всего, выбран не тот сайт или вставлены не те ссылки.</p>
+                <label className="flex items-center gap-2 text-[14px] font-medium cursor-pointer">
+                  <input type="checkbox" name="foreignOk" required className="h-4 w-4" /> Я проверил(а): ссылки на другой домен — так и нужно
+                </label>
+              </div>
+            )}
           </>
         ) : (
           <div className="space-y-3">
@@ -179,6 +202,8 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
           </details>
         )}
       </section>
+
+      {site && <RunCostEstimate pages={pagesForEstimate} pagesLabel={pagesLabel} siteId={site.id} />}
 
       <div className="flex items-center gap-3">
         <SubmitButton className="btn-brand" pendingText="Запускаю…">{mode === "auto" ? "Запустить автопилот" : "Запустить пошагово"}</SubmitButton>
