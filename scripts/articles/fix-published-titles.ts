@@ -26,6 +26,8 @@ const severe = args.includes("--severe");
 /** Потоков всего и на один сайт: сохранение записи в WP медленное (Yoast, сброс кэша) — параллелим, но бережно. */
 const concurrency = Number(args[args.indexOf("--concurrency") + 1]) || 6;
 const perSite = Number(args[args.indexOf("--per-site") + 1]) || 2;
+/** Пауза после каждого сохранения, мс (ночной щадящий режим: --pause 4000). */
+const pauseMs = Number(args[args.indexOf("--pause") + 1]) || 0;
 
 const KEEP_TAIL = /\b(?:Version|Variation|Take|Look|Twist)$/i;
 const NEG_TAIL = /,\s*(?:With\s+)?(?:No|Not|Without|None)\b[^,]*$/i;
@@ -113,6 +115,7 @@ async function main() {
         bySite.set(t.a.siteId, (bySite.get(t.a.siteId) ?? 0) + 1);
         try {
           await fix(t);
+          if (pauseMs) await new Promise((r) => setTimeout(r, pauseMs));
         } catch (e) {
           failed++;
           console.warn(`${t.a.site.name} ${t.a.id}: ${e instanceof Error ? e.message : String(e)}`);
