@@ -29,6 +29,7 @@ export const Icon = {
   x: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M6 6l12 12" /><path d="M18 6 6 18" /></svg>),
   arrow: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>),
   logout: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M10 4H5v16h5" /><path d="M14 8l4 4-4 4" /><path d="M18 12H9" /></svg>),
+  server: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><rect x="3" y="4" width="18" height="7" rx="2" /><rect x="3" y="13" width="18" height="7" rx="2" /><path d="M7 7.5h.01" /><path d="M7 16.5h.01" /></svg>),
   refresh: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M20 12a8 8 0 1 1-2.3-5.7" /><path d="M20 4v5h-5" /></svg>),
   route: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><circle cx="6" cy="19" r="2.5" /><circle cx="18" cy="5" r="2.5" /><path d="M8.5 19H14a4 4 0 0 0 0-8h-4a4 4 0 0 1 0-8h5.5" /></svg>),
   sun: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.9 4.9 1.4 1.4" /><path d="m17.7 17.7 1.4 1.4" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.3 17.7-1.4 1.4" /><path d="m19.1 4.9-1.4 1.4" /></svg>),

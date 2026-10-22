@@ -6,6 +6,7 @@ import { LogoFull, LogoMark } from "./Logo";
 import { Icon, type IconName } from "./Icons";
 import { ThemeSwitch } from "./ThemeSwitch";
 import { HeaderBalances } from "./HeaderBalances";
+import { HeaderServer } from "./HeaderServer";
 import { ImpersonationBar, TeamMenuItems, TeamSwitch, ViewAsPicker, ViewModeMenuItem, ViewModeSwitch } from "./ViewAs";
 import { stopImpersonation } from "@/actions/viewAs";
 import { canSeeBalances, showsBalances, canViewKeys, canViewProviders, canViewTeams, canViewUsage, canViewUsers, type Actor } from "@/lib/permissions";
@@ -73,6 +74,7 @@ export function Shell({ user, children }: { user: ShellUser; children: ReactNode
           </nav>
           <div className="ml-auto flex items-center gap-2">
             {user.impersonator && <span className="view-chip hidden lg:inline-flex">Кабинет сотрудника</span>}
+            <HeaderServer />
             {showsBalances(user) && <HeaderBalances key={user.activeTeamId ?? "all"} mine={!canSeeBalances(user)} teamName={user.teams.find((t) => t.id === user.activeTeamId)?.name ?? null} />}
             {user.superAdmin && <ViewModeSwitch memberView={user.memberView} />}
             {teamSwitch && <TeamSwitch teams={user.teams} activeTeamId={user.activeTeamId} />}
