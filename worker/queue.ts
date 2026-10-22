@@ -59,9 +59,21 @@ export async function finishJob(jobId: string, status: "DONE" | "ERROR" | "STOPP
  * Вернуть задачу в очередь (graceful stop воркера или временный сбой).
  * `resetAttempts` — плановое ожидание отложенных пинов, а не сбой: счётчик попыток задачи не растёт,
  * иначе 10 кругов ожидания лимита провайдера упёрлись бы в MAX_ATTEMPTS.
+ * `refund` — мягкая остановка воркера (деплой, перезапуск службы): вернуть попытку, потраченную захватом.
+ * Попытки считают только сбои — временные ошибки провайдера и падения процесса, а не наши перезапуски
+ * (2026-10-22: четыре перезапуска за вечер довели этап Canvas прогона до 4 попыток из 5).
  */
-export async function releaseJob(jobId: string, delayMs = 0, opts: { resetAttempts?: boolean } = {}) {
-  await prisma.pinJob.update({ where: { id: jobId }, data: { status: "PENDING", workerId: null, leaseUntil: null, nextRunAt: new Date(Date.now() + delayMs), ...(opts.resetAttempts ? { attempts: 0 } : {}) } });
+export async function releaseJob(jobId: string, delayMs = 0, opts: { resetAttempts?: boolean; refund?: boolean } = {}) {
+  const data = { status: "PENDING" as const, workerId: null, leaseUntil: null, nextRunAt: new Date(Date.now() + delayMs) };
+  if (opts.resetAttempts) {
+    await prisma.pinJob.update({ where: { id: jobId }, data: { ...data, attempts: 0 } });
+  } else if (opts.refund) {
+    // Ниже нуля не опускаем: захват всегда прибавляет попытку, но запись могли поправить вручную.
+    const n = await prisma.pinJob.updateMany({ where: { id: jobId, attempts: { gt: 0 } }, data: { ...data, attempts: { decrement: 1 } } });
+    if (!n.count) await prisma.pinJob.update({ where: { id: jobId }, data });
+  } else {
+    await prisma.pinJob.update({ where: { id: jobId }, data });
+  }
 }
 
 /** Задачи, чей воркер умер: lease истёк, статус всё ещё RUNNING. */

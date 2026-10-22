@@ -160,8 +160,9 @@ export async function processJob(job: PinJob, shuttingDown: () => boolean): Prom
       return;
     }
     if (shuttingDown()) {
-      await releaseJob(job.id, 0);
-      log.info(`job ${job.id} released for restart`);
+      // Перезапуск воркера — не сбой задачи: попытку возвращаем.
+      await releaseJob(job.id, 0, { refund: true });
+      log.info(`job ${job.id} released for restart (attempt refunded)`);
       return;
     }
     if (isTransient(err) && job.attempts < MAX_ATTEMPTS) {
