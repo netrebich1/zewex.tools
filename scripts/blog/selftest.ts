@@ -10,7 +10,7 @@ import { cleanHeading, cleanSectionHtml, countWords, ensureTableHead, sanitizeHt
 import { titleCase } from "../../worker/blog/stages/meta";
 import { shopPageSignal } from "../../worker/blog/stages/photoFilter";
 import { junkPhotoSignal, offPuttingSignal } from "../../src/lib/blog/photo/ratePrompt";
-import { applyScenario, pickScenario } from "../../src/lib/blog/scenarios";
+import { applyScenario, deferredFormatOf, pickScenario } from "../../src/lib/blog/scenarios";
 import { enforceStructure, fixLeadingNumber, splitItems } from "../../src/lib/blog/structure";
 import { inventedExperience } from "../../src/lib/blog/qualityCheck";
 import type { BlogBrief } from "../../src/lib/blog/types";
@@ -199,10 +199,13 @@ function scenarioCheck() {
   const b = (intent: string, ymyl = false) => ({ intent, ymyl, topicDomain: "hair", audience: "", summary: "", facts: [], dos: [], donts: [], mistakes: [], safety: [], materials: [], timeline: "", questions: [] } as unknown as BlogBrief);
   // Формат по теме статьи (реальные темы из таблицы «Инфо — темы»)
   const T = (topic: string, kw: string, intent = "other", ymyl = false) => pickScenario("auto", b(intent, ymyl), kw, topic)!;
-  assert.equal(T("31 Easy Soup Recipes Even Picky Eaters Love", "soup recipes").scenario.key, "roundup_recipes");
-  assert.equal(T("31 Easy Soup Recipes Even Picky Eaters Love", "soup recipes").n, 25);
-  assert.equal(T("30 Easy High Protein Meals for Busy Days", "High protein").scenario.key, "roundup_recipes");
-  assert.equal(T("30 Pantry Organization Ideas to Keep Everything in Order", "pantry organization").scenario.key, "roundup_ideas");
+  // Подборки рецептов и идей отложены (владелец 2026-10-23): в определение не попадают, запуск их пропускает
+  assert.equal(deferredFormatOf("31 Easy Soup Recipes Even Picky Eaters Love")?.key, "roundup_recipes");
+  assert.equal(deferredFormatOf("30 Pantry Organization Ideas to Keep Everything in Order")?.key, "roundup_ideas");
+  assert.equal(deferredFormatOf("25 Clear Skin Tips That Actually Work"), null);
+  assert.ok(!T("31 Easy Soup Recipes Even Picky Eaters Love", "soup recipes").scenario.key.startsWith("roundup"));
+  assert.ok(!T("30 Easy High Protein Meals for Busy Days", "High protein").scenario.key.startsWith("roundup"));
+  assert.ok(!T("30 Pantry Organization Ideas to Keep Everything in Order", "pantry organization").scenario.key.startsWith("roundup"));
   assert.equal(T("400 Interesting Questions to Ask Anyone", "questions to ask").scenario.key, "big_list");
   assert.equal(T("400 Interesting Questions to Ask Anyone", "questions to ask").n, 400);
   assert.equal(T("51 Positive Affirmations for Women to Change Your Mindset", "positive affirmations").scenario.key, "big_list");

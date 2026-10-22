@@ -10,6 +10,7 @@ import { canAccessBlogSite } from "./access";
 import { searchPhraseOf } from "./text";
 import { buildSnapshot, findDuplicateKeywords, recipeShape } from "./recipes";
 import { firstStage } from "./stages";
+import { deferredFormatOf } from "./scenarios";
 import type { BlogRunSettings, KeywordInput } from "./types";
 
 export type LaunchInput = { siteId: string; settings: BlogRunSettings; keywords: KeywordInput[]; name?: string };
@@ -37,8 +38,11 @@ export async function launchPosts(me: CurrentUser, input: LaunchInput): Promise<
   const unique = cleaned.filter((k) => { const l = k.keyword.toLowerCase(); if (seen.has(l)) { inner.push(k.keyword); return false; } seen.add(l); return true; });
   const dup = new Set(await findDuplicateKeywords(site.id, unique.map((k) => k.keyword)));
   const skipped = [...unique.filter((k) => dup.has(k.keyword.toLowerCase())).map((k) => k.keyword), ...inner.map((k) => `${k} (повтор в списке)`)];
-  const fresh = unique.filter((k) => !dup.has(k.keyword.toLowerCase()));
-  if (!fresh.length) throw new Error(skipped.length ? `Все ключи уже есть у этого сайта: ${skipped.slice(0, 5).join(", ")}${skipped.length > 5 ? "…" : ""}` : "Добавьте хотя бы один ключ");
+  // Отложенные форматы (подборки рецептов и идей) пока не пишем: такие темы пропускаем с понятной причиной
+  const deferred = unique.filter((k) => !dup.has(k.keyword.toLowerCase()) && deferredFormatOf(k.topic ?? ""));
+  for (const k of deferred) skipped.push(`${k.keyword} — формат «${deferredFormatOf(k.topic ?? "")!.label}» пока не делаем`);
+  const fresh = unique.filter((k) => !dup.has(k.keyword.toLowerCase()) && !deferred.includes(k));
+  if (!fresh.length) throw new Error(skipped.length ? `Нечего запускать: ${skipped.slice(0, 5).join(", ")}${skipped.length > 5 ? "…" : ""}` : "Добавьте хотя бы один ключ");
 
   const snapshot = buildSnapshot(recipe, input.settings);
   const runName = input.name?.trim() || `${new Date().toLocaleDateString("ru-RU")} · ${recipe.name} · ${fresh.length} ключей`;

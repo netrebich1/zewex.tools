@@ -54,7 +54,11 @@ export function listNumber(topic: string, nouns: RegExp = NUMBERED_NOUNS): numbe
 }
 const RECIPE_RE = new RegExp(`\\b(${RECIPE_PLURAL})\\b`, "i");
 
-export const SCENARIOS: Scenario[] = [
+/**
+ * Отложенные форматы (владелец 2026-10-23: «не нужны, потом отдельно сделаем»): в определение не участвуют.
+ * Код каркаса «roundup» (structure.ts, ссылка «Get the recipe» в assemble.ts) оставлен — чтобы включить, перенести запись в SCENARIOS.
+ */
+export const DEFERRED_SCENARIOS: Scenario[] = [
   {
     key: "roundup_recipes", label: "Подборка рецептов", structure: "roundup",
     description: "«31 Easy Soup Recipes»: N блюд, у каждого реальное фото, 2–3 фразы о блюде и ссылка на рецепт автора. До 25 пунктов.",
@@ -70,6 +74,9 @@ export const SCENARIOS: Scenario[] = [
     overrides: { source: "research", video: { embed: "off" }, aiImages: { mode: "off" }, length: { min: 900, max: 2600 } },
     count: { def: 15, max: 25 }, example: "30 Pantry Organization Ideas to Keep Everything in Order",
   },
+];
+
+export const SCENARIOS: Scenario[] = [
   {
     key: "checklist", label: "Чеклист", structure: "big_list",
     description: "«The Ultimate Whole House Cleaning Checklist», «First Apartment Checklist»: задачи или вещи в одну строку по группам (комнатам, этапам), короткие советы. Файл для печати — позже.",
@@ -174,6 +181,14 @@ export function leadingNumber(topic: string): number | null {
   const m = String(topic ?? "").match(/^\s*(\d{1,3})\+?\s+\S/);
   const n = m ? Number(m[1]) : NaN;
   return Number.isFinite(n) && n >= 3 ? n : null;
+}
+
+/** Тема относится к отложенному формату («31 Easy Soup Recipes») — такие статьи пока не пишем (запуск их пропускает). */
+export function deferredFormatOf(topic: string): Scenario | null {
+  const t = String(topic ?? "").trim();
+  if (!t) return null;
+  const brief = { intent: "other", ymyl: false } as BlogBrief;
+  return DEFERRED_SCENARIOS.find((s) => s.match({ topic: t, keyword: "", brief, n: listNumber(t) })) ?? null;
 }
 
 /** Выбор формата: закреплённый в сценарии или первый подходящий по теме/ключу/брифу. null — «manual». */

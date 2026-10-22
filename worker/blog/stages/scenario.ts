@@ -5,7 +5,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { YMYL_HINT, applyScenario, pickScenario, scenarioReason, type AppliedScenario } from "@/lib/blog/scenarios";
+import { YMYL_HINT, applyScenario, deferredFormatOf, pickScenario, scenarioReason, type AppliedScenario } from "@/lib/blog/scenarios";
 import type { StageHandler } from "./index";
 
 export const scenarioStage: StageHandler = async (ctx) => {
@@ -14,6 +14,8 @@ export const scenarioStage: StageHandler = async (ctx) => {
   const already = (recipe as { scenario?: AppliedScenario }).scenario;
   if (already?.key) return { summary: `Тип статьи уже определён: ${already.label}`, details: { skipped: true } };
   const topic = (post.topic ?? "").trim();
+  const deferred = deferredFormatOf(topic);
+  if (deferred && (recipe.params.scenario ?? "auto") === "auto") return { fatal: `Формат «${deferred.label}» пока не делаем (тема «${topic}»). Статья остановлена до расходов на фото и текст.` };
   const picked = pickScenario(recipe.params.scenario, brief, post.keyword, topic);
   if (!picked) {
     const applied: AppliedScenario = { key: "manual", label: "Вручную (параметры сценария)", reason: "определение типа статьи выключено в сценарии", auto: false };
