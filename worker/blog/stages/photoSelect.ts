@@ -79,6 +79,20 @@ export const photoSelect: StageHandler = async (ctx) => {
 
   const hero = slots.find((s) => s.key === "hero");
   if (hero && !picks.some((p) => p.slot.id === hero.id)) {
+    // Запасной главный кадр: лучший уже выбранный кадр секции (приятный — appeal ≥ 7, вертикальный — первым);
+    // секция остаётся без фото. Так статья по «бытовой» теме с узкой выдачей не падает целиком.
+    const appeal = (c: BlogPhotoCandidate) => Number(((c.aiBreakdown ?? {}) as { appeal?: number }).appeal ?? 0);
+    const tallOf = (c: BlogPhotoCandidate) => (c.width && c.height && c.height / c.width >= 1.15 ? 1 : 0);
+    const byScore = (a: { c: BlogPhotoCandidate }, b: { c: BlogPhotoCandidate }) => tallOf(b.c) - tallOf(a.c) || (b.c.aiScore ?? 0) - (a.c.aiScore ?? 0);
+    const donor = picks.filter((p) => p.slot.key !== "closing" && appeal(p.c) >= 7).sort(byScore)[0]
+      ?? picks.filter((p) => appeal(p.c) >= 7).sort(byScore)[0];
+    if (donor) {
+      ctx.log(`hero: годного кадра нет — главным ставим лучший кадр слота ${donor.slot.key} (балл ${donor.c.aiScore}), слот ${donor.slot.key} без фото`);
+      empty.push(donor.slot.key);
+      donor.slot = hero;
+    }
+  }
+  if (hero && !picks.some((p) => p.slot.id === hero.id)) {
     const why = (bySlot.get(hero.id) ?? []).length ? "все одобренные кадры уже использованы на других статьях" : "ни один кадр не прошёл оценку";
     return { fatal: `Нет главного фото (hero): ${why}. Измените запрос слота «hero» в карточке статьи (вкладка «Фото») и повторите этап «Поиск фото», либо смягчите порог оценки в рецепте.` };
   }
