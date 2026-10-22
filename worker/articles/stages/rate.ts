@@ -22,6 +22,7 @@
  * раннеру (backoff), постоянные — пачка помечается после второй попытки.
  */
 import { prisma } from "@/lib/db";
+import { AiError } from "@/lib/pins/ai/errors";
 import { Prisma, type ArtPhotoCandidate } from "@prisma/client";
 import type { ContentPart } from "@/lib/articles/ai";
 import { fillPrompt, resolvePromptOptional, stageModel } from "@/lib/articles/prompts";
@@ -383,6 +384,8 @@ export const rate: ArtStageHandler = async (ctx) => {
       (rel.requirements.length ? `Check every photo against the TOPIC CHECKLIST and return "topic_ok" / "topic_miss" for each.\n` : "") +
       `Photos:\n` +
       batch.map((b, n) => `${n + 1}. ${b.c.title || "(no title)"} — ${b.c.domain || ""}`).join("\n");
+    // Модель отказалась по правилам контента (Gemini PROHIBITED_CONTENT): виноват один кадр пачки, а не провайдер.
+    let blocked = false;
     const askModel = async (extraNote: string): Promise<RatedItem[] | null> => {
       // Зависящее от статьи (и поправки повтора) — первым текстом user; система неизменна и кэшируется.
       const parts: ContentPart[] = [{ type: "text", text: sys.lead + extraNote }, { type: "text", text: userText }, ...batch.map((b) => b.part)];
@@ -394,6 +397,7 @@ export const rate: ArtStageHandler = async (ctx) => {
         return list.length ? list : null;
       } catch (e) {
         if (mustRethrow(e, ctx.signal)) throw e;
+        if (e instanceof AiError && e.cls.code === "safety") blocked = true;
         ctx.log(`пачка не оценена: ${e instanceof Error ? e.message : String(e)}`);
         return null;
       }
@@ -411,6 +415,18 @@ export const rate: ArtStageHandler = async (ctx) => {
       if (retried && hasAudienceField(retried)) items = retried;
     }
     if (!items) {
+      // Блокировка контента: делим пачку пополам, пока не останется виноватый кадр, — его отклоняем, остальные оцениваем.
+      if (blocked) {
+        const rows = batch.map((b) => b.c);
+        if (rows.length === 1) {
+          await rejectCandidate(rows[0], "модель отказалась оценивать кадр по правилам контента", "model_failed");
+          return;
+        }
+        const mid = Math.ceil(rows.length / 2);
+        await runBatch(rows.slice(0, mid), sys, threshold, rescueActive);
+        await runBatch(rows.slice(mid), sys, threshold, rescueActive);
+        return;
+      }
       await markBatchFailure(batch.map((b) => b.c), "модель не оценила фото");
       return;
     }

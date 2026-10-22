@@ -195,6 +195,16 @@ async function aiChatOnce(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> {
       pre: resolved,
     });
     if (!res.ok) await handleFailure(res, resolved).catch((e) => { throw Object.assign(e, { keyId }); });
+    // OpenRouter отдаёт отказ провайдера внутри ответа 200 (без choices): {"error":{"message":"Gemini blocked the request:
+    // PROHIBITED_CONTENT","code":403,...}}. Раньше это считалось «пустым ответом» и повторялось сутки (22.10, azureglam).
+    const inner = (res.data as { error?: { message?: string; code?: number; metadata?: { error_type?: string; provider_code?: string } } } | null)?.error;
+    if (inner) {
+      const m = String(inner.message ?? "ошибка провайдера");
+      const blocked = inner.metadata?.error_type === "content_policy_violation" || /prohibited|safety|blocked|content.?policy/i.test(`${m} ${inner.metadata?.provider_code ?? ""}`);
+      // Блокировка контента — постоянная ошибка (этот запрос не пройдёт никогда); classifyAiError не зовём: код 403 выключил бы ключ.
+      if (blocked) throw Object.assign(new ArticleAiError({ code: "safety", kind: "permanent", message: `Модель отказалась по правилам контента: ${m.slice(0, 200)}` }, 400, resolved.binding.provider.name), { keyId });
+      throw Object.assign(new ArticleAiError({ code: "server_error", kind: "transient", message: m.slice(0, 300) }, Number(inner.code) >= 500 ? Number(inner.code) : 502, resolved.binding.provider.name), { keyId });
+    }
     const text = extractText(res.data);
     if (!text.trim()) throw Object.assign(new ArticleAiError({ code: "empty", kind: "transient", message: "Модель вернула пустой ответ" }, 502, resolved.binding.provider.name), { keyId });
     brakeRelax(keyId);
