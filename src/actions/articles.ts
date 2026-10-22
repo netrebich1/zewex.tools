@@ -64,7 +64,7 @@ export async function enableArticlesForSite(_p: FormState, f: FormData): Promise
   revalidatePath("/sites");
   revalidatePath(ART);
   revalidatePath(`${ART}/sites`);
-  return { ok: "Сервис «Статьи» включён. Задайте нишу и рецепт по умолчанию в настройках сайта." };
+  return { ok: "Сервис «Статьи» включён. Задайте нишу и сценарий по умолчанию в настройках сайта." };
 }
 
 /**
@@ -117,7 +117,7 @@ export async function saveArtSiteSettings(_p: FormState, f: FormData): Promise<F
     const recipeId = str(f, "defaultRecipeId");
     if (recipeId) {
       const r = await prisma.artRecipe.findUnique({ where: { id: recipeId }, select: { id: true } });
-      if (!r) throw new Error("Рецепт по умолчанию не найден");
+      if (!r) throw new Error("Сценарий по умолчанию не найден");
     }
     const nicheCode = str(f, "nicheCode");
     if (nicheCode && !(await prisma.artNiche.findUnique({ where: { code: nicheCode }, select: { code: true } }))) throw new Error("Ниша не найдена");
@@ -209,7 +209,7 @@ function parseKeywordsJson(raw: string): KeywordInput[] {
 
 /**
  * Запуск партии статей (страница «Новый запуск»). Пропущенные дубликаты показываются на карточке запуска через ?skipped=.
- * source=sheet — ключи из Google Таблицы: вкладка читается заново на сервере, рецепт и режим каждой статьи берутся из строки,
+ * source=sheet — ключи из Google Таблицы: вкладка читается заново на сервере, сценарий и режим каждой статьи берутся из строки,
  * взятые строки получают статус «в работе» (lib/articles/sheets.ts).
  */
 export async function launchArticlesAction(_p: FormState, f: FormData): Promise<FormState> {
@@ -242,7 +242,7 @@ export async function launchArticlesAction(_p: FormState, f: FormData): Promise<
       try { await markRows(plan.spreadsheetId, plan.tab, r.sheetRows, "queued"); }
       catch (e) { sheetWarn = `Статьи поставлены в очередь, но статус «в работе» в таблицу не записался: ${e instanceof Error ? e.message : String(e)}`.slice(0, 500); }
     } else {
-      if (!settings.recipeId) throw new Error("Выберите рецепт");
+      if (!settings.recipeId) throw new Error("Выберите сценарий");
       const keywords = parseKeywordsJson(str(f, "keywords"));
       if (!keywords.length) throw new Error("Добавьте хотя бы один ключ");
       const r = await launchArticles(me, { siteId, settings, keywords, name: str(f, "name") });

@@ -27,7 +27,7 @@ export default async function BlogRunPage({ params, searchParams }: { params: Pr
   return (
     <>
       <AutoRefresh enabled={progress.live > 0} everyMs={20_000} />
-      <PageHeader back={{ href: `/pinterest/blog/sites/${run.site.id}`, label: run.site.name }} title={run.name || `Запуск ${id.slice(0, 8)}`} subtitle={`${run.site.name} · ${run.recipe?.name ?? "рецепт удалён"} · ${fmtDate(run.createdAt)}${author ? ` · ${author.name || author.email}` : ""}`} actions={<Link href={`/pinterest/blog/runs/new?site=${run.site.id}`} className="btn-ghost">Ещё запуск для сайта</Link>} />
+      <PageHeader back={{ href: `/pinterest/blog/sites/${run.site.id}`, label: run.site.name }} title={run.name || `Запуск ${id.slice(0, 8)}`} subtitle={`${run.site.name} · ${run.recipe?.name ?? "сценарий удалён"} · ${fmtDate(run.createdAt)}${author ? ` · ${author.name || author.email}` : ""}`} actions={<Link href={`/pinterest/blog/runs/new?site=${run.site.id}`} className="btn-ghost">Ещё запуск для сайта</Link>} />
       {skipped.length > 0 && <div className="mb-4"><Alert tone="warn"><div className="font-medium">Пропущены ключи, которые уже есть у сайта ({skipped.length}):</div><ul className="mt-1 list-disc pl-5 text-[13px]">{skipped.map((k) => <li key={k}>{k}</li>)}</ul></Alert></div>}
       <div className="space-y-4">
         <Card>
@@ -41,14 +41,14 @@ export default async function BlogRunPage({ params, searchParams }: { params: Pr
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-ink/5"><div className="h-full bg-ok transition-all" style={{ width: `${pct}%` }} /></div>
           <div className="mt-3 flex flex-wrap gap-1.5">{progress.byStatus.map((b) => <Badge key={b.status} tone={badgeTone(STATUS_LABELS[b.status].tone)}>{STATUS_LABELS[b.status].label}: {b.count}</Badge>)}</div>
         </Card>
-        <Card title="Параметры запуска" description="Сохранены в снимке каждой статьи: правка рецепта или настроек сайта на эту партию не влияет.">
+        <Card title="Параметры запуска" description="Сохранены в снимке каждой статьи: правка сценария или настроек сайта на эту партию не влияет.">
           <dl className="grid gap-x-6 gap-y-1.5 text-[14px] sm:grid-cols-2 lg:grid-cols-3">
             <div className="flex justify-between gap-3"><dt className="text-muted">Проверка</dt><dd>{REVIEW_MODES.find((m) => m.value === s.review)?.label ?? s.review}</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-muted">Публикация</dt><dd>{PUBLISH_MODES.find((m) => m.value === s.publishMode)?.label ?? s.publishMode}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-muted">Объём</dt><dd>{s.length ? `${s.length.min}–${s.length.max} слов` : "как в рецепте"}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-muted">Картинок</dt><dd>{s.images ? `${s.images.min}–${s.images.max}` : "как в рецепте"}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-muted">Поиск фото</dt><dd>{[s.search?.country && `страна ${s.search.country}`, s.search?.language && `язык ${s.search.language}`].filter(Boolean).join(", ") || "как в рецепте"}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-muted">Год в URL</dt><dd>{s.yearInUrlPercent == null ? "как в рецепте" : `${s.yearInUrlPercent}%`}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-muted">Объём</dt><dd>{s.length ? `${s.length.min}–${s.length.max} слов` : "как в сценарии"}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-muted">Картинок</dt><dd>{s.images ? `${s.images.min}–${s.images.max}` : "как в сценарии"}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-muted">Поиск фото</dt><dd>{[s.search?.country && `страна ${s.search.country}`, s.search?.language && `язык ${s.search.language}`].filter(Boolean).join(", ") || "как в сценарии"}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-muted">Год в URL</dt><dd>{s.yearInUrlPercent == null ? "как в сценарии" : `${s.yearInUrlPercent}%`}</dd></div>
           </dl>
         </Card>
         <Card title={`Статьи · ${rows.length}`} description="Отметьте статьи для массовых действий. Клик по ключу — карточка статьи."><PostsTable rows={rows} emptyText="В запуске нет статей" /></Card>

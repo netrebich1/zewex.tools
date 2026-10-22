@@ -1,5 +1,5 @@
 /**
- * Этап `photo_rate`: vision-оценка кандидатов по слотам. Один промт (из рецепта `photo_rate`, иначе встроенный):
+ * Этап `photo_rate`: vision-оценка кандидатов по слотам. Один промт (из сценария `photo_rate`, иначе встроенный):
  * релевантность описанию слота 0–10, качество 0–10, «настоящее фото» (без коллажа, текста, водяных знаков, ИИ, стока),
  * короткое описание. Балл = 0.6·релевантность + 0.4·качество; keep при verdict keep, relevance ≥ 6, real_photo и балле ≥ minScore.
  * Системная часть промта одинакова для всех постов (кэш провайдера), всё зависящее от поста — первым текстом user.
@@ -92,7 +92,7 @@ export const photoRate: StageHandler = async (ctx) => {
       answered.add(row.c.id);
       const relevance = clamp10(it.relevance);
       const quality = clamp10(it.quality);
-      // appeal: если модель поле не вернула — берём качество (старые промты рецепта без appeal)
+      // appeal: если модель поле не вернула — берём качество (старые промты сценария без appeal)
       const appeal = it.appeal == null ? quality : clamp10(it.appeal);
       const real = it.real_photo !== false;
       const issues = Array.isArray(it.issues) ? it.issues.map((x) => String(x)).slice(0, 6) : [];

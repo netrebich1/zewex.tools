@@ -1,6 +1,6 @@
 /**
  * ИИ-клиент сервиса статей поверх прокси портала (resolveSlot → runSlot → UsageLog).
- * Ключ выбирается правилами портала для пользователя, запустившего статью; модель — из рецепта (`provider:model`),
+ * Ключ выбирается правилами портала для пользователя, запустившего статью; модель — из сценария (`provider:model`),
  * если она совпадает по провайдеру с ключом, иначе модель правила. Расход пишется с refId = id статьи.
  * Один вызов = одна попытка на один ключ; повторы и фолбэки — по классу ошибки (transient → backoff в этапе).
  *
@@ -35,7 +35,7 @@ export type ContentPart = { type: "text"; text: string } | { type: "image_url"; 
 export type ChatRequest = {
   /** Ключ слота: text_main / text_fast / vision */
   slot: SlotKey;
-  /** Модель из рецепта (`provider:model`); пусто — модель правила */
+  /** Модель из сценария (`provider:model`); пусто — модель правила */
   model?: string;
   system?: string;
   user: string | ContentPart[];

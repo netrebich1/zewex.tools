@@ -34,7 +34,7 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
   const prompts = r.promptSet?.prompts ?? [];
   const ready = recipeReadiness(r, prompts);
   const steps = promptSteps(r.format);
-  const href = (t: string, extra = "") => `/pinterest/articles/recipes/${id}?tab=${t}${extra}`;
+  const href = (t: string, extra = "") => `/pinterest/articles/scenarios/${id}?tab=${t}${extra}`;
 
   // Вкладка «Промты»: выбранный шаг и вариант
   const stageKey = steps.find((s) => s.key === sp(q, "stage"))?.key ?? steps[0]?.key ?? "";
@@ -56,7 +56,7 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
   return (
     <>
       <PageHeader
-        back={{ href: "/pinterest/articles/recipes", label: "Рецепты" }}
+        back={{ href: "/pinterest/articles/scenarios", label: "Сценарии" }}
         title={`${r.number != null ? `№${r.number} · ` : ""}${r.name}`}
         subtitle={
           <span className="inline-flex flex-wrap items-center gap-1.5">
@@ -72,11 +72,11 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
           <>
             <a href={`/api/articles/recipes/${id}/export`} className="btn-ghost">Экспорт JSON</a>
             <ActionForm action={copyRecipe} hidden={{ id }} className="inline">
-              <SubmitButton className="btn-ghost" pendingText="Копирую…">Копировать рецепт</SubmitButton>
+              <SubmitButton className="btn-ghost" pendingText="Копирую…">Копировать сценарий</SubmitButton>
             </ActionForm>
             {me.role === "ADMIN" && (
               <ActionForm action={deleteRecipe} hidden={{ id }} className="inline">
-                <SubmitButton className="btn-danger" pendingText="Удаляю…" confirm={`Удалить рецепт «${r.name}»? Набор промтов останется.`}>Удалить</SubmitButton>
+                <SubmitButton className="btn-danger" pendingText="Удаляю…" confirm={`Удалить сценарий «${r.name}»? Набор промтов останется.`}>Удалить</SubmitButton>
               </ActionForm>
             )}
           </>
@@ -114,7 +114,7 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
                 </select>
               </Field>
               <div className="flex flex-col gap-2 pt-6">
-                <label className="inline-flex items-center gap-2 text-[14px]"><input type="checkbox" name="isDefault" defaultChecked={r.isDefault} /> рецепт по умолчанию для ниши и формата</label>
+                <label className="inline-flex items-center gap-2 text-[14px]"><input type="checkbox" name="isDefault" defaultChecked={r.isDefault} /> сценарий по умолчанию для ниши и формата</label>
                 <label className="inline-flex items-center gap-2 text-[14px]"><input type="checkbox" name="isActive" defaultChecked={r.isActive} /> доступен для запуска</label>
               </div>
             </div>
@@ -134,7 +134,7 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
               <label className="inline-flex items-center gap-2 text-[14px] pt-7"><input type="checkbox" name="schemaEnabled" defaultChecked={shape.text.schemaEnabled} /> Schema.org в HTML</label>
             </div>
           </Card>
-          <Card title="Публикация" description="Режим по умолчанию для запусков с этим рецептом; сайт и запуск могут переопределить.">
+          <Card title="Публикация" description="Режим по умолчанию для запусков с этим сценарием; сайт и запуск могут переопределить.">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Режим публикации">
                 <select name="publishMode" className="input" defaultValue={shape.publish.mode}>{PUBLISH_MODES.map((m) => <option key={m.value} value={m.value} title={m.help}>{m.label}</option>)}</select>
@@ -142,7 +142,7 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
               <Field label="Доля статей с годом в URL, %" hint="0 — никогда, 100 — всегда."><input name="seoYearUrlPercent" type="number" min={0} max={100} step={5} className="input" defaultValue={shape.publish.seoYearUrlPercent} /></Field>
             </div>
           </Card>
-          <SubmitButton pendingText="Сохраняю…">Сохранить рецепт</SubmitButton>
+          <SubmitButton pendingText="Сохраняю…">Сохранить сценарий</SubmitButton>
         </ActionForm>
       )}
 
@@ -261,7 +261,7 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
       )}
 
       {tab === "history" && (
-        <Card title="История версий промтов набора" description={r.promptSet ? `Набор «${r.promptSet.name}»: каждое сохранение промта — новая версия.` : "У рецепта нет набора промтов."}>
+        <Card title="История версий промтов набора" description={r.promptSet ? `Набор «${r.promptSet.name}»: каждое сохранение промта — новая версия.` : "У сценария нет набора промтов."}>
           {history.length === 0 ? (
             <p className="help">Версий пока нет — они появятся после первого сохранения промта в редакторе.</p>
           ) : (

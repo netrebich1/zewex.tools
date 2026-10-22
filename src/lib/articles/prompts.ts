@@ -1,6 +1,6 @@
 /**
- * Резолвинг промтов и моделей этапа по снимку рецепта + подстановка переменных.
- * Порядок как в оригинале (promptSet.ts): рецепт.stagePromptIds[stage] → набор рецепта (или активный набор ниши/формата)
+ * Резолвинг промтов и моделей этапа по снимку сценария + подстановка переменных.
+ * Порядок как в оригинале (promptSet.ts): сценарий.stagePromptIds[stage] → набор сценария (или активный набор ниши/формата)
  * → первый вариант шага по дате. Отсутствие промта — явная ошибка этапа.
  */
 import { prisma } from "@/lib/db";
@@ -16,7 +16,7 @@ export class PromptMissing extends Error {
   }
 }
 
-/** Набор промтов для рецепта: явный promptSetId, иначе активный набор по нише/поднише/формату. */
+/** Набор промтов для сценария: явный promptSetId, иначе активный набор по нише/поднише/формату. */
 export async function resolvePromptSetId(recipe: Pick<ArticleRecipeSnapshot, "promptSetId" | "nicheCode" | "subnicheCode" | "format">): Promise<string | null> {
   if (recipe.promptSetId) return recipe.promptSetId;
   const exact = await prisma.artPromptSet.findFirst({ where: { nicheCode: recipe.nicheCode, subnicheCode: recipe.subnicheCode ?? null, format: recipe.format as ArtFormat, isActive: true }, orderBy: { createdAt: "asc" }, select: { id: true } });
@@ -35,7 +35,7 @@ export async function resolvePrompt(recipe: ArticleRecipeSnapshot, stageKey: str
   const setId = await resolvePromptSetId(recipe);
   if (!setId) throw new PromptMissing(stageKey, `нет набора промтов для ниши «${recipe.nicheCode}» (${recipe.format})`);
   const p = await prisma.artPrompt.findFirst({ where: { setId, stageKey, isActive: true }, orderBy: { createdAt: "asc" } });
-  if (!p) throw new PromptMissing(stageKey, "в наборе нет такого шага — откройте рецепт и добавьте промт");
+  if (!p) throw new PromptMissing(stageKey, "в наборе нет такого шага — откройте сценарий и добавьте промт");
   return { id: p.id, stageKey, name: p.name, system: p.system ?? "", text: p.text, setId: p.setId };
 }
 
@@ -49,7 +49,7 @@ export async function resolvePromptOptional(recipe: ArticleRecipeSnapshot, stage
   }
 }
 
-/** Модель этапа из рецепта (`provider:model`), иначе undefined — возьмётся модель правила слота. */
+/** Модель этапа из сценария (`provider:model`), иначе undefined — возьмётся модель правила слота. */
 export function stageModel(recipe: ArticleRecipeSnapshot, stageKey: string): string | undefined {
   const m = recipe.stageModels?.[stageKey];
   return m && m.trim() ? m.trim() : undefined;
@@ -98,7 +98,7 @@ export function fillPrompt(p: ResolvedPrompt, vars: Record<string, unknown>, opt
   return { system: s.text, user: u.text, missing };
 }
 
-/** Список переменных, упомянутых в тексте промта (для редактора рецепта). */
+/** Список переменных, упомянутых в тексте промта (для редактора сценария). */
 export function promptVariables(text: string): string[] {
   const out = new Set<string>();
   for (const m of (text ?? "").matchAll(VAR_RE)) out.add((m[1] ?? m[2])!);

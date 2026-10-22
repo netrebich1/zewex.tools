@@ -247,7 +247,7 @@ async function retryOrFail(
 function giveUpText(kind: RetryKind, label: string, tries: number, c: Classified): string {
   switch (kind) {
     case "transient": return `Этап «${label}» не удался: провайдер не отвечал сутки (${tries} повторов): ${c.human}. ${c.detail}`.trim();
-    case "malformed": return `Модель ${tries + 1} раз подряд вернула ответ не в том формате на этапе «${label}»: ${c.detail}. Проверьте промт и модель рецепта, затем нажмите «Повторить».`;
+    case "malformed": return `Модель ${tries + 1} раз подряд вернула ответ не в том формате на этапе «${label}»: ${c.detail}. Проверьте промт и модель сценария, затем нажмите «Повторить».`;
     case "key": return `${c.human}: ключ не заработал за 7 дней ожидания. Пополните баланс или назначьте рабочий ключ, затем нажмите «Повторить». ${c.detail}`.trim();
     case "planned": return `Этап «${label}» откладывался ${tries} раз подряд и не завершился: ${c.detail}`;
   }

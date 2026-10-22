@@ -10,7 +10,7 @@ export type StagePhase = "research" | "photos" | "writing" | "publish";
 export type StageInfo = {
   label: string;
   phase: StagePhase;
-  /** Ключи промтов рецепта, которые использует этап (пусто — встроенный текст) */
+  /** Ключи промтов сценария, которые использует этап (пусто — встроенный текст) */
   promptKeys: string[];
   slots: string[];
   description: string;
@@ -18,7 +18,7 @@ export type StageInfo = {
 
 export const STAGE_INFO: Record<StageKey, StageInfo> = {
   research: { label: "Исследование", phase: "research", promptKeys: ["research"], slots: ["text_fast", "serp_organic"], description: "Интент ключа, аудитория, бриф знаний: факты, ошибки, безопасность, вопросы читателей; при включённом SerpAPI — People Also Ask." },
-  scenario: { label: "Сценарий", phase: "research", promptKeys: [], slots: [], description: "Тип статьи по брифу (инструкция, здоровье, сравнение…) → стратегия: основа, видео, ИИ-картинки, подсказка плану." },
+  scenario: { label: "Тип статьи", phase: "research", promptKeys: [], slots: [], description: "Тип статьи по брифу (инструкция, здоровье, сравнение…) → стратегия: основа, видео, ИИ-картинки, подсказка плану." },
   video: { label: "Видео YouTube", phase: "research", promptKeys: [], slots: ["photo_dfs", "text_fast"], description: "Выдача YouTube → фильтр → субтитры топ-3 → оценка содержания ИИ и правила; одно видео в статью или «статья по видео»." },
   outline: { label: "План", phase: "research", promptKeys: ["outline"], slots: ["text_main"], description: "Адаптивная структура из каталога блоков: H1 и мета, секции с типами, объём, слоты картинок, FAQ, дисклеймер." },
   photo_search: { label: "Поиск фото", phase: "photos", promptKeys: [], slots: ["photo_dfs", "photo_serp"], description: "Запросы Google Images по каждому слоту картинки." },
@@ -108,7 +108,7 @@ export function phaseOf(stage: string): StagePhase {
   return STAGE_INFO[stage as StageKey]?.phase ?? "writing";
 }
 
-/** Промт-шаги рецепта в порядке конвейера. */
+/** Промт-шаги сценария в порядке конвейера. */
 export function promptSteps(): Array<{ key: string; label: string; stage: StageKey; stageLabel: string; required: boolean }> {
   const out: Array<{ key: string; label: string; stage: StageKey; stageLabel: string; required: boolean }> = [];
   for (const s of BLOG_STAGES) for (const key of STAGE_INFO[s].promptKeys) out.push({ key, label: PROMPT_KEY_LABELS[key] ?? key, stage: s, stageLabel: STAGE_INFO[s].label, required: !OPTIONAL_PROMPT_KEYS.has(key) });

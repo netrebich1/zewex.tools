@@ -1,6 +1,6 @@
 /**
- * Помощники раздела «Рецепты»: шаги промтов формата, переменные шагов (что подставляет код — из отчёта
- * docs/articles-migration/06-prompts-and-config.md §2), готовность рецепта, значения по умолчанию.
+ * Помощники раздела «Сценарии»: шаги промтов формата, переменные шагов (что подставляет код — из отчёта
+ * docs/articles-migration/06-prompts-and-config.md §2), готовность сценария, значения по умолчанию.
  */
 import type { ArtFormat, ArtPrompt, ArtRecipe } from "@prisma/client";
 import { STAGE_INFO, stagesFor, type StageKey } from "./stages";
@@ -120,7 +120,7 @@ export function promptSteps(format: ArtFormat): PromptStep[] {
 
 export type Readiness = { ready: boolean; missing: PromptStep[]; filled: number; total: number };
 
-/** Готовность рецепта: для каждого обязательного шага есть активный промт в наборе (выбранный вариант или любой). */
+/** Готовность сценария: для каждого обязательного шага есть активный промт в наборе (выбранный вариант или любой). */
 export function recipeReadiness(recipe: Pick<ArtRecipe, "format" | "stagePromptIds">, prompts: Array<Pick<ArtPrompt, "id" | "stageKey" | "isActive">>): Readiness {
   const steps = promptSteps(recipe.format);
   const missing: PromptStep[] = [];

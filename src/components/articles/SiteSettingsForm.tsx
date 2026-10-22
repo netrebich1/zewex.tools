@@ -24,7 +24,7 @@ type Props = {
 const FORMAT: Record<ArtFormat, string> = { REAL_PHOTO: "реальные фото", GENERATED_PHOTO: "ИИ-картинки" };
 
 /**
- * Настройки сайта в сервисе «Статьи» (все поля ArtSiteSettings группами + ниша и рецепт по умолчанию).
+ * Настройки сайта в сервисе «Статьи» (все поля ArtSiteSettings группами + ниша и сценарий по умолчанию).
  * Значения «Фото / Публикация / Поиск» — по умолчанию для новых запусков; «Автозапуск» и «ИИ-модерация» действуют на весь сайт
  * и те же, что на экране «Автозапуск сайтов» (пределы — SITE_LIMITS). Рядом с каждым таким полем — скрытое исходное значение
  * orig_<имя>: при сохранении меняются только поля, которые тронули здесь (actions/articles.ts settingsFromForm).
@@ -57,7 +57,7 @@ export function SiteSettingsForm({ site, settings: s, categories, niches, recipe
         <div className="text-[13px] font-semibold">Основное</div>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Название сайта в сервисе"><input name="name" className="input" defaultValue={site.name} /></Field>
-          <Field label="Ниша" hint="Определяет, какие рецепты и профили поиска подходят сайту.">
+          <Field label="Ниша" hint="Определяет, какие сценарии и профили поиска подходят сайту.">
             <select name="nicheCode" className="input" value={niche} onChange={(e) => setNiche(e.target.value)}>
               <option value="">— не задана —</option>
               {niches.filter((n) => !n.parentCode).map((n) => (
@@ -68,7 +68,7 @@ export function SiteSettingsForm({ site, settings: s, categories, niches, recipe
               ))}
             </select>
           </Field>
-          <Field label="Рецепт по умолчанию" hint="Подставляется на шаге «Рецепт» нового запуска.">
+          <Field label="Сценарий по умолчанию" hint="Подставляется на шаге «Сценарий» нового запуска.">
             <select name="defaultRecipeId" className="input" defaultValue={site.defaultRecipeId ?? ""}>
               <option value="">— выбирать при запуске —</option>
               {recipeList.map((r) => <option key={r.id} value={r.id}>{r.name} · {FORMAT[r.format]}{r.isActive ? "" : " (выключен)"}</option>)}

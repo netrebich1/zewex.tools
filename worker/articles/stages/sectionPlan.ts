@@ -1,7 +1,7 @@
 /**
  * Этап `section_plan` (шаг 16 оригинала, stage-photo-section-plan/index.ts): дешёвая модель по фактам каждого
  * фото решает, ЧТО писать в секции — угол, заход, объём, список, уход, повод, DIY/салон, честный минус.
- * Результат — «рецепт» в ArtSection.brief.recipe и сводка распределения в плане статьи.
+ * Результат — «сценарий» в ArtSection.brief.recipe и сводка распределения в плане статьи.
  */
 import { prisma } from "@/lib/db";
 import { SLOTS, type ArticlePlan } from "@/lib/articles/types";
@@ -40,7 +40,7 @@ function pick<T>(list: readonly T[], i: number): T {
   return list[i % list.length];
 }
 
-/** Нормализация рецепта модели (оригинал: 198-225); `avoid` фильтруется по реально выданным углам. */
+/** Нормализация сценария модели (оригинал: 198-225); `avoid` фильтруется по реально выданным углам. */
 export function normalizeRecipe(raw: unknown, sectionNumber: number, i: number, angles: readonly string[]): SectionRecipe {
   const r = (raw && typeof raw === "object" ? raw : {}) as JsonRecord;
   const str = (v: unknown, max: number) => (v ? String(v).slice(0, max) : null);
@@ -128,9 +128,9 @@ export const sectionPlan: ArtStageHandler = async (ctx) => {
   const sections = await loadPhotoSections(article.id);
   if (!sections.length) return { next: "plan", summary: "Нет секций — возврат к плану по фото" };
 
-  // Идемпотентность: рецепты уже есть у всех секций — не тратим вызов.
+  // Идемпотентность: сценарии уже есть у всех секций — не тратим вызов.
   if (sections.every((s) => briefOf(s).recipe && typeof briefOf(s).recipe === "object")) {
-    return { summary: `Рецепты секций уже есть (${sections.length}) — пропуск`, details: { skipped: true } };
+    return { summary: `Сценарии секций уже есть (${sections.length}) — пропуск`, details: { skipped: true } };
   }
 
   const photos = await loadActivePhotos(article.id);
@@ -186,7 +186,7 @@ export const sectionPlan: ArtStageHandler = async (ctx) => {
     return unique;
   });
 
-  await ctx.tick("Сохранение рецептов");
+  await ctx.tick("Сохранение сценариев");
   await prisma.$transaction(
     sections.map((s, i) => {
       const r = { ...recipes[i], h2: headings[i] };
@@ -214,7 +214,7 @@ export const sectionPlan: ArtStageHandler = async (ctx) => {
   await ctx.save({ plan: nextPlan });
 
   return {
-    summary: `Рецепты для ${recipes.length} секций (углы: ${angles === ANGLES ? "универсальные" : angles === FASHION_ANGLES ? "одежда" : "интерьер"})`,
+    summary: `Сценарии для ${recipes.length} секций (углы: ${angles === ANGLES ? "универсальные" : angles === FASHION_ANGLES ? "одежда" : "интерьер"})`,
     details: { sections: recipes.length, distribution: enforced.summary, model },
   };
 };

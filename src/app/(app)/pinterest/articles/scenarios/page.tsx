@@ -11,7 +11,7 @@ import { ACTIVE_STATUSES } from "@/lib/articles/labels";
 
 export const dynamic = "force-dynamic";
 
-/** Список рецептов по формату и нише с готовностью (есть ли промт для каждого шага формата). */
+/** Список сценариев по формату и нише с готовностью (есть ли промт для каждого шага формата). */
 export default async function RecipesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireUser();
   const params = await searchParams;
@@ -35,23 +35,23 @@ export default async function RecipesPage({ searchParams }: { searchParams: Prom
     <>
       <PageHeader
         back={{ href: "/pinterest/articles", label: "Статьи" }}
-        title="Рецепты"
-        subtitle="Рецепт = ниша + формат + набор промтов + модели шагов + настройки текста, поиска фото и публикации. Запуск берёт снимок рецепта; правка рецепта на уже идущие статьи не влияет."
+        title="Сценарии"
+        subtitle="Сценарий = ниша + формат + набор промтов + модели шагов + настройки текста, поиска фото и публикации. Запуск берёт снимок сценария; правка сценария на уже идущие статьи не влияет."
       />
       <div className="space-y-4">
         <Card>
           <div className="flex flex-wrap gap-2">
             {(Object.keys(FORMAT_LABELS) as ArtFormat[]).map((f) => (
-              <Link key={f} href={`/pinterest/articles/recipes${f === "REAL_PHOTO" ? "" : `?format=${f}`}`} className={`tab ${format === f ? "active" : ""}`}>
+              <Link key={f} href={`/pinterest/articles/scenarios${f === "REAL_PHOTO" ? "" : `?format=${f}`}`} className={`tab ${format === f ? "active" : ""}`}>
                 {FORMAT_LABELS[f]}
               </Link>
             ))}
-            {format === "GENERATED_PHOTO" && <span className="help self-center">Формат «ИИ-фото» — волна 3: рецепты можно править, но конвейер пока не запускает их этапы.</span>}
+            {format === "GENERATED_PHOTO" && <span className="help self-center">Формат «ИИ-фото» — волна 3: сценарии можно править, но конвейер пока не запускает их этапы.</span>}
           </div>
         </Card>
 
         {recipes.length === 0 ? (
-          <Empty title="Рецептов этого формата нет" hint="Создайте первый в форме ниже." />
+          <Empty title="Сценариев этого формата нет" hint="Создайте первый в форме ниже." />
         ) : (
           [...groups.entries()].map(([code, list]) => {
             const n = nicheName(code);
@@ -62,7 +62,7 @@ export default async function RecipesPage({ searchParams }: { searchParams: Prom
                     const ready = recipeReadiness(r, r.promptSet?.prompts ?? []);
                     const sub = nicheName(r.subnicheCode);
                     return (
-                      <Link key={r.id} href={`/pinterest/articles/recipes/${r.id}`} className="card card-hover p-4 block">
+                      <Link key={r.id} href={`/pinterest/articles/scenarios/${r.id}`} className="card card-hover p-4 block">
                         <div className="flex items-start gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="font-semibold truncate">
@@ -92,7 +92,7 @@ export default async function RecipesPage({ searchParams }: { searchParams: Prom
           })
         )}
 
-        <Card title="Новый рецепт" description="Название, ниша, формат и набор промтов. Остальные настройки — в карточке рецепта.">
+        <Card title="Новый сценарий" description="Название, ниша, формат и набор промтов. Остальные настройки — в карточке сценария.">
           <ActionForm action={createRecipe} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end">
             <input type="hidden" name="format" value={format} />
             <Field label="Название"><input name="name" className="input" required placeholder="например: Ногти — реальные фото (тест)" /></Field>
@@ -115,7 +115,7 @@ export default async function RecipesPage({ searchParams }: { searchParams: Prom
               </select>
             </Field>
             <div className="sm:col-span-2 lg:col-span-4">
-              <SubmitButton pendingText="Создаю…">Создать рецепт</SubmitButton>
+              <SubmitButton pendingText="Создаю…">Создать сценарий</SubmitButton>
             </div>
           </ActionForm>
         </Card>

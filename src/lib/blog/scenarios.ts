@@ -1,9 +1,10 @@
 /**
- * Сценарии инфо-статей: тип статьи → стратегия. После исследования (этап `scenario`) система сама выбирает сценарий
- * по интенту ключа, YMYL-флагу и теме из брифа и записывает в снимок рецепта поста итоговые параметры
- * (основа статьи, видео, ИИ-картинки, подсказка плану). Рецепт может закрепить сценарий (params.scenario = ключ)
- * или отключить выбор («manual» — берутся параметры рецепта как есть).
+ * Типы инфо-статей: тип статьи → стратегия. После исследования (этап `scenario`) система сама определяет тип статьи
+ * по интенту ключа, YMYL-флагу и теме из брифа и записывает в снимок сценария поста итоговые параметры
+ * (основа статьи, видео, ИИ-картинки, подсказка плану). Сценарий может закрепить сценарий (params.scenario = ключ)
+ * или отключить выбор («manual» — берутся параметры сценария как есть).
  *
+ * В интерфейсе это «Тип статьи»; «Сценарий» — бывший сценарий (BlogRecipe: промты, модели, параметры).
  * Новый тип статей = новая запись в SCENARIOS (порядок важен: побеждает первый подходящий).
  * Решение владельца 2026-10-22: стратегия по умолчанию для инструкций — «по видео»; для здоровья/денег, «почему», «какой» —
  * статья по исследованию.
@@ -18,7 +19,7 @@ export type ScenarioOverrides = Partial<Pick<BlogRecipeParams, "source" | "video
 export type Scenario = {
   key: string;
   label: string;
-  /** Для чего и почему такая стратегия — показывается в рецепте и карточке статьи */
+  /** Для чего и почему такая стратегия — показывается в сценарии и карточке статьи */
   description: string;
   match: (b: BlogBrief, keyword: string) => boolean;
   overrides: ScenarioOverrides;
@@ -79,7 +80,7 @@ export const SCENARIO_BY_KEY = new Map(SCENARIOS.map((s) => [s.key, s]));
 
 export type AppliedScenario = { key: string; label: string; reason: string; auto: boolean; outlineHint?: string };
 
-/** Выбор сценария: закреплённый в рецепте или первый подходящий по брифу. null — «manual» (параметры рецепта как есть). */
+/** Выбор сценария: закреплённый в сценарии или первый подходящий по брифу. null — «manual» (параметры сценария как есть). */
 export function pickScenario(setting: string | undefined, brief: BlogBrief, keyword: string): { scenario: Scenario; auto: boolean } | null {
   if (setting === "manual") return null;
   const fixed = setting && setting !== "auto" ? SCENARIO_BY_KEY.get(setting) : undefined;
@@ -88,7 +89,7 @@ export function pickScenario(setting: string | undefined, brief: BlogBrief, keyw
   return { scenario: found, auto: true };
 }
 
-/** Параметры рецепта с наложенным сценарием (ИИ-картинки: сценарий может только выключить, включает их рецепт). */
+/** Параметры сценария с наложенным сценарием (ИИ-картинки: сценарий может только выключить, включает их сценарий). */
 export function applyScenario(params: BlogRecipeParams, s: Scenario): BlogRecipeParams {
   const o = s.overrides;
   return {
@@ -101,6 +102,6 @@ export function applyScenario(params: BlogRecipeParams, s: Scenario): BlogRecipe
 }
 
 export function scenarioReason(s: Scenario, brief: BlogBrief, auto: boolean): string {
-  if (!auto) return "закреплён в рецепте";
+  if (!auto) return "закреплён в сценарии";
   return `интент «${brief.intent}»${brief.ymyl ? ", тема здоровья/денег/безопасности" : ""}${brief.topicDomain ? `, тема ${brief.topicDomain}` : ""}`;
 }

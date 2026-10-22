@@ -13,7 +13,7 @@ const ITEMS: Array<{ href: string; label: string; exact?: boolean; not?: string;
   { href: "/pinterest/articles/moderation/articles", label: "Модерация", count: "moderation" },
   { href: "/pinterest/articles/moderation/ai", label: "ИИ-модерация" },
   { href: "/pinterest/articles/publications", label: "Публикации" },
-  { href: "/pinterest/articles/recipes", label: "Рецепты" },
+  { href: "/pinterest/articles/scenarios", label: "Сценарии" },
   { href: "/pinterest/articles/journal", label: "Журнал" },
   { href: "/pinterest/articles/failed-keywords", label: "Неудачные ключи" },
   { href: "/pinterest/articles/sites", label: "Сайты" },

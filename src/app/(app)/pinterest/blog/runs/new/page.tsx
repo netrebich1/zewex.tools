@@ -8,7 +8,7 @@ import { NewBlogRunForm, type RunFormRecipe, type RunFormSite } from "@/componen
 
 export const dynamic = "force-dynamic";
 
-/** Новый запуск инфо-статей: сайт → рецепт → ключи → параметры. */
+/** Новый запуск инфо-статей: сайт → сценарий → ключи → параметры. */
 export default async function NewBlogRunPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const me = await requireUser();
   const preset = sp(await searchParams, "site");
@@ -21,7 +21,7 @@ export default async function NewBlogRunPage({ searchParams }: { searchParams: P
   const recipeRows: RunFormRecipe[] = recipes.map((r) => { const shape = recipeShape(r); return { id: r.id, name: r.name, description: r.description, isDefault: r.isDefault, length: shape.params.length, images: { min: shape.params.images.min, max: shape.params.images.max }, readiness: recipeReadiness(shape, have) }; });
   return (
     <>
-      <PageHeader back={{ href: "/pinterest/blog", label: "Обзор" }} title="Новый запуск" subtitle="Выберите сайт и рецепт, вставьте список тем (по одной в строке), проверьте параметры и запустите. Каждая строка станет отдельной статьёй в очереди." />
+      <PageHeader back={{ href: "/pinterest/blog", label: "Обзор" }} title="Новый запуск" subtitle="Выберите сайт и сценарий, вставьте список тем (по одной в строке), проверьте параметры и запустите. Каждая строка станет отдельной статьёй в очереди." />
       <Card><NewBlogRunForm sites={siteRows} recipes={recipeRows} presetSiteId={preset} /></Card>
     </>
   );

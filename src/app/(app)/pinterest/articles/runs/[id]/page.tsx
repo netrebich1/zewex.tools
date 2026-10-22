@@ -43,7 +43,7 @@ export default async function ArticlesRunPage({ params, searchParams }: { params
   return (
     <>
       <PageHeader back={{ href: `/pinterest/articles/sites/${run.site.id}`, label: run.site.name }} title={run.name || `Запуск ${id.slice(0, 8)}`}
-        subtitle={`${run.site.name} · ${run.recipe?.name ?? (s.sheet ? "рецепты из таблицы" : "рецепт удалён")} · ${fmtDate(run.createdAt)}${author ? ` · ${author.name || author.email}` : ""}`}
+        subtitle={`${run.site.name} · ${run.recipe?.name ?? (s.sheet ? "сценарии из таблицы" : "сценарий удалён")} · ${fmtDate(run.createdAt)}${author ? ` · ${author.name || author.email}` : ""}`}
         actions={<Link href={`/pinterest/articles/runs/new?site=${run.site.id}`} className="btn-ghost">Ещё запуск для сайта</Link>} />
 
       {sheetWarn && <div className="mb-4"><Alert tone="danger">{sheetWarn}</Alert></div>}
@@ -104,13 +104,13 @@ export default async function ArticlesRunPage({ params, searchParams }: { params
           )}
         </Card>
 
-        <Card title="Параметры запуска" description="Сохранены в снимке каждой статьи: правка рецепта или настроек сайта на эту партию не влияет.">
+        <Card title="Параметры запуска" description="Сохранены в снимке каждой статьи: правка сценария или настроек сайта на эту партию не влияет.">
           <dl className="grid gap-x-6 gap-y-1.5 text-[14px] sm:grid-cols-2 lg:grid-cols-3">
             <div className="flex justify-between gap-3"><dt className="text-muted">Фото</dt><dd>{s.photoCount?.mode === "range" ? `${s.photoCount.min}–${s.photoCount.max}` : s.photoCount?.min ?? "—"}</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-muted">Модерация фото до текста</dt><dd>{s.sheet ? "по колонке «Режим»" : s.photoReview ? "да" : "нет"}</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-muted">Публикация</dt><dd>{PUBLISH_MODES.find((m) => m.value === s.publishMode)?.label ?? s.publishMode}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-muted">Поиск</dt><dd>{search || "как в рецепте"}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-muted">Год в URL</dt><dd>{s.yearInUrlPercent == null ? "как в рецепте" : `${s.yearInUrlPercent}%`}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-muted">Поиск</dt><dd>{search || "как в сценарии"}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-muted">Год в URL</dt><dd>{s.yearInUrlPercent == null ? "как в сценарии" : `${s.yearInUrlPercent}%`}</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-muted">Тестовая метка</dt><dd>{s.testLabel || "—"}</dd></div>
             {s.sheet && <div className="flex justify-between gap-3"><dt className="text-muted">Источник ключей</dt><dd><a href={s.sheet.url} target="_blank" rel="noreferrer" className="text-info hover:underline">Google Таблица, вкладка «{s.sheet.tab}» ↗</a></dd></div>}
           </dl>

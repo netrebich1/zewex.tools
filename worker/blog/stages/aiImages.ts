@@ -4,7 +4,7 @@
  *  1) text_fast выбирает 2–4 шага, которые лучше всего показать, и описывает героя/обстановку (один и тот же человек во всех панелях);
  *  2) image_main (gpt-image-2) рисует одну картинку из панелей БЕЗ текста — буквы модели рисуют плохо;
  *  3) номера шагов (как в списке статьи) рисуются на панелях канвой.
- * Режим рецепта params.aiImages: off — этап ничего не делает; steps — до max картинок на статью.
+ * Режим сценария params.aiImages: off — этап ничего не делает; steps — до max картинок на статью.
  * Нет ключа / сбой генерации — статья идёт дальше без ИИ-картинки (с записью в журнал), это не ошибка поста.
  * Идемпотентен: секция, у которой уже есть фото ai<position>, пропускается.
  */
@@ -92,7 +92,7 @@ async function drawNumbers(src: Buffer, labels: string[]): Promise<Buffer> {
 export const aiImagesStage: StageHandler = async (ctx) => {
   const { post, recipe, outline } = ctx;
   const cfg = recipe.params.aiImages ?? { mode: "off", max: 2, quality: "medium" };
-  if (cfg.mode === "off") return { summary: "ИИ-картинки выключены в рецепте" };
+  if (cfg.mode === "off") return { summary: "ИИ-картинки выключены в сценарии" };
   const sections = await prisma.blogSection.findMany({ where: { postId: post.id, status: "written" }, orderBy: { position: "asc" } });
   const existing = new Set((await prisma.blogPhoto.findMany({ where: { postId: post.id, slotKey: { startsWith: "ai" } }, select: { slotKey: true } })).map((p) => p.slotKey));
   const fit = sections.filter((s) => s.kind === "steps" && stepsOf(s.html ?? "").length >= 3);

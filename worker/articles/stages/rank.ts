@@ -51,7 +51,7 @@ export const rank: ArtStageHandler = async (ctx) => {
   const topic = topicOf(article);
   const profile = specializeProfile(await getNicheProfile(recipe.nicheCode, recipe.subnicheCode ?? null), topic);
   const SUBJECT = subjectLabel(profile);
-  // Модель — из рецепта (08-plan §3 п.4; аудит 02 п.7.9), иначе модель правила слота vision.
+  // Модель — из сценария (08-plan §3 п.4; аудит 02 п.7.9), иначе модель правила слота vision.
   const model = stageModel(recipe, "rp_photo_rate");
 
   // Оценки ещё не было (статья застала старый порядок search → filter → rank → rate) — сначала оценка, иначе

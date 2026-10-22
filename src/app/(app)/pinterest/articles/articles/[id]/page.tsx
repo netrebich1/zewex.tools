@@ -46,7 +46,7 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
   return (
     <>
       <PageHeader back={{ href: back, label: a.run?.name || a.site.name }} title={a.keyword}
-        subtitle={<>{keywordRu && <span className="text-ink-2">{keywordRu} · </span>}<Link href={`/pinterest/articles/sites/${a.site.id}`} className="underline">{a.site.name}</Link> · {a.recipeRef?.name ?? snapshot?.name ?? "рецепт"} · {a.photoCount} фото · {a.photoReview ? "модерация фото до текста" : "без модерации фото"} · {modeLabel} · расход ${a.costUsd.toFixed(2)}</>}
+        subtitle={<>{keywordRu && <span className="text-ink-2">{keywordRu} · </span>}<Link href={`/pinterest/articles/sites/${a.site.id}`} className="underline">{a.site.name}</Link> · {a.recipeRef?.name ?? snapshot?.name ?? "сценарий"} · {a.photoCount} фото · {a.photoReview ? "модерация фото до текста" : "без модерации фото"} · {modeLabel} · расход ${a.costUsd.toFixed(2)}</>}
         actions={a.wpUrl ? <a href={a.wpUrl} target="_blank" rel="noreferrer" className="btn-ghost">Открыть на сайте ↗</a> : undefined} />
 
       <div className="space-y-4">

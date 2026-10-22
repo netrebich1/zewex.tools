@@ -47,7 +47,7 @@ export default async function BlogHome() {
                 <tbody>
                   {active.map((s) => (
                     <tr key={s.id}>
-                      <td className="min-w-[160px]"><Link href={`/pinterest/blog/sites/${s.id}`} className="font-medium hover:underline">{s.name}</Link><div className="help">{s.teamName}{s.recipeName ? ` · ${s.recipeName}` : " · рецепт не задан"}{!s.hasAccess && <span className="text-warn"> · нет доступа WP</span>}</div></td>
+                      <td className="min-w-[160px]"><Link href={`/pinterest/blog/sites/${s.id}`} className="font-medium hover:underline">{s.name}</Link><div className="help">{s.teamName}{s.recipeName ? ` · ${s.recipeName}` : " · сценарий не задан"}{!s.hasAccess && <span className="text-warn"> · нет доступа WP</span>}</div></td>
                       <td><SiteFunnel siteId={s.id} f={s.funnel} /></td>
                       <td className="hidden lg:table-cell text-muted tabular-nums">{s.funnel.total} / {s.funnel.completed}</td>
                       <td className="hidden md:table-cell text-muted whitespace-nowrap">{s.lastAt ? fmtDate(s.lastAt) : "—"}</td>

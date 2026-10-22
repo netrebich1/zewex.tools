@@ -2,7 +2,7 @@
  * ОДНО место сборки переменных промтов текстовой цепочки (план по фото, план секций, вступление/заключение,
  * писатель секций). В оригинале каждая функция собирала свой словарь, и часть переменных реальных промтов
  * оставалась незаполненной ({{outro_plan}}, {{care_plan}}, {item_name}, {{section_brief}} — аудит 03, §7.1, 7.3, 7.4).
- * Здесь собирается полный словарь из facts / plan / рецепта / фото / секций; этап добавляет свои поля через `extra`.
+ * Здесь собирается полный словарь из facts / plan / сценария / фото / секций; этап добавляет свои поля через `extra`.
  * После fillPrompt неизвестных переменных остаться не должно — иначе этап падает с понятной ошибкой (08-plan §3 п.3).
  *
  * Источники (таблицы переменных отчёта 03, §1.2, 1.3, 1.5, 1.6):
@@ -33,7 +33,7 @@ export type VarsCtx = { article: Article; recipe: ArticleRecipeSnapshot; facts: 
 /**
  * Возможные углы подачи секции (универсальные/ногтевые). Аудит text-v2: «personal_story» и «skeptic» заказывали
  * выдуманный опыт («I wore these…», «I was skeptical») — заменены на «how_to_ask» (что сказать мастеру) и
- * «honest_take» (кому не подойдёт). Старые значения в уже сохранённых рецептах секций понимает sections.ts.
+ * «honest_take» (кому не подойдёт). Старые значения в уже сохранённых сценариях секций понимает sections.ts.
  */
 export const ANGLES = [
   "photo_read", "how_to_ask", "mistake", "comparison", "who_suits", "wear_reality",
@@ -81,7 +81,7 @@ function s(v: unknown, fallback = "none"): string {
 
 // ───────────────────────── профиль ниши ─────────────────────────
 
-/** Профиль ниши рецепта, уточнённый под тему (волосы: стрижка/цвет/причёска). */
+/** Профиль ниши сценария, уточнённый под тему (волосы: стрижка/цвет/причёска). */
 export async function loadProfile(ctx: VarsCtx): Promise<NicheProfile> {
   const base = await getNicheProfile(ctx.recipe.nicheCode, ctx.recipe.subnicheCode ?? null);
   return specializeProfile(base, topicText(ctx));

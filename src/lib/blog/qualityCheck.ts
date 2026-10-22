@@ -82,8 +82,8 @@ export function checkPostQuality(post: BlogPost, outline: BlogOutline | null, pa
   total += faq.reduce((n, f) => n + countWords(f.question ?? "") + countWords(f.answer ?? ""), 0);
   if (outline?.faq.enabled && faq.length < 2) problems.push(`FAQ: вопросов ${faq.length} (план требует ${outline.faq.count})`);
   if (outline?.disclaimer && !(post.disclaimerHtml ?? "").trim()) problems.push("Нет дисклеймера, хотя тема требует");
-  if (total < Math.round(params.length.min * 0.6)) problems.push(`Объём статьи ${total} слов — меньше ${Math.round(params.length.min * 0.6)} (минимум рецепта ${params.length.min})`);
-  if (total > Math.round(params.length.max * 1.6)) problems.push(`Объём статьи ${total} слов — больше ${Math.round(params.length.max * 1.6)} (максимум рецепта ${params.length.max})`);
+  if (total < Math.round(params.length.min * 0.6)) problems.push(`Объём статьи ${total} слов — меньше ${Math.round(params.length.min * 0.6)} (минимум сценария ${params.length.min})`);
+  if (total > Math.round(params.length.max * 1.6)) problems.push(`Объём статьи ${total} слов — больше ${Math.round(params.length.max * 1.6)} (максимум сценария ${params.length.max})`);
 
   const livePhotos = photos.filter((p) => !p.excluded);
   if (!livePhotos.some((p) => p.slotKey === "hero")) problems.push("Нет главного фото (hero)");

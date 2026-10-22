@@ -6,7 +6,7 @@
  *
  * Правила оригинала сохранены:
  *  - вкладка = домен сайта; колонки ищутся по заголовкам первой строки (COLUMNS), порядок любой;
- *  - в работу берутся строки без «Статуса» и без Publish URL; рецепт — по номеру в колонке «Сценарий», режим — из
+ *  - в работу берутся строки без «Статуса» и без Publish URL; сценарий — по номеру в колонке «Сценарий», режим — из
  *    колонки «Режим» (2 = сначала модерация фото); строка без сценария или режима не берётся вообще;
  *  - после импорта строке ставится статус «в работе»; после публикации — ссылка, дата и статус «черновик» /
  *    «опубликовано»; при падении статьи — «ошибка»;
@@ -33,7 +33,7 @@ const COLUMNS = {
   keyword: ["keyword", "ключ"],
   seo_keyword: ["seo keyword", "seo"],
   focus_keyword: ["focus keyword", "focus"],
-  scenario: ["сценарий", "scenario", "рецепт", "recipe"],
+  scenario: ["сценарий", "scenario", "сценарий", "recipe"],
   url_draft: ["url draft", "draft url"],
   data_draft: ["data draft", "дата черновика"],
   publish_url: ["publish url", "pulish url", "published url"],
@@ -56,9 +56,9 @@ export const SHEET_COLUMNS_HELP: Array<{ title: string; note: string; required?:
   { title: "Keyword", note: "тема статьи", required: true },
   { title: "SEO Keyword", note: "SEO-ключ (необязательно)" },
   { title: "Focus Keyword", note: "фокус-ключ (необязательно)" },
-  { title: "Сценарий", note: "номер рецепта (№ на странице «Рецепты»)", required: true },
+  { title: "Сценарий", note: "номер сценария (№ на странице «Сценарии»)", required: true },
   { title: "Режим", note: "2 — сначала модерация фото, потом текст; 1 — текст сразу", required: true },
-  { title: "Год в URL", note: "да / нет / процент 0–100; пусто — как в рецепте" },
+  { title: "Год в URL", note: "да / нет / процент 0–100; пусто — как в сценарии" },
   { title: "Гео", note: "страна поиска фото, 2 буквы (US, GB…)" },
   { title: "Язык", note: "язык поиска фото (en, de…)" },
   { title: "Свежесть", note: "год / месяц / неделя / любая" },
@@ -214,7 +214,7 @@ function colLetter(index: number): string {
   return s;
 }
 
-/** «Год в URL»: «нет/no/false/0» → 0 %, «да/yes/true» → 100 %, число 0–100 → процент, пусто → null (как в рецепте). */
+/** «Год в URL»: «нет/no/false/0» → 0 %, «да/yes/true» → 100 %, число 0–100 → процент, пусто → null (как в сценарии). */
 function parseYearInUrl(raw: string): number | null {
   const v = String(raw || "").trim().toLowerCase().replace("%", "");
   if (!v) return null;
@@ -286,7 +286,7 @@ export async function readSheet(site: SheetSite, sheetUrl: string): Promise<{ sp
       publishUrl: get("publish_url") || null,
       status: get("status") || null,
       yearInUrl: parseYearInUrl(get("year_in_url")),
-      // Настройки поиска фото на статью: пусто = из рецепта / параметров запуска
+      // Настройки поиска фото на статью: пусто = из сценария / параметров запуска
       geo: get("photo_geo").toUpperCase().slice(0, 2) || null,
       language: get("photo_language").toLowerCase().slice(0, 5) || null,
       freshness: parseFreshness(get("photo_freshness")),
@@ -452,11 +452,11 @@ export async function planSheetImport(site: SheetSite, sheetUrl: string): Promis
     if (!keyword || keyword.length < 3) { skip("ключ слишком короткий"); continue; }
     if (keyword.length > 180) { skip("ключ длиннее 180 символов"); continue; }
     // Без сценария и режима в таблице статью не добавляем вообще
-    if (r.recipeNumber == null) { skip("не указан сценарий (номер рецепта)"); continue; }
+    if (r.recipeNumber == null) { skip("не указан сценарий (номер сценария)"); continue; }
     if (r.mode == null) { skip("не указан режим (1 или 2)"); continue; }
     const recipe = byNumber.get(r.recipeNumber);
-    if (!recipe) { skip(`рецепт №${r.recipeNumber} не найден`); continue; }
-    if (!recipe.isActive) { skip(`рецепт №${r.recipeNumber} выключен`); continue; }
+    if (!recipe) { skip(`сценарий №${r.recipeNumber} не найден`); continue; }
+    if (!recipe.isActive) { skip(`сценарий №${r.recipeNumber} выключен`); continue; }
     const low = keyword.toLowerCase();
     if (seen.has(low)) { skip("повтор ключа в таблице"); continue; }
     if (dup.has(low)) { skip("статья с таким ключом уже есть у сайта"); continue; }
@@ -465,7 +465,7 @@ export async function planSheetImport(site: SheetSite, sheetUrl: string): Promis
       keyword, seoKeyword: r.seoKeyword ?? undefined, focusKeyword: r.focusKeyword ?? undefined,
       sheetRow: r.row, recipeId: recipe.id, recipeNumber: r.recipeNumber, recipeName: recipe.name,
       photoReview: r.mode === 2,
-      // Колонки «Год в URL» / «Гео» / «Язык» / «Свежесть» важнее параметров запуска и рецепта
+      // Колонки «Год в URL» / «Гео» / «Язык» / «Свежесть» важнее параметров запуска и сценария
       yearInUrlPercent: r.yearInUrl ?? undefined,
       search: { country: r.geo?.toLowerCase() ?? undefined, language: r.language ?? undefined, freshness: r.freshness ?? undefined },
     });

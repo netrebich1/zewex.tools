@@ -31,7 +31,7 @@ export default async function BlogSitePage({ params, searchParams }: { params: P
 
   return (
     <>
-      <PageHeader back={{ href: "/pinterest/blog/sites", label: "Сайты" }} title={site.name} subtitle={`${site.defaultRecipe?.name ?? "рецепт не задан"} · одновременно ${settings.concurrency}${site.isActive ? "" : " · в архиве"}`}
+      <PageHeader back={{ href: "/pinterest/blog/sites", label: "Сайты" }} title={site.name} subtitle={`${site.defaultRecipe?.name ?? "сценарий не задан"} · одновременно ${settings.concurrency}${site.isActive ? "" : " · в архиве"}`}
         actions={<>{site.accessId && <Link href={`/sites/${site.accessId}`} className="btn-ghost">Доступ и команды</Link>}{site.isActive && <Link href={`/pinterest/blog/runs/new?site=${id}`} className="btn-brand">Новый запуск</Link>}</>} />
       {funnelRow && <div className="mb-4"><SiteFunnel siteId={id} f={funnelRow.funnel} /></div>}
       <div className="mb-4 flex gap-2">{TABS.map(([k, l]) => <Link key={k} href={`/pinterest/blog/sites/${id}?tab=${k}`} className={`badge px-3 py-1 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}</div>

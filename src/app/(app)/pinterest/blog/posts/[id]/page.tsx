@@ -45,7 +45,7 @@ export default async function BlogPostPage({ params, searchParams }: { params: P
     <>
       <AutoRefresh enabled={running || a.status === "PENDING" || a.status === "PUBLISHING"} everyMs={12_000} />
       <PageHeader back={{ href: back, label: a.run?.name || a.site.name }} title={a.keyword}
-        subtitle={<><Link href={`/pinterest/blog/sites/${a.site.id}`} className="underline">{a.site.name}</Link> · {a.recipeRef?.name ?? snapshot?.name ?? "рецепт"}{snapshot?.scenario ? <> · <span title={snapshot.scenario.reason}>сценарий «{snapshot.scenario.label}»</span></> : null} · {REVIEW_MODES.find((m) => m.value === snapshot?.run?.review)?.label ?? ""} · {PUBLISH_MODES.find((m) => m.value === snapshot?.run?.publishMode)?.label ?? ""} · расход ${a.costUsd.toFixed(3)}</>}
+        subtitle={<><Link href={`/pinterest/blog/sites/${a.site.id}`} className="underline">{a.site.name}</Link> · {a.recipeRef?.name ?? snapshot?.name ?? "сценарий"}{snapshot?.scenario ? <> · <span title={snapshot.scenario.reason}>тип «{snapshot.scenario.label}»</span></> : null} · {REVIEW_MODES.find((m) => m.value === snapshot?.run?.review)?.label ?? ""} · {PUBLISH_MODES.find((m) => m.value === snapshot?.run?.publishMode)?.label ?? ""} · расход ${a.costUsd.toFixed(3)}</>}
         actions={a.wpUrl ? <a href={a.wpUrl} target="_blank" rel="noreferrer" className="btn-ghost">Открыть на сайте ↗</a> : undefined} />
       <div className="space-y-4">
         <Card>

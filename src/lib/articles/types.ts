@@ -94,7 +94,7 @@ export type RecipeImages = {
 };
 export type RecipePublish = { mode: PublishMode; seoYearUrlPercent: number };
 
-/** Рецепт как хранится в ArtRecipe (JSON-поля типизированы). */
+/** Сценарий как хранится в ArtRecipe (JSON-поля типизированы). */
 export type RecipeShape = {
   id: string;
   name: string;
@@ -150,9 +150,9 @@ export type ArtSiteSettings = {
    * ИИ стартует, когда ждут столько статей (1 — сразу); к уже идущему запуску новые статьи добавляются без ожидания.
    */
   aiModeration: { enabled: boolean; batchFrom: number; concurrency: number; backlogThreshold: number; autoApply: boolean };
-  /** Переопределения поиска для сайта (пусто — из рецепта) */
+  /** Переопределения поиска для сайта (пусто — из сценария) */
   search: { country: string; language: string; freshness: string };
-  /** Доля статей с годом в URL, 0–100 (пусто — из рецепта) */
+  /** Доля статей с годом в URL, 0–100 (пусто — из сценария) */
   yearInUrlPercent: number | null;
   sheetUrl: string;
 };
@@ -231,13 +231,13 @@ export type ArtRunSettings = {
   yearInUrlPercent: number | null;
   /** Служебная метка для тестов (не попадает в тексты) */
   testLabel: string;
-  /** Запуск из Google Таблицы: откуда взяты ключи (вкладка = домен сайта). Рецепт и режим тогда у каждой статьи свои — из строки таблицы. */
+  /** Запуск из Google Таблицы: откуда взяты ключи (вкладка = домен сайта). Сценарий и режим тогда у каждой статьи свои — из строки таблицы. */
   sheet?: { url: string; tab: string };
 };
 
 /**
  * Строка ключа при постановке в очередь. Поля после photoCount — переопределения одной статьи поверх параметров запуска
- * (импорт из Google Таблицы: рецепт по номеру, режим, год в URL, поиск фото, номер строки для обратной записи отчёта).
+ * (импорт из Google Таблицы: сценарий по номеру, режим, год в URL, поиск фото, номер строки для обратной записи отчёта).
  */
 export type KeywordInput = {
   keyword: string; seoKeyword?: string; focusKeyword?: string; photoCount?: number;
@@ -249,8 +249,8 @@ export type KeywordInput = {
 };
 
 /**
- * Снимок рецепта и настроек запуска, который сохраняется в Article.recipe и исполняется воркером.
- * Правка рецепта после запуска на статью не влияет.
+ * Снимок сценария и настроек запуска, который сохраняется в Article.recipe и исполняется воркером.
+ * Правка сценария после запуска на статью не влияет.
  */
 export type ArticleRecipeSnapshot = RecipeShape & {
   run: { photoReview: boolean; publishMode: PublishMode; yearInUrlPercent: number; testLabel: string };

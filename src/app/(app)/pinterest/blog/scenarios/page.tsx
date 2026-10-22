@@ -18,12 +18,12 @@ export default async function BlogRecipesPage() {
   const activeOf = (id: string) => active.find((a) => a.recipeId === id)?._count._all ?? 0;
   return (
     <>
-      <PageHeader title="Рецепты" subtitle="Рецепт = промты всех этапов + модели + параметры структуры (объём, картинки, голос, блоки, FAQ) + настройки поиска фото и публикации. Запуск делает снимок рецепта." />
+      <PageHeader title="Сценарии" subtitle="Сценарий = промты всех этапов + модели + параметры структуры (объём, картинки, голос, блоки, FAQ) + настройки поиска фото и публикации. Запуск делает снимок сценария." />
       <div className="space-y-4">
         <Card>
-          {recipes.length === 0 ? <p className="help">Рецептов нет — создайте первый ниже.</p> : (
+          {recipes.length === 0 ? <p className="help">Сценариев нет — создайте первый ниже.</p> : (
             <div className="table-wrap"><table className="table">
-              <thead><tr><th>№</th><th>Рецепт</th><th className="hidden md:table-cell">Параметры</th><th>Готовность</th><th className="hidden lg:table-cell">Обновлён</th></tr></thead>
+              <thead><tr><th>№</th><th>Сценарий</th><th className="hidden md:table-cell">Параметры</th><th>Готовность</th><th className="hidden lg:table-cell">Обновлён</th></tr></thead>
               <tbody>{recipes.map((r) => {
                 const shape = recipeShape(r);
                 const rd = recipeReadiness(shape, have);
@@ -31,7 +31,7 @@ export default async function BlogRecipesPage() {
                 return (
                   <tr key={r.id} className={r.isActive ? "" : "opacity-60"}>
                     <td className="text-muted tabular-nums">{r.number ?? "—"}</td>
-                    <td><Link href={`/pinterest/blog/recipes/${r.id}`} className="font-medium hover:underline">{r.name}</Link> {r.isDefault && <Badge tone="brand">по умолчанию</Badge>}{!r.isActive && <Badge>выключен</Badge>}{n > 0 && <Badge tone="brand">в работе: {n}</Badge>}<div className="help">{r.description}</div></td>
+                    <td><Link href={`/pinterest/blog/scenarios/${r.id}`} className="font-medium hover:underline">{r.name}</Link> {r.isDefault && <Badge tone="brand">по умолчанию</Badge>}{!r.isActive && <Badge>выключен</Badge>}{n > 0 && <Badge tone="brand">в работе: {n}</Badge>}<div className="help">{r.description}</div></td>
                     <td className="hidden md:table-cell text-muted text-[13px]">{shape.params.length.min}–{shape.params.length.max} слов · {shape.params.images.min}–{shape.params.images.max} фото · {VOICES.find((v) => v.value === shape.params.voice)?.label}</td>
                     <td>{rd.ok ? <Badge tone="ok">готов</Badge> : <span className="text-[12.5px]">{rd.missingPrompts.length > 0 && <div className="text-danger">нет промтов: {rd.missingPrompts.join(", ")}</div>}{rd.missingSlots.length > 0 && <div className="text-warn">нет ключей: {rd.missingSlots.join(", ")}</div>}</span>}</td>
                     <td className="hidden lg:table-cell text-muted whitespace-nowrap">{fmtDate(r.updatedAt)}</td>
@@ -41,7 +41,7 @@ export default async function BlogRecipesPage() {
             </table></div>
           )}
         </Card>
-        <Card title="Новый рецепт" description="Создаётся как копия рецепта по умолчанию (промты, модели, параметры) — дальше правьте под задачу.">
+        <Card title="Новый сценарий" description="Создаётся как копия сценария по умолчанию (промты, модели, параметры) — дальше правьте под задачу.">
           <ActionForm action={createBlogRecipe} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
             <Field label="Название"><input name="name" className="input" required placeholder="Инфо-статья · дом и уборка" /></Field>
             <Field label="Описание"><input name="description" className="input" /></Field>

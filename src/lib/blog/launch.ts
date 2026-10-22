@@ -1,6 +1,6 @@
 /**
- * Постановка инфо-статей в очередь: запуск (BlogRun) + пост на каждый ключ со снимком рецепта.
- * Правка рецепта после запуска на уже созданные посты не влияет — их исполняет воркер по снимку.
+ * Постановка инфо-статей в очередь: запуск (BlogRun) + пост на каждый ключ со снимком сценария.
+ * Правка сценария после запуска на уже созданные посты не влияет — их исполняет воркер по снимку.
  */
 import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
@@ -19,9 +19,9 @@ export async function launchPosts(me: CurrentUser, input: LaunchInput): Promise<
   const site = await prisma.blogSite.findUnique({ where: { id: input.siteId }, select: { id: true, teamId: true, accessId: true, isActive: true, name: true, settings: true } });
   if (!site || !(await canAccessBlogSite(me, site))) throw new Error("Сайт не найден");
   if (!site.isActive) throw new Error("Сайт в архиве: верните его из архива в настройках");
-  if (!input.settings.recipeId) throw new Error("Выберите рецепт");
+  if (!input.settings.recipeId) throw new Error("Выберите сценарий");
   const recipeRow = await prisma.blogRecipe.findUnique({ where: { id: input.settings.recipeId } });
-  if (!recipeRow || !recipeRow.isActive) throw new Error("Рецепт не найден или выключен");
+  if (!recipeRow || !recipeRow.isActive) throw new Error("Сценарий не найден или выключен");
   const recipe = recipeShape(recipeRow);
 
   const invalid: string[] = [];

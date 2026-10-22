@@ -39,7 +39,7 @@ export default async function ArticlesSitePage({ params, searchParams }: { param
   const categories = ((site.wpCategories as WpCategoryOption[] | null) ?? []).filter((c) => typeof c?.id === "number");
   const nicheName = site.nicheCode ? (await prisma.artNiche.findUnique({ where: { code: site.nicheCode }, select: { name: true } }))?.name ?? site.nicheCode : "не задана";
 
-  const subtitle = `${nicheName} · ${site.defaultRecipe?.name ?? "рецепт не задан"} · ${settings.photoCount.mode === "exact" ? `${settings.photoCount.min} фото` : `${settings.photoCount.min}–${settings.photoCount.max} фото`}${site.isActive ? "" : " · в архиве"}`;
+  const subtitle = `${nicheName} · ${site.defaultRecipe?.name ?? "сценарий не задан"} · ${settings.photoCount.mode === "exact" ? `${settings.photoCount.min} фото` : `${settings.photoCount.min}–${settings.photoCount.max} фото`}${site.isActive ? "" : " · в архиве"}`;
 
   return (
     <>

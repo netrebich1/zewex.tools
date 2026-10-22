@@ -18,8 +18,8 @@ export type RunFormRecipe = { id: string; name: string; description: string | nu
 export const FORMAT_LABELS: Record<ArtFormat, string> = { REAL_PHOTO: "Реальные фото", GENERATED_PHOTO: "ИИ-картинки" };
 
 /**
- * Новый запуск по шагам: 1) сайт → 2) рецепт (по нише сайта, с готовностью промтов и ключей) → 3) ключи → 4) параметры.
- * Ключи — списком или из Google Таблицы (SheetImport): во втором случае рецепт и режим каждой статьи берутся из строки таблицы.
+ * Новый запуск по шагам: 1) сайт → 2) сценарий (по нише сайта, с готовностью промтов и ключей) → 3) ключи → 4) параметры.
+ * Ключи — списком или из Google Таблицы (SheetImport): во втором случае сценарий и режим каждой статьи берутся из строки таблицы.
  * Параметры заполняются из настроек сайта и относятся только к этому запуску (сохраняются в ArtRun.settings и в снимок каждой статьи).
  */
 export function NewArticlesRunForm({ sites, recipes, presetSiteId, sheets }: { sites: RunFormSite[]; recipes: RunFormRecipe[]; presetSiteId?: string; sheets: { connected: boolean; email: string | null } }) {
@@ -37,7 +37,7 @@ export function NewArticlesRunForm({ sites, recipes, presetSiteId, sheets }: { s
   const [source, setSource] = useState<"manual" | "sheet">("manual");
   const fromSheet = source === "sheet";
 
-  // Смена сайта: рецепт по умолчанию из настроек сайта, параметры — из настроек сайта (через key на секции)
+  // Смена сайта: сценарий по умолчанию из настроек сайта, параметры — из настроек сайта (через key на секции)
   useEffect(() => {
     setRecipeId(pickDefault(site));
     setAllRecipes(false);
@@ -46,7 +46,7 @@ export function NewArticlesRunForm({ sites, recipes, presetSiteId, sheets }: { s
 
   const warnings: string[] = [];
   if (site && !site.hasAccess) warnings.push("У сайта нет доступа WordPress: публикация не пройдёт. Привяжите доступ в разделе «Сайты».");
-  if (site && !site.nicheCode) warnings.push("У сайта не задана ниша: показаны все рецепты. Задайте нишу в настройках сайта, чтобы видеть только подходящие.");
+  if (site && !site.nicheCode) warnings.push("У сайта не задана ниша: показаны все сценарии. Задайте нишу в настройках сайта, чтобы видеть только подходящие.");
   if (site && site.settings.publishMode !== "moderate_first" && !site.categoriesCount) warnings.push("Категории WordPress не синхронизированы: при публикации категория будет выбрана по умолчанию WordPress. Нажмите «Синхронизировать категории» в настройках сайта.");
 
   return (
@@ -69,12 +69,12 @@ export function NewArticlesRunForm({ sites, recipes, presetSiteId, sheets }: { s
 
       <section className="space-y-2">
         <div className="flex flex-wrap items-baseline gap-2">
-          <div className="font-medium">2. Рецепт</div>
-          <span className="help">Рецепт = ниша + формат + промты и модели каждого шага. {site?.nicheCode && <button type="button" className="underline" onClick={() => setAllRecipes((v) => !v)}>{allRecipes ? "только для ниши сайта" : "показать все рецепты"}</button>}</span>
+          <div className="font-medium">2. Сценарий</div>
+          <span className="help">Сценарий = ниша + формат + промты и модели каждого шага. {site?.nicheCode && <button type="button" className="underline" onClick={() => setAllRecipes((v) => !v)}>{allRecipes ? "только для ниши сайта" : "показать все сценарии"}</button>}</span>
         </div>
         {fromSheet ? (
-          <Alert tone="neutral">Ключи берутся из Google Таблицы: рецепт каждой статьи задаёт колонка «Сценарий» — это номер рецепта (№ на странице <Link href="/pinterest/articles/recipes" className="underline">«Рецепты»</Link>). Выбирать рецепт здесь не нужно.</Alert>
-        ) : list.length === 0 ? <Alert tone="warn">Рецептов нет. Создайте рецепт в разделе <Link href="/pinterest/articles/recipes" className="underline">«Рецепты»</Link>.</Alert> : (
+          <Alert tone="neutral">Ключи берутся из Google Таблицы: сценарий каждой статьи задаёт колонка «Сценарий» — это номер сценария (№ на странице <Link href="/pinterest/articles/scenarios" className="underline">«Сценарии»</Link>). Выбирать сценарий здесь не нужно.</Alert>
+        ) : list.length === 0 ? <Alert tone="warn">Сценариев нет. Создайте сценарий в разделе <Link href="/pinterest/articles/scenarios" className="underline">«Сценарии»</Link>.</Alert> : (
           <div className="grid gap-2 sm:grid-cols-2">
             {list.map((r) => {
               const on = r.id === recipeId;
@@ -83,7 +83,7 @@ export function NewArticlesRunForm({ sites, recipes, presetSiteId, sheets }: { s
                   <div className="flex items-start gap-2">
                     <input type="radio" name="recipePick" className="mt-1" checked={on} onChange={() => setRecipeId(r.id)} />
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5"><b className="truncate">{r.name}</b>{r.isDefault && <Badge>по умолчанию</Badge>}<Badge>{FORMAT_LABELS[r.format]}</Badge>{r.id === site?.defaultRecipeId && <Badge tone="brand">рецепт сайта</Badge>}</div>
+                      <div className="flex flex-wrap items-center gap-1.5"><b className="truncate">{r.name}</b>{r.isDefault && <Badge>по умолчанию</Badge>}<Badge>{FORMAT_LABELS[r.format]}</Badge>{r.id === site?.defaultRecipeId && <Badge tone="brand">сценарий сайта</Badge>}</div>
                       <div className="help mt-0.5">{r.nicheName}{r.description ? ` · ${r.description}` : ""}</div>
                       <Readiness r={r} />
                     </div>
@@ -129,7 +129,7 @@ export function NewArticlesRunForm({ sites, recipes, presetSiteId, sheets }: { s
         <span className="help">
           {fromSheet
             ? (!count ? "Нажмите «Прочитать таблицу», чтобы увидеть, какие строки пойдут в работу" : "Статьи встанут в очередь, строки таблицы получат статус «в работе»")
-            : !recipe ? "Выберите рецепт" : !recipe.readiness.ok ? "Рецепт не готов: статьи встанут в очередь, но упадут на этапе без промта или ключа" : !count ? "Добавьте ключи" : `Статьи встанут в очередь, воркер начнёт по лимитам сайта`}
+            : !recipe ? "Выберите сценарий" : !recipe.readiness.ok ? "Сценарий не готов: статьи встанут в очередь, но упадут на этапе без промта или ключа" : !count ? "Добавьте ключи" : `Статьи встанут в очередь, воркер начнёт по лимитам сайта`}
         </span>
       </div>
     </ActionForm>
@@ -141,8 +141,8 @@ function Readiness({ r }: { r: RunFormRecipe }) {
   if (rd.ok) return <div className="mt-1"><Badge tone="ok">готов: промты и ключи на месте</Badge></div>;
   return (
     <div className="mt-1 space-y-1 text-[12.5px]">
-      {rd.noPromptSet && <div className="text-danger">Нет набора промтов для ниши и формата — <Link href={`/pinterest/articles/recipes/${r.id}`} className="underline">открыть рецепт</Link></div>}
-      {rd.missingPrompts.length > 0 && <div className="text-danger">Нет промтов шагов: {rd.missingPrompts.join(", ")} — <Link href={`/pinterest/articles/recipes/${r.id}`} className="underline">исправить в рецепте</Link></div>}
+      {rd.noPromptSet && <div className="text-danger">Нет набора промтов для ниши и формата — <Link href={`/pinterest/articles/scenarios/${r.id}`} className="underline">открыть сценарий</Link></div>}
+      {rd.missingPrompts.length > 0 && <div className="text-danger">Нет промтов шагов: {rd.missingPrompts.join(", ")} — <Link href={`/pinterest/articles/scenarios/${r.id}`} className="underline">исправить в сценарии</Link></div>}
       {rd.missingSlots.length > 0 && <div className="text-warn">Нет ключей ИИ для: {rd.missingSlots.join(", ")} — <Link href="/keys" className="underline">назначить ключ сервису «Статьи»</Link></div>}
     </div>
   );

@@ -1,8 +1,8 @@
 /**
- * Постановка статей в очередь: запуск (ArtRun) + статья на каждый ключ со снимком рецепта.
- * Снимок (ArticleRecipeSnapshot) = поля рецепта + настройки запуска (модерация фото, режим публикации, год в URL,
- * переопределения поиска). Правка рецепта после запуска на уже созданные статьи не влияет — их исполняет воркер по снимку.
- * Готовность рецепта (все промты этапов есть, у пользователя есть правила слотов) считается здесь же для шага «Рецепт».
+ * Постановка статей в очередь: запуск (ArtRun) + статья на каждый ключ со снимком сценария.
+ * Снимок (ArticleRecipeSnapshot) = поля сценария + настройки запуска (модерация фото, режим публикации, год в URL,
+ * переопределения поиска). Правка сценария после запуска на уже созданные статьи не влияет — их исполняет воркер по снимку.
+ * Готовность сценария (все промты этапов есть, у пользователя есть правила слотов) считается здесь же для шага «Сценарий».
  */
 import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
@@ -17,7 +17,7 @@ import {
   SLOTS, aiModerationOn, pickPhotoCount, type ArtRunSettings, type ArticleRecipeSnapshot, type KeywordInput, type PhotoSearchConfig, type RecipeImages, type RecipePublish, type RecipeShape, type RecipeText, type SlotKey,
 } from "./types";
 
-/** Рецепт из строки базы в типизированную форму. */
+/** Сценарий из строки базы в типизированную форму. */
 export function recipeShape(r: ArtRecipe): RecipeShape {
   return {
     id: r.id, name: r.name, nicheCode: r.nicheCode, subnicheCode: r.subnicheCode, format: r.format, promptSetId: r.promptSetId,
@@ -30,7 +30,7 @@ export function recipeShape(r: ArtRecipe): RecipeShape {
   };
 }
 
-/** Снимок рецепта для статьи с учётом настроек запуска. */
+/** Снимок сценария для статьи с учётом настроек запуска. */
 export function buildSnapshot(recipe: RecipeShape, s: ArtRunSettings): ArticleRecipeSnapshot {
   const yearPct = s.yearInUrlPercent ?? recipe.publish.seoYearUrlPercent ?? 0;
   return {
@@ -46,10 +46,10 @@ export function buildSnapshot(recipe: RecipeShape, s: ArtRunSettings): ArticleRe
   };
 }
 
-/* ───────── Готовность рецепта ───────── */
+/* ───────── Готовность сценария ───────── */
 
 export type RecipeReadiness = {
-  /** Каких промтов нет ни в рецепте, ни в наборе (ключи шагов) */
+  /** Каких промтов нет ни в сценарии, ни в наборе (ключи шагов) */
   missingPrompts: string[];
   /** Нет набора промтов вообще */
   noPromptSet: boolean;
@@ -140,15 +140,15 @@ export async function launchArticles(me: CurrentUser, input: LaunchInput): Promi
   const fresh = unique.filter((k) => !dup.has(k.keyword.toLowerCase()));
   if (!fresh.length) throw new Error(skipped.length ? `Все ключи уже есть у этого сайта: ${skipped.slice(0, 5).join(", ")}${skipped.length > 5 ? "…" : ""}` : "Добавьте хотя бы один ключ");
 
-  // Рецепт запуска + рецепты отдельных строк (импорт из Google Таблицы: у каждой строки свой номер рецепта)
+  // Сценарий запуска + сценарии отдельных строк (импорт из Google Таблицы: у каждой строки свой номер сценария)
   const recipeIds = [...new Set(fresh.map((k) => k.recipeId || input.settings.recipeId).filter(Boolean))];
-  if (!recipeIds.length) throw new Error("Выберите рецепт");
+  if (!recipeIds.length) throw new Error("Выберите сценарий");
   const recipeRows = await prisma.artRecipe.findMany({ where: { id: { in: recipeIds }, isActive: true } });
   const recipes = new Map(recipeRows.map((r) => [r.id, recipeShape(r)]));
   const recipeOf = (k: KeywordInput) => recipes.get(k.recipeId || input.settings.recipeId);
-  if (fresh.some((k) => !recipeOf(k))) throw new Error("Рецепт не найден или выключен");
+  if (fresh.some((k) => !recipeOf(k))) throw new Error("Сценарий не найден или выключен");
 
-  // Снимок рецепта на статью: параметры запуска + переопределения строки (одинаковые строки делят один снимок)
+  // Снимок сценария на статью: параметры запуска + переопределения строки (одинаковые строки делят один снимок)
   const snapshots = new Map<string, ArticleRecipeSnapshot>();
   const snapshotOf = (k: KeywordInput, recipe: RecipeShape): ArticleRecipeSnapshot => {
     const s: ArtRunSettings = {
@@ -188,7 +188,7 @@ export async function launchArticles(me: CurrentUser, input: LaunchInput): Promi
       ...(sheet && k.sheetRow ? { sheetRow: k.sheetRow, sheetTab: sheet.tab } : {}),
     };
   });
-  // Пачками, чтобы не упереться в лимит размера запроса (снимок рецепта в каждой строке)
+  // Пачками, чтобы не упереться в лимит размера запроса (снимок сценария в каждой строке)
   for (let i = 0; i < data.length; i += 50) await prisma.article.createMany({ data: data.slice(i, i + 50) });
   return { runId: run.id, created: fresh.length, skipped, invalid, sheetRows: sheet ? fresh.map((k) => k.sheetRow).filter((r): r is number => !!r) : [] };
 }

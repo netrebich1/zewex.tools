@@ -34,7 +34,7 @@ export const STAGE_INFO: Record<StageKey, StageInfo> = {
   rate: { label: "ИИ-оценка", legacy: 13, phase: "photos", promptKeys: ["rp_photo_rate"], slots: ["vision"], description: "Оценка 1–10, релевантность теме, аудитория, аутентичность, виральность, тренд; идёт до сравнения кадров." },
   select: { label: "Отбор", legacy: 14, phase: "photos", promptKeys: [], slots: ["vision"], description: "Уникальность между сайтами, сеточный отбор, раскладка; ≥15 кадров — дальше." },
   plan: { label: "План по фото", legacy: 15, phase: "writing", promptKeys: ["rp_photo_plan"], slots: ["text_fast"], description: "Порядок фото, заголовки H2, H1, title, описание, URL, план вступления." },
-  section_plan: { label: "План секций", legacy: 16, phase: "writing", promptKeys: ["rp_section_plan"], slots: ["text_fast"], description: "Рецепт каждой секции: угол, объём, список, уход, честный минус." },
+  section_plan: { label: "План секций", legacy: 16, phase: "writing", promptKeys: ["rp_section_plan"], slots: ["text_fast"], description: "Сценарий каждой секции: угол, объём, список, уход, честный минус." },
   blueprint: { label: "Блюпринт", legacy: 65, phase: "writing", promptKeys: [], slots: [], description: "Детерминированная сборка структуры статьи (без ИИ)." },
   intro_outro: { label: "Вступление и заключение", legacy: 72, phase: "writing", promptKeys: ["stage_7_intro_outro"], slots: ["text_main"], description: "Вступление 2 абзаца 90–120 слов и обязательное заключение." },
   sections: { label: "Тексты секций", legacy: 73, phase: "writing", promptKeys: ["stage_7_writer_system", "stage_7_writer_user"], slots: ["text_main"], description: "Секции пачками, частичный результат сохраняется, минимум 40 слов." },

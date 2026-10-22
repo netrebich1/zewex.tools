@@ -13,7 +13,7 @@ import type { BlogPhotoSearch } from "@/lib/blog/types";
 
 export { buildSearchQuery, hostOf, isBlockedDomain, orientationVerdict, sizeVerdict, type PhotoCandidateInput, type SearchCfg, type SearchResult } from "@/lib/articles/photo/search";
 
-/** Настройки поиска рецепта → SearchCfg статей (общие фильтры размера/ориентации/доменов). orientation — на слот. */
+/** Настройки поиска сценария → SearchCfg статей (общие фильтры размера/ориентации/доменов). orientation — на слот. */
 export function searchCfgFor(ps: BlogPhotoSearch, orientation: "tall" | "square" | "any" | "wide"): SearchCfg {
   const orient = orientation === "any" ? ["any" as const] : orientation === "tall" ? ["tall" as const] : orientation === "square" ? ["square" as const] : ["wide" as const];
   return normalizeSearchConfig({
@@ -22,7 +22,7 @@ export function searchCfgFor(ps: BlogPhotoSearch, orientation: "tall" | "square"
     language: ps.language,
     freshness: ps.freshness,
     imageType: ps.imageType,
-    // «any» понимает normalizeSearchConfig (обнуляет остальные), хотя в типе рецепта статей его нет
+    // «any» понимает normalizeSearchConfig (обнуляет остальные), хотя в типе сценария статей его нет
     orientation: orient as unknown as BlogPhotoSearch["orientation"],
     minWidth: ps.minSide,
     minHeight: ps.minSide,

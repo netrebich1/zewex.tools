@@ -8,10 +8,10 @@
 | Что | Где |
 |---|---|
 | Страницы | `src/app/(app)/pinterest/blog/*`: обзор, `review` (проверка), `recipes`, `journal`, `sites`, `runs/new`, `runs/[id]`, `posts/[id]` |
-| Действия | `src/actions/blog.ts` (сайты, запуск, посты, фото, проверка), `src/actions/blogRecipes.ts` (рецепты, промты, версии) |
-| Библиотека | `src/lib/blog/*`: `types` (настройки, параметры рецепта, бриф, план), `stages` (реестр), `blocks` (каталог блоков), `recipes`, `launch`, `queries`, `access`, `ai` (клиент портала под проект `blog`), `prompts`, `serp`, `text`, `html`, `schema`, `qualityCheck`, `storage`, `photo/search`, `photo/ratePrompt`, `wp/categories`, `wp/publish` |
+| Действия | `src/actions/blog.ts` (сайты, запуск, посты, фото, проверка), `src/actions/blogRecipes.ts` (сценарии, промты, версии) |
+| Библиотека | `src/lib/blog/*`: `types` (настройки, параметры сценария, бриф, план), `stages` (реестр), `blocks` (каталог блоков), `recipes`, `launch`, `queries`, `access`, `ai` (клиент портала под проект `blog`), `prompts`, `serp`, `text`, `html`, `schema`, `qualityCheck`, `storage`, `photo/search`, `photo/ratePrompt`, `wp/categories`, `wp/publish` |
 | Воркер | `worker/blog/*`: `queue` (пост = строка очереди), `runner`, `journal`, `stages/*` (11 этапов) |
-| Данные | модели `Blog*` в `prisma/schema.prisma`; сид проекта, слотов и рецепта — `prisma/seed.mjs` + `prisma/seed-data/blog/recipes.json` |
+| Данные | модели `Blog*` в `prisma/schema.prisma`; сид проекта, слотов и сценария — `prisma/seed.mjs` + `prisma/seed-data/blog/recipes.json` |
 | Файлы | `storage/blog/<postId>/{cand,photos}/…` (nginx `/files/`) |
 | Самопроверка | `npx tsx scripts/blog/selftest.ts` (чистка HTML, сборка, JSON-LD, проверка качества — без ИИ и базы) |
 
@@ -23,7 +23,7 @@
 1. `research` — text_fast: интент (how_to / why / which / comparison / list / problem_fix / what_is), аудитория, YMYL, бриф знаний
    (факты с уверенностью, do/don't, ошибки, безопасность, материалы, сроки, вопросы). При `research.serp` — People Also Ask и заголовки топа.
 2. `outline` — text_main: план из каталога блоков (`blocks.ts`): H1/мета, 4–9 секций с типом и ключевыми пунктами, объём, слоты
-   картинок с поисковыми запросами, флаги takeaways/FAQ/дисклеймер. Код держит границы рецепта (объём, число картинок, уникальные H2).
+   картинок с поисковыми запросами, флаги takeaways/FAQ/дисклеймер. Код держит границы сценария (объём, число картинок, уникальные H2).
    Пишет `BlogSection` (planned) и `BlogImageSlot` (hero, s<N>, closing).
 3. `photo_search` → `photo_filter` → `photo_rate` → `photo_select` — по слотам: Google Images (DataForSEO / SerpApi), технический
    фильтр (порт фильтра статей), vision-оценка «релевантность + качество + настоящее фото» (промт `photo_rate` или встроенный
@@ -38,7 +38,7 @@
 
 Классы сбоев и повторы — общие со статьями (`src/lib/articles/errors.ts`). Расход — `UsageLog.refId = postId`.
 
-## Рецепт
+## Сценарий
 
 `BlogRecipe`: `prompts` {stageKey: {system, text}} (переменные — `STAGE_VARS` в `stages.ts`), `models` {stageKey: provider:model},
 `params` (`BlogRecipeParams`: объём, картинки, голос и персона, блоки always/never/auto, FAQ, ссылки, SerpAPI), `photoSearch`, `publish`.

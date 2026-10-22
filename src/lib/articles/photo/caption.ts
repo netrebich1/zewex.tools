@@ -1,6 +1,6 @@
 /**
  * Подпись источника под фото статьи (порт _shared/photoCaption.ts + buildCaption из photoSearch.ts:621-627).
- * Режимы из рецепта (`photoSearch.captionMode`): none — без подписи, domain — текст,
+ * Режимы из сценария (`photoSearch.captionMode`): none — без подписи, domain — текст,
  * domain_link — текст со ссылкой на страницу-источник (nofollow). Шаблон: {credit} {domain} {url}.
  */
 import type { PhotoSearchConfig } from "@/lib/articles/types";
@@ -61,7 +61,7 @@ export function hostOf(url?: string | null): string | null {
   }
 }
 
-/** Подпись под фото по настройкам рецепта (оригинал: photoSearch.ts:621-627). null — без подписи. */
+/** Подпись под фото по настройкам сценария (оригинал: photoSearch.ts:621-627). null — без подписи. */
 export function buildCaption(cfg: Pick<PhotoSearchConfig, "captionMode" | "captionTemplate">, domain: string | null, pageUrl: string | null): string | null {
   if (cfg.captionMode === "none") return null;
   const dom = domain || hostOf(pageUrl) || "";

@@ -16,7 +16,7 @@ type Props = {
 
 /**
  * Ключи из Google Таблицы (шаг «Ключи» нового запуска): ссылка → «Прочитать таблицу» → что пойдёт в работу и что пропустим.
- * Вкладка = домен сайта; берутся строки без статуса и без Publish URL; рецепт — по номеру в колонке «Сценарий», режим — из «Режим».
+ * Вкладка = домен сайта; берутся строки без статуса и без Publish URL; сценарий — по номеру в колонке «Сценарий», режим — из «Режим».
  * В форму уходят скрытые `source=sheet` и `sheetUrl`; при запуске сервер читает таблицу заново и отмечает взятые строки «в работе».
  */
 export function SheetImport({ siteId, defaultUrl, domain, sheets, onCount }: Props) {
@@ -58,7 +58,7 @@ export function SheetImport({ siteId, defaultUrl, domain, sheets, onCount }: Pro
           <button type="button" className="btn-primary" onClick={read} disabled={loading || !url.trim()}>{loading ? "Читаю…" : preview ? "Прочитать заново" : "Прочитать таблицу"}</button>
         </div>
       </Field>
-      <p className="help">Берутся строки без «Статуса» и без Publish URL. Рецепт — номер в колонке «Сценарий», режим — колонка «Режим» (2 — сначала модерация фото, 1 — текст сразу); без них строка не берётся. Колонки «Год в URL», «Гео», «Язык», «Свежесть» — необязательные.</p>
+      <p className="help">Берутся строки без «Статуса» и без Publish URL. Сценарий — номер в колонке «Сценарий», режим — колонка «Режим» (2 — сначала модерация фото, 1 — текст сразу); без них строка не берётся. Колонки «Год в URL», «Гео», «Язык», «Свежесть» — необязательные.</p>
 
       {error && <Alert tone="danger">{error}</Alert>}
 
@@ -99,7 +99,7 @@ export function SheetImport({ siteId, defaultUrl, domain, sheets, onCount }: Pro
             <div className="rounded-xl border border-line overflow-hidden">
               <div className="table-wrap">
                 <table className="table text-[13px]">
-                  <thead><tr><th className="w-14">Строка</th><th>Ключ (тема статьи)</th><th>Рецепт</th><th className="hidden sm:table-cell">Режим</th><th className="hidden md:table-cell">Из таблицы</th></tr></thead>
+                  <thead><tr><th className="w-14">Строка</th><th>Ключ (тема статьи)</th><th>Сценарий</th><th className="hidden sm:table-cell">Режим</th><th className="hidden md:table-cell">Из таблицы</th></tr></thead>
                   <tbody>
                     {visible.map((r) => (
                       <tr key={r.row}>

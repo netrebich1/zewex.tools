@@ -85,7 +85,7 @@ export async function publishPost(ctx: PublishCtx): Promise<PublishOutcome> {
     }
   }
 
-  // Фото в медиатеку. Задания: оригинал и/или картинка с плашкой (pin_images) — по режиму рецепта:
+  // Фото в медиатеку. Задания: оригинал и/или картинка с плашкой (pin_images) — по режиму сценария:
   // article — в статье картинка с плашкой (оригинал не нужен), pin_only — оба (плашка уходит в data-pin-media), off — оригинал.
   const live = photos.filter((p) => !p.excluded).sort((a, b) => a.position - b.position);
   const ovMode = ctx.recipe.params.overlay?.mode ?? "off";

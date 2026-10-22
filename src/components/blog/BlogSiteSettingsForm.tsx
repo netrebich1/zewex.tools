@@ -10,7 +10,7 @@ import { PUBLISH_MODES, REVIEW_MODES, SITE_LIMITS, type BlogSiteSettings } from 
 export type WpCategoryOption = { id: number; name: string; parent?: number | null };
 export type RecipeOption = { id: string; name: string; isActive: boolean };
 
-/** Настройки сайта в сервисе инфо-статей: рецепт по умолчанию, проверка, публикация, категории WordPress, лимит, поиск. */
+/** Настройки сайта в сервисе инфо-статей: сценарий по умолчанию, проверка, публикация, категории WordPress, лимит, поиск. */
 export function BlogSiteSettingsForm({ site, settings: s, categories, recipes }: { site: { id: string; name: string; defaultRecipeId: string | null }; settings: BlogSiteSettings; categories: WpCategoryOption[]; recipes: RecipeOption[] }) {
   const [rules, setRules] = useState(s.categories.rules);
   const catName = (id: number | null) => categories.find((c) => c.id === id)?.name ?? (id ? `#${id}` : "");
@@ -21,7 +21,7 @@ export function BlogSiteSettingsForm({ site, settings: s, categories, recipes }:
         <div className="text-[13px] font-semibold">Основное</div>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Название сайта в сервисе"><input name="name" className="input" defaultValue={site.name} /></Field>
-          <Field label="Рецепт по умолчанию" hint="Подставляется на шаге «Рецепт» нового запуска.">
+          <Field label="Сценарий по умолчанию" hint="Подставляется на шаге «Сценарий» нового запуска.">
             <select name="defaultRecipeId" className="input" defaultValue={site.defaultRecipeId ?? ""}>
               <option value="">— выбирать при запуске —</option>
               {recipes.map((r) => <option key={r.id} value={r.id}>{r.name}{r.isActive ? "" : " (выключен)"}</option>)}
@@ -39,7 +39,7 @@ export function BlogSiteSettingsForm({ site, settings: s, categories, recipes }:
           <Field label="Режим публикации">
             <select name="publishMode" className="input" defaultValue={s.publishMode}>{PUBLISH_MODES.map((m) => <option key={m.value} value={m.value} title={m.help}>{m.label}</option>)}</select>
           </Field>
-          <Field label="Год в адресе статьи, %" hint="Пусто — как в рецепте."><input name="yearInUrlPercent" type="number" min={0} max={100} className="input" defaultValue={s.yearInUrlPercent ?? ""} placeholder="как в рецепте" /></Field>
+          <Field label="Год в адресе статьи, %" hint="Пусто — как в сценарии."><input name="yearInUrlPercent" type="number" min={0} max={100} className="input" defaultValue={s.yearInUrlPercent ?? ""} placeholder="как в сценарии" /></Field>
         </div>
         <p className="help">{REVIEW_MODES.find((m) => m.value === s.review)?.help}</p>
       </section>
@@ -74,8 +74,8 @@ export function BlogSiteSettingsForm({ site, settings: s, categories, recipes }:
       <section className={box}>
         <div className="text-[13px] font-semibold">Поиск фото: гео и язык</div>
         <div className="grid grid-cols-2 gap-2 sm:max-w-md">
-          <Field label="Страна" hint="us, gb, de… Пусто — из рецепта."><input name="searchCountry" className="input py-1.5" defaultValue={s.search.country} placeholder="из рецепта" maxLength={8} /></Field>
-          <Field label="Язык" hint="en, de… Пусто — из рецепта."><input name="searchLanguage" className="input py-1.5" defaultValue={s.search.language} placeholder="из рецепта" maxLength={8} /></Field>
+          <Field label="Страна" hint="us, gb, de… Пусто — из сценария."><input name="searchCountry" className="input py-1.5" defaultValue={s.search.country} placeholder="из сценария" maxLength={8} /></Field>
+          <Field label="Язык" hint="en, de… Пусто — из сценария."><input name="searchLanguage" className="input py-1.5" defaultValue={s.search.language} placeholder="из сценария" maxLength={8} /></Field>
         </div>
         <p className="help">Доступ по REST API WordPress, команды и видимость — в общем разделе <Link href="/sites" className="underline">«Сайты»</Link>.</p>
       </section>

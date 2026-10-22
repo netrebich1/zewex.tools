@@ -56,7 +56,7 @@ export function ArticlesTable({ rows, showRun = false, emptyText = "Статей
             <tr>
               <th className="w-8"></th>
               <th>Ключ</th>
-              <th className="hidden md:table-cell">Рецепт</th>
+              <th className="hidden md:table-cell">Сценарий</th>
               <th>Статус</th>
               <th className="hidden sm:table-cell">Этап</th>
               {showRun && <th className="hidden lg:table-cell">Запуск</th>}

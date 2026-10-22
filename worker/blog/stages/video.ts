@@ -1,6 +1,6 @@
 /**
  * Этап `video` (после research, до outline): одно хорошее видео YouTube для статьи — по содержанию, а не по названию.
- * Режимы рецепта: params.video.embed = auto — вставить, если найдётся достойное; params.source = video — «статья по видео»:
+ * Режимы сценария: params.video.embed = auto — вставить, если найдётся достойное; params.source = video — «статья по видео»:
  * метод из лучшего видео становится основным источником (бриф дополняется методом видео). Статья по видео — только для
  * инструкций (intent how_to) и не для тем здоровья/денег (YMYL); не нашлось годного видео — обычная статья, запись в журнал.
  * Стоимость: выдача ~$0.002 + субтитры ~$0.006 × 3 + оценка ~$0.0015 × 3 (+ метод ~$0.002) ≈ $0.025–0.03.
@@ -30,7 +30,7 @@ export const videoStage: StageHandler = async (ctx) => {
   const { post, recipe } = ctx;
   const source = recipe.params.source ?? "research";
   const embed = recipe.params.video?.embed ?? "off";
-  if (source !== "video" && embed === "off") return { summary: "Видео выключено в рецепте" };
+  if (source !== "video" && embed === "off") return { summary: "Видео выключено в сценарии" };
   const prev = (post.video ?? null) as BlogVideoState | null;
   if (prev && (prev.manual || prev.at)) return { summary: prev.chosen ? `Видео уже выбрано: «${prev.chosen.title}»` : `Видео уже подбиралось: ${prev.note ?? "не найдено"}`, details: { skipped: true } };
 

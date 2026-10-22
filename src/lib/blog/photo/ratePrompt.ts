@@ -1,4 +1,4 @@
-/** Встроенный системный промт оценки фото для слотов инфо-статьи (используется, пока в рецепте нет своего `photo_rate`). */
+/** Встроенный системный промт оценки фото для слотов инфо-статьи (используется, пока в сценарии нет своего `photo_rate`). */
 export const RATE_SYSTEM = `You are a strict photo editor for an informational how-to article on a US lifestyle blog.
 For EACH numbered photo decide if it can illustrate the described ARTICLE SECTION.
 

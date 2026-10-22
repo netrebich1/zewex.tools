@@ -40,7 +40,7 @@ const DEFAULT_BATCH = 5;
 
 // Аудит text-v2: подсказки углов и заходов больше не просят первое лицо, «реакцию» и «признание» — именно они
 // превращались в «I wore these to a wedding» и «I was skeptical». Старые ключи (personal_story, skeptic, reaction,
-// confession, scene, opinion) остаются для уже сохранённых рецептов секций, но с нейтральной подсказкой.
+// confession, scene, opinion) остаются для уже сохранённых сценариев секций, но с нейтральной подсказкой.
 const ANGLE_HINTS: Record<string, string> = {
   photo_read: "read this exact design: what makes it work, using only the photo facts",
   how_to_ask: "the exact words to ask the tech or stylist for, built from the visible details",
@@ -68,10 +68,10 @@ const OPENER_HINTS: Record<string, string> = {
   confession: "open with a concrete fact about the design",
   scene: "open with where or when this works best",
 };
-/** Объёмы по рецепту (оригинал: 958) */
+/** Объёмы по сценарию (оригинал: 958) */
 const LENGTH_WORDS: Record<string, string> = { short: "70-95 words", medium: "110-135 words", long: "150-185 words" };
 
-/** Рецепт шага «План секций» → инструкция автору. */
+/** Сценарий шага «План секций» → инструкция автору. */
 function buildRecipeBrief(position: number, heading: string, r: JsonRecord): string {
   const lines: string[] = [];
   lines.push(`Section ${position} — ${heading}`);
@@ -101,7 +101,7 @@ function buildRecipeBrief(position: number, heading: string, r: JsonRecord): str
  * Поля плана секции (rp_photo_plan), которые идут автору как сырой материал; служебные и фото-поля не дублируем.
  * Аудит text-v2: планировщик сочинял «опыт» (real_experience «I wore these to a summer wedding», сроки носки,
  * переходы, оценки, вердикты), автор вставлял его дословно — эти поля автору больше не показываются, даже в планах,
- * сохранённых до правки промтов. Формат/регистр/ритм заданы рецептом секции (section_plan) и тут только спорили с ним.
+ * сохранённых до правки промтов. Формат/регистр/ритм заданы сценарием секции (section_plan) и тут только спорили с ним.
  */
 const BRIEF_SKIP = new Set([
   "recipe", "h2", "h2_draft", "name", "photo_id", "photo_n", "position", "section_number", "keywords_to_bold", "seo_keyword",
@@ -110,7 +110,7 @@ const BRIEF_SKIP = new Set([
   // выдуманный опыт и служебные оценки плана
   "real_experience", "estimated_wear_time", "transition_from_previous", "stylist_score", "color_palette", "style_verdict",
   "standalone_sentence", "standalone_type", "angle_note", "reaction", "hero_piece", "celebrity_inspiration",
-  // структура — из рецепта секции
+  // структура — из сценария секции
   "format", "register", "voice_seed", "sentence_rhythm", "disorder_element", "target_word_count", "section_angle", "bonus_type",
   // аудит text-v3: дубли и «вода» плана (сроки в styling_tips сочинялись, подтон в color_story — «псевдонаука»),
   // в новых планах этих полей нет, в старых — автор их больше не видит
@@ -158,7 +158,7 @@ export function nicheRules(nicheCode: string, keyword: string): string {
   return "";
 }
 
-/** Бриф одной секции real_photo: заголовок, рецепт, план секции, SEO, направление. Фото — отдельно (вложение или описание). */
+/** Бриф одной секции real_photo: заголовок, сценарий, план секции, SEO, направление. Фото — отдельно (вложение или описание). */
 function buildSectionBrief(sec: ArtSection, photo: ArtPhoto, previousEnding: string | undefined, photoAttached: boolean, nicheCode: string): string {
   const b = briefOf(sec);
   const recipe = b.recipe && typeof b.recipe === "object" ? (b.recipe as JsonRecord) : null;

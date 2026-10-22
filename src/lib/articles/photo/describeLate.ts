@@ -40,7 +40,7 @@ export function photosNeedingDescription(photos: ArtPhoto[], recipe: ArticleReci
 }
 
 /**
- * Описать недостающее и записать в ArtPhoto. Модель — как у оценки фото в рецепте (`rp_photo_rate`, обычно flash-lite),
+ * Описать недостающее и записать в ArtPhoto. Модель — как у оценки фото в сценарии (`rp_photo_rate`, обычно flash-lite),
  * иначе модель правила слота vision. Возвращает счётчики для сводки этапа («описаны N фото»).
  */
 export async function describeLatePhotos(ctx: LateDescribeCtx, photos: ArtPhoto[], profile: NicheProfile, keyword: string): Promise<LateDescribeResult> {

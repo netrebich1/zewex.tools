@@ -9,7 +9,7 @@ import { NewArticlesRunForm, type RunFormRecipe, type RunFormSite } from "@/comp
 
 export const dynamic = "force-dynamic";
 
-/** Новый запуск статей: сайт → рецепт (готовность промтов и ключей) → ключи (списком или из Google Таблицы) → параметры. */
+/** Новый запуск статей: сайт → сценарий (готовность промтов и ключей) → ключи (списком или из Google Таблицы) → параметры. */
 export default async function NewArticlesRunPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const me = await requireUser();
   const preset = sp(await searchParams, "site");
@@ -32,7 +32,7 @@ export default async function NewArticlesRunPage({ searchParams }: { searchParam
 
   return (
     <>
-      <PageHeader back={{ href: "/pinterest/articles", label: "Обзор" }} title="Новый запуск" subtitle="Выберите сайт и рецепт, вставьте список ключей (по одному в строке) или возьмите их из Google Таблицы, проверьте параметры и запустите. Каждая строка станет отдельной статьёй в очереди." />
+      <PageHeader back={{ href: "/pinterest/articles", label: "Обзор" }} title="Новый запуск" subtitle="Выберите сайт и сценарий, вставьте список ключей (по одному в строке) или возьмите их из Google Таблицы, проверьте параметры и запустите. Каждая строка станет отдельной статьёй в очереди." />
       <Card><NewArticlesRunForm sites={siteRows} recipes={recipeRows} presetSiteId={preset} sheets={sheets} /></Card>
     </>
   );

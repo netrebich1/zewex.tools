@@ -1,5 +1,5 @@
 /**
- * Рецепты инфо-статей: типизация строки базы, снимок для поста, готовность (промты всех этапов + ключи слотов).
+ * Сценарии инфо-статей: типизация строки базы, снимок для поста, готовность (промты всех этапов + ключи слотов).
  */
 import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
@@ -84,7 +84,7 @@ export function mergePrompts(raw: unknown): Record<string, BlogPrompt> {
   return out;
 }
 
-/** Строка BlogRecipe → типизированный рецепт. */
+/** Строка BlogRecipe → типизированный сценарий. */
 export function recipeShape(r: BlogRecipe): BlogRecipeShape {
   return {
     id: r.id,
@@ -97,7 +97,7 @@ export function recipeShape(r: BlogRecipe): BlogRecipeShape {
   };
 }
 
-/** Снимок рецепта для поста с учётом настроек запуска. */
+/** Снимок сценария для поста с учётом настроек запуска. */
 export function buildSnapshot(recipe: BlogRecipeShape, s: BlogRunSettings): BlogRecipeSnapshot {
   const yearPct = s.yearInUrlPercent ?? recipe.publish.seoYearUrlPercent ?? 0;
   return {

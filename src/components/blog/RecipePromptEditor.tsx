@@ -9,7 +9,7 @@ type Props = { recipeId: string; stageKey: string; label: string; required: bool
 const VAR_RE = /\{\{\s*([A-Za-z0-9_]+)\s*\}\}|(?<![{\w])\{\s*([A-Za-z0-9_]+)\s*\}(?![}\w])/g;
 const usedVars = (t: string) => [...new Set([...t.matchAll(VAR_RE)].map((m) => (m[1] ?? m[2])!))];
 
-/** Редактор промта шага рецепта: модель шага, system и text, чипы переменных (вставка в курсор), версия при сохранении. */
+/** Редактор промта шага сценария: модель шага, system и text, чипы переменных (вставка в курсор), версия при сохранении. */
 export function RecipePromptEditor({ recipeId, stageKey, label, required, system: s0, text: t0, model, vars, hints, popularModels, builtIn }: Props) {
   const [text, setText] = useState(t0);
   const [system, setSystem] = useState(s0);

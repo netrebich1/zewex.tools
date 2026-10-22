@@ -1,7 +1,7 @@
 "use server";
 /**
- * Server actions раздела «Рецепты» (ArtRecipe + ArtPromptSet/ArtPrompt/ArtPromptVersion).
- * Рецепты общие для всех команд: смотреть и править может любой вошедший, удалять — администратор.
+ * Server actions раздела «Сценарии» (ArtRecipe + ArtPromptSet/ArtPrompt/ArtPromptVersion).
+ * Сценарии общие для всех команд: смотреть и править может любой вошедший, удалять — администратор.
  * Сохранение промта всегда пишет ArtPromptVersion (version+1, changeSummary) — оригинал prompt_versions не вёл.
  */
 import { randomUUID } from "crypto";
@@ -25,13 +25,13 @@ const fail = (e: unknown): FormState => ({ error: e instanceof Error ? e.message
 const json = (v: unknown) => v as Prisma.InputJsonValue;
 
 function refresh(id?: string) {
-  revalidatePath("/pinterest/articles/recipes");
-  if (id) revalidatePath(`/pinterest/articles/recipes/${id}`);
+  revalidatePath("/pinterest/articles/scenarios");
+  if (id) revalidatePath(`/pinterest/articles/scenarios/${id}`);
 }
 
 async function recipeOrFail(id: string) {
   const r = await prisma.artRecipe.findUnique({ where: { id } });
-  if (!r) throw new Error("Рецепт не найден");
+  if (!r) throw new Error("Сценарий не найден");
   return r;
 }
 
@@ -41,7 +41,7 @@ export async function createRecipe(_p: FormState, f: FormData): Promise<FormStat
   const nicheCode = str(f, "nicheCode");
   const format = (str(f, "format") === "GENERATED_PHOTO" ? "GENERATED_PHOTO" : "REAL_PHOTO") as ArtFormat;
   const promptSetId = str(f, "promptSetId") || null;
-  if (!name) return { error: "Введите название рецепта" };
+  if (!name) return { error: "Введите название сценария" };
   if (!nicheCode) return { error: "Выберите нишу" };
   let id: string;
   try {
@@ -60,7 +60,7 @@ export async function createRecipe(_p: FormState, f: FormData): Promise<FormStat
     return fail(e);
   }
   refresh(id);
-  redirect(`/pinterest/articles/recipes/${id}?tab=prompts`);
+  redirect(`/pinterest/articles/scenarios/${id}?tab=prompts`);
 }
 
 /** Вкладка «Основное»: название, описание, ниша, набор, по умолчанию/активен, text, publish. */
@@ -96,7 +96,7 @@ export async function saveRecipeMain(_p: FormState, f: FormData): Promise<FormSt
     return fail(e);
   }
   refresh(id);
-  return { ok: "Рецепт сохранён" };
+  return { ok: "Сценарий сохранён" };
 }
 
 /** Вкладка «Поиск фото»: все поля PhotoSearchConfig. */
@@ -165,7 +165,7 @@ export async function savePrompt(_p: FormState, f: FormData): Promise<FormState>
   return { ok: "Промт сохранён, записана новая версия" };
 }
 
-/** Новый вариант промта шага в наборе (пустой или копия выбранного). Сразу становится активным вариантом рецепта. */
+/** Новый вариант промта шага в наборе (пустой или копия выбранного). Сразу становится активным вариантом сценария. */
 export async function createPromptVariant(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const recipeId = str(f, "recipeId");
@@ -193,10 +193,10 @@ export async function createPromptVariant(_p: FormState, f: FormData): Promise<F
     return fail(e);
   }
   refresh(recipeId);
-  redirect(`/pinterest/articles/recipes/${recipeId}?tab=prompts&stage=${encodeURIComponent(stageKey)}&prompt=${id}`);
+  redirect(`/pinterest/articles/scenarios/${recipeId}?tab=prompts&stage=${encodeURIComponent(stageKey)}&prompt=${id}`);
 }
 
-/** Выбрать активный вариант промта шага для рецепта (пусто — первый вариант набора). */
+/** Выбрать активный вариант промта шага для сценария (пусто — первый вариант набора). */
 export async function setStagePrompt(_p: FormState, f: FormData): Promise<FormState> {
   await requireUser();
   const recipeId = str(f, "recipeId");
@@ -239,7 +239,7 @@ export async function setStageModel(_p: FormState, f: FormData): Promise<FormSta
   return { ok: model ? `Модель шага: ${model}` : "Модель шага — из правила ключа" };
 }
 
-/** Копия рецепта вместе с набором промтов (все варианты, новые id, remap stagePromptIds) — одной транзакцией. */
+/** Копия сценария вместе с набором промтов (все варианты, новые id, remap stagePromptIds) — одной транзакцией. */
 export async function copyRecipe(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const id = str(f, "id");
@@ -262,7 +262,7 @@ export async function copyRecipe(_p: FormState, f: FormData): Promise<FormState>
         for (const p of prompts) {
           const pid = map.get(p.id)!;
           await tx.artPrompt.create({ data: { id: pid, setId: newSetId, stageKey: p.stageKey, name: p.name, system: p.system, text: p.text, model: p.model, isActive: p.isActive } });
-          await tx.artPromptVersion.create({ data: { promptId: pid, version: 1, system: p.system, text: p.text, changeSummary: `копия из рецепта «${r.name}»`, createdById: me.id } });
+          await tx.artPromptVersion.create({ data: { promptId: pid, version: 1, system: p.system, text: p.text, changeSummary: `копия из сценария «${r.name}»`, createdById: me.id } });
         }
       }
       await tx.artRecipe.create({
@@ -273,24 +273,24 @@ export async function copyRecipe(_p: FormState, f: FormData): Promise<FormState>
     return fail(e);
   }
   refresh(newId);
-  redirect(`/pinterest/articles/recipes/${newId}`);
+  redirect(`/pinterest/articles/scenarios/${newId}`);
 }
 
-/** Удалить рецепт (только администратор; нельзя, пока есть активные статьи с этим рецептом). Набор промтов остаётся. */
+/** Удалить сценарий (только администратор; нельзя, пока есть активные статьи с этим сценарием). Набор промтов остаётся. */
 export async function deleteRecipe(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
-  if (me.role !== "ADMIN") return { error: "Удалять рецепты может только администратор" };
+  if (me.role !== "ADMIN") return { error: "Удалять сценарии может только администратор" };
   const id = str(f, "id");
   try {
     await recipeOrFail(id);
     const active = await prisma.article.count({ where: { recipeId: id, status: { in: ACTIVE_STATUSES } } });
-    if (active) return { error: `Нельзя удалить: ${active} статей с этим рецептом ещё в работе` };
+    if (active) return { error: `Нельзя удалить: ${active} статей с этим сценарием ещё в работе` };
     const sites = await prisma.artSite.count({ where: { defaultRecipeId: id } });
-    if (sites) return { error: `Рецепт назначен по умолчанию у ${sites} сайтов — сначала смените его в настройках сайтов` };
+    if (sites) return { error: `Сценарий назначен по умолчанию у ${sites} сайтов — сначала смените его в настройках сайтов` };
     await prisma.artRecipe.delete({ where: { id } });
   } catch (e) {
     return fail(e);
   }
   refresh();
-  redirect("/pinterest/articles/recipes");
+  redirect("/pinterest/articles/scenarios");
 }

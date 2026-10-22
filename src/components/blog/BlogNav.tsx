@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 const ITEMS: Array<{ href: string; label: string; exact?: boolean; count?: "review" }> = [
   { href: "/pinterest/blog", label: "Обзор", exact: true },
   { href: "/pinterest/blog/review", label: "Проверка", count: "review" },
-  { href: "/pinterest/blog/recipes", label: "Рецепты" },
+  { href: "/pinterest/blog/scenarios", label: "Сценарии" },
   { href: "/pinterest/blog/journal", label: "Журнал" },
   { href: "/pinterest/blog/sites", label: "Сайты" },
   { href: "/pinterest/blog/runs/new", label: "Новый запуск" },

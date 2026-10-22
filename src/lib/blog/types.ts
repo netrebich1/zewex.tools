@@ -60,7 +60,7 @@ export const TRI_OPTIONS: Array<{ value: Tri; label: string }> = [
   { value: "never", label: "Никогда" },
 ];
 
-/** Параметры рецепта инфо-статьи (BlogRecipe.params). Границы — для плана; внутри них структуру выбирает ИИ по теме. */
+/** Параметры сценария инфо-статьи (BlogRecipe.params). Границы — для плана; внутри них структуру выбирает ИИ по теме. */
 export type BlogRecipeParams = {
   length: { min: number; max: number };
   images: { min: number; max: number; heroOrientation: "tall" | "square" | "any" };
@@ -106,7 +106,7 @@ export const DEFAULT_PARAMS: BlogRecipeParams = {
   country: "US",
 };
 
-/** Настройки поиска фото рецепта (подмножество PhotoSearchConfig статей; нормализация — src/lib/blog/photo/search.ts). */
+/** Настройки поиска фото сценария (подмножество PhotoSearchConfig статей; нормализация — src/lib/blog/photo/search.ts). */
 export type BlogPhotoSearch = {
   source: "dataforseo" | "serpapi";
   country: string;
@@ -144,10 +144,10 @@ export const DEFAULT_PHOTO_SEARCH: BlogPhotoSearch = {
 export type BlogPublish = { mode: PublishMode; seoYearUrlPercent: number; schema: "inline" | "off" };
 export const DEFAULT_PUBLISH: BlogPublish = { mode: "publish_then_edit", seoYearUrlPercent: 0, schema: "inline" };
 
-/** Промт этапа в рецепте (BlogRecipe.prompts[stageKey]). */
+/** Промт этапа в сценарии (BlogRecipe.prompts[stageKey]). */
 export type BlogPrompt = { system: string; text: string };
 
-/** Рецепт как хранится в BlogRecipe (JSON-поля типизированы). */
+/** Сценарий как хранится в BlogRecipe (JSON-поля типизированы). */
 export type BlogRecipeShape = {
   id: string;
   name: string;
@@ -205,7 +205,7 @@ export type BlogRunSettings = {
   publishMode: PublishMode;
   search: { country: string; language: string };
   yearInUrlPercent: number | null;
-  /** Переопределения объёма и картинок на этот запуск (пусто — из рецепта) */
+  /** Переопределения объёма и картинок на этот запуск (пусто — из сценария) */
   length?: { min: number; max: number } | null;
   images?: { min: number; max: number } | null;
   testLabel: string;
@@ -213,7 +213,7 @@ export type BlogRunSettings = {
 
 export type KeywordInput = { keyword: string; focusKeyword?: string };
 
-/** Снимок рецепта и настроек запуска, который сохраняется в BlogPost.recipe и исполняется воркером. */
+/** Снимок сценария и настроек запуска, который сохраняется в BlogPost.recipe и исполняется воркером. */
 export type BlogRecipeSnapshot = BlogRecipeShape & {
   run: { review: ReviewMode; publishMode: PublishMode; yearInUrlPercent: number; testLabel: string };
   /** Выбранный сценарий (этап scenario) */

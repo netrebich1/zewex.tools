@@ -1,7 +1,7 @@
 /**
  * Поисковые запросы для фото: вариации ключа (один вызов ИИ, промт rp_photo_search), перевод для не-английского гео,
  * инструкция тренд-справки. Порт оригинала _shared/photoQueries.ts (+ trendBriefInstruction из trendBrief.ts; сам бриф — ./vision.ts).
- * Модель — stageModel(recipe, "rp_photo_search"), слот text_fast; промт — из набора рецепта (resolvePromptOptional),
+ * Модель — stageModel(recipe, "rp_photo_search"), слот text_fast; промт — из набора сценария (resolvePromptOptional),
  * иначе встроенный. Переменная {target_country} берётся из итогового cfg.country (аудит 02, п.7.16).
  */
 import { aiChat, type AiCtx } from "@/lib/articles/ai";

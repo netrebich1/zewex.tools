@@ -17,7 +17,7 @@ export type CaptionCfg = { mode: CaptionMode; template: string };
 
 export const DEFAULT_CAPTION_TEMPLATE = "{credit} {domain}";
 
-/** Настройка подписи из рецепта поиска фото (оригинал: assemble:71-77). */
+/** Настройка подписи из сценария поиска фото (оригинал: assemble:71-77). */
 export function captionCfgFrom(mode: unknown, template: unknown): CaptionCfg {
   const m = String(mode || "");
   return {

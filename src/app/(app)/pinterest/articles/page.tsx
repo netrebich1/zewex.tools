@@ -44,7 +44,7 @@ export default async function ArticlesHome() {
 
         <Card title="Сайты" description={<FunnelLegend />} actions={<Link href="/pinterest/articles/sites" className="btn-ghost btn-sm">Все сайты и подключение</Link>}>
           {sites.length === 0 ? (
-            <Empty title="Сайтов в сервисе нет" hint="Подключите сайт: он берётся из общего раздела «Сайты» (доступ WordPress), а ниша и рецепт задаются здесь." action={<Link href="/pinterest/articles/sites" className="btn-primary">Подключить сайт</Link>} />
+            <Empty title="Сайтов в сервисе нет" hint="Подключите сайт: он берётся из общего раздела «Сайты» (доступ WordPress), а ниша и сценарий задаются здесь." action={<Link href="/pinterest/articles/sites" className="btn-primary">Подключить сайт</Link>} />
           ) : (
             <div className="table-wrap">
               <table className="table">
@@ -54,7 +54,7 @@ export default async function ArticlesHome() {
                     <tr key={s.id}>
                       <td className="min-w-[160px]">
                         <Link href={`/pinterest/articles/sites/${s.id}`} className="font-medium hover:underline">{s.name}</Link>
-                        <div className="help">{s.teamName}{s.recipeName ? ` · ${s.recipeName}` : " · рецепт не задан"}{!s.hasAccess && <span className="text-warn"> · нет доступа WP</span>}</div>
+                        <div className="help">{s.teamName}{s.recipeName ? ` · ${s.recipeName}` : " · сценарий не задан"}{!s.hasAccess && <span className="text-warn"> · нет доступа WP</span>}</div>
                       </td>
                       <td><SiteFunnel siteId={s.id} f={s.funnel} /></td>
                       <td className="hidden lg:table-cell text-muted tabular-nums">{s.funnel.total} / {s.funnel.completed}</td>

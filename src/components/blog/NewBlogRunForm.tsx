@@ -12,7 +12,7 @@ import { KeywordsInput } from "./KeywordsInput";
 export type RunFormSite = { id: string; name: string; defaultRecipeId: string | null; hasAccess: boolean; categoriesCount: number; settings: BlogSiteSettings };
 export type RunFormRecipe = { id: string; name: string; description: string | null; isDefault: boolean; length: { min: number; max: number }; images: { min: number; max: number }; readiness: RecipeReadiness };
 
-/** Новый запуск: сайт → рецепт (готовность промтов и ключей) → ключи → параметры этого запуска. */
+/** Новый запуск: сайт → сценарий (готовность промтов и ключей) → ключи → параметры этого запуска. */
 export function NewBlogRunForm({ sites, recipes, presetSiteId }: { sites: RunFormSite[]; recipes: RunFormRecipe[]; presetSiteId?: string }) {
   const [siteId, setSiteId] = useState(presetSiteId && sites.some((s) => s.id === presetSiteId) ? presetSiteId : sites[0]?.id ?? "");
   const site = sites.find((s) => s.id === siteId);
@@ -43,8 +43,8 @@ export function NewBlogRunForm({ sites, recipes, presetSiteId }: { sites: RunFor
       </section>
 
       <section className="space-y-2">
-        <div className="font-medium">2. Рецепт</div>
-        {recipes.length === 0 ? <Alert tone="warn">Рецептов нет. Создайте рецепт в разделе <Link href="/pinterest/blog/recipes" className="underline">«Рецепты»</Link>.</Alert> : (
+        <div className="font-medium">2. Сценарий</div>
+        {recipes.length === 0 ? <Alert tone="warn">Сценариев нет. Создайте сценарий в разделе <Link href="/pinterest/blog/scenarios" className="underline">«Сценарии»</Link>.</Alert> : (
           <div className="grid gap-2 sm:grid-cols-2">
             {recipes.map((r) => {
               const on = r.id === recipeId;
@@ -53,11 +53,11 @@ export function NewBlogRunForm({ sites, recipes, presetSiteId }: { sites: RunFor
                   <div className="flex items-start gap-2">
                     <input type="radio" name="recipePick" className="mt-1" checked={on} onChange={() => setRecipeId(r.id)} />
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5"><b className="truncate">{r.name}</b>{r.isDefault && <Badge>по умолчанию</Badge>}{r.id === site?.defaultRecipeId && <Badge tone="brand">рецепт сайта</Badge>}</div>
+                      <div className="flex flex-wrap items-center gap-1.5"><b className="truncate">{r.name}</b>{r.isDefault && <Badge>по умолчанию</Badge>}{r.id === site?.defaultRecipeId && <Badge tone="brand">сценарий сайта</Badge>}</div>
                       <div className="help mt-0.5">{r.length.min}–{r.length.max} слов · {r.images.min}–{r.images.max} фото{r.description ? ` · ${r.description}` : ""}</div>
                       {r.readiness.ok ? <div className="mt-1"><Badge tone="ok">готов: промты и ключи на месте</Badge></div> : (
                         <div className="mt-1 space-y-1 text-[12.5px]">
-                          {r.readiness.missingPrompts.length > 0 && <div className="text-danger">Нет промтов шагов: {r.readiness.missingPrompts.join(", ")} — <Link href={`/pinterest/blog/recipes/${r.id}?tab=prompts`} className="underline">заполнить</Link></div>}
+                          {r.readiness.missingPrompts.length > 0 && <div className="text-danger">Нет промтов шагов: {r.readiness.missingPrompts.join(", ")} — <Link href={`/pinterest/blog/scenarios/${r.id}?tab=prompts`} className="underline">заполнить</Link></div>}
                           {r.readiness.missingSlots.length > 0 && <div className="text-warn">Нет ключей ИИ для: {r.readiness.missingSlots.join(", ")} — <Link href="/keys" className="underline">назначить ключ сервису «Pin Blog Article»</Link></div>}
                         </div>
                       )}
@@ -77,7 +77,7 @@ export function NewBlogRunForm({ sites, recipes, presetSiteId }: { sites: RunFor
 
       <section className="space-y-2">
         <div className="font-medium">4. Параметры запуска</div>
-        <p className="help">Заполнено из настроек сайта и рецепта. Меняется только для этого запуска.</p>
+        <p className="help">Заполнено из настроек сайта и сценария. Меняется только для этого запуска.</p>
         {site && (
           <div key={site.id} className="rounded-xl border border-line p-3 sm:p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Проверка перед публикацией">
@@ -86,14 +86,14 @@ export function NewBlogRunForm({ sites, recipes, presetSiteId }: { sites: RunFor
             <Field label="Режим публикации">
               <select name="publishMode" className="input py-1.5" defaultValue={site.settings.publishMode}>{PUBLISH_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select>
             </Field>
-            <Field label="Год в адресе статьи, %" hint="Пусто — как в настройках сайта или рецепте."><input name="yearInUrlPercent" type="number" min={0} max={100} className="input py-1.5" defaultValue={site.settings.yearInUrlPercent ?? ""} placeholder="как в рецепте" /></Field>
-            <Field label="Объём статьи, слов (от – до)" hint={recipe ? `В рецепте ${recipe.length.min}–${recipe.length.max}. Пусто — как в рецепте.` : undefined}>
+            <Field label="Год в адресе статьи, %" hint="Пусто — как в настройках сайта или сценарии."><input name="yearInUrlPercent" type="number" min={0} max={100} className="input py-1.5" defaultValue={site.settings.yearInUrlPercent ?? ""} placeholder="как в сценарии" /></Field>
+            <Field label="Объём статьи, слов (от – до)" hint={recipe ? `В сценарии ${recipe.length.min}–${recipe.length.max}. Пусто — как в сценарии.` : undefined}>
               <div className="grid grid-cols-2 gap-2"><input name="lengthMin" type="number" min={300} max={6000} className="input py-1.5" placeholder={recipe ? String(recipe.length.min) : ""} /><input name="lengthMax" type="number" min={300} max={6000} className="input py-1.5" placeholder={recipe ? String(recipe.length.max) : ""} /></div>
             </Field>
-            <Field label="Картинок (от – до)" hint={recipe ? `В рецепте ${recipe.images.min}–${recipe.images.max}.` : undefined}>
+            <Field label="Картинок (от – до)" hint={recipe ? `В сценарии ${recipe.images.min}–${recipe.images.max}.` : undefined}>
               <div className="grid grid-cols-2 gap-2"><input name="imagesMin" type="number" min={1} max={12} className="input py-1.5" placeholder={recipe ? String(recipe.images.min) : ""} /><input name="imagesMax" type="number" min={1} max={12} className="input py-1.5" placeholder={recipe ? String(recipe.images.max) : ""} /></div>
             </Field>
-            <Field label="Поиск фото: страна / язык" hint="Пусто — из рецепта.">
+            <Field label="Поиск фото: страна / язык" hint="Пусто — из сценария.">
               <div className="grid grid-cols-2 gap-2"><input name="searchCountry" className="input py-1.5" defaultValue={site.settings.search.country} placeholder="us" maxLength={8} /><input name="searchLanguage" className="input py-1.5" defaultValue={site.settings.search.language} placeholder="en" maxLength={8} /></div>
             </Field>
             <Field label="Название запуска (необязательно)"><input name="name" className="input py-1.5" placeholder="Октябрь · волосы · 20 тем" /></Field>
@@ -104,7 +104,7 @@ export function NewBlogRunForm({ sites, recipes, presetSiteId }: { sites: RunFor
 
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton className="btn-brand" pendingText="Ставлю в очередь…">Запустить {count ? `${count} статей` : ""}</SubmitButton>
-        <span className="help">{!recipe ? "Выберите рецепт" : !recipe.readiness.ok ? "Рецепт не готов: статьи встанут в очередь, но упадут на этапе без промта или ключа" : !count ? "Добавьте ключи" : "Статьи встанут в очередь, воркер начнёт по лимиту сайта"}</span>
+        <span className="help">{!recipe ? "Выберите сценарий" : !recipe.readiness.ok ? "Сценарий не готов: статьи встанут в очередь, но упадут на этапе без промта или ключа" : !count ? "Добавьте ключи" : "Статьи встанут в очередь, воркер начнёт по лимиту сайта"}</span>
       </div>
     </ActionForm>
   );

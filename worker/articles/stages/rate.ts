@@ -3,7 +3,7 @@
  *
  * Пачки по `recipe.photoSearch.ratingBatchSize` (8) уходят в vision-модель уменьшенными копиями (≤1024 px) в порядке
  * `techScore DESC, createdAt` (с 2026-10-16 оценка идёт ДО сравнения кадров — волна 3 п.2, beautyRank здесь ещё пуст;
- * `rankScore` после сравнения пересчитает этап rank). Модель — `stageModels["rp_photo_rate"]` рецепта (08-plan §3 п.4),
+ * `rankScore` после сравнения пересчитает этап rank). Модель — `stageModels["rp_photo_rate"]` сценария (08-plan §3 п.4),
  * промт — `rp_photo_rate` набора (система + JSON-контракт + правила темы), иначе встроенный `ratingSystemFor`.
  * Промт собирает `buildRateSystem` (волна 3 п.3, замер 2026-10-16 — см. шапку src/lib/articles/ai.ts): системное
  * сообщение — только неизменная часть (персона набора, JSON-контракт, HARD REJECT), одинаковая для всех статей ниши,

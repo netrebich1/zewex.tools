@@ -520,7 +520,7 @@ export function imageContent(img: VisionImage): ContentPart {
 }
 
 export type VisionRequest = {
-  /** Модель из рецепта (`provider:model`); пусто — модель правила слота */
+  /** Модель из сценария (`provider:model`); пусто — модель правила слота */
   model?: string;
   system: string;
   parts: ContentPart[];

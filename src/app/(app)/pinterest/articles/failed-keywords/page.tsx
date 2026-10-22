@@ -81,7 +81,7 @@ export default async function FailedKeywordsPage({ searchParams }: { searchParam
             {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
           <select name="recipe" className="input py-2" defaultValue={f.recipe ?? ""}>
-            <option value="">Все рецепты</option>
+            <option value="">Все сценарии</option>
             {sum.recipes.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
           <select name="ignored" className="input py-2" defaultValue={f.ignored}>

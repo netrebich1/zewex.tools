@@ -6,7 +6,7 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { createPromptVariant, savePrompt, setStageModel, setStagePrompt } from "@/actions/articlesRecipes";
 
 /**
- * Редактор промта шага рецепта: варианты набора, активный вариант рецепта, модель шага, system и text,
+ * Редактор промта шага сценария: варианты набора, активный вариант сценария, модель шага, system и text,
  * чипы переменных (вставка в курсор), сохранение с записью версии.
  * Оригинал: src/pages/PromptManager.tsx (панель «Редактор») + вкладка «Промты и модели» ScenariosPage.
  */
@@ -23,7 +23,7 @@ type Props = {
   variants: PromptVariant[];
   /** Какой вариант открыт в редакторе */
   prompt: PromptData | null;
-  /** Какой вариант выбран в рецепте (stagePromptIds) — пусто = первый по дате */
+  /** Какой вариант выбран в сценарии (stagePromptIds) — пусто = первый по дате */
   chosenId: string;
   model: string;
   vars: string[];
@@ -45,7 +45,7 @@ export function PromptEditor({ recipeId, setId, stageKey, label, required, varia
 
   const used = useMemo(() => new Set([...usedVars(text), ...usedVars(system)]), [text, system]);
   const unknown = useMemo(() => [...used].filter((v) => !vars.includes(v)), [used, vars]);
-  const base = `/pinterest/articles/recipes/${recipeId}?tab=prompts&stage=${encodeURIComponent(stageKey)}`;
+  const base = `/pinterest/articles/scenarios/${recipeId}?tab=prompts&stage=${encodeURIComponent(stageKey)}`;
 
   const insert = (name: string) => {
     const ta = lastFocus.current === "system" ? sysRef.current : textRef.current;
@@ -64,7 +64,7 @@ export function PromptEditor({ recipeId, setId, stageKey, label, required, varia
   };
 
   if (!setId) {
-    return <p className="help">У рецепта не выбран набор промтов. Выберите его на вкладке «Основное» — тогда здесь появятся варианты промтов шага.</p>;
+    return <p className="help">У сценария не выбран набор промтов. Выберите его на вкладке «Основное» — тогда здесь появятся варианты промтов шага.</p>;
   }
 
   return (
@@ -80,7 +80,7 @@ export function PromptEditor({ recipeId, setId, stageKey, label, required, varia
         {variants.map((v) => (
           <Link key={v.id} href={`${base}&prompt=${v.id}`} className={`tab ${prompt?.id === v.id ? "active" : ""}`} title={`${v.versions} версий · ${v.isActive ? "активен" : "выключен"}`}>
             {v.name}
-            {chosenId === v.id && <span title="Выбран в рецепте">★</span>}
+            {chosenId === v.id && <span title="Выбран в сценарии">★</span>}
             {!v.isActive && <span className="text-muted">·выкл</span>}
           </Link>
         ))}
@@ -92,7 +92,7 @@ export function PromptEditor({ recipeId, setId, stageKey, label, required, varia
       <div className="grid gap-3 sm:grid-cols-2">
         <ActionForm action={setStagePrompt} hidden={{ recipeId, stageKey }} className="card p-3 space-y-2">
           <label className="block">
-            <span className="label">Активный вариант в рецепте</span>
+            <span className="label">Активный вариант в сценарии</span>
             <select name="promptId" className="input" defaultValue={chosenId}>
               <option value="">Первый вариант набора (по дате)</option>
               {variants.map((v) => (

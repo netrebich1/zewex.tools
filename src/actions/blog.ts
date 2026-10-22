@@ -65,7 +65,7 @@ export async function enableBlogForSite(_p: FormState, f: FormData): Promise<For
   revalidatePath("/sites");
   revalidatePath(BLOG);
   revalidatePath(`${BLOG}/sites`);
-  return { ok: "Сервис инфо-статей включён. Проверьте рецепт по умолчанию и режим проверки в настройках сайта." };
+  return { ok: "Сервис инфо-статей включён. Проверьте сценарий по умолчанию и режим проверки в настройках сайта." };
 }
 
 function settingsFromForm(f: FormData, prev: BlogSiteSettings): BlogSiteSettings {
@@ -90,7 +90,7 @@ export async function saveBlogSiteSettings(_p: FormState, f: FormData): Promise<
   try {
     const site = await siteForUser(me, id);
     const recipeId = str(f, "defaultRecipeId");
-    if (recipeId && !(await prisma.blogRecipe.findUnique({ where: { id: recipeId }, select: { id: true } }))) throw new Error("Рецепт по умолчанию не найден");
+    if (recipeId && !(await prisma.blogRecipe.findUnique({ where: { id: recipeId }, select: { id: true } }))) throw new Error("Сценарий по умолчанию не найден");
     const settings = settingsFromForm(f, mergeSiteSettings(site.settings));
     await prisma.blogSite.update({ where: { id }, data: { name: has(f, "name") ? str(f, "name") || site.name : site.name, defaultRecipeId: has(f, "defaultRecipeId") ? recipeId || null : site.defaultRecipeId, settings: settings as unknown as Prisma.InputJsonValue } });
   } catch (e) { return fail(e); }
@@ -171,7 +171,7 @@ export async function launchBlogAction(_p: FormState, f: FormData): Promise<Form
     const siteId = str(f, "siteId");
     const site = await siteForUser(me, siteId);
     const settings = runSettingsFromForm(f, mergeSiteSettings(site.settings));
-    if (!settings.recipeId) throw new Error("Выберите рецепт");
+    if (!settings.recipeId) throw new Error("Выберите сценарий");
     const keywords = parseKeywordsJson(str(f, "keywords"));
     if (!keywords.length) throw new Error("Добавьте хотя бы один ключ");
     const r = await launchPosts(me, { siteId, settings, keywords, name: str(f, "name") });

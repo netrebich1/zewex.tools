@@ -1,6 +1,6 @@
 "use server";
 /**
- * Server actions раздела «Рецепты» инфо-статей (BlogRecipe + BlogRecipeVersion). Рецепты общие для всех команд:
+ * Server actions раздела «Сценарии» инфо-статей (BlogRecipe + BlogRecipeVersion). Сценарии общие для всех команд:
  * смотреть и править может любой вошедший, удалять — администратор. Сохранение промта или параметров пишет версию.
  */
 import { randomUUID } from "crypto";
@@ -25,13 +25,13 @@ const json = (v: unknown) => v as Prisma.InputJsonValue;
 const tri = (v: string, d: Tri): Tri => (v === "always" || v === "never" || v === "auto" ? v : d);
 
 function refresh(id?: string) {
-  revalidatePath(`${BLOG}/recipes`);
-  if (id) revalidatePath(`${BLOG}/recipes/${id}`);
+  revalidatePath(`${BLOG}/scenarios`);
+  if (id) revalidatePath(`${BLOG}/scenarios/${id}`);
 }
 
 async function recipeOrFail(id: string) {
   const r = await prisma.blogRecipe.findUnique({ where: { id }, include: { versions: { orderBy: { version: "desc" }, take: 1, select: { version: true } } } });
-  if (!r) throw new Error("Рецепт не найден");
+  if (!r) throw new Error("Сценарий не найден");
   return r;
 }
 
@@ -43,7 +43,7 @@ export async function createBlogRecipe(_p: FormState, f: FormData): Promise<Form
   const me = await requireUser();
   const name = str(f, "name");
   const fromId = str(f, "fromId");
-  if (!name) return { error: "Введите название рецепта" };
+  if (!name) return { error: "Введите название сценария" };
   let id: string;
   try {
     const last = await prisma.blogRecipe.aggregate({ _max: { number: true } });
@@ -58,7 +58,7 @@ export async function createBlogRecipe(_p: FormState, f: FormData): Promise<Form
     await writeVersion(id, from?.prompts ?? {}, from ? mergeParams(from.params) : DEFAULT_PARAMS, from ? `копия «${from.name}»` : "создан", me.id, 0);
   } catch (e) { return fail(e); }
   refresh(id);
-  redirect(`${BLOG}/recipes/${id}`);
+  redirect(`${BLOG}/scenarios/${id}`);
 }
 
 /** Вкладка «Основное»: название, описание, активность, параметры (объём, картинки, голос, блоки, FAQ, ссылки), публикация. */
@@ -99,10 +99,10 @@ export async function saveBlogRecipeMain(_p: FormState, f: FormData): Promise<Fo
       if (isDefault) await tx.blogRecipe.updateMany({ where: { id: { not: id } }, data: { isDefault: false } });
       await tx.blogRecipe.update({ where: { id }, data: { name: str(f, "name") || r.name, description: str(f, "description") || null, isDefault, isActive: f.get("isActive") === "on", params: json(params), publish: json(publish) } });
     });
-    if (JSON.stringify(params) !== JSON.stringify(p)) await writeVersion(id, cur.prompts, params, str(f, "changeSummary") || "параметры рецепта", me.id, r.versions[0]?.version ?? 0);
+    if (JSON.stringify(params) !== JSON.stringify(p)) await writeVersion(id, cur.prompts, params, str(f, "changeSummary") || "параметры сценария", me.id, r.versions[0]?.version ?? 0);
   } catch (e) { return fail(e); }
   refresh(id);
-  return { ok: "Рецепт сохранён" };
+  return { ok: "Сценарий сохранён" };
 }
 
 /** Вкладка «Поиск фото». */
@@ -190,21 +190,21 @@ export async function restoreBlogVersion(_p: FormState, f: FormData): Promise<Fo
 
 export async function deleteBlogRecipe(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
-  if (me.role !== "ADMIN") return { error: "Удалять рецепты может только администратор" };
+  if (me.role !== "ADMIN") return { error: "Удалять сценарии может только администратор" };
   const id = str(f, "id");
   try {
     await recipeOrFail(id);
     const active = await prisma.blogPost.count({ where: { recipeId: id, status: { in: ACTIVE_STATUSES } } });
-    if (active) return { error: `Нельзя удалить: ${active} статей с этим рецептом ещё в работе` };
+    if (active) return { error: `Нельзя удалить: ${active} статей с этим сценарием ещё в работе` };
     const sites = await prisma.blogSite.count({ where: { defaultRecipeId: id } });
-    if (sites) return { error: `Рецепт назначен по умолчанию у ${sites} сайтов — сначала смените его в настройках сайтов` };
+    if (sites) return { error: `Сценарий назначен по умолчанию у ${sites} сайтов — сначала смените его в настройках сайтов` };
     await prisma.blogRecipe.delete({ where: { id } });
   } catch (e) { return fail(e); }
   refresh();
-  redirect(`${BLOG}/recipes`);
+  redirect(`${BLOG}/scenarios`);
 }
 
-/** Копия рецепта (промты, параметры, модели, поиск, публикация). */
+/** Копия сценария (промты, параметры, модели, поиск, публикация). */
 export async function copyBlogRecipe(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const id = str(f, "id");
@@ -217,5 +217,5 @@ export async function copyBlogRecipe(_p: FormState, f: FormData): Promise<FormSt
     await writeVersion(newId, r.prompts, r.params, `копия «${r.name}»`, me.id, 0);
   } catch (e) { return fail(e); }
   refresh(newId);
-  redirect(`${BLOG}/recipes/${newId}`);
+  redirect(`${BLOG}/scenarios/${newId}`);
 }

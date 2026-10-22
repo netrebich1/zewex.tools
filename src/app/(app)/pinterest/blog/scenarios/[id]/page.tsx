@@ -39,7 +39,7 @@ export default async function BlogRecipePage({ params, searchParams }: { params:
   const [active, have] = await Promise.all([prisma.blogPost.count({ where: { recipeId: id, status: { in: ACTIVE_STATUSES } } }), userSlots(me)]);
   const ready = recipeReadiness(shape, have);
   const steps = promptSteps();
-  const href = (t: string, extra = "") => `/pinterest/blog/recipes/${id}?tab=${t}${extra}`;
+  const href = (t: string, extra = "") => `/pinterest/blog/scenarios/${id}?tab=${t}${extra}`;
   const stageKey = steps.find((s) => s.key === sp(q, "stage"))?.key ?? steps[0]?.key ?? "";
   const step = steps.find((s) => s.key === stageKey);
   const history = tab === "history" ? await prisma.blogRecipeVersion.findMany({ where: { recipeId: id }, orderBy: { version: "desc" }, take: 100 }) : [];
@@ -49,9 +49,9 @@ export default async function BlogRecipePage({ params, searchParams }: { params:
 
   return (
     <>
-      <PageHeader back={{ href: "/pinterest/blog/recipes", label: "Рецепты" }} title={`${r.number != null ? `№${r.number} · ` : ""}${r.name}`}
+      <PageHeader back={{ href: "/pinterest/blog/scenarios", label: "Сценарии" }} title={`${r.number != null ? `№${r.number} · ` : ""}${r.name}`}
         subtitle={<span className="inline-flex flex-wrap items-center gap-1.5">{r.isDefault && <Badge tone="brand">по умолчанию</Badge>}{!r.isActive && <Badge>выключен</Badge>}{ready.ok ? <Badge tone="ok">готов</Badge> : <Badge tone="danger">не готов: {[...ready.missingPrompts, ...ready.missingSlots].join(", ")}</Badge>}{active > 0 && <Badge tone="brand">статей в работе: {active}</Badge>}</span>}
-        actions={<><ActionForm action={copyBlogRecipe} hidden={{ id }} className="inline"><SubmitButton className="btn-ghost" pendingText="Копирую…">Копировать</SubmitButton></ActionForm>{me.role === "ADMIN" && <ActionForm action={deleteBlogRecipe} hidden={{ id }} className="inline"><SubmitButton className="btn-danger" pendingText="Удаляю…" confirm={`Удалить рецепт «${r.name}»?`}>Удалить</SubmitButton></ActionForm>}</>} />
+        actions={<><ActionForm action={copyBlogRecipe} hidden={{ id }} className="inline"><SubmitButton className="btn-ghost" pendingText="Копирую…">Копировать</SubmitButton></ActionForm>{me.role === "ADMIN" && <ActionForm action={deleteBlogRecipe} hidden={{ id }} className="inline"><SubmitButton className="btn-danger" pendingText="Удаляю…" confirm={`Удалить сценарий «${r.name}»?`}>Удалить</SubmitButton></ActionForm>}</>} />
       <div className="mb-4 flex flex-wrap gap-2">{TABS.map(([k, l]) => <Link key={k} href={href(k)} className={`tab ${tab === k ? "active" : ""}`}>{l}</Link>)}</div>
 
       {tab === "main" && (
@@ -61,7 +61,7 @@ export default async function BlogRecipePage({ params, searchParams }: { params:
               <Field label="Название"><input name="name" className="input" defaultValue={r.name} required /></Field>
               <Field label="Описание"><input name="description" className="input" defaultValue={r.description ?? ""} /></Field>
               <div className="flex flex-col gap-2 sm:col-span-2">
-                <label className="inline-flex items-center gap-2 text-[14px]"><input type="checkbox" name="isDefault" defaultChecked={r.isDefault} /> рецепт по умолчанию</label>
+                <label className="inline-flex items-center gap-2 text-[14px]"><input type="checkbox" name="isDefault" defaultChecked={r.isDefault} /> сценарий по умолчанию</label>
                 <label className="inline-flex items-center gap-2 text-[14px]"><input type="checkbox" name="isActive" defaultChecked={r.isActive} /> доступен для запуска</label>
               </div>
             </div>
@@ -81,7 +81,7 @@ export default async function BlogRecipePage({ params, searchParams }: { params:
               <Field label="Последняя картинка"><select name="blockClosing" className="input" defaultValue={p.blocks.closingImage}>{TRI_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></Field>
               <Field label="Текст на фото (как Canvas-пин)" hint="Плашка сверху или снизу, фото не обрезается."><select name="overlayMode" className="input" defaultValue={p.overlay.mode}><option value="article">В статье и в пине</option><option value="pin_only">Только в пине при сохранении</option><option value="off">Не делать</option></select></Field>
               <Field label="На каких фото"><select name="overlayPhotos" className="input" defaultValue={p.overlay.photos}><option value="all">На всех</option><option value="hero">Только на главном</option></select></Field>
-              <div className="sm:col-span-3"><Field label="Сценарий статьи" hint="«Авто»: после исследования система сама выбирает сценарий по типу статьи (инструкция, здоровье, сравнение…). «Вручную»: работают поля ниже."><select name="scenario" className="input" defaultValue={p.scenario}><option value="auto">Авто — по типу статьи</option>{SCENARIOS.map((s) => <option key={s.key} value={s.key} title={s.description}>Всегда: {s.label}</option>)}<option value="manual">Вручную — параметры ниже</option></select></Field>
+              <div className="sm:col-span-3"><Field label="Тип статьи" hint="«Авто»: после исследования система сама определяет тип статьи (инструкция, здоровье, сравнение…), и тип задаёт стратегию. «Вручную»: работают поля ниже."><select name="scenario" className="input" defaultValue={p.scenario}><option value="auto">Авто — система определяет сама</option>{SCENARIOS.map((s) => <option key={s.key} value={s.key} title={s.description}>Всегда: {s.label}</option>)}<option value="manual">Вручную — параметры ниже</option></select></Field>
                 <ul className="help mt-1 list-disc pl-5">{SCENARIOS.map((s) => <li key={s.key}><b>{s.label}</b> — {s.description}</li>)}</ul></div>
               <Field label="Основа статьи (вручную)" hint="«По видео»: метод из лучшего видео YouTube (только инструкции, не здоровье/деньги); не нашлось — обычная статья."><select name="source" className="input" defaultValue={p.source}><option value="research">Исследование темы</option><option value="video">Лучшее видео YouTube</option></select></Field>
               <Field label="Видео в статье (вручную)" hint="Одно видео в подходящей секции; проверяется по субтитрам, ~$0.025."><select name="videoEmbed" className="input" defaultValue={p.video.embed}><option value="off">Нет</option><option value="auto">Если найдётся хорошее</option></select></Field>
@@ -100,14 +100,14 @@ export default async function BlogRecipePage({ params, searchParams }: { params:
               <ul className="mt-2 grid gap-1.5 sm:grid-cols-2 text-[13px]">{BLOCKS.map((b) => <li key={b.kind} className="rounded-lg border border-line p-2"><b>{b.label}</b> <span className="mono text-muted">{b.kind}</span><div className="help">{b.describe}</div></li>)}</ul>
             </details>
           </Card>
-          <Card title="Публикация" description="Режим по умолчанию для запусков с этим рецептом; сайт и запуск могут переопределить.">
+          <Card title="Публикация" description="Режим по умолчанию для запусков с этим сценарием; сайт и запуск могут переопределить.">
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label="Режим публикации"><select name="publishMode" className="input" defaultValue={shape.publish.mode}>{PUBLISH_MODES.map((m) => <option key={m.value} value={m.value} title={m.help}>{m.label}</option>)}</select></Field>
               <Field label="Доля статей с годом в URL, %"><input name="seoYearUrlPercent" type="number" min={0} max={100} step={5} className="input" defaultValue={shape.publish.seoYearUrlPercent} /></Field>
               <Field label="JSON-LD (Article, FAQ, HowTo)" hint="Вставляется в текст записи; если тема WordPress вырезает script — выключите."><select name="schema" className="input" defaultValue={shape.publish.schema}><option value="inline">Вставлять</option><option value="off">Не вставлять</option></select></Field>
             </div>
           </Card>
-          <div className="flex flex-wrap items-end gap-3"><Field label="Что изменили (в историю версий)"><input name="changeSummary" className="input" placeholder="например: объём 1200–2000" /></Field><SubmitButton pendingText="Сохраняю…">Сохранить рецепт</SubmitButton></div>
+          <div className="flex flex-wrap items-end gap-3"><Field label="Что изменили (в историю версий)"><input name="changeSummary" className="input" placeholder="например: объём 1200–2000" /></Field><SubmitButton pendingText="Сохраняю…">Сохранить сценарий</SubmitButton></div>
         </ActionForm>
       )}
 

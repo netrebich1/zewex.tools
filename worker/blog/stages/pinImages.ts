@@ -2,7 +2,7 @@
  * Этап `pin_images`: фото статьи с плашкой текста (src/lib/blog/pinOverlay.ts) — как Canvas-пин, но кадр целиком.
  * 1) Текст плашки на каждое фото: один вызов text_fast (заголовок по секции + кикер), сбой → заголовок секции.
  * 2) Рендер недостающих картинок в blog/<postId>/photos/<photoId>.pin.jpg.
- * Режим рецепта params.overlay.mode: article — в статье стоит картинка с плашкой; pin_only — в статье оригинал,
+ * Режим сценария params.overlay.mode: article — в статье стоит картинка с плашкой; pin_only — в статье оригинал,
  * а картинка с плашкой уходит в пин при сохранении (data-pin-media); off — этап ничего не делает.
  * Идемпотентен: готовые тексты и файлы не трогает; новое фото после замены из резерва получает плашку при повторе этапа.
  */
@@ -35,7 +35,7 @@ export function siteDomain(access: { linkDomain?: string | null; baseUrl?: strin
 export const pinImages: StageHandler = async (ctx) => {
   const { post, recipe, outline } = ctx;
   const ov = recipe.params.overlay ?? { mode: "article", photos: "all" };
-  if (ov.mode === "off") return { summary: "Плашки на фото выключены в рецепте" };
+  if (ov.mode === "off") return { summary: "Плашки на фото выключены в сценарии" };
   const all = await prisma.blogPhoto.findMany({ where: { postId: post.id, excluded: false }, orderBy: { position: "asc" } });
   const photos = ov.photos === "hero" ? all.filter((p) => p.slotKey === "hero") : all;
   if (!photos.length) return { summary: "Нет фото для плашек" };

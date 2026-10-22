@@ -64,7 +64,7 @@ export function normalizeMetaYear(value: string, targetYear: string): string {
   return cleaned.replace(YEAR_PATTERN, "").replace(/\s{2,}/g, " ").trim();
 }
 
-/** Процент статей с годом в URL: настройка запуска → рецепт → 100. (оригинал: stage77:196-201) */
+/** Процент статей с годом в URL: настройка запуска → сценарий → 100. (оригинал: stage77:196-201) */
 export function yearPercentOf(runPercent: number | null | undefined, recipePercent: number | null | undefined): number {
   let p = Number(runPercent);
   if (!Number.isFinite(p)) p = Number(recipePercent);

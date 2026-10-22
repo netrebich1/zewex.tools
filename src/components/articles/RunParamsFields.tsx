@@ -54,26 +54,26 @@ export function RunParamsFields({ s, siteLevel = false, aiModOn = false }: { s: 
             {PUBLISH_MODES.map((m) => <option key={m.value} value={m.value}>{m.label} — {m.help}</option>)}
           </select>
         </Field>
-        <Field label="Год в адресе статьи, %" hint={siteLevel ? "Доля статей, у которых в URL добавляется текущий год (например, …-ideas-2026). Пусто — как в рецепте." : "Пусто — как в настройках сайта или рецепте."}>
-          <input name="yearInUrlPercent" type="number" min={0} max={100} className="input py-1.5" defaultValue={s.yearInUrlPercent ?? ""} placeholder="как в рецепте" />
+        <Field label="Год в адресе статьи, %" hint={siteLevel ? "Доля статей, у которых в URL добавляется текущий год (например, …-ideas-2026). Пусто — как в сценарии." : "Пусто — как в настройках сайта или сценарии."}>
+          <input name="yearInUrlPercent" type="number" min={0} max={100} className="input py-1.5" defaultValue={s.yearInUrlPercent ?? ""} placeholder="как в сценарии" />
         </Field>
       </section>
 
       <section className="rounded-xl border border-line p-3 space-y-2 lg:col-span-2">
         <div className="text-[13px] font-semibold">Поиск фото: гео, язык, свежесть</div>
-        <p className="help">Переопределяют настройки поиска из рецепта. Пусто — берётся из рецепта.</p>
+        <p className="help">Переопределяют настройки поиска из сценария. Пусто — берётся из сценария.</p>
         <div className="grid grid-cols-3 gap-2">
           <Field label="Страна" hint="Код страны Google: us, gb, de…">
-            <input name="searchCountry" list="art-countries" className="input py-1.5" defaultValue={s.search.country} placeholder="из рецепта" maxLength={8} />
+            <input name="searchCountry" list="art-countries" className="input py-1.5" defaultValue={s.search.country} placeholder="из сценария" maxLength={8} />
             <datalist id="art-countries">{COUNTRIES.map((c) => <option key={c} value={c} />)}</datalist>
           </Field>
           <Field label="Язык" hint="Код языка: en, de, uk…">
-            <input name="searchLanguage" list="art-langs" className="input py-1.5" defaultValue={s.search.language} placeholder="из рецепта" maxLength={8} />
+            <input name="searchLanguage" list="art-langs" className="input py-1.5" defaultValue={s.search.language} placeholder="из сценария" maxLength={8} />
             <datalist id="art-langs">{LANGUAGES.map((c) => <option key={c} value={c} />)}</datalist>
           </Field>
           <Field label="Свежесть" hint="Насколько новые картинки искать">
             <select name="searchFreshness" className="input py-1.5" defaultValue={s.search.freshness}>
-              <option value="">из рецепта</option>
+              <option value="">из сценария</option>
               {FRESHNESS.filter(([v]) => v).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </Field>

@@ -44,7 +44,7 @@ export type VideoBrief = {
 };
 
 export type BlogVideoState = {
-  /** что просили в рецепте и что вышло */
+  /** что просили в сценарии и что вышло */
   source: "research" | "video";
   embed: "off" | "auto";
   videoFirst: boolean;

@@ -31,7 +31,7 @@ export default async function ArticlesSitesPage() {
 
   return (
     <>
-      <PageHeader title="Сайты" subtitle="Настройки сервиса для каждого сайта: ниша, рецепт по умолчанию, фото, публикация, категории WordPress, автозапуск. Доступ по REST API, команды и видимость — в общем разделе «Сайты» портала." actions={<Link href="/sites" className="btn-ghost">Доступы и команды</Link>} />
+      <PageHeader title="Сайты" subtitle="Настройки сервиса для каждого сайта: ниша, сценарий по умолчанию, фото, публикация, категории WordPress, автозапуск. Доступ по REST API, команды и видимость — в общем разделе «Сайты» портала." actions={<Link href="/sites" className="btn-ghost">Доступы и команды</Link>} />
       <div className="space-y-5">
         {funnel.length === 0 ? (
           <Empty title="Сайтов в сервисе нет" hint="Подключите сайт из списка ниже. Если списка нет — добавьте сайт в общем разделе «Сайты» и отметьте там инструмент «Статьи»." />
@@ -39,7 +39,7 @@ export default async function ArticlesSitesPage() {
           <Card>
             <div className="table-wrap">
               <table className="table">
-                <thead><tr><th>Сайт</th><th className="hidden md:table-cell">Ниша · рецепт</th><th className="hidden lg:table-cell">Режим</th><th>Воронка</th><th className="hidden lg:table-cell">Последний запуск</th><th></th></tr></thead>
+                <thead><tr><th>Сайт</th><th className="hidden md:table-cell">Ниша · сценарий</th><th className="hidden lg:table-cell">Режим</th><th>Воронка</th><th className="hidden lg:table-cell">Последний запуск</th><th></th></tr></thead>
                 <tbody>
                   {funnel.map((s) => {
                     const x = extra.get(s.id);
@@ -52,7 +52,7 @@ export default async function ArticlesSitesPage() {
                           <Link href={`/pinterest/articles/sites/${s.id}`} className="font-medium hover:underline">{s.name}</Link>{!s.isActive && <span className="ml-2"><Badge>в архиве</Badge></span>}
                           <div className="help">{s.teamName}{x?.access ? ` · ${x.access.baseUrl}` : " · без доступа WordPress"}{noCreds && <span className="text-warn"> · нет логина REST API</span>}</div>
                         </td>
-                        <td className="hidden md:table-cell text-muted">{nicheName(s.nicheCode)}<div className="help">{s.recipeName ?? "рецепт не задан"}</div></td>
+                        <td className="hidden md:table-cell text-muted">{nicheName(s.nicheCode)}<div className="help">{s.recipeName ?? "сценарий не задан"}</div></td>
                         <td className="hidden lg:table-cell text-muted"><div>{st.photoCount.mode === "exact" ? `${st.photoCount.min} фото` : `${st.photoCount.min}–${st.photoCount.max} фото`}</div><div className="help">{st.photoReview ? "модерация фото" : "без модерации фото"} · {PUBLISH_MODES.find((m) => m.value === st.publishMode)?.label}</div></td>
                         <td><SiteFunnel siteId={s.id} f={s.funnel} compact /></td>
                         <td className="hidden lg:table-cell text-muted">{last ? <Link href={`/pinterest/articles/runs/${last.id}`} className="hover:underline">{last.name || last.id.slice(0, 8)} · {fmtDate(last.createdAt)}</Link> : "—"}</td>
@@ -66,7 +66,7 @@ export default async function ArticlesSitesPage() {
           </Card>
         )}
 
-        <Card title="Подключить сайт" description="Сайты из общего раздела «Сайты», у которых разрешён инструмент «Статьи» и которые ещё не подключены. После подключения задайте нишу и рецепт в настройках.">
+        <Card title="Подключить сайт" description="Сайты из общего раздела «Сайты», у которых разрешён инструмент «Статьи» и которые ещё не подключены. После подключения задайте нишу и сценарий в настройках.">
           {available.length === 0 ? (
             <p className="help">Нет сайтов для подключения. Добавьте сайт в разделе <Link href="/sites/new" className="underline">«Сайты»</Link> или отметьте у существующего инструмент «Статьи».</p>
           ) : (

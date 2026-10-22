@@ -1,13 +1,13 @@
 /**
- * Промты и модели этапов из снимка рецепта + подстановка переменных (fillVars статей: `{{var}}` и `{var}`).
- * Промты лежат в рецепте (BlogRecipe.prompts[stageKey] = {system, text}); отсутствие промта — явная ошибка этапа.
+ * Промты и модели этапов из снимка сценария + подстановка переменных (fillVars статей: `{{var}}` и `{var}`).
+ * Промты лежат в сценарии (BlogRecipe.prompts[stageKey] = {system, text}); отсутствие промта — явная ошибка этапа.
  */
 import { fillVars } from "@/lib/articles/prompts";
 import type { BlogPrompt, BlogRecipeSnapshot } from "./types";
 
 export class PromptMissing extends Error {
   constructor(public readonly stageKey: string) {
-    super(`Нет промта для шага «${stageKey}»: откройте рецепт и заполните его`);
+    super(`Нет промта для шага «${stageKey}»: откройте сценарий и заполните его`);
     this.name = "PromptMissing";
   }
 }
@@ -29,7 +29,7 @@ export function resolvePromptOptional(recipe: BlogRecipeSnapshot, stageKey: stri
   return { system: String(p.system ?? ""), text: String(p.text ?? "") };
 }
 
-/** Модель этапа из рецепта (`provider:model`), иначе undefined — возьмётся модель правила слота. */
+/** Модель этапа из сценария (`provider:model`), иначе undefined — возьмётся модель правила слота. */
 export function stageModel(recipe: BlogRecipeSnapshot, stageKey: string): string | undefined {
   const m = recipe.models?.[stageKey];
   return m && m.trim() ? m.trim() : undefined;
