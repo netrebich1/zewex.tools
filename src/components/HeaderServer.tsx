@@ -77,17 +77,25 @@ export function HeaderServer() {
       <button
         type="button"
         onClick={() => setOpen((x) => !x)}
-        className="flex items-center gap-2 h-9 rounded-full border border-line bg-surface px-3 hover:border-line-2 transition text-[13px]"
+        className="flex shrink-0 items-center gap-2 h-9 whitespace-nowrap rounded-full border border-line bg-surface px-3 hover:border-line-2 transition text-[13px]"
         aria-haspopup="dialog"
         aria-expanded={open}
         title="Состояние сервера"
       >
         <Icon.server width={15} height={15} className={`shrink-0 ${v ? v.cls : "text-muted"} ${busy && !s ? "animate-pulse" : ""}`} />
         {s ? (
-          <span className="hidden lg:flex items-center gap-2.5 tabular-nums">
-            <span className="inline-flex items-baseline gap-1"><span className="text-muted font-medium">Диск</span><span className={`font-semibold ${diskTone(freePct)}`}>{Math.round(s.disk.freeGb)} ГБ</span></span>
-            <span className="inline-flex items-baseline gap-1"><span className="text-muted font-medium">CPU</span><span className={`font-semibold ${tone(s.cpu.busyPct)}`}>{s.cpu.busyPct}%</span></span>
-            <span className="inline-flex items-baseline gap-1"><span className="text-muted font-medium">RAM</span><span className={`font-semibold ${tone(s.memory.usedPct)}`}>{s.memory.usedPct}%</span></span>
+          <span className="hidden lg:flex items-center gap-2 tabular-nums whitespace-nowrap">
+            {[
+              { k: "disk", label: "Диск", value: `${Math.round(s.disk.freeGb)} ГБ`, cls: diskTone(freePct) },
+              { k: "cpu", label: "CPU", value: `${s.cpu.busyPct}%`, cls: tone(s.cpu.busyPct) },
+              { k: "ram", label: "RAM", value: `${s.memory.usedPct}%`, cls: tone(s.memory.usedPct) },
+            ].map((x, i) => (
+              <span key={x.k} className="inline-flex items-baseline gap-1">
+                {i > 0 && <span className="mr-1 h-3 w-px self-center bg-line" aria-hidden />}
+                <span className="text-muted font-medium">{x.label}</span>
+                <span className={`font-semibold ${x.cls}`}>{x.value}</span>
+              </span>
+            ))}
           </span>
         ) : (
           <span className="hidden lg:block text-muted">{error ? "ошибка" : "…"}</span>
