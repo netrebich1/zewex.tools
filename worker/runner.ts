@@ -8,6 +8,7 @@ import { autoModerate } from "@/lib/pins/runs/moderation";
 import { finishJob, releaseJob, renewLease, MAX_ATTEMPTS } from "./queue";
 import { STAGES, StopRequested, type StageCtx } from "./stages";
 import { log } from "./log";
+import { eventText, logEventByPinSite } from "@/lib/projects/events";
 
 const TRANSIENT = /timeout|timed out|fetch failed|econnreset|econnrefused|socket hang up|lock wait|deadlock|too many connections|ETIMEDOUT|EAI_AGAIN/i;
 
@@ -136,6 +137,9 @@ export async function processJob(job: PinJob, shuttingDown: () => boolean): Prom
       }
     } else if (next === "ready") {
       await prisma.pinRun.update({ where: { id: run.id }, data: { stage: "ready", status: "DONE" } });
+      // История проекта: прогон готов (пины без удалённых и отклонённых; стоимость — в payload).
+      const done = { id: run.id, siteId: run.siteId, name: run.name, costUsd: run.costUsd };
+      void prisma.pinRunItem.count({ where: { runId: done.id, status: { notIn: ["POOL", "REMOVED"] }, moderation: { not: "REJECTED" } } }).then((pins) => logEventByPinSite(done.siteId, { kind: "run_done", refId: done.id, summary: eventText.runDone(done.name, pins), payload: { costUsd: done.costUsd } })).catch(() => {});
     } else if (next && !stepByStep) {
       await prisma.pinRun.update({ where: { id: run.id }, data: { stage: asPinStage(stageDone) } });
       try {
@@ -168,6 +172,7 @@ export async function processJob(job: PinJob, shuttingDown: () => boolean): Prom
     }
     await finishJob(job.id, "ERROR", err.message);
     await prisma.pinRun.update({ where: { id: job.runId }, data: { status: "BLOCKED", blockedReason: `Этап «${job.stage}»: ${err.message.slice(0, 500)}` } });
+    void prisma.pinRun.findUnique({ where: { id: job.runId }, select: { siteId: true, name: true } }).then((r) => r && logEventByPinSite(r.siteId, { kind: "run_failed", refId: `${job.runId}:${job.id}`, summary: eventText.runFailed(r.name, `этап «${job.stage}»: ${err.message.slice(0, 160)}`) })).catch(() => {});
     log.error(`job ${job.id} failed`, err);
   } finally {
     clearInterval(heartbeat);

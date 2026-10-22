@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { eventText, logEventByPinSite } from "@/lib/projects/events";
 import type { CurrentUser } from "@/lib/auth";
 import { enqueueJob, requestStop, activeJob, JobConflict } from "../jobs";
 import { MAX_RUN_PAGES, mergeRecipe, type JobStage, type ModerationMode, type Recipe, type RunSettings } from "../types";
@@ -106,6 +107,8 @@ export async function createRun(me: CurrentUser, input: CreateRunInput): Promise
     return run;
   });
   await enqueueJob(run.id, "meta");
+  // История проекта (раздел «Проекты»): прогон запущен.
+  void logEventByPinSite(site.id, { kind: "run_created", refId: run.id, userId: me.id, summary: eventText.runCreated(run.name, input.urls.length) });
   return { runId: run.id, warnings };
 }
 

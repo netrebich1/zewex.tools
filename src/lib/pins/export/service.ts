@@ -8,6 +8,7 @@ import { zip } from "@/lib/xlsx";
 import type { Prisma } from "@prisma/client";
 import { TZ } from "../runs/stats";
 import { publicUrl } from "../storage";
+import { eventText, logEventByPinSite } from "@/lib/projects/events";
 
 const READY_WHERE = { status: "READY" as const, moderation: "APPROVED" as const, title: { not: "" } };
 type Row = Prisma.PinRunItemGetPayload<{ include: { page: { select: { keyword: true } } } }>;
@@ -89,6 +90,7 @@ export async function siteAllZip(me: CurrentUser, siteId: string): Promise<{ fil
   }
   if (!files.length) return null;
   await prisma.pinExportLog.createMany({ data: logs.map((l) => ({ teamId: site.teamId, siteId, day: l.day, fileName: l.fileName, rows: l.rows, userId: me.id })) });
+  void logEventByPinSite(siteId, { kind: "export_downloaded", userId: me.id, summary: `Скачан архив за ${logs.length} дн. (${logs[0].day} — ${logs[logs.length - 1].day}): ${pins} пинов` });
   const pad = (k: string) => { const [y, m, d] = k.split("-"); return `${d}_${m}_${y}`; };
   const first = logs[0].day, last = logs[logs.length - 1].day;
   return { fileName: `ALL_${siteSlug(site.name)}_${pad(first)}-${pad(last)}_${files.length}d_${pins}.zip`, zip: zip(files), days: files.length, pins };
@@ -124,7 +126,8 @@ export async function dayCsv(me: CurrentUser, siteId: string, day: string): Prom
   const now = new Date();
   const f = buildDayFiles({ items, day, siteName: site.name, tz: TZ, now, isToday: day === todayKey(now, TZ) });
   for (const [id, at] of f.retimedAt) await prisma.pinRunItem.update({ where: { id }, data: { scheduledAt: at, scheduleFixed: true } });
-  await prisma.pinExportLog.create({ data: { teamId: site.teamId, siteId, day, fileName: f.fileName, rows: f.count, userId: me.id } });
+  const logRow = await prisma.pinExportLog.create({ data: { teamId: site.teamId, siteId, day, fileName: f.fileName, rows: f.count, userId: me.id } });
+  void logEventByPinSite(siteId, { kind: "export_downloaded", refId: logRow.id, userId: me.id, summary: eventText.exportDownloaded(day, f.count, f.fileName) });
   return { fileName: f.fileName, csv: "﻿" + f.csv, count: f.count };
 }
 

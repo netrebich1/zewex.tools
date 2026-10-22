@@ -19,6 +19,7 @@
  * attempts — он остаётся счётчиком прерываний воркера (queue.ts MAX_ATTEMPTS).
  * Каждая окончательная ошибка и первое ожидание ключа пишутся в ArtError; временные повторы видны в заметке статьи.
  */
+import { eventText, logEventByArtSite } from "@/lib/projects/events";
 import { prisma } from "@/lib/db";
 import type { Article, ArtStatus } from "@prisma/client";
 import { decryptSecret } from "@/lib/crypto";
@@ -221,6 +222,8 @@ export async function processArticle(article: Article, workerId: string, shuttin
       if (!next) {
         await prisma.article.update({ where: { id: current.id }, data: { status: "COMPLETED", stage: "done", workerId: null, leaseUntil: null, attempts: 0, finishedAt: new Date(), note: null, costUsd: await articleCost(current.id) } });
         log.info(`article ${current.id} completed`);
+        // История проекта (раздел «Проекты»): статья опубликована.
+        void prisma.article.findUnique({ where: { id: current.id }, select: { siteId: true, keyword: true, wpUrl: true, costUsd: true } }).then((a) => a && logEventByArtSite(a.siteId, { kind: "article_published", refId: current.id, summary: eventText.articlePublished(a.keyword, a.wpUrl), payload: { costUsd: a.costUsd } })).catch(() => {});
         return;
       }
       current = await prisma.article.update({ where: { id: current.id }, data: { stage: next, attempts: 0, note: null, costUsd: await articleCost(current.id) } });

@@ -58,7 +58,7 @@ export default async function SitePage({ params, searchParams }: { params: Promi
 
   return (
     <>
-      <PageHeader back={{ href: "/sites", label: "Сайты" }} title={access.name} subtitle={`${teamName(access.teamId)} · ${access.baseUrl}`} actions={<>{pins && <Link href={`/pinterest/pins/sites/${pins.id}`} className="btn-ghost">Открыть в Pinterest Pins</Link>}{articles && <Link href={`/pinterest/articles/sites/${articles.id}`} className="btn-ghost">Открыть в Статьях</Link>}</>} />
+      <PageHeader back={{ href: "/sites", label: "Сайты" }} title={access.name} subtitle={`${teamName(access.teamId)} · ${access.baseUrl}`} actions={<><Link href={`/pinterest/projects/${access.id}`} className="btn-ghost">Карточка проекта</Link>{pins && <Link href={`/pinterest/pins/sites/${pins.id}`} className="btn-ghost">Открыть в Pinterest Pins</Link>}{articles && <Link href={`/pinterest/articles/sites/${articles.id}`} className="btn-ghost">Открыть в Статьях</Link>}</>} />
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="space-y-4">
           {(!access.username || !access.appPasswordEnc) && <Alert tone="warn">Сайт перенесён из старого сервиса: доступ к REST API ещё не введён. Укажите логин WordPress и Application Password и нажмите «Сохранить сайт», иначе загрузка картинок в медиатеку и импорт статей работать не будут.</Alert>}

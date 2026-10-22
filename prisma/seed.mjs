@@ -316,5 +316,14 @@ if (analyticsSection) {
     create: { sectionId: analyticsSection.id, slug: "analytics", name: "Трафик сайтов", description: "Все аккаунты Google Analytics в одном кабинете: визиты, страницы, источники, рост и падение, сравнение периодов, группы сайтов", url: "/analytics", status: "ACTIVE", order: 1 },
   });
 }
+// ───────────────────────────── Проекты (CRM по Pinterest-сайтам) ─────────────────────────────
+// Карточка = сайт из «Сайтов»; слоты ключей ИИ не нужны. Финансы внутри видят только главные админы.
+if (pinterest) {
+  await prisma.project.upsert({
+    where: { slug: "projects" },
+    update: {},
+    create: { sectionId: pinterest.id, slug: "projects", name: "Проекты", description: "Все сайты в одном месте: прогоны и запас пинов, выгрузки и заливка в Pinterest, статьи, этапы, задачи, история, финансы", url: "/pinterest/projects", status: "ACTIVE", order: 5 },
+  });
+}
 console.log("seed done");
 await prisma.$disconnect();

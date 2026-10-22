@@ -500,6 +500,8 @@ model SiteAccess {
   viewers             SiteAccessViewer[]
   artSites            ArtSite[]
   blogSites           BlogSite[]
+  /// Карточка проекта (раздел «Проекты»)
+  card                PrjCard?
 
   @@index([teamId])
   @@map("PinWpConnection")
@@ -2158,4 +2160,180 @@ model BlogSettings {
   /// Потолок воркера (BLOG_WORKER_CONCURRENCY): воркер пишет при старте
   workerCap     Int      @default(0)
   updatedAt     DateTime @updatedAt
+}
+
+// ───────────────────────────── Проекты (CRM по Pinterest-сайтам, раздел Pinterest, проект `projects`) ─────────────────────────────
+// Проект = сайт из «Сайтов» (SiteAccess). Автоматика (прогоны, пины, статьи, расход ИИ) читается из таблиц инструментов,
+// здесь только ручной слой: статус, этапы, задачи, заметки, кластеры, финансы (главные админы) и история (PrjEvent).
+
+enum PrjStatus {
+  NEW
+  SETUP
+  ACTIVE
+  PAUSED
+  DONE
+  ARCHIVED
+}
+
+/// Карточка проекта: создаётся сама при первом открытии сайта в «Проектах» (1:1 с SiteAccess)
+model PrjCard {
+  id           String     @id @default(uuid()) @db.Char(36)
+  accessId     String     @unique @db.Char(36)
+  status       PrjStatus  @default(NEW)
+  /// Ответственный сотрудник (User.id)
+  ownerId      String?
+  priority     Int        @default(0)
+  niche        String?
+  /// Теги-стратегии: string[]
+  strategies   Json?
+  summary      String?    @db.Text
+  /// «Что дальше» одной строкой и срок
+  nextAction   String?
+  nextDueAt    DateTime?
+  /// Pinterest-аккаунт проекта
+  pinAccount   String?
+  pinUrl       String?
+  pinStartedAt DateTime?
+  /// ok | limited | banned | none
+  pinStatus    String?
+  pinNotes     String?    @db.Text
+  /// Когда история из прогонов/статей/экспорта перенесена в PrjEvent (один раз)
+  backfilledAt DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  access       SiteAccess @relation(fields: [accessId], references: [id], onDelete: Cascade)
+  steps        PrjStep[]
+  tasks        PrjTask[]
+  notes        PrjNote[]
+  events       PrjEvent[]
+  finance      PrjFinance[]
+  clusters     PrjCluster[]
+
+  @@index([status])
+  @@index([ownerId])
+}
+
+/// Чеклист этапов проекта (предзаданные из src/lib/projects/steps.ts + свои)
+model PrjStep {
+  id       String    @id @default(uuid()) @db.Char(36)
+  cardId   String    @db.Char(36)
+  key      String
+  title    String
+  order    Int       @default(0)
+  /// todo | doing | done | skip
+  state    String    @default("todo")
+  doneAt   DateTime?
+  doneById String?
+  note     String?
+  card     PrjCard   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, key])
+}
+
+model PrjTask {
+  id          String    @id @default(uuid()) @db.Char(36)
+  cardId      String    @db.Char(36)
+  title       String
+  description String?   @db.Text
+  assigneeId  String?
+  dueAt       DateTime?
+  /// open | doing | done
+  status      String    @default("open")
+  createdById String?
+  doneAt      DateTime?
+  doneById    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  card        PrjCard   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([assigneeId, status])
+  @@index([cardId, status])
+  @@index([status, dueAt])
+}
+
+/// Ручная заметка в ленте проекта
+model PrjNote {
+  id        String   @id @default(uuid()) @db.Char(36)
+  cardId    String   @db.Char(36)
+  userId    String?
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+  card      PrjCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, createdAt])
+}
+
+/// История проекта: пишется автоматически (прогоны, публикации, экспорт, заливка) и при ручных правках
+model PrjEvent {
+  id      String   @id @default(uuid()) @db.Char(36)
+  cardId  String   @db.Char(36)
+  at      DateTime @default(now())
+  /// run_created | run_done | run_failed | export_downloaded | export_uploaded | export_unmarked | article_published | blog_published
+  /// | status_changed | owner_changed | step_changed | strategy_changed | cluster_changed | task_created | task_done | finance_added | card_changed
+  kind    String
+  refId   String?
+  /// Кто (null = система/воркер)
+  userId  String?
+  summary String   @db.Text
+  payload Json?
+  card    PrjCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, at])
+  @@index([kind, refId])
+}
+
+/// Доходы и расходы вне ИИ — видят только главные админы
+model PrjFinance {
+  id          String   @id @default(uuid()) @db.Char(36)
+  cardId      String   @db.Char(36)
+  date        DateTime @db.Date
+  /// income | expense
+  kind        String
+  amountUsd   Decimal  @db.Decimal(12, 2)
+  /// domain | hosting | writer | ads | affiliate | adsense | other
+  category    String   @default("other")
+  note        String?
+  /// manual | import
+  source      String   @default("manual")
+  /// Идемпотентный импорт выгрузок (хэш строки)
+  importKey   String?  @unique
+  createdById String?
+  createdAt   DateTime @default(now())
+  card        PrjCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, date])
+  @@index([kind, date])
+}
+
+/// Заливка файла экспорта пинов в Pinterest: по сайту пинов (PinSite) и дню файла (PinExportLog.day)
+model PrjUpload {
+  id           String   @id @default(uuid()) @db.Char(36)
+  pinSiteId    String   @db.Char(36)
+  day          String
+  uploadedAt   DateTime @default(now())
+  /// null = автоматика
+  uploadedById String?
+  /// manual | auto
+  source       String   @default("manual")
+  note         String?
+
+  @@unique([pinSiteId, day])
+}
+
+/// Кластеры / темы по сайту: что прописано, по чему есть статья, по чему есть пины
+model PrjCluster {
+  id            String   @id @default(uuid()) @db.Char(36)
+  cardId        String   @db.Char(36)
+  name          String
+  keywords      String?  @db.Text
+  keywordsCount Int      @default(0)
+  /// planned | written | pinned
+  status        String   @default("planned")
+  articleUrl    String?  @db.VarChar(1000)
+  note          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  card          PrjCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId])
 }

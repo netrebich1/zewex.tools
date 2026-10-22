@@ -6,6 +6,7 @@
  * Развилка одна: после `assemble` при review=before_publish у сайта пост ждёт человека (REVIEW_PENDING),
  * кроме повторной сборки после одобрения (cursor.reviewApproved).
  */
+import { eventText, logEventByBlogSite } from "@/lib/projects/events";
 import { prisma } from "@/lib/db";
 import type { BlogPost, BlogStatus } from "@prisma/client";
 import { decryptSecret } from "@/lib/crypto";
@@ -184,6 +185,8 @@ export async function processPost(post: BlogPost, workerId: string, shuttingDown
       if (!next) {
         await prisma.blogPost.update({ where: { id: current.id }, data: { status: "COMPLETED", stage: "done", workerId: null, leaseUntil: null, attempts: 0, finishedAt: new Date(), note: null, costUsd: await postCost(current.id) } });
         log.info(`blog post ${current.id} completed`);
+        // История проекта (раздел «Проекты»): блоговая статья опубликована.
+        void prisma.blogPost.findUnique({ where: { id: current.id }, select: { siteId: true, keyword: true, wpUrl: true, costUsd: true } }).then((p) => p && logEventByBlogSite(p.siteId, { kind: "blog_published", refId: current.id, summary: eventText.articlePublished(p.keyword, p.wpUrl), payload: { costUsd: p.costUsd } })).catch(() => {});
         return;
       }
       current = await prisma.blogPost.update({ where: { id: current.id }, data: { stage: next, attempts: 0, note: null, costUsd: await postCost(current.id) } });

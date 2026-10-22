@@ -131,6 +131,7 @@ export async function deleteSiteAccess(_p: FormState, f: FormData): Promise<Form
       prisma.pinRun.deleteMany({ where: { siteId: { in: impact.pinSiteIds } } }),
       prisma.pinUrlHistory.deleteMany({ where: { siteId: { in: impact.pinSiteIds } } }),
       prisma.pinExportLog.deleteMany({ where: { siteId: { in: impact.pinSiteIds } } }),
+      prisma.prjUpload.deleteMany({ where: { pinSiteId: { in: impact.pinSiteIds } } }),
       prisma.pinSite.deleteMany({ where: { id: { in: impact.pinSiteIds } } }),
       prisma.artPhotoFingerprint.deleteMany({ where: { siteId: { in: impact.artSiteIds } } }),
       prisma.artError.deleteMany({ where: { siteId: { in: impact.artSiteIds } } }),
