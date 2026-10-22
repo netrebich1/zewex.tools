@@ -209,6 +209,18 @@ export async function aiImage(ctx: AiCtx, req: ImageRequest): Promise<ImageResul
   }
 }
 
+/** aiChat с одним повтором через 5 с при временной ошибке провайдера (429, 5xx, «Provider returned error») — для мелких
+ * необязательных вызовов (план картинки, тексты плашек), где сбой иначе тихо даёт запасной вариант. */
+export async function aiChatRetry(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> {
+  try {
+    return await aiChat(ctx, req);
+  } catch (e) {
+    if (e instanceof AiError && e.cls.kind !== "transient") throw e;
+    await new Promise((r) => setTimeout(r, 5_000));
+    return aiChat(ctx, req);
+  }
+}
+
 export function imagePart(bytes: Buffer, mime = "image/jpeg", detail: "low" | "high" | "auto" = "auto"): ContentPart {
   return { type: "image_url", image_url: { url: `data:${mime};base64,${bytes.toString("base64")}`, detail } };
 }

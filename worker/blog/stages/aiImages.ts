@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { prisma } from "@/lib/db";
 import { AiError } from "@/lib/pins/ai/errors";
-import { aiChat, aiImage } from "@/lib/blog/ai";
+import { aiChat, aiChatRetry, aiImage } from "@/lib/blog/ai";
 import { parseModelJsonSafe } from "@/lib/articles/text/jsonRepair";
 import { stageModel } from "@/lib/blog/prompts";
 import { SLOTS } from "@/lib/blog/types";
@@ -101,7 +101,7 @@ export const aiImagesStage: StageHandler = async (ctx) => {
 Pick the 2-4 steps from the list that are the most visual and together show the process from start to result (prefer 4 when there are 4 or more visual steps). For each chosen step describe in one sentence exactly what the camera sees: hands, tool, hair or object, the action in progress. Describe one consistent person and one consistent place for all panels (age range, hair, clothing, room). Only things that really belong to this process; no brands, no text, no screens.
 Return ONLY JSON: {"subject":"...","setting":"...","panels":[{"step":1,"shows":"..."}]} where "step" is the number of the step in the list.`;
       const user = `Article: "${h1}"\nSection: "${heading}"\nSteps:\n${steps.map((t, i) => `${i + 1}. ${t.slice(0, 220)}`).join("\n")}`;
-      const r = await aiChat(ctx.ai, { slot: SLOTS.textFast, model: stageModel(recipe, "meta"), system, user, json: true, temperature: 0.6, maxTokens: 700, timeoutMs: 90_000 });
+      const r = await aiChatRetry(ctx.ai, { slot: SLOTS.textFast, model: stageModel(recipe, "meta"), system, user, json: true, temperature: 0.6, maxTokens: 700, timeoutMs: 90_000 });
       cost += r.costUsd ?? 0;
       const j = parseModelJsonSafe(r.text) as Partial<Plan> | null;
       const panels = (Array.isArray(j?.panels) ? j!.panels : [])

@@ -10,7 +10,7 @@ import { readFile } from "node:fs/promises";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { AiError } from "@/lib/pins/ai/errors";
-import { aiChat } from "@/lib/blog/ai";
+import { aiChatRetry } from "@/lib/blog/ai";
 import { parseModelJsonSafe } from "@/lib/articles/text/jsonRepair";
 import { fixDashesText } from "@/lib/articles/text/polish";
 import { stageModel } from "@/lib/blog/prompts";
@@ -59,7 +59,7 @@ Tone: calm, benefit-first, inviting. Never alarmist: no "Important warning", "Da
 Every title must be different from the others and from the section heading wording where possible. American English.
 Return ONLY JSON: {"items":[{"n":1,"title":"...","kicker":"..."}]}`;
     try {
-      const r = await aiChat(ctx.ai, { slot: SLOTS.textFast, model: stageModel(recipe, "meta"), system, user: `Article: "${h1}"\nKeyword: "${post.keyword}"\nImages:\n${list}`, json: true, temperature: 0.9, maxTokens: 900, timeoutMs: 90_000 });
+      const r = await aiChatRetry(ctx.ai, { slot: SLOTS.textFast, model: stageModel(recipe, "meta"), system, user: `Article: "${h1}"\nKeyword: "${post.keyword}"\nImages:\n${list}`, json: true, temperature: 0.9, maxTokens: 900, timeoutMs: 90_000 });
       const parsed = parseModelJsonSafe(r.text) as { items?: Array<{ n?: unknown; title?: unknown; kicker?: unknown }> } | null;
       for (const it of parsed?.items ?? []) {
         const ph = needText[Number(it.n) - 1];
