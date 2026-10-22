@@ -17,7 +17,16 @@ import { monthStart } from "./utils";
  */
 export const BALANCE_PROVIDERS = ["openrouter", "laozhang", "openai", "dataforseo"] as const;
 
-export type KeyBalance = { keyId: string; label: string; hint: string; remaining: number | null; note: string | null };
+/** Чей ключ: команда («WexOra»), личный («личный · Имя») или общий — подпись рядом с ключом, чтобы не перепутать, с чьих денег идёт работа. */
+export type KeyOwnerRef = { team: { name: string } | null; owner: { name: string; email: string } | null };
+export function keyOwnerLabel(k: KeyOwnerRef): string {
+  if (k.team) return k.team.name;
+  if (k.owner) return `личный · ${k.owner.name || k.owner.email}`;
+  return "общий";
+}
+export const keyOwnerSelect = { team: { select: { name: true } }, owner: { select: { name: true, email: true } } } as const;
+
+export type KeyBalance = { keyId: string; label: string; hint: string; owner: string; remaining: number | null; note: string | null };
 
 export type ProviderBalance = {
   slug: string;
@@ -156,7 +165,7 @@ const UNPRICED_NOTE = "Часть вызовов без цены модели: �
 export async function providerBalances(force = false): Promise<ProviderBalance[]> {
   const providers = await prisma.provider.findMany({
     where: { OR: [{ slug: { in: [...BALANCE_PROVIDERS] } }, { apiKeys: { some: { status: "ACTIVE", balanceUsd: { not: null } } } }] },
-    include: { apiKeys: { where: { status: "ACTIVE" }, orderBy: { createdAt: "asc" }, take: 5, select: { id: true, label: true, secretHint: true, secretEnc: true, balanceUsd: true, balanceAt: true } } },
+    include: { apiKeys: { where: { status: "ACTIVE" }, orderBy: { createdAt: "asc" }, take: 5, select: { id: true, label: true, secretHint: true, secretEnc: true, balanceUsd: true, balanceAt: true, ...keyOwnerSelect } } },
   });
   const spend = await prisma.usageLog.groupBy({
     by: ["providerId"],
@@ -181,7 +190,7 @@ export async function providerBalances(force = false): Promise<ProviderBalance[]
         total: sum((m) => m.startUsd),
         used: sum((m) => m.spentUsd),
         note: tracked.some((t) => t.m.unpriced > 0) ? UNPRICED_NOTE : "Расчёт портала: сумма, вписанная на ключе, минус расход через портал",
-        keys: tracked.length > 1 ? tracked.map(({ key, m }) => ({ keyId: key.id, label: key.label, hint: key.secretHint, remaining: m.remaining, note: m.unpriced > 0 ? UNPRICED_NOTE : null })) : [],
+        keys: tracked.length > 1 ? tracked.map(({ key, m }) => ({ keyId: key.id, label: key.label, hint: key.secretHint, owner: keyOwnerLabel(key), remaining: m.remaining, note: m.unpriced > 0 ? UNPRICED_NOTE : null })) : [],
       };
     }
     if (p.slug === "laozhang") {
@@ -193,7 +202,7 @@ export async function providerBalances(force = false): Promise<ProviderBalance[]
 
     const keys = await Promise.all(p.apiKeys.map(async (k): Promise<KeyBalance & Probe> => {
       const r = await cached(`key:${k.id}`, force, () => (p.slug === "dataforseo" ? probeDataForSeo(p.baseUrl, decryptSecret(k.secretEnc)) : probeOpenRouter(p.baseUrl, decryptSecret(k.secretEnc))));
-      return { keyId: k.id, label: k.label, hint: k.secretHint, ...r };
+      return { keyId: k.id, label: k.label, hint: k.secretHint, owner: keyOwnerLabel(k), ...r };
     }));
     const known = keys.filter((k) => k.remaining != null);
     const sum = (f: (k: KeyBalance & Probe) => number | null) => { const v = known.map(f).filter((x): x is number => x != null); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
@@ -203,7 +212,7 @@ export async function providerBalances(force = false): Promise<ProviderBalance[]
       total: sum((k) => k.total),
       used: sum((k) => k.used),
       note: known.length ? null : keys.find((k) => k.note)?.note ?? null,
-      keys: keys.length > 1 ? keys.map(({ keyId, label, hint, remaining, note }) => ({ keyId, label, hint, remaining, note })) : [],
+      keys: keys.length > 1 ? keys.map(({ keyId, label, hint, owner, remaining, note }) => ({ keyId, label, hint, owner, remaining, note })) : [],
     };
   }));
   return out.sort((a, b) => (order.get(a.slug) ?? 9) - (order.get(b.slug) ?? 9));
@@ -212,6 +221,8 @@ export async function providerBalances(force = false): Promise<ProviderBalance[]
 export type MyKeyBalance = {
   keyId: string;
   label: string;
+  /** Чей ключ: команда / личный / общий. */
+  owner: string;
   provider: string;
   providerSlug: string;
   /** Инструменты, в которых этот ключ работает для сотрудника. */
@@ -263,13 +274,13 @@ export async function myKeyBalances(userId: string, tools: "all" | string[], for
   const keys = await prisma.apiKey.findMany({
     where: { id: { in: [...toolsByKey.keys()] } },
     orderBy: [{ provider: { order: "asc" } }, { label: "asc" }],
-    select: { id: true, label: true, secretEnc: true, balanceUsd: true, balanceAt: true, provider: { select: { id: true, slug: true, name: true, kind: true, baseUrl: true, balanceTokenEnc: true } } },
+    select: { id: true, label: true, secretEnc: true, balanceUsd: true, balanceAt: true, ...keyOwnerSelect, provider: { select: { id: true, slug: true, name: true, kind: true, baseUrl: true, balanceTokenEnc: true } } },
   });
   const manual = await manualBalances(keys.filter((k) => manualBalanceProvider(k.provider)));
   return Promise.all(keys.map(async (k): Promise<MyKeyBalance> => {
     const p = k.provider;
     const tools = [...toolsByKey.get(k.id)!.entries()].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0])).map(([name]) => name);
-    const base = { keyId: k.id, label: k.label, provider: p.name, providerSlug: p.slug, tools, account: `key:${k.id}` };
+    const base = { keyId: k.id, label: k.label, owner: keyOwnerLabel(k), provider: p.name, providerSlug: p.slug, tools, account: `key:${k.id}` };
     if (manualBalanceProvider(p)) {
       const m = manual.get(k.id);
       return { ...base, remaining: m?.remaining ?? null, note: !m ? "Остаток не задан" : m.unpriced > 0 ? UNPRICED_NOTE : null };

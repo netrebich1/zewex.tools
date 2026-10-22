@@ -98,7 +98,11 @@ export function RunCostEstimate({ pages, pagesLabel, siteId }: { pages: number; 
                         {p.availableUsd != null ? fmtMoney(p.availableUsd) : "—"}
                         {p.enough === false && p.availableUsd != null && <span className="block text-[12px] font-normal">не хватит: нужно ещё ≈ {fmtMoney(Math.max(0, p.costUsd * 1.2 - p.availableUsd))} с запасом 20 %</span>}
                       </td>
-                      <td className="py-1 text-muted">{p.keys.join(", ")}</td>
+                      <td className="py-1 text-muted">
+                        {p.keys.map((k) => (
+                          <span key={k.label} className="block">{k.label} <span className="inline-block rounded-full border border-line px-1.5 text-[11.5px] leading-[18px]">{k.owner}</span></span>
+                        ))}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -110,7 +114,7 @@ export function RunCostEstimate({ pages, pagesLabel, siteId }: { pages: number; 
             <ul className="help mt-1 list-disc pl-5">
               {data.parts.map((p) => (
                 <li key={p.slot}>
-                  {p.slotName} ({p.providerName}): {p.units} × {p.rate != null ? fmtMoney(p.rate) : "?"} за {UNIT_LABEL[p.unit]} = {p.costUsd != null ? fmtMoney(p.costUsd) : "?"}
+                  {p.slotName} ({p.providerName}, ключ «{p.keyLabel}» · {p.keyOwner}): {p.units} × {p.rate != null ? fmtMoney(p.rate) : "?"} за {UNIT_LABEL[p.unit]} = {p.costUsd != null ? fmtMoney(p.costUsd) : "?"}
                   {p.note ? ` — ${p.note}` : ""}
                 </li>
               ))}

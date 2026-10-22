@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { resolveSlot } from "@/lib/run";
 import { canSeeBalances, showsBalances } from "@/lib/permissions";
-import { keyRemaining, manualBalanceProvider, manualBalances, providerBalances } from "@/lib/balances";
+import { keyOwnerLabel, keyOwnerSelect, keyRemaining, manualBalanceProvider, manualBalances, providerBalances } from "@/lib/balances";
 import { PROJECT_SLUG, SLOT_IMAGE_MAIN, SLOT_TEXT_FAST, SLOT_TEXT_MAIN, type RunReservation, type RunSettings } from "../types";
 
 /**
@@ -75,9 +75,11 @@ export async function costRates(force = false): Promise<CostRates> {
 /** `teamId` — команда сайта: ключи (и остатки) берутся по её правилам, как при самом прогоне. */
 export type EstimateInput = { pages: number; mix: { ai: number; photos: number; canvas: number; pinora: number }; teamId?: string | null };
 
-export type EstimatePart = { slot: string; slotName: string; unit: SlotUnit; units: number; rate: number | null; costUsd: number | null; providerSlug: string; providerName: string; keyLabel: string; keyId: string; note: string | null };
+export type EstimatePart = { slot: string; slotName: string; unit: SlotUnit; units: number; rate: number | null; costUsd: number | null; providerSlug: string; providerName: string; keyLabel: string; keyOwner: string; keyId: string; note: string | null };
 export type EstimateProvider = {
-  slug: string; name: string; keys: string[];
+  slug: string; name: string;
+  /** Ключи системы для этого прогона и чьи они (команда / личный / общий). */
+  keys: Array<{ label: string; owner: string }>;
   /** Этот прогон. */
   costUsd: number;
   /** Остаток на счёте (по ключу) и пояснение, если цифры нет. */
@@ -153,6 +155,14 @@ export async function runEstimate(me: CurrentUser, input: EstimateInput): Promis
   const parts: EstimatePart[] = [];
   const errors: string[] = [];
   const keyIds = new Map<string, { providerSlug: string; providerKind: string }>();
+  const owners = new Map<string, string>();
+  const ownerOf = async (keyId: string) => {
+    if (!owners.has(keyId)) {
+      const k = await prisma.apiKey.findUnique({ where: { id: keyId }, select: keyOwnerSelect });
+      owners.set(keyId, k ? keyOwnerLabel(k) : "?");
+    }
+    return owners.get(keyId)!;
+  };
   for (const slotKey of [SLOT_IMAGE_MAIN, SLOT_TEXT_MAIN, SLOT_TEXT_FAST]) {
     const unit = SLOT_UNIT[slotKey];
     const units = unitsOf[unit];
@@ -166,7 +176,7 @@ export async function runEstimate(me: CurrentUser, input: EstimateInput): Promis
     const sr = rates.bySlot[slotKey];
     const rate = sr?.byProvider[b.provider.slug] ?? sr?.perUnit ?? null;
     const note = rate == null ? "нет истории расхода — цена неизвестна" : sr.byProvider[b.provider.slug] == null ? `по этому провайдеру истории нет, взята средняя по слоту` : null;
-    parts.push({ slot: slotKey, slotName: r.value.slot.name, unit, units, rate, costUsd: rate == null ? null : rate * units, providerSlug: b.provider.slug, providerName: b.provider.name, keyLabel: b.apiKey.label, keyId: b.apiKey.id, note });
+    parts.push({ slot: slotKey, slotName: r.value.slot.name, unit, units, rate, costUsd: rate == null ? null : rate * units, providerSlug: b.provider.slug, providerName: b.provider.name, keyLabel: b.apiKey.label, keyOwner: await ownerOf(b.apiKey.id), keyId: b.apiKey.id, note });
     keyIds.set(b.apiKey.id, { providerSlug: b.provider.slug, providerKind: b.provider.kind });
   }
 
@@ -183,8 +193,8 @@ export async function runEstimate(me: CurrentUser, input: EstimateInput): Promis
   for (const p of parts) {
     const kind = keyIds.get(p.keyId)?.providerKind ?? "LLM";
     const row = providers.get(p.providerSlug) ?? { slug: p.providerSlug, name: p.providerName, keys: [], costUsd: 0, remainingUsd: null, balanceNote: null, inWorkUsd: 0, inWorkRuns: 0, availableUsd: null, enough: null };
-    const firstKey = !row.keys.includes(p.keyLabel);
-    if (firstKey) row.keys.push(p.keyLabel);
+    const firstKey = !row.keys.some((k) => k.label === p.keyLabel);
+    if (firstKey) row.keys.push({ label: p.keyLabel, owner: p.keyOwner });
     row.costUsd += p.costUsd ?? 0;
     if (firstKey) {
       const res = inWork.get(p.keyId);
@@ -226,7 +236,7 @@ export async function runEstimate(me: CurrentUser, input: EstimateInput): Promis
   const totalUsd = priced.length ? priced.reduce((s, p) => s + (p.costUsd ?? 0), 0) : null;
   const byKey = new Map<string, RunReservation["byKey"][number]>();
   for (const p of parts) {
-    const k = byKey.get(p.keyId) ?? { keyId: p.keyId, keyLabel: p.keyLabel, providerSlug: p.providerSlug, providerName: p.providerName, costUsd: 0 };
+    const k = byKey.get(p.keyId) ?? { keyId: p.keyId, keyLabel: p.keyLabel, keyOwner: p.keyOwner, providerSlug: p.providerSlug, providerName: p.providerName, costUsd: 0 };
     k.costUsd += p.costUsd ?? 0;
     byKey.set(p.keyId, k);
   }

@@ -121,7 +121,7 @@ export function HeaderBalances({ mine = false, teamName = null }: { mine?: boole
               {keys.map((k) => (
                 <div key={k.keyId} className="px-4 py-3 border-b border-line last:border-b-0">
                   <div className="flex items-baseline justify-between gap-3">
-                    <div className="min-w-0"><span className="text-[14px] font-semibold">{k.label}</span> <span className="help">· {k.provider}</span></div>
+                    <div className="min-w-0"><span className="text-[14px] font-semibold">{k.label}</span> <span className="help">· {k.provider} · {k.owner}</span></div>
                     <div className={`text-[18px] font-bold tabular-nums tracking-tight ${tone(k.remaining)}`}>{k.remaining != null ? fmtMoney(k.remaining) : "—"}</div>
                   </div>
                   <div className="mt-1 text-[12.5px] text-muted">{k.tools.join(", ")}</div>
@@ -149,7 +149,7 @@ export function HeaderBalances({ mine = false, teamName = null }: { mine?: boole
               )}
               {p.keys.map((k) => (
                 <div key={k.keyId} className="flex items-baseline justify-between gap-3 text-[12.5px] text-muted" title={k.note ?? undefined}>
-                  <span className="truncate">{k.label}</span>
+                  <span className="truncate">{k.label} <span className="opacity-70">· {k.owner}</span></span>
                   <span className={`tabular-nums ${tone(k.remaining)}`}>{k.remaining != null ? fmtMoney(k.remaining) : "—"}</span>
                 </div>
               ))}

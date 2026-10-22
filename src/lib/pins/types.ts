@@ -168,7 +168,7 @@ export const DEFAULT_RECIPE: Recipe = {
 export type RunReservation = {
   at: string;
   totalUsd: number | null;
-  byKey: Array<{ keyId: string; keyLabel: string; providerSlug: string; providerName: string; costUsd: number }>;
+  byKey: Array<{ keyId: string; keyLabel: string; keyOwner?: string; providerSlug: string; providerName: string; costUsd: number }>;
 };
 
 export type RunSettings = Recipe & {
