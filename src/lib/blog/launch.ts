@@ -30,7 +30,7 @@ export async function launchPosts(me: CurrentUser, input: LaunchInput): Promise<
     // Вставили готовый заголовок («How to X: The Ultimate Guide») — ключом становится поисковая фраза до двоеточия.
     const keyword = searchPhraseOf(sanitizeTopic(k.keyword));
     if (!keyword || keyword.length < 3) { invalid.push(k.keyword); continue; }
-    cleaned.push({ keyword, focusKeyword: k.focusKeyword?.trim() || undefined });
+    cleaned.push({ keyword, topic: sanitizeTopic(k.topic ?? "").slice(0, 300) || undefined, focusKeyword: k.focusKeyword?.trim() || undefined });
   }
   const seen = new Set<string>();
   const inner: string[] = [];
@@ -47,7 +47,7 @@ export async function launchPosts(me: CurrentUser, input: LaunchInput): Promise<
   });
   const data: Prisma.BlogPostCreateManyInput[] = fresh.map((k) => ({
     teamId: site.teamId, siteId: site.id, runId: run.id, recipeId: recipe.id, createdById: me.id,
-    keyword: k.keyword, focusKeyword: k.focusKeyword ?? "",
+    keyword: k.keyword, topic: k.topic ?? "", focusKeyword: k.focusKeyword ?? "",
     recipe: snapshot as unknown as Prisma.InputJsonValue, status: "PENDING", stage: firstStage(), attempts: 0, priority: 0,
   }));
   for (let i = 0; i < data.length; i += 50) await prisma.blogPost.createMany({ data: data.slice(i, i + 50) });

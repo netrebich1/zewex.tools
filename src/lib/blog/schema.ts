@@ -13,6 +13,8 @@ export type SchemaInput = {
   datePublished?: string;
   /** VideoObject встроенного видео */
   video?: Record<string, unknown> | null;
+  /** Формат «Рецепт»: Recipe вместо HowTo (ингредиенты — из recipe_card, шаги — из steps) */
+  recipe?: boolean;
 };
 
 const text = (html: string) => String(html ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -47,7 +49,23 @@ export function buildJsonLd(input: SchemaInput): Record<string, unknown> {
     });
   }
   const steps = extractSteps(input.sections);
-  if (steps.length >= 2) {
+  if (input.recipe) {
+    const card = input.sections.find((s) => s.kind === "recipe_card");
+    const ingredients = card ? [...card.html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)].map((m) => text(m[1])).filter(Boolean).slice(0, 40) : [];
+    const times = text(card?.html ?? "");
+    const yieldM = times.match(/\b(?:serves|servings?|yield|makes)\s*:?\s*([^.;,]{1,40})/i);
+    if (ingredients.length >= 2 && steps.length >= 2) {
+      graph.push({
+        "@type": "Recipe",
+        name: input.h1.slice(0, 110),
+        description: firstWords(input.description, 40),
+        ...(input.images.length ? { image: input.images.slice(0, 3) } : {}),
+        recipeIngredient: ingredients,
+        recipeInstructions: steps.map((s) => ({ "@type": "HowToStep", name: s.name, text: s.text })),
+        ...(yieldM ? { recipeYield: yieldM[1].trim() } : {}),
+      });
+    }
+  } else if (steps.length >= 2) {
     graph.push({
       "@type": "HowTo",
       name: input.h1.slice(0, 110),

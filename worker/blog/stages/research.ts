@@ -46,7 +46,7 @@ export const research: StageHandler = async (ctx) => {
     await ctx.tick(`Исследование: запрос ${i + 1}/${TRIES}`);
     let text = "";
     try {
-      const r = await aiChat(ctx.ai, { slot: SLOTS.textFast, model, system: filled.system, user: filled.user + correction, json: true, temperature: i === 0 ? 0.4 : 0.2, maxTokens: 6000, timeoutMs: 180_000 });
+      const r = await aiChat(ctx.ai, { slot: SLOTS.textFast, model, system: filled.system, user: filled.user + (post.topic?.trim() ? `\n\nEDITOR'S ARTICLE TITLE: "${post.topic.trim()}" — research exactly this angle (if it promises a number of items, collect enough distinct items).` : "") + correction, json: true, temperature: i === 0 ? 0.4 : 0.2, maxTokens: 6000, timeoutMs: 180_000 });
       text = r.text;
       usedModel = r.model;
     } catch (e) {

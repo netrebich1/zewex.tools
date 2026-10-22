@@ -114,12 +114,23 @@ export const assemble: StageHandler = async (ctx) => {
     const next = rows.find((r) => r.position > videoPos! && !hasStepsImg(r.position) && r.kind !== "comparison_table");
     if (next) videoPos = next.position;
   }
-  const secs: AssembleSection[] = rows.map((s, i) => ({ videoHtml: chosenVideo && s.position === videoPos ? videoEmbedHtml(chosenVideo, post.id) : null, position: s.position, kind: s.kind, heading: cleanHeading(s.heading), html: cleaned[i], photo: img(s.slotKey), stepsPhoto: img(`ai${s.position}`) }));
+  // Формат: пункты списка/подборки/тренировки нумеруются по порядку; в подборке рецептов — ссылка на рецепт автора фото
+  const fmtKey = recipe.scenario?.key;
+  let itemNo = 0;
+  const numbered = (kind: string, heading: string) => (kind === "list_item" ? `${++itemNo}. ${heading.replace(/^\s*\d+[.)]\s*/, "")}` : heading);
+  const recipeLink = (slotKey: string | null | undefined) => {
+    const p = slotKey ? photoBySlot.get(slotKey) : null;
+    if (fmtKey !== "roundup_recipes" || !p?.sourcePageUrl) return null;
+    const domain = (p.sourceDomain || p.sourcePageUrl.replace(/^https?:\/\//, "").split("/")[0]).replace(/^www\./, "");
+    return `<p class="zx-source"><strong>Get the recipe:</strong> <a href="${p.sourcePageUrl.replace(/"/g, "&quot;")}" target="_blank" rel="nofollow noopener noreferrer">${domain}</a></p>\n`;
+  };
+  const secs: AssembleSection[] = rows.map((s, i) => ({ videoHtml: chosenVideo && s.position === videoPos ? videoEmbedHtml(chosenVideo, post.id) : null, position: s.position, kind: s.kind, heading: numbered(s.kind, cleanHeading(s.heading)), html: cleaned[i], photo: img(s.slotKey), stepsPhoto: img(`ai${s.position}`), afterHtml: s.kind === "list_item" ? recipeLink(s.slotKey) : null }));
   const faq = Array.isArray(fresh.faq) ? (fresh.faq as Array<{ question: string; answer: string }>).filter((f) => f?.question && f?.answer) : [];
   const jsonLd = recipe.publish.schema === "off" ? null : buildJsonLd({
     h1: fresh.h1 || outline.h1 || post.keyword, description: fresh.metaDescription || outline.metaDescription,
     images: photos.map(shownUrl).filter(Boolean), faq, sections: secs.map((s) => ({ kind: s.kind, heading: s.heading, html: s.html })),
     video: chosenVideo && videoPos ? videoObject(chosenVideo) : null,
+    recipe: recipe.scenario?.structure === "recipe",
   });
   const built = assemblePostHtml({
     introHtml: fresh.introHtml ?? "", hero: img("hero"), takeawaysHtml: fresh.takeawaysHtml, sections: secs, faq,

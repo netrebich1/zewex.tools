@@ -11,6 +11,7 @@ import { titleCase } from "../../worker/blog/stages/meta";
 import { shopPageSignal } from "../../worker/blog/stages/photoFilter";
 import { junkPhotoSignal, offPuttingSignal } from "../../src/lib/blog/photo/ratePrompt";
 import { applyScenario, pickScenario } from "../../src/lib/blog/scenarios";
+import { enforceStructure, fixLeadingNumber, splitItems } from "../../src/lib/blog/structure";
 import { inventedExperience } from "../../src/lib/blog/qualityCheck";
 import type { BlogBrief } from "../../src/lib/blog/types";
 import { isoDuration, judgeDecision, prefilterVideos, videoEmbedHtml, videoObject, type VideoCandidate } from "../../src/lib/blog/video";
@@ -196,17 +197,45 @@ function videoCheck() {
 // 10. Сценарии, выдуманный опыт, «не фото», место ИИ-картинки шагов
 function scenarioCheck() {
   const b = (intent: string, ymyl = false) => ({ intent, ymyl, topicDomain: "hair", audience: "", summary: "", facts: [], dos: [], donts: [], mistakes: [], safety: [], materials: [], timeline: "", questions: [] } as unknown as BlogBrief);
-  assert.equal(pickScenario("auto", b("how_to"), "how to curl hair")!.scenario.key, "how_to_video");
-  assert.equal(pickScenario("auto", b("problem_fix"), "how to get dye off skin")!.scenario.key, "how_to_video");
-  assert.equal(pickScenario("auto", b("how_to", true), "how to remove a skin tag")!.scenario.key, "health_money");
-  assert.equal(pickScenario("auto", b("which"), "which hair roller")!.scenario.key, "comparison");
-  assert.equal(pickScenario("auto", b("why"), "why hair falls out")!.scenario.key, "explainer");
-  assert.equal(pickScenario("comparison", b("how_to"), "x")!.auto, false);
+  // Формат по теме статьи (реальные темы из таблицы «Инфо — темы»)
+  const T = (topic: string, kw: string, intent = "other", ymyl = false) => pickScenario("auto", b(intent, ymyl), kw, topic)!;
+  assert.equal(T("31 Easy Soup Recipes Even Picky Eaters Love", "soup recipes").scenario.key, "roundup_recipes");
+  assert.equal(T("31 Easy Soup Recipes Even Picky Eaters Love", "soup recipes").n, 25);
+  assert.equal(T("30 Easy High Protein Meals for Busy Days", "High protein").scenario.key, "roundup_recipes");
+  assert.equal(T("30 Pantry Organization Ideas to Keep Everything in Order", "pantry organization").scenario.key, "roundup_ideas");
+  assert.equal(T("400 Interesting Questions to Ask Anyone", "questions to ask").scenario.key, "big_list");
+  assert.equal(T("400 Interesting Questions to Ask Anyone", "questions to ask").n, 400);
+  assert.equal(T("51 Positive Affirmations for Women to Change Your Mindset", "positive affirmations").scenario.key, "big_list");
+  assert.equal(T("250+ Bucket List Ideas You Won't Regret", "bucket list").scenario.key, "big_list");
+  assert.equal(T("25 Clear Skin Tips That Actually Work", "Clear skin").scenario.key, "numbered");
+  assert.equal(T("25 Clear Skin Tips That Actually Work", "Clear skin").n, 25);
+  assert.equal(T("10 Signs You're Low in Vitamin D (and What to Do)", "Vitamin d", "other", true).scenario.key, "numbered");
+  assert.equal(T("25 Best Foods for Gut Health", "Gut health").scenario.key, "numbered");
+  assert.equal(T("Quick 10-Minute At-Home Ab Workout for Women", "Ab workout").scenario.key, "workout");
+  assert.equal(T("7-Day Keto Diet Meal Plan for Beginners", "keto diet").scenario.key, "plan");
+  assert.equal(T("Easy Homemade Granola Recipe", "granola recipe").scenario.key, "recipe");
+  assert.equal(T("How to Make Homemade Lotion (Easy Shea Butter Recipe)", "lotion").scenario.key, "recipe");
+  assert.equal(T("How to Make a Vision Board in 30 Minutes (Step-by-Step)", "vision board").scenario.key, "how_to_video");
+  assert.equal(T("When and How to Use Toner on Your Face", "toner", "how_to").scenario.key, "how_to_video");
+  assert.equal(T("The 5 Love Languages Explained (and How to Use Them)", "love languages").scenario.key, "explainer");
+  assert.equal(T("", "which hair roller", "which").scenario.key, "comparison");
+  assert.equal(T("", "how to curl hair", "how_to").scenario.key, "how_to_video");
+  assert.equal(pickScenario("numbered", b("how_to"), "x", "")!.auto, false);
   assert.equal(pickScenario("manual", b("how_to"), "x"), null);
-  const p = applyScenario({ ...DEFAULT_PARAMS, aiImages: { mode: "steps", max: 2, quality: "medium" } }, pickScenario("auto", b("how_to", true), "x")!.scenario);
+  // Здоровье — надстройка над форматом
+  const p = applyScenario({ ...DEFAULT_PARAMS, aiImages: { mode: "steps", max: 2, quality: "medium" } }, T("", "how to remove a skin tag", "how_to", true).scenario, true);
   assert.equal(p.source, "research"); assert.equal(p.video.embed, "off"); assert.equal(p.aiImages.mode, "off"); assert.equal(p.blocks.disclaimer, "always");
-  const v = applyScenario({ ...DEFAULT_PARAMS, aiImages: { mode: "steps", max: 2, quality: "medium" } }, pickScenario("auto", b("how_to"), "x")!.scenario);
+  const v = applyScenario({ ...DEFAULT_PARAMS, aiImages: { mode: "steps", max: 2, quality: "medium" } }, T("", "how to curl hair", "how_to").scenario);
   assert.equal(v.source, "video"); assert.equal(v.aiImages.mode, "steps");
+  // Каркас: число пунктов, фото у пунктов подборки, распределение большого списка, число в H1
+  const sec = (kind: string, i: number, image = false) => ({ position: i, kind, heading: `Item ${i}`, keyPoints: [], targetWords: 80, image: image ? { query: "q" } : null });
+  const r1 = enforceStructure([sec("quick_answer", 1), ...Array.from({ length: 30 }, (_, i) => sec("list_item", i + 2)), sec("mistakes", 32)], "roundup", 25, "roundup_recipes");
+  assert.equal(r1.count, 25); assert.ok(r1.sections.filter((s) => s.kind === "list_item").every((s) => s.image), "every roundup item has a photo");
+  assert.equal(r1.sections[0].kind, "quick_answer"); assert.equal(r1.sections.length, 26);
+  const r2 = enforceStructure([sec("list_group", 1), sec("list_group", 2), sec("list_group", 3)], "big_list", 100);
+  assert.deepEqual(splitItems(100, 3), [34, 33, 33]); assert.ok(/exactly 34 items/.test(r2.sections[0].notes ?? ""));
+  assert.equal(fixLeadingNumber("31 Easy Soup Recipes Even Picky Eaters Love", 25), "25 Easy Soup Recipes Even Picky Eaters Love");
+  assert.equal(fixLeadingNumber("How to Use Toner", 25), "How to Use Toner");
   assert.ok(inventedExperience("<p>I've tried both methods, and once you learn…</p>"));
   assert.ok(inventedExperience("the tips I've learned from trying it at home"));
   assert.equal(inventedExperience("<p><strong>My tip:</strong> practice on a cold iron first.</p>"), null);

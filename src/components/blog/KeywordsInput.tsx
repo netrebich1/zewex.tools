@@ -6,7 +6,8 @@ import { innerDuplicates, parseKeywordLines, type ParsedKeyword } from "@/lib/ar
 import type { KeywordInput } from "@/lib/blog/types";
 
 /**
- * Вставка списка ключей: по строке `ключ | фокус-ключ`. Показывает разбор, повторы внутри списка и дубликаты по сайту.
+ * Вставка списка ключей: по строке `ключ | тема статьи | фокус-ключ` (или колонки через Tab — из таблицы).
+ * Тема статьи — заголовок, который задаёт редактор («25 Clear Skin Tips»): по ней система определяет формат статьи. Показывает разбор, повторы внутри списка и дубликаты по сайту.
  * В форму уходит скрытое поле `keywords` (JSON).
  */
 export function KeywordsInput({ siteId, onCount }: { siteId: string; onCount?: (n: number) => void }) {
@@ -45,7 +46,7 @@ export function KeywordsInput({ siteId, onCount }: { siteId: string; onCount?: (
     if (seen.has(l)) continue;
     seen.add(l);
     if (dups.has(l)) { dupBySite.push(r.keyword); if (skipDup) continue; }
-    payload.push({ keyword: r.keyword, focusKeyword: r.seoKeyword || r.focusKeyword });
+    payload.push({ keyword: r.keyword, topic: r.seoKeyword || undefined, focusKeyword: r.focusKeyword || undefined });
   }
   useEffect(() => { onCount?.(payload.length); }, [payload.length, onCount]);
   const errors = rows.filter((r) => r.error);
@@ -53,8 +54,8 @@ export function KeywordsInput({ siteId, onCount }: { siteId: string; onCount?: (
   return (
     <div className="space-y-3">
       <input type="hidden" name="keywords" value={JSON.stringify(payload)} />
-      <Field label="Ключи (темы статей)" hint="По одному в строке: вопрос или фраза, как её ищут («how to use hair rollers»). Через « | » можно добавить фокус-ключ для SEO.">
-        <textarea className="input font-mono text-[13px]" rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder={"how to use hair rollers\nwhich vitamin deficiency causes hair loss\nhow to get hair dye off skin | hair dye off skin"} />
+      <Field label="Ключи и темы статей" hint="По строке: ключ | тема статьи | фокус-ключ (тема и фокус-ключ — по желанию; можно вставить две колонки из таблицы через Tab). По теме система сама определяет формат: «31 Easy Soup Recipes» — подборка рецептов, «25 Clear Skin Tips» — нумерованный список, «How to …» — инструкция.">
+        <textarea className="input font-mono text-[13px]" rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder={"clear skin | 25 Clear Skin Tips That Actually Work\nsoup recipes | 31 Easy Soup Recipes Even Picky Eaters Love\nquestions to ask | 400 Interesting Questions to Ask Anyone\nhow to use hair rollers"} />
       </Field>
       {rows.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 text-[13px]">

@@ -6,7 +6,8 @@
 
 export type BlockKind =
   | "quick_answer" | "why_it_happens" | "what_you_need" | "steps" | "methods" | "comparison_table" | "mistakes" | "tips"
-  | "troubleshooting" | "prevention" | "aftercare" | "myths" | "when_to_see_pro" | "timeline_cost" | "prose";
+  | "troubleshooting" | "prevention" | "aftercare" | "myths" | "when_to_see_pro" | "timeline_cost" | "prose"
+  | "list_item" | "list_group" | "recipe_card" | "plan_table";
 
 export type BlockSpec = {
   kind: BlockKind;
@@ -36,6 +37,10 @@ export const BLOCKS: BlockSpec[] = [
   { kind: "myths", label: "Мифы", describe: "2-4 myths with the reality for each, as 'Myth:' / 'Reality:' pairs.", tags: ["p", "h3", "strong"], words: [100, 180], image: "rarely" },
   { kind: "when_to_see_pro", label: "Когда к специалисту", describe: "When to stop DIY and see a doctor, dermatologist, stylist or technician; mandatory for health-adjacent topics.", tags: ["p", "ul", "li"], words: [60, 120], image: "rarely" },
   { kind: "timeline_cost", label: "Сроки и стоимость", describe: "How long it takes, how often to repeat, rough cost tiers without exact prices.", tags: ["p", "ul", "li"], words: [70, 130], image: "rarely" },
+  { kind: "list_item", label: "Пункт списка", describe: "One item of a numbered list, roundup or workout: the heading is the item name (no number, numbering is added automatically), the text explains it; 2-3 short paragraphs or a paragraph plus 2-4 bullets.", tags: ["p", "ul", "li", "strong"], words: [45, 140], image: "often" },
+  { kind: "list_group", label: "Группа большого списка", describe: "One themed group of a big list (questions, prompts, affirmations, ideas): one intro sentence, then an <ol> of short one-line items.", tags: ["p", "ol", "li", "strong"], words: [80, 700], image: "rarely" },
+  { kind: "recipe_card", label: "Карточка рецепта", describe: "Ingredients with exact amounts as a <ul>, then one line with prep time, cook/set time and servings (or yield for DIY); no steps here.", tags: ["p", "ul", "li", "strong"], words: [60, 170], image: "rarely" },
+  { kind: "plan_table", label: "План по дням", describe: "A day-by-day table (rows = days, columns = meals, workouts or tasks) with one intro sentence and one sentence after.", tags: ["p", "table", "thead", "tbody", "tr", "th", "td", "strong"], words: [120, 380], image: "rarely" },
   { kind: "prose", label: "Обычный раздел", describe: "A plain explanatory section in 2-3 paragraphs when no special block fits.", tags: ["p", "h3", "ul", "li"], words: [100, 200], image: "sometimes" },
 ];
 
@@ -72,5 +77,5 @@ export function allowedTags(kind: string): string[] {
 
 /** Блоки, где ожидается таблица. */
 export function wantsTable(kind: string): boolean {
-  return kind === "comparison_table" || kind === "troubleshooting";
+  return kind === "comparison_table" || kind === "troubleshooting" || kind === "plan_table";
 }

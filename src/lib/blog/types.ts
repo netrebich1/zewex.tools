@@ -211,7 +211,8 @@ export type BlogRunSettings = {
   testLabel: string;
 };
 
-export type KeywordInput = { keyword: string; focusKeyword?: string };
+/** Ключ для запуска: поисковый ключ, тема статьи (заголовок от редактора — по нему определяется формат), фокус-ключ SEO. */
+export type KeywordInput = { keyword: string; topic?: string; focusKeyword?: string };
 
 /** Снимок сценария и настроек запуска, который сохраняется в BlogPost.recipe и исполняется воркером. */
 export type BlogRecipeSnapshot = BlogRecipeShape & {
@@ -277,6 +278,8 @@ export type BlogOutline = {
   sections: OutlineSection[];
   /** Секция, где стоит видео YouTube (если оно выбрано) */
   videoSection?: number | null;
+  /** Число пунктов списка/подборки (формат) — по нему выравнивается число в H1 */
+  listCount?: number | null;
   model?: string | null;
   plannedAt?: string;
 };

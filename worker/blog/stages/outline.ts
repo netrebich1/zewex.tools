@@ -16,6 +16,7 @@ import { slugify } from "@/lib/articles/text/slug";
 import { BLOCK_BY_KIND, blockOf, blocksCatalogText } from "@/lib/blog/blocks";
 import { fillPrompt, resolvePrompt, stageModel } from "@/lib/blog/prompts";
 import { briefShort, cleanHeading } from "@/lib/blog/text";
+import { LIST_STRUCTURES, enforceStructure, fixLeadingNumber, structureHint } from "@/lib/blog/structure";
 import { SLOTS, VOICES, type BlogOutline, type OutlineImage, type OutlineSection, type Tri } from "@/lib/blog/types";
 import type { StageHandler } from "./index";
 
@@ -80,7 +81,14 @@ export const outline: StageHandler = async (ctx) => {
   };
   const filled = fillPrompt(prompt, vars, { name: STAGE_KEY });
   const chosenVideo = ((post.video ?? null) as { chosen?: { title: string; channel: string; sec: number; judge?: { covers?: string[] } } | null } | null)?.chosen ?? null;
-  const scenarioHint = recipe.scenario?.outlineHint ? `\n\nARTICLE TYPE: ${recipe.scenario.label}. ${recipe.scenario.outlineHint}` : "";
+  const fmt = recipe.scenario;
+  const st = fmt?.structure;
+  const N = fmt?.n ?? null;
+  const topic = (post.topic ?? "").trim();
+  const topicLine = topic ? `\n\nEDITOR'S ARTICLE TITLE: "${topic}". The H1 is this title (polish wording only, keep its angle, promise and number); every section must serve this exact angle.` : "";
+  const sHint = structureHint(st, N, fmt?.key);
+  const scenarioHint = topicLine + (fmt ? `\n\nARTICLE FORMAT: ${fmt.label}.${sHint ? ` ${sHint}` : ""}${fmt.outlineHint ? ` ${fmt.outlineHint}` : ""}` : "");
+  const maxSections = st && LIST_STRUCTURES.includes(st) && N ? N + 4 : MAX_SECTIONS;
   const videoBlock = scenarioHint + (chosenVideo ? `\n\nVIDEO: a YouTube video "${chosenVideo.title}" by ${chosenVideo.channel} (${Math.max(1, Math.round(chosenVideo.sec / 60))} min) will be embedded in one section. It covers: ${(chosenVideo.judge?.covers ?? []).join("; ") || "the method"}. Add to the JSON "video_section": the position (1-based) of the section this video supports best, usually the steps section.` : "");
   const model = stageModel(recipe, STAGE_KEY);
 
@@ -115,7 +123,7 @@ export const outline: StageHandler = async (ctx) => {
   // ── Секции: валидные типы, уникальные заголовки, объём в границах ──
   const usedKeys = new Set<string>();
   const sections: OutlineSection[] = [];
-  for (const raw of (out.sections as unknown[]).slice(0, MAX_SECTIONS)) {
+  for (const raw of (out.sections as unknown[]).slice(0, maxSections)) {
     const o = (raw && typeof raw === "object" ? raw : {}) as R;
     const kindRaw = String(o.kind ?? o.block ?? "prose").toLowerCase().replace(/[\s-]+/g, "_");
     const kind = BLOCK_BY_KIND[kindRaw] ? kindRaw : "prose";
@@ -142,6 +150,12 @@ export const outline: StageHandler = async (ctx) => {
     });
   }
 
+  // Формат: число пунктов, фото у пунктов подборки, заметки автору к пунктам и группам
+  const shaped = enforceStructure(sections, st, N, fmt?.key);
+  sections.length = 0;
+  sections.push(...shaped.sections);
+  const listCount = shaped.count;
+
   // Объём статьи: сумма секций приводится к [min,max] с учётом вступления/итогов/заключения/FAQ (~15 %).
   const bodyMin = Math.round(params.length.min * 0.78);
   const bodyMax = Math.round(params.length.max * 0.85);
@@ -156,12 +170,15 @@ export const outline: StageHandler = async (ctx) => {
   // ── Картинки: hero обязателен; число (hero + секции + closing) ∈ [min,max] ──
   const hero = imageOf(out.hero) ?? { query: `${keyword} close-up real photo`, mustShow: keyword, orientation: params.images.heroOrientation };
   hero.orientation = params.images.heroOrientation;
-  let closing = params.blocks.closingImage === "never" ? null : imageOf(out.closing_image ?? out.closingImage);
+  // Пределы картинок: подборка — фото у каждого пункта; нумерованный список — примерно у половины
+  const imgMax = st === "roundup" && listCount ? listCount + 1 : st === "numbered" && listCount ? Math.max(params.images.max, Math.min(12, Math.ceil(listCount / 2) + 1)) : params.images.max;
+  const imgMin = st === "roundup" && listCount ? Math.min(imgMax, listCount + 1) : params.images.min;
+  let closing = params.blocks.closingImage === "never" || st === "roundup" ? null : imageOf(out.closing_image ?? out.closingImage);
   if (params.blocks.closingImage === "always" && !closing) closing = { query: `${keyword} result`, orientation: "any" };
   const countImages = () => 1 + sections.filter((s) => s.image).length + (closing ? 1 : 0);
   // Лишние: сначала у блоков, где фото «rarely», затем с конца; closing — последним.
   const dropOrder = [...sections].sort((a, b) => rank(a.kind) - rank(b.kind) || b.position - a.position);
-  while (countImages() > params.images.max) {
+  while (countImages() > imgMax) {
     const victim = dropOrder.find((s) => s.image);
     if (victim) victim.image = null;
     else if (closing) closing = null;
@@ -169,7 +186,7 @@ export const outline: StageHandler = async (ctx) => {
   }
   // Недостающие: блокам, где фото «often»/«sometimes», по порядку, запрос по заголовку.
   const addOrder = [...sections].sort((a, b) => rank(b.kind) - rank(a.kind) || a.position - b.position);
-  while (countImages() < params.images.min) {
+  while (countImages() < imgMin) {
     const target = addOrder.find((s) => !s.image && blockOf(s.kind).image !== "rarely") ?? addOrder.find((s) => !s.image);
     if (!target) break;
     target.image = { query: `${keyword} ${target.heading}`.slice(0, 160), orientation: "any" };
@@ -185,8 +202,8 @@ export const outline: StageHandler = async (ctx) => {
   if (faqEnabled && pool.length < 2) faqEnabled = false;
   const disclaimer = params.blocks.disclaimer === "always" ? true : params.blocks.disclaimer === "never" ? false : out.disclaimer === true || brief.ymyl;
 
-  const h1 = sanitizeTopic(String(out.h1 ?? "").trim()).slice(0, 160) || keyword;
-  const title = sanitizeTopic(String(out.title ?? out.seo_title ?? "").trim()).slice(0, 120) || h1;
+  const h1 = fixLeadingNumber(sanitizeTopic(String(out.h1 ?? "").trim()).slice(0, 160) || topic || keyword, listCount);
+  const title = fixLeadingNumber(sanitizeTopic(String(out.title ?? out.seo_title ?? "").trim()).slice(0, 120) || h1, listCount);
   const metaDescription = String(out.meta_description ?? out.metaDescription ?? "").trim().slice(0, 400);
   const slug = slugify(String(out.slug ?? out.url_slug ?? ""), 90) || slugify(keyword, 90);
 
@@ -198,6 +215,7 @@ export const outline: StageHandler = async (ctx) => {
     disclaimer,
     sections,
     videoSection: chosenVideo ? pickVideoSection(out.video_section, sections) : null,
+    listCount,
     model: usedModel,
     plannedAt: new Date().toISOString(),
   };

@@ -5,7 +5,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { applyScenario, pickScenario, scenarioReason, type AppliedScenario } from "@/lib/blog/scenarios";
+import { YMYL_HINT, applyScenario, pickScenario, scenarioReason, type AppliedScenario } from "@/lib/blog/scenarios";
 import type { StageHandler } from "./index";
 
 export const scenarioStage: StageHandler = async (ctx) => {
@@ -13,16 +13,20 @@ export const scenarioStage: StageHandler = async (ctx) => {
   if (!brief) return { next: "research", summary: "Нет брифа — возврат к исследованию" };
   const already = (recipe as { scenario?: AppliedScenario }).scenario;
   if (already?.key) return { summary: `Тип статьи уже определён: ${already.label}`, details: { skipped: true } };
-  const picked = pickScenario(recipe.params.scenario, brief, post.keyword);
+  const topic = (post.topic ?? "").trim();
+  const picked = pickScenario(recipe.params.scenario, brief, post.keyword, topic);
   if (!picked) {
     const applied: AppliedScenario = { key: "manual", label: "Вручную (параметры сценария)", reason: "определение типа статьи выключено в сценарии", auto: false };
     await prisma.blogPost.update({ where: { id: post.id }, data: { recipe: { ...recipe, scenario: applied } as unknown as Prisma.InputJsonValue } });
     return { summary: "Тип статьи не определяется: вручную — параметры сценария как есть" };
   }
-  const { scenario, auto } = picked;
-  const params = applyScenario(recipe.params, scenario);
-  const applied: AppliedScenario = { key: scenario.key, label: scenario.label, reason: scenarioReason(scenario, brief, auto), auto, outlineHint: scenario.outlineHint };
+  const { scenario, auto, n } = picked;
+  const ymyl = brief.ymyl === true;
+  const params = applyScenario(recipe.params, scenario, ymyl);
+  const hint = [scenario.outlineHint, ymyl ? YMYL_HINT : ""].filter(Boolean).join(" ");
+  const applied: AppliedScenario = { key: scenario.key, label: `${scenario.label}${ymyl ? " · здоровье" : ""}`, reason: scenarioReason(scenario, brief, auto, topic), auto, outlineHint: hint || undefined, structure: scenario.structure, n, ymyl };
   await prisma.blogPost.update({ where: { id: post.id }, data: { recipe: { ...recipe, params, scenario: applied } as unknown as Prisma.InputJsonValue } });
   const what = [`основа: ${params.source === "video" ? "лучшее видео" : "исследование"}`, `видео: ${params.video.embed === "auto" ? "если найдётся" : "нет"}`, `ИИ-картинки: ${params.aiImages.mode === "steps" ? "да" : "нет"}`];
-  return { summary: `Тип статьи «${scenario.label}» (${applied.reason}) · ${what.join(", ")}`, details: { scenario: scenario.key, auto, reason: applied.reason, params: { source: params.source, video: params.video, aiImages: params.aiImages.mode } } };
+  if (n) what.unshift(`пунктов: ${n}`);
+  return { summary: `Тип статьи «${applied.label}» (${applied.reason}) · ${what.join(", ")}`, details: { scenario: scenario.key, structure: scenario.structure, n, ymyl, auto, reason: applied.reason, params: { source: params.source, video: params.video, aiImages: params.aiImages.mode } } };
 };

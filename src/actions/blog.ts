@@ -160,7 +160,7 @@ function parseKeywordsJson(raw: string): KeywordInput[] {
   let arr: unknown;
   try { arr = JSON.parse(raw); } catch { throw new Error("Список ключей повреждён: обновите страницу и вставьте его снова"); }
   if (!Array.isArray(arr)) return [];
-  return arr.map((x) => x as Record<string, unknown>).filter((x) => typeof x.keyword === "string").map((x) => ({ keyword: String(x.keyword), focusKeyword: typeof x.focusKeyword === "string" ? x.focusKeyword : undefined }));
+  return arr.map((x) => x as Record<string, unknown>).filter((x) => typeof x.keyword === "string").map((x) => ({ keyword: String(x.keyword), topic: typeof x.topic === "string" ? x.topic : undefined, focusKeyword: typeof x.focusKeyword === "string" ? x.focusKeyword : undefined }));
 }
 
 export async function launchBlogAction(_p: FormState, f: FormData): Promise<FormState> {

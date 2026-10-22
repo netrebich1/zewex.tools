@@ -1888,6 +1888,8 @@ model BlogPost {
   recipeId        String?     @db.Char(36)
   createdById     String?
   keyword         String
+  /// Тема статьи от редактора (заголовок, например «25 Clear Skin Tips») — по ней определяется формат и строится H1
+  topic           String      @default("") @db.VarChar(300)
   focusKeyword    String      @default("")
   /// Снимок рецепта и настроек запуска (BlogRecipeSnapshot) — его исполняет воркер
   recipe          Json
