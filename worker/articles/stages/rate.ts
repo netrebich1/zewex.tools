@@ -270,9 +270,12 @@ export const rate: ArtStageHandler = async (ctx) => {
         ? `\n${NO_PEOPLE_RULE}\nFor EVERY photo, kept or rejected, add "person_visible": true if any person or human body part is visible anywhere in the frame, otherwise false. person_visible true means verdict "reject".`
         : "")
     : "";
-  const CONTRACT_RULES = topicContract.reviewRules.length
+  // Частые ошибки чтения кадра (аудит woman-trend 2026-10-22): кольца на пальцах описаны как «полоса страз», зебра
+  // названа леопардом, светлые пряди — «lowlights», причёска в пучке — «боб». Правила идут в оценку, факты — к автору.
+  const FACT_GUARDS = factGuards(niche, `${article.keyword || ""} ${article.focusKeyword || ""}`);
+  const CONTRACT_RULES = (FACT_GUARDS ? `\n\nREAD THE PHOTO EXACTLY:\n${FACT_GUARDS}` : "") + (topicContract.reviewRules.length
     ? `\n\nTOPIC CONTRACT (hard limits from the article topic):\n${topicContract.reviewRules.map((r, i) => `${i + 1}. ${r}`).join("\n")}`
-    : "";
+    : "");
   const AUDIENCE_RULES = audience
     ? `\n\nAUDIENCE CHECK (mandatory, decided per photo):\n${audience.rule}\n` +
       `For EVERY photo add a field "audience" with exactly one value you actually SEE:` +
@@ -626,4 +629,21 @@ export const rate: ArtStageHandler = async (ctx) => {
 
 function round6(v: number): number {
   return Math.round(v * 1e6) / 1e6;
+}
+
+/** Правила точного чтения кадра по нише и ключу — для оценки фото (факты из неё уходят автору секций). */
+export function factGuards(niche: string, keyword: string): string {
+  const k = keyword.toLowerCase();
+  const out: string[] = [];
+  if (/nail|manicure|pedicure/.test(niche) || /nail/.test(k)) {
+    out.push("- Rings, bracelets and watches on the hand are jewelry, NOT nail decoration: never describe them as rhinestones, bands, chains or nail art.");
+  }
+  if (/outfit|fashion|dress/.test(niche) || /dress|outfit|skirt|top|pants/.test(k)) {
+    out.push("- Name an animal print exactly as seen: leopard/cheetah = rosette spots; zebra/tiger = stripes; giraffe/cow = patches; snake = scales. If the keyword names a print and the photo shows a different one, topic_ok false.");
+  }
+  if (/hair/.test(niche) || /hair|bob|cut|braid|lowlight|highlight|balayage/.test(k)) {
+    out.push("- Lowlights are strands DARKER than the base; highlights, balayage and babylights are LIGHTER. Describe what you see; never call lighter pieces lowlights.");
+    if (/\b(?:bob|lob|pixie|haircut|cut|bangs|layers|length|shag|mullet)\b/.test(k)) out.push("- For a haircut topic the cut must be readable: hair tied up (bun, ponytail, half-up, braided back) hides the cut — topic_ok false.");
+  }
+  return out.join("\n");
 }

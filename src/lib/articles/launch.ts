@@ -10,7 +10,7 @@ import type { ArtFormat, ArtRecipe, Prisma } from "@prisma/client";
 import { canAccessArtSite } from "./access";
 import { slotAvailable } from "./ai";
 import { loadArtSettings } from "./automation";
-import { innerDuplicates, sanitizeTopic } from "./keywords";
+import { innerDuplicates, sanitizeTopic, infoIntent } from "./keywords";
 import { resolvePromptSetId } from "./prompts";
 import { STAGE_INFO, firstStage, stagesFor } from "./stages";
 import {
@@ -136,8 +136,13 @@ export async function launchArticles(me: CurrentUser, input: LaunchInput): Promi
   const seen = new Set<string>();
   const unique = cleaned.filter((k) => { const l = k.keyword.toLowerCase(); if (seen.has(l)) return false; seen.add(l); return true; });
   const dup = new Set(await findDuplicateKeywords(site.id, unique.map((k) => k.keyword)));
-  const skipped = [...unique.filter((k) => dup.has(k.keyword.toLowerCase())).map((k) => k.keyword), ...[...inner].map((k) => `${k} (повтор в списке)`)];
-  const fresh = unique.filter((k) => !dup.has(k.keyword.toLowerCase()));
+  const info = new Map(unique.map((k) => [k.keyword, infoIntent(k.keyword)] as const).filter((x): x is readonly [string, string] => !!x[1]));
+  const skipped = [
+    ...unique.filter((k) => dup.has(k.keyword.toLowerCase())).map((k) => k.keyword),
+    ...[...inner].map((k) => `${k} (повтор в списке)`),
+    ...[...info].filter(([k]) => !dup.has(k.toLowerCase())).map(([k, why]) => `${k} (${why})`),
+  ];
+  const fresh = unique.filter((k) => !dup.has(k.keyword.toLowerCase()) && !info.has(k.keyword));
   if (!fresh.length) throw new Error(skipped.length ? `Все ключи уже есть у этого сайта: ${skipped.slice(0, 5).join(", ")}${skipped.length > 5 ? "…" : ""}` : "Добавьте хотя бы один ключ");
 
   // Сценарий запуска + сценарии отдельных строк (импорт из Google Таблицы: у каждой строки свой номер сценария)

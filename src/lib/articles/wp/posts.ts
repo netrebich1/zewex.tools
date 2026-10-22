@@ -277,6 +277,15 @@ export async function updatePost(creds: WpCreds, id: number, patch: Partial<WpPo
   return toPostResult(json);
 }
 
+/** GET /posts/{id}?context=edit — сырые заголовок и текст записи (для точечных правок опубликованного). */
+export async function fetchPostRaw(creds: WpCreds, id: number, opts: { signal?: AbortSignal } = {}): Promise<{ title: string; content: string }> {
+  const json = await wpJson(creds, `/posts/${id}?context=edit&_fields=id,title,content`, {}, { signal: opts.signal, timeoutMs: LOOKUP_TIMEOUT_MS, maxRetries: 2 });
+  if (!isRecord(json)) throw new WpError("WP вернул неожиданный ответ записи", 0);
+  const t = json.title;
+  const c = json.content;
+  return { title: isRecord(t) ? str(t.raw) : str(t), content: isRecord(c) ? str(c.raw) : str(c) };
+}
+
 /* ------------------------------ медиа ------------------------------ */
 
 /** POST /media/{id} {alt_text, title, caption} (оригинал :294-304 — best effort, ошибка не ломает публикацию; решает вызывающий). */

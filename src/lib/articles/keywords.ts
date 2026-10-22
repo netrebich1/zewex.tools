@@ -61,3 +61,14 @@ export function innerDuplicates(rows: Array<{ keyword: string }>): Set<string> {
   }
   return dup;
 }
+
+/**
+ * Инфо-ключ: человек ищет действия и советы, а не варианты для выбора (аудит woman-trend 2026-10-22: «Classy Hair Care
+ * Routine 2027» стала подборкой стрижек). Для фото-подборки такой ключ не берём — его пишет сервис инфо-статей (блог).
+ * Возвращает причину пропуска или null.
+ */
+const INFO_INTENT_RE = /\b(?:routines?|tips?|how to|ways to|benefits?|mistakes?|guide|remed(?:y|ies)|treatments?|tutorials?|step[- ]by[- ]step|hacks?|(?:hair|skin|nail|scalp|body|beard) ?care|regimen|checklist)\b/i;
+export function infoIntent(keyword: string): string | null {
+  const m = String(keyword || "").match(INFO_INTENT_RE);
+  return m ? `инфо-ключ («${m[0].toLowerCase()}»): это не подборка образов — пишется в формате инфо-статьи` : null;
+}

@@ -206,7 +206,33 @@ export function polishHtml(html: unknown, opts: PolishOpts = {}): string {
 export function polishHeading(heading: unknown, opts: PolishOpts = {}): string {
   let s = fixDashesHeading(String(heading ?? ""));
   if (opts.usSpelling) s = toUsSpellingText(s);
-  return s;
+  return titleCaseHeading(s);
+}
+
+const SMALL_WORDS = new Set(["a", "an", "the", "and", "or", "nor", "but", "for", "of", "in", "on", "at", "to", "by", "from", "with", "vs", "via", "as", "into", "per"]);
+
+/**
+ * Один регистр для всех заголовков (аудит woman-trend 2026-10-22: у нарядов «Strapless evening gown with high slit»,
+ * у волос — «Collarbone Lob With Caramel Lowlights»): каждое слово с заглавной, служебные (a, for, with…) — строчные,
+ * кроме первого/последнего и после двоеточия. Слова с внутренними заглавными или цифрами (3D, McQueen, 2027) не трогаем.
+ */
+export function titleCaseHeading(s: string): string {
+  const parts = String(s || "").split(/(\s+)/);
+  const words = parts.filter((w) => w && !/^\s+$/.test(w));
+  let idx = -1;
+  let prev = "";
+  return parts
+    .map((w) => {
+      if (!w || /^\s+$/.test(w)) return w;
+      idx++;
+      const afterColon = /[:—–]$/.test(prev);
+      prev = w;
+      if (/\d/.test(w) || /[A-Z]/.test(w.slice(1)) || /\{\{/.test(w)) return w;
+      const bare = w.toLowerCase().replace(/^[^a-z]+|[^a-z]+$/g, "");
+      if (idx > 0 && idx < words.length - 1 && !afterColon && SMALL_WORDS.has(bare)) return w.toLowerCase();
+      return w.toLowerCase().replace(/(^|[-/(])([a-z])/g, (_m, a: string, c: string) => a + c.toUpperCase());
+    })
+    .join("");
 }
 
 // ───────────────────────── URL ─────────────────────────

@@ -186,14 +186,17 @@ export function uniqueHeading(
   const stem = (w: string) => w.replace(/(?:es|s)$/, "");
   const baseWords = new Set(headingKey(base).split(" ").filter(Boolean).map(stem));
   // Хвост годится, если не повторяет слов заголовка и не делает его длиннее предела.
+  // Хвост присоединяется словами, а не запятой (аудит 2026-10-22: «…Cinched Waist, Black Open-Toe Sandals»):
+  // «X With Tail» или «X With Y and Tail». Отрицания («No Visible Bangs», «Without Tips») хвостом не бывают.
+  const joinTail = (tail: string) => (/\bwith\b/i.test(base) ? `${base} and ${tail}` : `${base} With ${tail}`);
   const tailOk = (tail: string) => {
     const tw = headingKey(tail).split(" ").filter(Boolean);
-    return tw.length > 0 && !tw.some((w) => baseWords.has(stem(w))) && `${base}, ${tail}`.length <= MAX_HEADING_CHARS;
+    return tw.length > 0 && !tw.some((w) => baseWords.has(stem(w))) && !/\b(?:no|not|without|none|visible|unclear|n\/a)\b/i.test(tail) && joinTail(tail).length <= MAX_HEADING_CHARS;
   };
   const candidates: string[] = [];
   for (const w of factWords(opts.facts)) {
     const tail = titleCaseWords(w);
-    if (tailOk(tail)) candidates.push(`${base}, ${tail}`);
+    if (tailOk(tail)) candidates.push(joinTail(tail));
   }
   // Из описания — только короткие признаки, не целые предложения («…, The Finish Is Glossy» — аудит text-v3).
   const desc = String(opts.description || "")
@@ -204,7 +207,7 @@ export function uniqueHeading(
     .filter((s) => !/\b(?:background|backdrop|hand|hands|finger|fingers|light|lighting|lit|posed?|shot|photo|image|frame|framed|sweater|sleeve|ring|rings|surface|fabric)\b/i.test(s));
   for (const d of desc) {
     const tail = titleCaseWords(d);
-    if (tailOk(tail)) candidates.push(`${base}, ${tail}`);
+    if (tailOk(tail)) candidates.push(joinTail(tail));
   }
 
   const fallbackQualifiers = [

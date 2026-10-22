@@ -213,6 +213,8 @@ export function stripMetaBanned(text: string, keyword: string): string {
   s = s.replace(/\belevat(e[sd]?|ing)\b/gi, (m, suf: string) => (keep(m) ? m : `upgrad${suf}`));
   s = s.replace(/\b(stunning|chic|dreamy|gorgeous|jaw-?dropping|must-have)\s+/gi, (m, w: string) => (keep(w) ? m : ""));
   s = s.replace(/\bwhether you(?:'re| are)?\b[^,.]*,\s*/gi, (m) => (keep("whether") ? m : ""));
+  // «: Chic & Easy» без «Chic» не должно стать «: & Easy».
+  s = s.replace(/([:—–-])\s*&\s+/g, "$1 ").replace(/^\s*&\s+/, "");
   return s.replace(/\s{2,}/g, " ").replace(/\s+([,.])/g, "$1").trim();
 }
 
@@ -228,11 +230,33 @@ export function hasExactKeyword(text: string, keyword: string): boolean {
  */
 export function ensureH1Keyword(h1: string, keyword: string, year: string): string {
   if (!keyword || hasExactKeyword(h1, keyword)) return h1;
+  // Модель часто вставляет год внутрь ключа («Simple Hairstyles 2027 for Women Over 50») — ключ при этом на месте.
+  const noYear = (s: string) => renderCount(String(s || ""), 10).toLowerCase().replace(/\b20\d\d\b/g, " ").replace(/\s+/g, " ").trim();
+  if (noYear(h1).includes(noYear(keyword))) return h1;
   const kwTitle = titleCase(keyword);
-  const tail = (String(h1 || "").match(/\s((?:for|with|that|to|from|in)\s.+)$/i) || [])[1] || "";
-  let out = `${COUNT_TOKEN} ${kwTitle}${tail ? ` ${tail}` : ""}`;
+  let tail = (String(h1 || "").match(/\s((?:for|with|that|to|from|in)\s.+)$/i) || [])[1] || "";
+  // Хвост не повторяет ключ: «for Women Over 50: Easy Looks» при ключе «… for Women over 50» → «Easy Looks»
+  // (раньше H1 выходил «Simple Hairstyles for Women Over 50 for Women Over 50: & Easy Looks», аудит 2026-10-22).
+  const [head, ...rest] = tail.split(":");
+  if (head && noYear(keyword).includes(noYear(head))) tail = rest.join(":").trim();
+  let out = `${COUNT_TOKEN} ${kwTitle}${tail ? `: ${tail}` : ""}`;
   if (year && !out.includes(year)) out = `${out} ${year}`;
-  return out.replace(/\s{2,}/g, " ").trim();
+  return cleanTitleArtifacts(out);
+}
+
+/**
+ * Артефакты заголовков после правок (аудит woman-trend 2026-10-22): повтор фразы подряд («for Brunettes for Brunettes»),
+ * «: &» после вырезанного слова («: Chic & Easy» → «: & Easy»), висящее «&», одно слово после двоеточия в конце
+ * («…Over 50: Cuts» — хвост, обрезанный по длине).
+ */
+export function cleanTitleArtifacts(s: string): string {
+  let t = String(s || "")
+    .replace(/\s*:\s*&\s*/g, ": ")
+    .replace(/^\s*&\s+/, "")
+    .replace(/\s+&\s*$/, "");
+  for (let i = 0; i < 2; i++) t = t.replace(/\b((?:[\w'-]+\s+){0,5}[\w'-]+)\s+\1\b/gi, "$1");
+  t = t.replace(/:\s*([\w'-]+)\s*$/, (m, w: string) => (/^20\d\d$/.test(w) ? m : ""));
+  return trimDangling(t.replace(/\s+:/g, ":").replace(/\s{2,}/g, " ").trim());
 }
 
 const DESC_MAX = 158;
@@ -268,7 +292,10 @@ export function countToFront(text: string): string {
  */
 export function padDescription(d: string, count = 10): string {
   const len = (s: string) => renderCount(s, count).length;
-  let out = d.trim().replace(/\s+/g, " ").replace(/^([a-z])/, (c) => c.toUpperCase());
+  // Заглавная после конца предложения («…florals. upgrade your…») и «3D» (аудит 2026-10-22).
+  let out = d.trim().replace(/\s+/g, " ").replace(/^([a-z])/, (c) => c.toUpperCase())
+    .replace(/([.!?]\s+)([a-z])/g, (_m, p: string, c: string) => p + c.toUpperCase())
+    .replace(/\b3d\b/g, "3D");
   if (!out) return out;
   if (!/[.!?]$/.test(out)) {
     const dot = out.lastIndexOf(". ");
@@ -647,8 +674,9 @@ No filler words in the title ("Ideas / Looks / Best / Stunning / Must-Try / Top"
     if (!seoMeta.h1.includes(year)) seoMeta.h1 = `${seoMeta.h1.trim()} for ${year}`;
   }
 
-  // Ключ в H1 дословно (аудит text-v3).
-  seoMeta.h1 = ensureH1Keyword(seoMeta.h1, keywordNoYear, year);
+  // Ключ в H1 дословно (аудит text-v3), без повторов и обрывков (аудит 2026-10-22).
+  seoMeta.h1 = cleanTitleArtifacts(ensureH1Keyword(seoMeta.h1, keywordNoYear, year));
+  seoMeta.seo_title = cleanTitleArtifacts(seoMeta.seo_title);
   // Тайтл короче 40 символов после всех попыток — из H1 без числа, если он влезает в 60 и содержит ключ.
   {
     const shortTitle = renderCount(seoMeta.seo_title, outfitCount || 10).length < 40;
