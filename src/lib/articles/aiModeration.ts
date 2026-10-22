@@ -57,7 +57,7 @@ export const MAX_ADDS = 40;
 /** Причины отклонения, с которыми кандидат не предлагается резервом (оригинал :18 + водяные знаки/логотипы). */
 export const HARD_REJECT = /фигур|комплекц|body type|slim|ai[- ]?generat|render|cgi|illustrat|cartoon|drawing|audience|gender|\bmen\b|male|child|kid|off[- ]?topic|не по теме|аудитор|мужск|детск|watermark|logo|водян|логотип/i;
 /** Зависшая обработка (упавший воркер) возвращается в пул (оригинал :270). */
-export const STALE_PROCESSING_MS = 6 * 60_000;
+export const STALE_PROCESSING_MS = 15 * 60_000;
 /** Применение без heartbeat дольше 3 мин → снова proposed (оригинал watchdog :50-56). */
 export const STALE_APPLYING_MS = 3 * 60_000;
 /** «Запуск от» > 1: неполная пачка всё равно уходит, если самая старая статья ждёт дольше (оригинал :81). При «Запуск от» = 1 не ждём. */
@@ -798,7 +798,7 @@ async function callModel(ctx: AiCtx, spent: { usd: number }, prompt: ModPrompt, 
   const user: ContentPart[] = prompt.lead ? [{ type: "text", text: prompt.lead }, ...parts] : parts;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const r = await aiChat(ctx, { slot: SLOTS.vision, model: big ? AI_MOD_MODELS.flash : AI_MOD_MODELS.lite, system: prompt.system, user, json: true, temperature: 0.1, maxTokens: big ? 12000 : 3000, timeoutMs: big ? 150_000 : 60_000, cacheSystem: true });
+      const r = await aiChat(ctx, { slot: SLOTS.vision, lane: "aimod", model: big ? AI_MOD_MODELS.flash : AI_MOD_MODELS.lite, system: prompt.system, user, json: true, temperature: 0.1, maxTokens: big ? 12000 : 3000, timeoutMs: big ? 150_000 : 60_000, cacheSystem: true });
       spent.usd += r.costUsd ?? 0;
       const out = (r.json ?? parseJsonLenient(r.text)) as Record<string, unknown> | null;
       if (!out || typeof out !== "object") { lastErr = `${pass}: ИИ вернул непонятный ответ`; continue; }

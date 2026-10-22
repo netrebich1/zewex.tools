@@ -37,6 +37,8 @@ export type ChatRequest = {
   slot: SlotKey;
   /** Модель из сценария (`provider:model`); пусто — модель правила */
   model?: string;
+  /** Своя очередь параллельности на ключе (например, "aimod" — ИИ-модерация отдельно от этапов статей) */
+  lane?: string;
   system?: string;
   user: string | ContentPart[];
   /** Прежние реплики (для repair-вызовов) */
@@ -66,13 +68,18 @@ export class ArticleAiError extends AiError {
  * падает вдвое (не ниже BRAKE_MIN) на BRAKE_COOL_MS; после паузы каждый успешный вызов возвращает +1 до обычной.
  * Плюс короткие повторы на месте (429 бесплатен): статья не уходит в долгий повтор этапа из-за секундной волны.
  */
-const BRAKE_MIN = 2;
+const BRAKE_MIN = 4;
+/**
+ * Параллельность ключа в процессе воркера статей (2026-10-22): общий лимит портала CHAT=6 при 30 статьях и ИИ-модерации
+ * на одном ключе держал проверки ИИ в очереди 5–10 мин — сторож снимал их как зависшие. OpenRouter держит больше.
+ */
+const ARTICLE_CHAT_LIMIT = 16;
 const BRAKE_COOL_MS = 3 * 60_000;
 const INPLACE_RETRY_MS = [3_000, 10_000];
 const brakes = new Map<string, { limit: number; coolUntil: number }>();
 
 function keyLimit(keyId: string): number {
-  return brakes.get(keyId)?.limit ?? DEFAULT_LIMITS.CHAT;
+  return brakes.get(keyId)?.limit ?? ARTICLE_CHAT_LIMIT;
 }
 
 function brakeOn(keyId: string): void {
@@ -84,7 +91,7 @@ function brakeOn(keyId: string): void {
 function brakeRelax(keyId: string): void {
   const b = brakes.get(keyId);
   if (!b || Date.now() < b.coolUntil) return;
-  if (b.limit + 1 >= DEFAULT_LIMITS.CHAT) brakes.delete(keyId);
+  if (b.limit + 1 >= ARTICLE_CHAT_LIMIT) brakes.delete(keyId);
   else brakes.set(keyId, { ...b, limit: b.limit + 1 });
 }
 
@@ -167,7 +174,8 @@ async function aiChatOnce(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> {
   const resolved = await resolveOrThrow(ctx, req.slot);
   const keyId = resolved.binding.apiKey.id;
   checkCooldown(keyId);
-  const release = await acquire(keyId, keyLimit(keyId));
+  // Полоса: ИИ-модерация (lane "aimod") не стоит в одной очереди с оценкой фото статей — лимит у полосы свой.
+  const release = await acquire(req.lane ? `${keyId}:${req.lane}` : keyId, keyLimit(keyId));
   try {
     const messages: Array<Record<string, unknown>> = [];
     if (req.system) {

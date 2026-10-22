@@ -3,7 +3,7 @@
  * ai-photo-moderate/index.ts:37-58, 281-334). Подключается в worker/index.ts рядом с articlesLoop:
  *   const aiLoop = aiModerationLoop(WORKER_ID, () => shuttingDown);  …  await Promise.allSettled([...aiModerationInflight()]).
  *
- * Каждые 20 с для всех запусков status=running: heartbeat; сторож (processing старше 6 мин удаляется — статья снова в пуле,
+ * Каждые 20 с для всех запусков status=running: heartbeat; сторож (processing старше 15 мин удаляется — статья снова в пуле,
  * applying без движения 3 мин → proposed); в режиме auto с autoApply сайта — применение proposed (op по уверенности);
  * пул статей размером concurrency (атомарная вставка результата processing); запуск done, когда нет непроверенных
  * статей и нет processing/applying (и proposed для авто). Каждый проход (20 с) перед этим — aiAutostartTick: новые статьи
