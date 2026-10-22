@@ -196,7 +196,8 @@ export async function aiImage(ctx: AiCtx, req: ImageRequest): Promise<ImageResul
     if (!res.ok) await handleFailure(res, resolved);
     const data = res.data as { data?: Array<{ b64_json?: string; url?: string }> };
     const first = data?.data?.[0];
-    if (first?.b64_json) return { bytes: Buffer.from(first.b64_json, "base64"), mime: "image/png", costUsd: res.meta?.costUsd ?? null, model: res.meta?.model ?? null };
+    if (first?.b64_json) return { bytes: Buffer.from(first.b64_json.replace(/^data:[^,]*,/, ""), "base64"), mime: "image/png", costUsd: res.meta?.costUsd ?? null, model: res.meta?.model ?? null };
+    if (first?.url?.startsWith("data:")) return { bytes: Buffer.from(first.url.replace(/^data:[^,]*,/, ""), "base64"), mime: "image/png", costUsd: res.meta?.costUsd ?? null, model: res.meta?.model ?? null };
     if (first?.url) {
       const r = await fetch(first.url, { signal: AbortSignal.timeout(60_000) });
       if (!r.ok) throw new AiError(classifyAiError(r.status, `image download ${r.status}`), r.status);

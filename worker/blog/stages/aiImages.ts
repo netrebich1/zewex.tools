@@ -9,6 +9,7 @@
  * Идемпотентен: секция, у которой уже есть фото ai<position>, пропускается.
  */
 import { randomUUID } from "node:crypto";
+import sharp from "sharp";
 import { prisma } from "@/lib/db";
 import { AiError } from "@/lib/pins/ai/errors";
 import { aiChat, aiImage } from "@/lib/blog/ai";
@@ -56,7 +57,9 @@ Absolutely no text, letters, numbers, arrows, captions, labels, logos or waterma
 
 async function drawNumbers(src: Buffer, steps: number[]): Promise<Buffer> {
   const host = getHost();
-  const img = await host.loadImage(src);
+  // Ответ провайдера → PNG через sharp: canvas не всегда узнаёт формат буфера (иначе «Invalid SVG image»)
+  const png = await sharp(src).png().toBuffer();
+  const img = await host.loadImage(png);
   const c = host.createCanvas(img.width, img.height);
   const g = c.getContext("2d");
   g.drawImage(asImageSource(img), 0, 0, img.width, img.height);
@@ -133,7 +136,15 @@ Return ONLY JSON: {"subject":"...","setting":"...","panels":[{"step":1,"shows":"
     if (!bytes) continue;
 
     // 3) Номера шагов и файлы
-    const numbered = await drawNumbers(bytes, plan.panels.map((p) => p.step));
+    let numbered: Buffer;
+    try {
+      numbered = await drawNumbers(bytes, plan.panels.map((p) => p.step));
+    } catch (e) {
+      const head = bytes.subarray(0, 16).toString("hex");
+      ctx.log(`картинка секции ${s.position} не читается (${bytes.length} байт, начало ${head}): ${e instanceof Error ? e.message : String(e)}`);
+      skipped.push(`${s.position}: картинка не читается`);
+      continue;
+    }
     const jpeg = await toWpJpeg(numbered);
     const photoId = randomUUID();
     const path = photoRel(post.id, photoId);
