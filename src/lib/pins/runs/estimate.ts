@@ -2,8 +2,8 @@ import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { resolveSlot } from "@/lib/run";
 import { canSeeBalances, showsBalances } from "@/lib/permissions";
-import { manualBalanceProvider, manualBalances, providerBalances } from "@/lib/balances";
-import { PROJECT_SLUG, SLOT_IMAGE_MAIN, SLOT_TEXT_FAST, SLOT_TEXT_MAIN } from "../types";
+import { keyRemaining, manualBalanceProvider, manualBalances, providerBalances } from "@/lib/balances";
+import { PROJECT_SLUG, SLOT_IMAGE_MAIN, SLOT_TEXT_FAST, SLOT_TEXT_MAIN, type RunReservation, type RunSettings } from "../types";
 
 /**
  * Примерная стоимость прогона до запуска — по средним ценам прошлых завершённых прогонов из журнала расхода.
@@ -76,7 +76,19 @@ export async function costRates(force = false): Promise<CostRates> {
 export type EstimateInput = { pages: number; mix: { ai: number; photos: number; canvas: number; pinora: number }; teamId?: string | null };
 
 export type EstimatePart = { slot: string; slotName: string; unit: SlotUnit; units: number; rate: number | null; costUsd: number | null; providerSlug: string; providerName: string; keyLabel: string; keyId: string; note: string | null };
-export type EstimateProvider = { slug: string; name: string; keys: string[]; costUsd: number; remainingUsd: number | null; balanceNote: string | null; enough: boolean | null };
+export type EstimateProvider = {
+  slug: string; name: string; keys: string[];
+  /** Этот прогон. */
+  costUsd: number;
+  /** Остаток на счёте (по ключу) и пояснение, если цифры нет. */
+  remainingUsd: number | null; balanceNote: string | null;
+  /** Уже занято идущими прогонами на тех же ключах (остаток их резерва) и сколько их. */
+  inWorkUsd: number; inWorkRuns: number;
+  /** Остаток минус «в работе»: столько реально свободно под этот прогон. */
+  availableUsd: number | null;
+  /** Хватает ли свободного с запасом 20 %; null — остаток неизвестен. */
+  enough: boolean | null;
+};
 export type RunEstimate = {
   pages: number;
   pins: { ai: number; canvas: number; photos: number; total: number };
@@ -86,9 +98,48 @@ export type RunEstimate = {
   basis: { runs: number; sinceDays: number };
   /** Слоты без правила (ключ + модель) — прогон на них встанет. */
   errors: string[];
+  /** Предупреждения о нехватке денег с учётом идущих прогонов — показываются до запуска и после него. */
+  risks: string[];
+  /** Что записать в прогон при запуске (`RunSettings.estimate`). */
+  reservation: RunReservation;
 };
 
-/** Оценка для конкретного пользователя: его ключи по слотам проекта «pins», цены по истории, остатки на счетах. */
+/** Прогон занимает деньги, пока не закончился: ждёт очереди, идёт, ждёт модерацию или временно заблокирован (ключи поднимутся). */
+const RESERVING_STATUSES = ["QUEUED", "RUNNING", "WAITING_MODERATION", "BLOCKED"] as const;
+
+export type ActiveReservation = { reservedUsd: number; runs: Array<{ id: string; name: string }> };
+
+/**
+ * Сколько денег по каждому ключу уже «в работе»: у каждого незавершённого прогона с резервом берём оценку по ключу
+ * минус то, что он по этому ключу уже потратил (журнал расхода). Прогоны без резерва (старые) не учитываются.
+ */
+export async function activeReservations(excludeRunId?: string): Promise<Map<string, ActiveReservation>> {
+  const runs = await prisma.pinRun.findMany({
+    where: { status: { in: [...RESERVING_STATUSES] }, NOT: { name: "__system__" }, ...(excludeRunId ? { id: { not: excludeRunId } } : {}) },
+    select: { id: true, name: true, settings: true },
+  });
+  const out = new Map<string, ActiveReservation>();
+  for (const r of runs) {
+    const est = (r.settings as RunSettings | null)?.estimate;
+    if (!est?.byKey?.length) continue;
+    const spent = await prisma.usageLog.groupBy({ by: ["apiKeyId"], where: { refId: r.id }, _sum: { costUsd: true } });
+    for (const k of est.byKey) {
+      const used = spent.find((s) => s.apiKeyId === k.keyId)?._sum.costUsd ?? 0;
+      const left = Math.max(0, k.costUsd - used);
+      if (left <= 0) continue;
+      const row = out.get(k.keyId) ?? { reservedUsd: 0, runs: [] };
+      row.reservedUsd += left;
+      row.runs.push({ id: r.id, name: r.name });
+      out.set(k.keyId, row);
+    }
+  }
+  return out;
+}
+
+/**
+ * Оценка для конкретного пользователя: ключи по слотам проекта «pins» по команде сайта, цены по истории,
+ * остатки на счетах по ключу и деньги, уже занятые идущими прогонами на тех же ключах.
+ */
 export async function runEstimate(me: CurrentUser, input: EstimateInput): Promise<RunEstimate> {
   const pages = Math.max(0, Math.floor(input.pages || 0));
   const m = input.mix;
@@ -119,19 +170,26 @@ export async function runEstimate(me: CurrentUser, input: EstimateInput): Promis
     keyIds.set(b.apiKey.id, { providerSlug: b.provider.slug, providerKind: b.provider.kind });
   }
 
-  // Остатки: OpenRouter / laozhang — со счёта провайдера (кто видит балансы), OpenAI и прочие — ручной остаток ключа.
+  // Остатки: OpenRouter / laozhang / DataForSEO — по ключу, который выдал слот (сотрудник видит остаток именно своего ключа);
+  // админу для OpenRouter — счёт провайдера. OpenAI и прочие — ручной остаток ключа минус расход по журналу.
   const seeAll = canSeeBalances(me);
   const seeAny = showsBalances(me);
   const provBal = seeAll && parts.some((p) => !manualBalanceProvider({ slug: p.providerSlug, kind: keyIds.get(p.keyId)?.providerKind ?? "LLM" })) ? await providerBalances().catch(() => []) : [];
-  const manualKeys = seeAny ? await prisma.apiKey.findMany({ where: { id: { in: [...keyIds.keys()] } }, select: { id: true, balanceUsd: true, balanceAt: true } }) : [];
-  const manual = await manualBalances(manualKeys);
+  const keyRows = seeAny ? await prisma.apiKey.findMany({ where: { id: { in: [...keyIds.keys()] } }, select: { id: true, balanceUsd: true, balanceAt: true, secretEnc: true, provider: { select: { id: true, slug: true, baseUrl: true, balanceTokenEnc: true } } } }) : [];
+  const manual = await manualBalances(keyRows);
+  const inWork = await activeReservations();
 
   const providers = new Map<string, EstimateProvider>();
   for (const p of parts) {
     const kind = keyIds.get(p.keyId)?.providerKind ?? "LLM";
-    const row = providers.get(p.providerSlug) ?? { slug: p.providerSlug, name: p.providerName, keys: [], costUsd: 0, remainingUsd: null, balanceNote: null, enough: null };
-    if (!row.keys.includes(p.keyLabel)) row.keys.push(p.keyLabel);
+    const row = providers.get(p.providerSlug) ?? { slug: p.providerSlug, name: p.providerName, keys: [], costUsd: 0, remainingUsd: null, balanceNote: null, inWorkUsd: 0, inWorkRuns: 0, availableUsd: null, enough: null };
+    const firstKey = !row.keys.includes(p.keyLabel);
+    if (firstKey) row.keys.push(p.keyLabel);
     row.costUsd += p.costUsd ?? 0;
+    if (firstKey) {
+      const res = inWork.get(p.keyId);
+      if (res) { row.inWorkUsd += res.reservedUsd; row.inWorkRuns += res.runs.length; }
+    }
     if (row.remainingUsd == null && row.balanceNote == null) {
       if (!seeAny) row.balanceNote = "остаток скрыт";
       else if (manualBalanceProvider({ slug: p.providerSlug, kind })) {
@@ -139,16 +197,41 @@ export async function runEstimate(me: CurrentUser, input: EstimateInput): Promis
         if (mb) row.remainingUsd = mb.remaining;
         else row.balanceNote = "остаток ключа не вписан (страница ключа)";
       } else {
-        const pb = provBal.find((x) => x.slug === p.providerSlug);
+        const pb = seeAll ? provBal.find((x) => x.slug === p.providerSlug) : null;
+        const key = keyRows.find((k) => k.id === p.keyId);
+        const byKey = key ? await keyRemaining(key).catch(() => null) : null;
         if (pb?.remaining != null) row.remainingUsd = pb.remaining;
-        else row.balanceNote = pb?.note ?? (seeAll ? "провайдер не отдал остаток" : "остаток виден админам");
+        else if (byKey != null) row.remainingUsd = byKey;
+        else row.balanceNote = pb?.note ?? "провайдер не отдал остаток";
       }
     }
     providers.set(p.providerSlug, row);
   }
-  for (const row of providers.values()) row.enough = row.remainingUsd == null ? null : row.remainingUsd >= row.costUsd * 1.2;
+  const risks: string[] = [];
+  for (const row of providers.values()) {
+    if (row.remainingUsd == null) continue;
+    row.availableUsd = row.remainingUsd - row.inWorkUsd;
+    row.enough = row.availableUsd >= row.costUsd * 1.2;
+    if (!row.enough) {
+      const need = Math.max(0, row.costUsd * 1.2 - row.availableUsd);
+      risks.push(
+        `${row.name}: на счёте ${money(row.remainingUsd)}` +
+        (row.inWorkRuns ? `, уже в работе ${money(row.inWorkUsd)} (прогонов: ${row.inWorkRuns})` : "") +
+        `, этот прогон ≈ ${money(row.costUsd)} — есть риск остановки, не хватает ≈ ${money(need)} с запасом 20 %. Попросите администратора пополнить баланс.`,
+      );
+    }
+  }
 
   const priced = parts.filter((p) => p.costUsd != null);
   const totalUsd = priced.length ? priced.reduce((s, p) => s + (p.costUsd ?? 0), 0) : null;
-  return { pages, pins, parts, providers: [...providers.values()], totalUsd, basis: { runs: rates.runs, sinceDays: rates.sinceDays }, errors };
+  const byKey = new Map<string, RunReservation["byKey"][number]>();
+  for (const p of parts) {
+    const k = byKey.get(p.keyId) ?? { keyId: p.keyId, keyLabel: p.keyLabel, providerSlug: p.providerSlug, providerName: p.providerName, costUsd: 0 };
+    k.costUsd += p.costUsd ?? 0;
+    byKey.set(p.keyId, k);
+  }
+  const reservation: RunReservation = { at: new Date().toISOString(), totalUsd, byKey: [...byKey.values()] };
+  return { pages, pins, parts, providers: [...providers.values()], totalUsd, basis: { runs: rates.runs, sinceDays: rates.sinceDays }, errors, risks, reservation };
 }
+
+const money = (v: number) => `$${v.toFixed(2)}`;

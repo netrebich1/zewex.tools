@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import type { PinRunStatus } from "@prisma/client";
-import { PIN_STAGES, type PinStage } from "../types";
+import { PIN_STAGES, type PinStage, type RunSettings } from "../types";
 import { explainBlocked, explainItemError, explainPageErrors, explainSchedule, healthOf, type Health, type Problem, type ScheduleReport } from "./problems";
 
 /** Счётчики по типу пина, одним запросом GROUP BY (без выгрузки элементов). */
@@ -19,7 +19,7 @@ export type KindCounters = {
 };
 
 export type RunStatusView = {
-  run: { id: string; name: string; status: PinRunStatus; stage: string; blockedReason: string | null; costUsd: number; stopRequested: boolean; updatedAt: string; stepByStep: boolean };
+  run: { id: string; name: string; status: PinRunStatus; stage: string; blockedReason: string | null; costUsd: number; estimateUsd: number | null; stopRequested: boolean; updatedAt: string; stepByStep: boolean };
   job: { stage: string; status: string; done: number; total: number; label: string; error: string | null } | null;
   counters: KindCounters[];
   total: KindCounters;
@@ -81,7 +81,7 @@ export async function runStatus(runId: string): Promise<RunStatusView | null> {
   const problems = buildProblems(run, problemRows.map((p) => ({ stage: p.errorStage ?? "", kind: p.errorKind ?? "", raw: p.error ?? "", count: n(p.cnt) })), pagesErr);
 
   return {
-    run: { id: run.id, name: run.name, status: run.status, stage: run.stage, blockedReason: run.blockedReason, costUsd: cost._sum.costUsd ?? run.costUsd, stopRequested: run.stopRequested, updatedAt: run.updatedAt.toISOString(), stepByStep: run.stepByStep },
+    run: { id: run.id, name: run.name, status: run.status, stage: run.stage, blockedReason: run.blockedReason, costUsd: cost._sum.costUsd ?? run.costUsd, estimateUsd: (run.settings as RunSettings | null)?.estimate?.totalUsd ?? null, stopRequested: run.stopRequested, updatedAt: run.updatedAt.toISOString(), stepByStep: run.stepByStep },
     job: job ? { stage: job.stage, status: job.status, done: job.done, total: job.total, label: job.label, error: job.error } : null,
     counters,
     total,

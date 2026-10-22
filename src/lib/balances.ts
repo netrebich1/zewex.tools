@@ -102,6 +102,22 @@ async function probeDataForSeo(baseUrl: string, secret: string): Promise<Probe> 
   return { remaining: bal, total: null, used: null, note: bal == null ? "DataForSEO не вернул баланс" : null };
 }
 
+export type KeyForProbe = { id: string; secretEnc: string; provider: { id: string; slug: string; baseUrl: string; balanceTokenEnc: string | null } };
+
+/**
+ * Остаток по одному ключу у провайдера с балансом по API (OpenRouter — по самому ключу, laozhang — по системному токену,
+ * DataForSEO — по логину ключа). null — провайдер не отдаёт остаток или это ручной провайдер. Кэш как у плашки.
+ */
+export async function keyRemaining(k: KeyForProbe, force = false): Promise<number | null> {
+  const p = k.provider;
+  let probe: Probe | null = null;
+  if (p.slug === "laozhang") {
+    if (p.balanceTokenEnc) probe = await cached(`provider:${p.id}`, force, () => probeLaozhang(p.baseUrl, decryptSecret(p.balanceTokenEnc!)));
+  } else if (p.slug === "dataforseo") probe = await cached(`key:${k.id}`, force, () => probeDataForSeo(p.baseUrl, decryptSecret(k.secretEnc)));
+  else if (p.slug === "openrouter") probe = await cached(`key:${k.id}`, force, () => probeOpenRouter(p.baseUrl, decryptSecret(k.secretEnc)));
+  return probe?.remaining ?? null;
+}
+
 /** Провайдеры, у которых остаток ведётся вручную на ключе: LLM без баланса по API (OpenAI, Perplexity, свои OpenAI-совместимые). */
 export function manualBalanceProvider(p: { slug: string; kind: string }): boolean {
   return p.kind === "LLM" && p.slug !== "openrouter" && p.slug !== "laozhang";

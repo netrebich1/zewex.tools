@@ -7,6 +7,7 @@ import { removePath, runDir } from "../storage";
 import { nextStageAfter } from "./stages";
 import { autoModerate, pendingModeration } from "./moderation";
 import { canAccessPinSite, canAccessRun } from "@/lib/sites/access";
+import { runEstimate } from "./estimate";
 
 /** Командные сущности (заметки к стилям, каталог): только свои команды, админ — все. Доступ к сайтам — lib/sites/access. */
 export function canAccessTeam(me: CurrentUser, teamId: string): boolean {
@@ -88,7 +89,10 @@ export async function createRun(me: CurrentUser, input: CreateRunInput): Promise
   }
 
   const seed = hash32(`${site.id}|${Date.now()}`);
-  const settings: RunSettings = { ...recipe, siteName: site.name, siteSlug: site.slug, seed, launchedAt: new Date().toISOString() };
+  const settings: RunSettings = { ...recipe, siteName: site.name, siteSlug: site.slug, seed, launchedAt: new Date().toISOString(), ...(estimate ? { estimate: estimate.reservation } : {}) };
+  // Резерв под прогон: оценка по ключам команды сайта с учётом идущих прогонов. Сбой оценки запуск не останавливает.
+  const estimate = await runEstimate(me, { pages: input.urls.length, mix: recipe.mix, teamId: site.teamId }).catch(() => null);
+  if (estimate) warnings.push(...estimate.risks);
   const run = await prisma.$transaction(async (tx) => {
     const run = await tx.pinRun.create({
       data: {

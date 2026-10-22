@@ -44,7 +44,9 @@ export function RunStatus({ initial }: { initial: RunStatusView }) {
               {v.job.total > 0 && <span className="text-muted"> · {v.job.done}/{v.job.total}</span>}
             </span>
           )}
-          <span className="ml-auto help">расход ${v.run.costUsd.toFixed(2)}</span>
+          <span className="ml-auto help" title={v.run.estimateUsd != null ? "Оценка при запуске: столько зарезервировано под прогон; остаток резерва считается «в работе» в оценке следующих прогонов" : undefined}>
+            расход ${v.run.costUsd.toFixed(2)}{v.run.estimateUsd != null && <> · оценка при запуске ${v.run.estimateUsd.toFixed(2)}</>}
+          </span>
         </div>
         {v.job && LIVE.has(v.run.status) && (
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-ink/5">

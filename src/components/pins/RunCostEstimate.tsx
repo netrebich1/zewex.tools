@@ -71,23 +71,39 @@ export function RunCostEstimate({ pages, pagesLabel, siteId }: { pages: number; 
             цены — средние по {data.basis.runs} прогонам за {data.basis.sinceDays} дней; реальный расход обычно ±30 %.
           </p>
           {data.errors.map((e) => <p key={e} className="text-danger text-[13px]">{e}</p>)}
+          {data.risks.map((r) => (
+            <div key={r} className="rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-[13px] text-danger">{r}</div>
+          ))}
           {data.providers.length > 0 && (
-            <table className="w-full text-[13px]">
-              <thead><tr className="text-muted text-left"><th className="font-normal py-1">Система</th><th className="font-normal py-1">Нужно</th><th className="font-normal py-1">На счёте</th><th className="font-normal py-1">Ключ</th></tr></thead>
-              <tbody>
-                {data.providers.map((p) => (
-                  <tr key={p.slug} className="border-t border-line">
-                    <td className="py-1 font-medium">{p.name}</td>
-                    <td className="py-1">{fmtMoney(p.costUsd)}</td>
-                    <td className={`py-1 ${p.enough === false ? "text-danger font-semibold" : p.enough ? "text-ok" : "text-muted"}`}>
-                      {p.remainingUsd != null ? fmtMoney(p.remainingUsd) : p.balanceNote}
-                      {p.enough === false && <span className="block text-[12px] font-normal">не хватит: нужно ещё ≈ {fmtMoney(Math.max(0, p.costUsd * 1.2 - (p.remainingUsd ?? 0)))} с запасом 20 %</span>}
-                    </td>
-                    <td className="py-1 text-muted">{p.keys.join(", ")}</td>
+            <div className="table-wrap">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="text-muted text-left">
+                    <th className="font-normal py-1">Система</th>
+                    <th className="font-normal py-1">Этот прогон</th>
+                    <th className="font-normal py-1" title="Остаток резерва незавершённых прогонов на тех же ключах">В работе</th>
+                    <th className="font-normal py-1">На счёте</th>
+                    <th className="font-normal py-1" title="На счёте минус в работе">Свободно</th>
+                    <th className="font-normal py-1">Ключ</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {data.providers.map((p) => (
+                    <tr key={p.slug} className="border-t border-line">
+                      <td className="py-1 font-medium">{p.name}</td>
+                      <td className="py-1">{fmtMoney(p.costUsd)}</td>
+                      <td className="py-1 text-muted">{p.inWorkRuns ? <>{fmtMoney(p.inWorkUsd)} <span className="text-[12px]">({p.inWorkRuns} прог.)</span></> : "—"}</td>
+                      <td className="py-1">{p.remainingUsd != null ? fmtMoney(p.remainingUsd) : <span className="text-muted">{p.balanceNote}</span>}</td>
+                      <td className={`py-1 ${p.enough === false ? "text-danger font-semibold" : p.enough ? "text-ok" : "text-muted"}`}>
+                        {p.availableUsd != null ? fmtMoney(p.availableUsd) : "—"}
+                        {p.enough === false && p.availableUsd != null && <span className="block text-[12px] font-normal">не хватит: нужно ещё ≈ {fmtMoney(Math.max(0, p.costUsd * 1.2 - p.availableUsd))} с запасом 20 %</span>}
+                      </td>
+                      <td className="py-1 text-muted">{p.keys.join(", ")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
           <details>
             <summary className="help cursor-pointer">Как посчитано</summary>

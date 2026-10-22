@@ -160,11 +160,24 @@ export const DEFAULT_RECIPE: Recipe = {
 };
 
 /** Снимок настроек прогона = рецепт + параметры запуска. */
+/**
+ * Резерв денег под прогон: оценка стоимости по ключам в момент запуска (`runEstimate`). Пока прогон идёт,
+ * остаток резерва (оценка минус уже потраченное по ключу) считается «в работе» и вычитается из остатка на счёте
+ * в оценке следующих прогонов — чтобы ночная пачка из десяти сайтов не разобрала один баланс по кругу.
+ */
+export type RunReservation = {
+  at: string;
+  totalUsd: number | null;
+  byKey: Array<{ keyId: string; keyLabel: string; providerSlug: string; providerName: string; costUsd: number }>;
+};
+
 export type RunSettings = Recipe & {
   siteName: string;
   siteSlug: string;
   seed: number;
   launchedAt: string;
+  /** Резерв при запуске; у старых прогонов нет. */
+  estimate?: RunReservation;
 };
 
 const pct = (v: unknown, def: number) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : def; };
