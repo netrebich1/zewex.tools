@@ -213,8 +213,8 @@ const SMALL_WORDS = new Set(["a", "an", "the", "and", "or", "nor", "but", "for",
 
 /**
  * Один регистр для всех заголовков (аудит woman-trend 2026-10-22: у нарядов «Strapless evening gown with high slit»,
- * у волос — «Collarbone Lob With Caramel Lowlights»): каждое слово с заглавной, служебные (a, for, with…) — строчные,
- * кроме первого/последнего и после двоеточия. Слова с внутренними заглавными или цифрами (3D, McQueen, 2027) не трогаем.
+ * у волос — «Collarbone Lob With Caramel Lowlights»): строчные слова получают заглавную, служебные (a, for, with…) остаются,
+ * кроме первого/последнего и после двоеточия. Слова с заглавными или цифрами (With, 3D, McQueen, 2027) не трогаем.
  */
 export function titleCaseHeading(s: string): string {
   const parts = String(s || "").split(/(\s+)/);
@@ -227,10 +227,12 @@ export function titleCaseHeading(s: string): string {
       idx++;
       const afterColon = /[:—–]$/.test(prev);
       prev = w;
-      if (/\d/.test(w) || /[A-Z]/.test(w.slice(1)) || /\{\{/.test(w)) return w;
-      const bare = w.toLowerCase().replace(/^[^a-z]+|[^a-z]+$/g, "");
-      if (idx > 0 && idx < words.length - 1 && !afterColon && SMALL_WORDS.has(bare)) return w.toLowerCase();
-      return w.toLowerCase().replace(/(^|[-/(])([a-z])/g, (_m, a: string, c: string) => a + c.toUpperCase());
+      // Только дотягиваем: строчные слова получают заглавную; уже заглавные (в том числе «With», «And» — так пишет
+      // основной поток) не трогаем, чтобы не переписывать тысячи опубликованных заголовков ради одной буквы.
+      if (/\d/.test(w) || /[A-Z]/.test(w) || /\{\{/.test(w)) return w;
+      const bare = w.replace(/^[^a-z]+|[^a-z]+$/g, "");
+      if (idx > 0 && idx < words.length - 1 && !afterColon && SMALL_WORDS.has(bare)) return w;
+      return w.replace(/(^|[-/(])([a-z])/g, (_m, a: string, c: string) => a + c.toUpperCase());
     })
     .join("");
 }

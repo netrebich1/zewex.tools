@@ -15,7 +15,6 @@
  */
 import { createSign } from "crypto";
 import { prisma } from "@/lib/db";
-import { infoIntent } from "./keywords";
 import { decryptSecret } from "@/lib/crypto";
 import { findDuplicateKeywords } from "./launch";
 import { sanitizeTopic } from "./keywords";
@@ -461,8 +460,6 @@ export async function planSheetImport(site: SheetSite, sheetUrl: string): Promis
     const low = keyword.toLowerCase();
     if (seen.has(low)) { skip("повтор ключа в таблице"); continue; }
     if (dup.has(low)) { skip("статья с таким ключом уже есть у сайта"); continue; }
-    const info = infoIntent(keyword);
-    if (info) { skip(info); continue; }
     seen.add(low);
     ready.push({
       keyword, seoKeyword: r.seoKeyword ?? undefined, focusKeyword: r.focusKeyword ?? undefined,

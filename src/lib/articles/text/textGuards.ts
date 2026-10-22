@@ -169,6 +169,19 @@ function isTakenHeading(key: string, used: Set<string>, stop: Set<string> = new 
  * или хвост делает H2 длиннее предела — осмысленный уточнитель. Номеров не добавляем. Результат ≤ MAX_HEADING_CHARS.
  * `keyword` — ключ статьи: его слова не считаются отличительными при сравнении. (оригинал: textGuards.ts:111-156)
  */
+/** Хвост-признак (цвет, длина, текстура, отделка) — читается через запятую: «Almond Nails, Soft Pink». */
+const ADJ_TAIL_RE = /\b(?:black|white|brown|blonde|brunette|red|pink|nude|beige|cream|ivory|gray|grey|silver|gold|blue|navy|green|olive|purple|lilac|orange|yellow|auburn|copper|burgundy|wavy|curly|straight|sleek|textured|long|short|mid-back|collarbone|shoulder-length|chin-length|ear-length|matte|glossy|chrome|sheer|metallic|light|dark|soft|bright|pastel|neutral|a-line|fitted|oversized|cropped|high-waisted|mini|midi|maxi)$/i;
+
+/**
+ * Хвост к повторяющемуся заголовку (аудит 2026-10-22: «…Cinched Waist, Black Open-Toe Sandals»): предмет присоединяется
+ * словами — «X With Tail» или «X With Y and Tail»; признак (цвет, длина, текстура) остаётся через запятую.
+ */
+export function joinHeadingTail(base: string, tail: string): string {
+  const t = tail.replace(/^(?:with|and)\s+/i, "").trim();
+  if (t.split(/\s+/).length === 1 || ADJ_TAIL_RE.test(t)) return `${base}, ${t}`;
+  return /\bwith\b/i.test(base) ? `${base} and ${t}` : `${base} With ${t}`;
+}
+
 export function uniqueHeading(
   heading: string,
   used: Set<string>,
@@ -186,9 +199,8 @@ export function uniqueHeading(
   const stem = (w: string) => w.replace(/(?:es|s)$/, "");
   const baseWords = new Set(headingKey(base).split(" ").filter(Boolean).map(stem));
   // Хвост годится, если не повторяет слов заголовка и не делает его длиннее предела.
-  // Хвост присоединяется словами, а не запятой (аудит 2026-10-22: «…Cinched Waist, Black Open-Toe Sandals»):
-  // «X With Tail» или «X With Y and Tail». Отрицания («No Visible Bangs», «Without Tips») хвостом не бывают.
-  const joinTail = (tail: string) => (/\bwith\b/i.test(base) ? `${base} and ${tail}` : `${base} With ${tail}`);
+  // Отрицания («No Visible Bangs», «Without Tips») хвостом не бывают (аудит 2026-10-22).
+  const joinTail = (tail: string) => joinHeadingTail(base, tail);
   const tailOk = (tail: string) => {
     const tw = headingKey(tail).split(" ").filter(Boolean);
     return tw.length > 0 && !tw.some((w) => baseWords.has(stem(w))) && !/\b(?:no|not|without|none|visible|unclear|n\/a)\b/i.test(tail) && joinTail(tail).length <= MAX_HEADING_CHARS;
