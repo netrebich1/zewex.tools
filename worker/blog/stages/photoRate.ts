@@ -11,6 +11,7 @@ import { aiChat, imagePart, type ContentPart } from "@/lib/blog/ai";
 import { fillPrompt, resolvePromptOptional, stageModel } from "@/lib/blog/prompts";
 import { loadVisionImage, listFromJson, mustRethrow } from "@/lib/articles/photo/vision";
 import { parseJsonLenient } from "@/lib/pins/ai/json";
+import { AiError } from "@/lib/pins/ai/errors";
 import { SLOTS } from "@/lib/blog/types";
 import type { StageHandler } from "./index";
 import { MAX_SLOT_SEARCHES } from "./photoSearch";
@@ -68,7 +69,10 @@ export const photoRate: StageHandler = async (ctx) => {
       const list = listFromJson(json, ["photos", "results"]).filter((x): x is Rated => !!x && typeof x === "object");
       items = list.length ? list : null;
     } catch (e) {
-      if (mustRethrow(e, ctx.signal)) throw e;
+      // Пустой ответ модели — обычно из-за одного «трудного» кадра в пачке: не повтор всего этапа, а попытка этих фото
+      // (повторно они оцениваются по одному, после второй неудачи — отбраковка)
+      const empty = e instanceof AiError && e.cls.code === "empty" && !ctx.signal.aborted;
+      if (!empty && mustRethrow(e, ctx.signal)) throw e;
       ctx.log(`пачка не оценена: ${e instanceof Error ? e.message : String(e)}`);
     }
     if (!items) {
@@ -136,7 +140,10 @@ export const photoRate: StageHandler = async (ctx) => {
       if (!pending.length) break;
       await ctx.tick(`Оценка ${slot.key}: ${pending.length} фото`);
       const all: BlogPhotoCandidate[][] = [];
-      for (let i = 0; i < pending.length; i += BATCH) all.push(pending.slice(i, i + BATCH));
+      const retried = pending.filter((c) => Number(((c.aiBreakdown ?? {}) as Rated).attempts ?? 0) > 0);
+      const fresh = pending.filter((c) => !retried.includes(c));
+      for (let i = 0; i < fresh.length; i += BATCH) all.push(fresh.slice(i, i + BATCH));
+      for (const c of retried) all.push([c]);
       for (let wi = 0; wi < all.length; wi += PARALLEL) {
         const wave = all.slice(wi, wi + PARALLEL);
         const settled = await Promise.allSettled(wave.map((b) => runBatch(slot, b, system, lead, userTpl)));
