@@ -147,6 +147,13 @@ export const photoRate: StageHandler = async (ctx) => {
       if (slot.searches < MAX_SLOT_SEARCHES) {
         await prisma.blogImageSlot.update({ where: { id: slot.id }, data: { status: "pending" } });
         needSearch.push(slot.key);
+      } else if (slot.key === "hero" && slot.orientation === "tall") {
+        // Вертикальных кадров по теме нет (часто у «бытовых» тем): главное фото любой ориентации лучше, чем статья без него.
+        // Кадры, отсеянные только по ориентации, возвращаются в фильтр; плюс ещё один поиск без iar:t.
+        const revived = await prisma.blogPhotoCandidate.updateMany({ where: { slotId: slot.id, status: "rejected", rejectReason: { startsWith: "ориентация" } }, data: { status: "found", rejectReason: null, rejectStage: null } });
+        await prisma.blogImageSlot.update({ where: { id: slot.id }, data: { orientation: "any", status: "pending", searches: MAX_SLOT_SEARCHES - 1 } });
+        ctx.log(`hero: вертикальных кадров нет — ориентация «любая», возвращено в фильтр ${revived.count}`);
+        needSearch.push(slot.key);
       } else {
         await prisma.blogImageSlot.update({ where: { id: slot.id }, data: { status: "empty" } });
         emptied.push(slot.key);
