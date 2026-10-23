@@ -114,9 +114,23 @@ const noCredits = new Map<string, { until: number; err: ArticleAiError }>();
 
 /** Ключ ищется по команде статьи (`ctx.teamId` = команда сайта): списание только с её ключей. */
 async function resolveOrThrow(ctx: { userId: string; teamId: string }, slotKey: string): Promise<ResolvedSlot> {
-  const r = await resolveSlot(ctx.userId, PROJECT_SLUG, slotKey, ctx.teamId);
-  if (!r.ok) throw new ArticleAiError({ code: r.status === 409 ? "no_binding" : "resolve", kind: "fatal_run", message: r.error }, r.status);
-  return r.value;
+  // Несколько ключей одного правила портал выбирает случайно (resolve.ts). Здесь — мягкое предпочтение здоровому:
+  // ключ без денег (недавний отказ «нет средств») обходим, а притормаживаемый после 429 берём, только если другого нет
+  // (2026-10-23: второй ключ OpenRouter для разноса нагрузки). С одним ключом лишних запросов к базе не больше двух.
+  const seen = new Set<string>();
+  let fallback: ResolvedSlot | null = null;
+  for (let i = 0; i < 4; i++) {
+    const r = await resolveSlot(ctx.userId, PROJECT_SLUG, slotKey, ctx.teamId);
+    if (!r.ok) throw new ArticleAiError({ code: r.status === 409 ? "no_binding" : "resolve", kind: "fatal_run", message: r.error }, r.status);
+    const id = r.value.binding.apiKey.id;
+    const cooled = (noCredits.get(id)?.until ?? 0) > Date.now();
+    if (!cooled && keyLimit(id) >= ARTICLE_CHAT_LIMIT) return r.value;
+    if (!cooled && !fallback) fallback = r.value;
+    seen.add(id);
+    if (i >= 1 && seen.size === 1) return fallback ?? r.value;
+    if (i === 3) return fallback ?? r.value;
+  }
+  throw new ArticleAiError({ code: "resolve", kind: "fatal_run", message: "Не удалось выбрать ключ" }, 500);
 }
 
 /** Ключ недавно ответил «нет средств» — сразу та же ошибка, без запроса к провайдеру. */
