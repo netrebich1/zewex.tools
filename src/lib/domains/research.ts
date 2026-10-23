@@ -5,7 +5,8 @@
  * Затем дешёвая модель (OpenRouter, слот text_main с заменой модели) решает, какие слова годятся аффилиату:
  * «вывод средств», «поддержка», «жалобы» и т.п. отбрасываются.
  */
-import { resolveSlot, runSlot, type ResolvedSlot } from "@/lib/run";
+import { runSlot, type ResolvedSlot } from "@/lib/run";
+import { resolveDomainsSlot } from "./keyTeam";
 import { parseJsonLenient } from "@/lib/pins/ai/json";
 import { brandWords, cleanSuffix, isThemeWord, sanitizeLabel } from "./generator";
 import { domainHasBrand, mineSuffixes, tldOf } from "./mining";
@@ -171,8 +172,8 @@ function heuristicTier(suffix: string, country: string): 1 | 2 | 3 {
 async function classify(ctx: Ctx, brand: string, country: string, list: Array<Omit<ResearchModifier, "keep" | "tier" | "reason">>): Promise<{ items: ResearchModifier[]; cost: number; error: string | null }> {
   const fallback = (reason: string) => list.map((m) => ({ ...m, keep: true, tier: heuristicTier(m.suffix, country), reason }));
   if (!list.length) return { items: [], cost: 0, error: null };
-  const resolved = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOT_AI, ctx.teamId);
-  if (!resolved.ok) return { items: fallback("ИИ не подключён — проверьте вручную"), cost: 0, error: "ИИ не подключён к «Подбору доменов»: слова не отфильтрованы" };
+  const resolved = await resolveDomainsSlot(ctx.userId, SLOT_AI);
+  if (!resolved.ok) return { items: fallback("ИИ не подключён — проверьте вручную"), cost: 0, error: `ИИ: ${resolved.error} Слова не отфильтрованы.` };
   const c = getCountry(country);
   const res = await runSlot({
     userId: ctx.userId,
@@ -211,7 +212,7 @@ export async function researchBrand(ctx: Ctx, brand: string, country: string, op
     out.errors.push(`Страна «${country}» не найдена`);
     return out;
   }
-  const pre = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOT_SERP_DFS, ctx.teamId);
+  const pre = await resolveDomainsSlot(ctx.userId, SLOT_SERP_DFS);
   if (!pre.ok) {
     out.errors.push("DataForSEO не подключён к «Подбору доменов»: откройте страницу ключа и отметьте сервис.");
     return out;

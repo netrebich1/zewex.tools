@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { researchBrand, type BrandResearch } from "@/lib/domains/research";
+import { domainsKeyTeamId } from "@/lib/domains/keyTeam";
 import { getCountry, LIMITS } from "@/lib/domains/types";
 import { hit, tooMany } from "@/lib/ratelimit";
 
@@ -28,7 +29,8 @@ export async function POST(req: Request) {
   const retry = hit(`domains-research:${me.id}`, 200, 600);
   if (retry) return NextResponse.json({ error: tooMany(retry) }, { status: 429 });
 
-  const ctx = { userId: me.id, teamId: me.teamIds[0] ?? null };
+  // Ключи и расход — только команды WexOra (keyTeam.ts)
+  const ctx = { userId: me.id, teamId: await domainsKeyTeamId() };
   const results: BrandResearch[] = await Promise.all(
     items.map((it) =>
       researchBrand(ctx, it.brand, it.country, { useAi: body.useAi !== false }).catch((e) => ({

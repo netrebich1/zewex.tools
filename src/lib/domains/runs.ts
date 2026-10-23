@@ -13,6 +13,7 @@ import { rankDomainsWithAi, type AiPick } from "./ai";
 import { balancePicks } from "./selection";
 import { researchBrand, type BrandResearch } from "./research";
 import { keptModifiers, researchSummary } from "./researchSummary";
+import { domainsKeyTeamId } from "./keyTeam";
 import { domainsOfBrand } from "./mining";
 import { defaultCountryPreset, normalizePreset } from "./presets";
 
@@ -376,7 +377,7 @@ const RESEARCH_PARALLEL = 3;
 async function researchStage(run: DomainRun, settings: DomainRunSettings, touch: (label: string, index: number) => Promise<"go" | "stop" | "release" | "lost">): Promise<"go" | "stop" | "release" | "lost"> {
   const items = settings.items;
   const todo = items.map((it, i) => (it.research || it.modifiers.length ? -1 : i)).filter((i) => i >= 0);
-  const ctx = { userId: run.createdById, teamId: run.teamId };
+  const ctx = { userId: run.createdById, teamId: await domainsKeyTeamId() };
   for (let k = 0; k < todo.length; k += RESEARCH_PARALLEL) {
     const chunk = todo.slice(k, k + RESEARCH_PARALLEL);
     const st = await touch(`ключи и выдача: ${chunk.map((i) => itemLabel(items[i]!)).join(", ")} (${k + chunk.length} из ${todo.length})`, 0);
@@ -469,7 +470,7 @@ export async function aiSelectBrands(me: CurrentUser, runId: string, keys: strin
     const topDomains = settings.serp ? domainsOfBrand(settings.serp.domains, item.brand) : [];
     try {
       const askFor = balance ? Math.min(rows.length, Math.max(take * 3, 15)) : Math.min(rows.length, take);
-      const r = await rankDomainsWithAi({ userId: me.id, teamId: run.teamId, refId: run.id }, {
+      const r = await rankDomainsWithAi({ userId: me.id, teamId: await domainsKeyTeamId(), refId: run.id }, {
         brand: item.brand,
         take: askFor,
         countryCode: item.country,

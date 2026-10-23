@@ -4,7 +4,8 @@
  * если DataForSEO не подключён или запрос не прошёл, тот же запрос уходит в SerpAPI.
  * Все вызовы идут через прокси портала (правила, ключи, журнал расхода).
  */
-import { resolveSlot, runSlot, type ResolvedSlot } from "@/lib/run";
+import { runSlot, type ResolvedSlot } from "@/lib/run";
+import { resolveDomainsSlot } from "./keyTeam";
 import { getCountry, LIMITS, PROJECT_SLUG, SLOT_SERP_API, SLOT_SERP_DFS, type SerpSnapshot } from "./types";
 import { domainHasBrand, mineSuffixes } from "./mining";
 
@@ -81,8 +82,8 @@ export type Top10Result = {
 
 /** Снимает TOP-10 по списку запросов; по каждому запросу сначала DataForSEO, при сбое — SerpAPI. */
 export async function fetchTop10(ctx: SerpCtx, queries: string[], countryCode: string): Promise<Top10Result> {
-  const dfs = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOT_SERP_DFS, ctx.teamId);
-  const serp = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOT_SERP_API, ctx.teamId);
+  const dfs = await resolveDomainsSlot(ctx.userId, SLOT_SERP_DFS);
+  const serp = await resolveDomainsSlot(ctx.userId, SLOT_SERP_API);
   if (!dfs.ok && !serp.ok) {
     return { ok: false, error: "Не подключён ни DataForSEO, ни SerpAPI: откройте страницу ключа и отметьте сервис «Подбор доменов».", byQuery: {}, provider: null, failed: [] };
   }

@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { analyzeSerp } from "@/lib/domains/serp";
 import { isGeoSuffix, LIMITS } from "@/lib/domains/types";
 import { parseBrandLines } from "@/lib/domains/generator";
+import { domainsKeyTeamId } from "@/lib/domains/keyTeam";
 import { hit, tooMany } from "@/lib/ratelimit";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
   const retry = hit(`domains-serp:${me.id}`, 20, 600);
   if (retry) return NextResponse.json({ error: tooMany(retry) }, { status: 429 });
 
-  const r = await analyzeSerp({ userId: me.id, teamId: me.teamIds[0] ?? null }, { items, keyword: String(body.keyword ?? "") });
+  const r = await analyzeSerp({ userId: me.id, teamId: await domainsKeyTeamId() }, { items, keyword: String(body.keyword ?? "") });
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 502 });
   const suffixes = r.value.suffixes.map((s) => { const geo = countries.some((c) => isGeoSuffix(s.suffix, c)); return { ...s, geo, tier: geo ? 1 : 2 }; });
   return NextResponse.json({

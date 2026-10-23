@@ -2,7 +2,8 @@
  * ИИ-отбор доменов под бренд: модель выбирает кандидатов с наибольшим шансом занять TOP-1 по бренд-запросу.
  * Вызов через прокси портала (слот text_main сервиса «Подбор доменов»), ответ строго JSON.
  */
-import { resolveSlot, runSlot } from "@/lib/run";
+import { runSlot } from "@/lib/run";
+import { resolveDomainsSlot } from "./keyTeam";
 import { parseJsonLenient } from "@/lib/pins/ai/json";
 import { LIMITS, PROJECT_SLUG, SLOT_AI } from "./types";
 
@@ -46,8 +47,8 @@ export function buildPrompt(input: RankInput): string {
 export type RankResult = { picks: AiPick[]; note: string | null; costUsd: number | null; model: string | null };
 
 export async function rankDomainsWithAi(ctx: { userId: string; teamId?: string | null; refId?: string }, input: RankInput): Promise<RankResult> {
-  const resolved = await resolveSlot(ctx.userId, PROJECT_SLUG, SLOT_AI, ctx.teamId);
-  if (!resolved.ok) throw new Error(resolved.status === 409 ? "ИИ не подключён к сервису «Подбор доменов»: откройте страницу ключа ИИ и отметьте этот сервис." : resolved.error);
+  const resolved = await resolveDomainsSlot(ctx.userId, SLOT_AI);
+  if (!resolved.ok) throw new Error(resolved.error);
   const res = await runSlot({
     userId: ctx.userId,
     projectSlug: PROJECT_SLUG,
