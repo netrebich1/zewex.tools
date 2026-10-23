@@ -112,25 +112,50 @@ export async function fetchTop10(ctx: SerpCtx, queries: string[], countryCode: s
   return { ok: anyOk, error: anyOk ? null : failed[0]?.error ?? "Выдача не получена", byQuery, provider, failed };
 }
 
-export type SerpAnalysis = { snapshot: SerpSnapshot; suffixes: ReturnType<typeof mineSuffixes>; failed: Top10Result["failed"]; allDomains: string[] };
+export type SerpAnalysis = { snapshot: SerpSnapshot; suffixes: ReturnType<typeof mineSuffixes>; failed: Top10Result["failed"]; allDomains: string[]; truncated: boolean };
 
-/** Полный анализ: TOP-10 по брендам (или по ключу), фильтр «только домены с брендом», приставки конкурентов (топ-30). */
-export async function analyzeSerp(ctx: SerpCtx, input: { brands: string[]; countryCode: string; keyword?: string }): Promise<{ ok: true; value: SerpAnalysis } | { ok: false; error: string }> {
-  const queries = input.keyword?.trim() ? [input.keyword.trim()] : input.brands;
-  const top = await fetchTop10(ctx, queries, input.countryCode);
-  if (!top.ok) return { ok: false, error: top.error ?? "Выдача не получена" };
+/**
+ * Полный анализ: TOP-10 по брендам (каждый бренд — в своей стране) или по ключу (один запрос на страну),
+ * фильтр «только домены с брендом», приставки конкурентов (топ-30).
+ */
+export async function analyzeSerp(ctx: SerpCtx, input: { items: Array<{ brand: string; country: string }>; keyword?: string }): Promise<{ ok: true; value: SerpAnalysis } | { ok: false; error: string }> {
+  const byCountry = new Map<string, string[]>();
+  for (const it of input.items) byCountry.set(it.country, [...(byCountry.get(it.country) ?? []), it.brand]);
+  const keyword = input.keyword?.trim();
+  const merged: Record<string, string[]> = {};
+  const failed: Top10Result["failed"] = [];
+  let provider: Top10Result["provider"] = null;
+  let budget: number = LIMITS.serpQueries;
+  let truncated = false;
+  const multi = byCountry.size > 1;
+  for (const [country, brands] of byCountry) {
+    if (budget <= 0) {
+      truncated = true;
+      break;
+    }
+    const queries = keyword ? [keyword] : brands.slice(0, budget);
+    if (queries.length < (keyword ? 1 : brands.length)) truncated = true;
+    budget -= queries.length;
+    const top = await fetchTop10(ctx, queries, country);
+    if (!top.ok && top.error && !Object.keys(top.byQuery).length && !top.failed.length) return { ok: false, error: top.error };
+    provider = provider ?? top.provider;
+    failed.push(...top.failed);
+    for (const [q, list] of Object.entries(top.byQuery)) merged[multi ? `${q} · ${country.toUpperCase()}` : q] = list;
+  }
+  if (!Object.keys(merged).length) return { ok: false, error: failed[0]?.error ?? "Выдача не получена" };
+  const brands = input.items.map((it) => it.brand);
   const all = new Set<string>();
-  for (const list of Object.values(top.byQuery)) for (const d of list) all.add(d);
-  const domains = Array.from(all).filter((d) => domainHasBrand(d, input.brands));
+  for (const list of Object.values(merged)) for (const d of list) all.add(d);
+  const domains = Array.from(all).filter((d) => domainHasBrand(d, brands));
   const byQuery: Record<string, string[]> = {};
-  for (const [q, list] of Object.entries(top.byQuery)) byQuery[q] = list.filter((d) => domainHasBrand(d, input.brands));
+  for (const [q, list] of Object.entries(merged)) byQuery[q] = list.filter((d) => domainHasBrand(d, brands));
   const snapshot: SerpSnapshot = {
-    provider: top.provider ?? "dataforseo",
-    countryCode: input.countryCode,
-    keyword: input.keyword?.trim() || null,
+    provider: provider ?? "dataforseo",
+    countryCode: Array.from(byCountry.keys()).join(","),
+    keyword: keyword || null,
     byQuery,
     domains,
     fetchedAt: new Date().toISOString(),
   };
-  return { ok: true, value: { snapshot, suffixes: mineSuffixes(domains, input.brands).slice(0, 30), failed: top.failed, allDomains: Array.from(all) } };
+  return { ok: true, value: { snapshot, suffixes: mineSuffixes(domains, brands).slice(0, 30), failed, allDomains: Array.from(all), truncated } };
 }

@@ -10,10 +10,10 @@ import type { DomainRunSettings } from "./types";
 export type ExportScope = "selected" | "available" | "all";
 
 const STATUS_RU: Record<string, string> = { available: "свободен", taken: "занят", unknown: "не проверен" };
-const HEAD = ["Домен", "Бренд", "Зона", "Приставка", "Уровень", "Шаблон", "Статус", "Выбран", "Оценка ИИ", "Комментарий ИИ"];
+const HEAD = ["Домен", "Бренд", "Страна", "Зона", "Приставка", "Уровень", "Шаблон", "Статус", "Выбран", "Оценка ИИ", "Комментарий ИИ"];
 
 function rowOf(d: RunDomainRow): CellValue[] {
-  return [d.domain, d.brand, d.tld, d.suffix ?? "", d.tier || "", d.pattern, STATUS_RU[d.status] ?? d.status, d.selected ? "да" : "", d.aiScore ?? "", d.aiReason ?? ""];
+  return [d.domain, d.brand, (d.country || "").toUpperCase(), d.tld, d.suffix ?? "", d.tier || "", d.pattern, STATUS_RU[d.status] ?? d.status, d.selected ? "да" : "", d.aiScore ?? "", d.aiReason ?? ""];
 }
 
 function scoped(rows: RunDomainRow[], scope: ExportScope): RunDomainRow[] {
@@ -31,12 +31,12 @@ function statRows(rows: RunDomainRow[]): CellValue[][] {
     ["Зоны"],
     line("Выбрано", s.zones.selected),
     line("Свободно", s.zones.available),
-    line("Не задействовано", s.zones.unused),
+    line("Свободно, не выбрано", s.zones.unused),
     [],
     ["Приставки"],
     line("Выбрано", s.suffixes.selected),
     line("Свободно", s.suffixes.available),
-    line("Не задействовано", s.suffixes.unused),
+    line("Свободно, не выбрано", s.suffixes.unused),
   ];
 }
 
@@ -47,10 +47,16 @@ export function fileBase(name: string): string {
 
 export function buildRunXlsx(run: { name: string; settings: DomainRunSettings }, rows: RunDomainRow[], scope: ExportScope): Buffer {
   const exported = scoped(rows, scope);
-  const brands = run.settings.brands;
+  const items = run.settings.items;
+  const multi = new Set(items.map((it) => it.country)).size > 1;
+  // Строки бренда пачки; у старых подборов страны в строках нет — они относятся к первому бренду с таким именем
+  const firstOf = new Map<string, string>();
+  for (const it of items) if (!firstOf.has(it.brand)) firstOf.set(it.brand, it.country);
+  const rowsOf = (list: RunDomainRow[], it: { brand: string; country: string }) => list.filter((r) => r.brand === it.brand && (r.country ? r.country === it.country : firstOf.get(it.brand) === it.country));
+  const labelOf = (it: { brand: string; country: string }) => (multi ? `${it.brand} ${it.country.toUpperCase()}` : it.brand);
   const summary: CellValue[][] = [
     ["Подбор", run.name],
-    ["Страна", run.settings.countryCode.toUpperCase()],
+    ["Страна", Array.from(new Set(items.map((it) => it.country.toUpperCase()))).join(", ")],
     ["Зоны", run.settings.tlds.join(", ")],
     ["Приставки, уровень 1", run.settings.suffixTiers[0].join(", ")],
     ["Приставки, уровень 2", run.settings.suffixTiers[1].join(", ")],
@@ -60,15 +66,16 @@ export function buildRunXlsx(run: { name: string; settings: DomainRunSettings },
     [],
     ...statRows(exported),
     [],
-    ["Бренд", "Выбрано", "Свободно", "Занято", "Не проверено"],
-    ...brands.map((b) => {
-      const s = computeStats(exported.filter((r) => r.brand === b));
-      return [b, s.counts.selected, s.counts.available, s.counts.taken, s.counts.unknown];
+    ["Бренд", "Выбрано", "Свободно", "Занято", "Не проверено", "Страна"],
+    ...items.map((it) => {
+      const s = computeStats(rowsOf(exported, it));
+      return [it.brand, s.counts.selected, s.counts.available, s.counts.taken, s.counts.unknown, it.country.toUpperCase()];
     }),
   ];
   const sheets: Sheet[] = [{ name: "Сводка", rows: summary, widths: [26, 60, 14, 12, 14], boldRows: [0, 12 + 9] }];
-  for (const b of brands) {
-    const list = exported.filter((r) => r.brand === b);
+  const usedNames = new Set<string>();
+  for (const it of items) {
+    const list = rowsOf(exported, it);
     if (!list.length) continue;
     const sel = list.filter((r) => r.selected);
     const free = list.filter((r) => r.status === "available" && !r.selected);
@@ -91,7 +98,11 @@ export function buildRunXlsx(run: { name: string; settings: DomainRunSettings },
     bold.push(body.length);
     body.push(["Статистика по бренду"]);
     body.push(...statRows(list));
-    sheets.push({ name: b, rows: body, widths: [34, 18, 8, 14, 9, 22, 12, 8, 10, 50], boldRows: bold });
+    // Имена листов: до 31 символа и без повторов
+    let name = labelOf(it).slice(0, 31);
+    for (let n = 2; usedNames.has(name.toLowerCase()); n++) name = `${labelOf(it).slice(0, 27)} (${n})`;
+    usedNames.add(name.toLowerCase());
+    sheets.push({ name, rows: body, widths: [34, 18, 8, 8, 14, 9, 22, 12, 8, 10, 50], boldRows: bold });
   }
   return buildXlsx(sheets);
 }

@@ -3,8 +3,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Card } from "@/components/ui";
 import { STATUS_TONE } from "./DomainsNav";
 import { computeStats, formatCounts } from "@/lib/domains/selection";
-import { PATTERN_LABELS, RUN_STATUS_LABELS, type CandidatePattern, type DomainRunProgress, type DomainRunSettings } from "@/lib/domains/types";
+import { itemKey, RUN_STATUS_LABELS, type DomainRunProgress, type DomainRunSettings } from "@/lib/domains/types";
 import type { RunDomainRow } from "@/lib/domains/runs";
+import { brandTierEntries, brandTldEntries, modifierPool } from "@/lib/domains/generator";
+import { RunAnalysis } from "./RunAnalysis";
+import { BrandDomains, DEFAULT_FILTER, filterRows, kindOf, MODE_OPTIONS, SRC_OPTIONS, TIER_OPTIONS, type DomainFilter } from "./BrandDomains";
+import { recommendDomains } from "@/lib/domains/recommend";
 
 export type RunPayload = {
   run: {
@@ -23,14 +27,9 @@ export type RunPayload = {
   domains: RunDomainRow[];
 };
 
-type AiResult = { brand: string; picked: number; note: string | null; error: string | null; costUsd: number | null };
+type AiResult = { brand: string; key?: string; picked: number; note: string | null; error: string | null; costUsd: number | null };
 
 const LIVE = new Set(["QUEUED", "RUNNING"]);
-const STATUS_BADGE: Record<string, { label: string; tone: "ok" | "danger" | "neutral" }> = {
-  available: { label: "свободен", tone: "ok" },
-  taken: { label: "занят", tone: "danger" },
-  unknown: { label: "не проверен", tone: "neutral" },
-};
 
 /** Живая карточка подбора: прогресс, домены по брендам, ручной и ИИ-выбор, статистика, выгрузка. */
 export function DomainRunView({ initial }: { initial: RunPayload }) {
@@ -38,7 +37,8 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
   const [view, setView] = useState<"available" | "taken" | "all">("available");
   const [copied, setCopied] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.run.settings.brands.length <= 30 ? initial.run.settings.brands : []));
+  const allKeys = (s: DomainRunSettings) => s.items.map((it) => itemKey(it.brand, it.country));
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.run.settings.items.length <= 30 ? allKeys(initial.run.settings) : []));
   const [groupBrands, setGroupBrands] = useState<Set<string>>(new Set());
   const [balanceZones, setBalanceZones] = useState(false);
   const [balanceSuffixes, setBalanceSuffixes] = useState(false);
@@ -47,6 +47,10 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
   const [aiError, setAiError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [scope, setScope] = useState<"selected" | "available" | "all">("selected");
+  // Фильтр для всех брендов; у бренда можно переключить свой — он хранится отдельно, пока не сменят общий
+  const [globalFilter, setGlobalFilter] = useState<DomainFilter>(DEFAULT_FILTER);
+  const [brandFilters, setBrandFilters] = useState<Record<string, DomainFilter>>({});
+  const [cols, setCols] = useState<1 | 2 | 3>(3);
   const pending = useRef(new Map<string, boolean>());
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -68,15 +72,26 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live, run.id]);
 
+  const items = run.settings.items;
+  const multiCountry = new Set(items.map((it) => it.country)).size > 1;
+  /** Подпись бренда пачки; в пачке из одной страны — просто бренд. */
+  const labelOf = (it: { brand: string; country: string }) => (multiCountry ? `${it.brand} · ${it.country.toUpperCase()}` : it.brand);
   const byBrand = useMemo(() => {
     const map = new Map<string, RunDomainRow[]>();
-    for (const b of run.settings.brands) map.set(b, []);
+    // У строк старых подборов страны нет — относим их к первому бренду с таким именем
+    const legacy = new Map<string, string>();
+    for (const it of items) {
+      const k = itemKey(it.brand, it.country);
+      map.set(k, []);
+      if (!legacy.has(it.brand)) legacy.set(it.brand, k);
+    }
     for (const d of domains) {
-      if (!map.has(d.brand)) map.set(d.brand, []);
-      map.get(d.brand)!.push(d);
+      const k = d.country ? itemKey(d.brand, d.country) : legacy.get(d.brand) ?? itemKey(d.brand, "");
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(d);
     }
     return map;
-  }, [domains, run.settings.brands]);
+  }, [domains, items]);
   const overall = useMemo(() => computeStats(domains), [domains]);
   const q = query.trim().toLowerCase();
 
@@ -98,8 +113,8 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
       setSaveError(`Выбор не сохранился: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  function toggleBrandAll(brand: string, selected: boolean) {
-    for (const d of byBrand.get(brand) ?? []) if (d.status === "available" && d.selected !== selected) toggle(d.id, selected);
+  function toggleRows(rows: RunDomainRow[], selected: boolean) {
+    for (const d of rows) if (d.status === "available" && d.selected !== selected) toggle(d.id, selected);
   }
 
   async function runAi(brands: string[] | null, label: string) {
@@ -124,7 +139,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
   async function copyList(format: "domains" | "sheet") {
     const rows = scopedRows(scope);
     if (!rows.length) { setCopied("Нечего копировать: отметьте домены или смените область"); return; }
-    const text = format === "domains" ? rows.map((d) => d.domain).join("\n") : rows.map((d) => `${d.brand}\t${d.domain}`).join("\n");
+    const text = format === "domains" ? rows.map((d) => d.domain).join("\n") : rows.map((d) => (multiCountry ? `${d.brand}\t${(d.country || "").toUpperCase()}\t${d.domain}` : `${d.brand}\t${d.domain}`)).join("\n");
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -135,8 +150,32 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
       document.execCommand("copy");
       ta.remove();
     }
-    setCopied(`Скопировано: ${rows.length} ${format === "sheet" ? "строк (бренд и домен в двух колонках)" : "доменов"}`);
+    setCopied(`Скопировано: ${rows.length} ${format === "sheet" ? (multiCountry ? "строк (бренд, страна и домен в колонках)" : "строк (бренд и домен в двух колонках)") : "доменов"}`);
     setTimeout(() => setCopied(null), 4000);
+  }
+
+  // Источник каждой приставки бренда: гео-база, ключи бренда, общие приставки, запас страны
+  const sources = useMemo(() => {
+    const s = run.settings;
+    const pool = s.usePool ? modifierPool(s.items) : undefined;
+    return new Map(s.items.map((it) => [itemKey(it.brand, it.country), new Map(brandTierEntries(it, s, pool, s.items).flat().map((e) => [e.suffix, e.source]))]));
+  }, [run.settings]);
+  // Источник каждой зоны бренда: общая, набор страны, зона страны, из выдачи
+  const zoneSources = useMemo(() => new Map(run.settings.items.map((it) => [itemKey(it.brand, it.country), new Map(brandTldEntries(it, run.settings).map((e) => [e.tld, e.source]))])), [run.settings]);
+  const allZones = useMemo(() => Array.from(new Set(domains.map((d) => d.tld))), [domains]);
+  const setAllFilters = (f: DomainFilter) => { setGlobalFilter(f); setBrandFilters({}); };
+  /** Рекомендованные к покупке у бренда под его фильтр: столько, сколько «доменов на бренд». */
+  const recFor = (key: string, rows: RunDomainRow[], f: DomainFilter) => {
+    const src = sources.get(key);
+    return new Map(recommendDomains(filterRows(rows, src, f), run.settings.perBrand, (d) => String(kindOf(d, src))).map((r) => [r.id, r.reason]));
+  };
+  function selectAllRecommended() {
+    for (const it of items) {
+      const key = itemKey(it.brand, it.country);
+      const rows = (byBrand.get(key) ?? []).filter((d) => d.status === "available");
+      const rec = recFor(key, rows, brandFilters[key] ?? globalFilter);
+      toggleRows(rows.filter((d) => rec.has(d.id)), true);
+    }
   }
 
   const pct = run.progress && run.progress.brandsTotal ? Math.round((run.progress.brandIndex / run.progress.brandsTotal) * 100) : run.status === "DONE" ? 100 : 0;
@@ -149,7 +188,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
           { label: "Проверено доменов", value: run.totalChecked },
           { label: "Свободно", value: run.totalAvailable },
           { label: "Выбрано", value: overall.counts.selected },
-          { label: "Брендов", value: run.settings.brands.length },
+          { label: "Брендов", value: items.length },
         ].map((s) => (
           <div key={s.label} className="kpi"><div className="kpi-value">{s.value}</div><div className="help">{s.label}</div></div>
         ))}
@@ -158,7 +197,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
       {live && (
         <Card>
           <div className="flex items-center justify-between gap-3 mb-2">
-            <div className="flex items-center gap-2"><Badge tone={STATUS_TONE[run.status]}>{RUN_STATUS_LABELS[run.status]}</Badge><span className="help">{run.status === "QUEUED" ? "Ждёт воркер: обычно несколько секунд" : run.progress ? `${run.progress.brandIndex} из ${run.progress.brandsTotal} брендов · сейчас «${run.progress.brand}»` : "Запускается…"}</span></div>
+            <div className="flex items-center gap-2"><Badge tone={STATUS_TONE[run.status]}>{RUN_STATUS_LABELS[run.status]}</Badge><span className="help">{run.status === "QUEUED" ? "Ждёт воркер: обычно несколько секунд" : run.progress ? (run.progress.brand.startsWith("ключи и выдача") ? `Собираю ${run.progress.brand}` : `${run.progress.brandIndex} из ${run.progress.brandsTotal} брендов · сейчас «${run.progress.brand}»`) : "Запускается…"}</span></div>
             <span className="help">{pct}%</span>
           </div>
           <div className="h-2 rounded-full bg-ink/10 overflow-hidden"><div className="h-full bg-brand transition-all" style={{ width: `${pct}%` }} /></div>
@@ -171,6 +210,8 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
         <Alert tone="warn">Не хватило свободных доменов ({run.settings.perBrand} на бренд) для: {run.incompleteBrands.join(", ")}. Добавьте приставки или зоны и повторите подбор.</Alert>
       )}
       {saveError && <Alert tone="danger">{saveError}</Alert>}
+
+      <RunAnalysis settings={run.settings} />
 
       {!live && domains.length > 0 && (
         <Card title="ИИ-отбор" description="Модель оценивает свободные домены бренда и выбирает лучшие под TOP-1 по бренд-запросу. Выбор ИИ заменяет текущий выбор бренда; оценку и объяснение видно в таблице.">
@@ -190,7 +231,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
           {aiLog && (
             <div className="mt-3 rounded-xl border border-line p-3 text-[13.5px] space-y-1">
               {aiLog.map((r) => (
-                <div key={r.brand} className={r.error ? "text-danger" : ""}>
+                <div key={r.key ?? r.brand} className={r.error ? "text-danger" : ""}>
                   <b>{r.brand}</b>: {r.error ? r.error : `выбрано ${r.picked}${r.note ? ` · ${r.note}` : ""}`}
                 </div>
               ))}
@@ -232,28 +273,57 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
             ))}
           </div>
           <div className="ml-auto flex gap-2">
-            <button type="button" className="btn-ghost btn-sm" onClick={() => setExpanded(new Set(run.settings.brands))}>Развернуть все</button>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => setExpanded(new Set(allKeys(run.settings)))}>Развернуть все</button>
             <button type="button" className="btn-ghost btn-sm" onClick={() => setExpanded(new Set())}>Свернуть все</button>
           </div>
         </div>
       )}
+      {domains.length > 0 && (
+        <div className="card flex flex-wrap items-center gap-2 px-3 py-2 text-[13px]">
+          <span className="font-semibold">Для всех брендов:</span>
+          <select className="input !w-auto !py-1 text-[13px]" value={globalFilter.src} onChange={(e) => setAllFilters({ ...globalFilter, src: e.target.value as DomainFilter["src"] })}>
+            {SRC_OPTIONS.map(([v, l]) => <option key={v} value={v}>{v === "all" ? "Все источники" : l}</option>)}
+          </select>
+          <select className="input !w-auto !py-1 text-[13px]" value={globalFilter.tier} onChange={(e) => setAllFilters({ ...globalFilter, tier: e.target.value as DomainFilter["tier"] })}>
+            {TIER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <select className="input !w-auto !py-1 text-[13px]" value={globalFilter.zone} onChange={(e) => setAllFilters({ ...globalFilter, zone: e.target.value })}>
+            <option value="all">Все зоны</option>
+            {allZones.map((z) => <option key={z} value={z}>.{z}</option>)}
+          </select>
+          <select className="input !w-auto !py-1 text-[13px]" value={globalFilter.mode} onChange={(e) => setAllFilters({ ...globalFilter, mode: e.target.value as DomainFilter["mode"] })}>
+            {MODE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          {!live && <button type="button" className="btn-primary btn-sm" onClick={selectAllRecommended} title="У каждого бренда отметить рекомендованные под его фильтр">★ Выбрать рекомендованные во всех</button>}
+          <div className="ml-auto flex items-center gap-1">
+            <span className="help">Колонок:</span>
+            {([1, 2, 3] as const).map((n) => <button key={n} type="button" className={`tab !px-2 !py-0.5 ${cols === n ? "active" : ""}`} onClick={() => setCols(n)}>{n}</button>)}
+          </div>
+        </div>
+      )}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {run.settings.brands.map((brand) => {
-          const rows = byBrand.get(brand) ?? [];
+      <div className={`grid gap-3 ${cols === 1 ? "" : cols === 2 ? "md:grid-cols-2" : "md:grid-cols-2 xl:grid-cols-3"}`}>
+        {items.map((item) => {
+          const brand = item.brand;
+          const key = itemKey(item.brand, item.country);
+          const label = labelOf(item);
+          const rows = byBrand.get(key) ?? [];
           if (q && !brand.toLowerCase().includes(q) && !rows.some((d) => d.domain.includes(q))) return null;
           const stats = computeStats(rows);
           const visible = rows.filter((d) => (view === "all" || (view === "available" ? d.status === "available" : d.status === "taken")) && (!q || d.domain.includes(q) || brand.toLowerCase().includes(q)));
-          const open = expanded.has(brand);
-          const incomplete = run.incompleteBrands.includes(brand);
-          const inProgress = live && run.progress?.brand === brand;
-          const toggleOpen = () => setExpanded((prev) => { const n = new Set(prev); if (n.has(brand)) n.delete(brand); else n.add(brand); return n; });
+          const open = expanded.has(key);
+          const filter = brandFilters[key] ?? globalFilter;
+          const rec = recFor(key, visible, filter);
+          const fullLabel = `${item.brand} · ${item.country.toUpperCase()}`;
+          const incomplete = run.incompleteBrands.includes(fullLabel) || run.incompleteBrands.includes(brand);
+          const inProgress = live && (run.progress?.brand === fullLabel || run.progress?.brand === brand);
+          const toggleOpen = () => setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
           return (
-            <section key={brand} className="card flex flex-col min-w-0">
+            <section key={key} className="card flex flex-col min-w-0">
               <div className="flex items-center gap-2 px-3 py-2.5">
-                {!live && <input type="checkbox" className="h-4 w-4 shrink-0" checked={groupBrands.has(brand)} onChange={(e) => setGroupBrands((prev) => { const n = new Set(prev); if (e.target.checked) n.add(brand); else n.delete(brand); return n; })} title="В группу для ИИ-отбора" />}
-                <button type="button" className="min-w-0 flex-1 text-left font-semibold text-[15px] truncate hover:underline" onClick={toggleOpen} title={brand}>
-                  {brand}
+                {!live && <input type="checkbox" className="h-4 w-4 shrink-0" checked={groupBrands.has(key)} onChange={(e) => setGroupBrands((prev) => { const n = new Set(prev); if (e.target.checked) n.add(key); else n.delete(key); return n; })} title="В группу для ИИ-отбора" />}
+                <button type="button" className="min-w-0 flex-1 text-left font-semibold text-[15px] truncate hover:underline" onClick={toggleOpen} title={label}>
+                  {label}
                 </button>
                 {inProgress && <Badge tone="brand">идёт</Badge>}
                 {incomplete && <Badge tone="warn">мало</Badge>}
@@ -270,29 +340,24 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
                     <p className="help px-3 py-3">Ещё не проверялся</p>
                   ) : (
                     <>
-                      <ul className="max-h-72 overflow-auto divide-y divide-line/70">
-                        {visible.map((d) => (
-                          <li key={d.id} className={`flex items-center gap-2 px-3 py-1.5 text-[13.5px] ${d.selected ? "bg-brand-soft/40" : ""}`} title={[PATTERN_LABELS[d.pattern as CandidatePattern] ?? d.pattern, d.aiReason].filter(Boolean).join(" · ")}>
-                            {d.status === "available" ? (
-                              <input type="checkbox" className="h-4 w-4 shrink-0" checked={d.selected} onChange={(e) => toggle(d.id, e.target.checked)} />
-                            ) : (
-                              <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${d.status === "taken" ? "bg-danger" : "bg-line-2"}`} title={STATUS_BADGE[d.status]?.label} />
-                            )}
-                            <span className="font-mono min-w-0 flex-1 truncate">{d.domain}</span>
-                            {d.tier > 0 && <span className="shrink-0 rounded-md bg-ink/5 px-1.5 text-[11px] text-muted" title={`приставка ${d.suffix}, уровень ${d.tier}`}>{d.tier}</span>}
-                            {d.aiScore != null && <span className="shrink-0 rounded-md bg-ok-soft px-1.5 text-[11px] font-semibold text-ok" title={d.aiReason ?? "оценка ИИ"}>{d.aiScore}</span>}
-                          </li>
-                        ))}
-                        {visible.length === 0 && <li className="help px-3 py-2">Нет доменов под фильтр</li>}
-                      </ul>
+                      <BrandDomains
+                        rows={visible}
+                        sources={sources.get(key)}
+                        zoneSources={zoneSources.get(key)}
+                        filter={filter}
+                        setFilter={(f) => setBrandFilters((prev) => ({ ...prev, [key]: f }))}
+                        onToggle={toggle}
+                        rec={rec}
+                      />
                       <div className="help px-3 py-1.5 border-t border-line truncate" title={`Зоны: выбрано ${formatCounts(stats.zones.selected)} · свободно ${formatCounts(stats.zones.available)}\nПриставки: выбрано ${formatCounts(stats.suffixes.selected)} · свободно ${formatCounts(stats.suffixes.available)}`}>
                         {stats.counts.selected ? <>зоны {formatCounts(stats.zones.selected)} · приставки {formatCounts(stats.suffixes.selected)}</> : <>свободно: {formatCounts(stats.zones.available)}</>}
                       </div>
                       {!live && (
                         <div className="flex gap-1.5 px-3 py-2 border-t border-line">
-                          <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleBrandAll(brand, true)} title="Выбрать все свободные">Все</button>
-                          <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleBrandAll(brand, false)}>Снять</button>
-                          <button type="button" className="btn-primary btn-sm !px-2.5 !py-1 text-[12.5px] ml-auto" disabled={!!aiBusy || stats.counts.available === 0} onClick={() => runAi([brand], brand)}>{aiBusy === brand ? "ИИ…" : "ИИ-отбор"}</button>
+                          <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(visible.filter((d) => rec.has(d.id)), true)} title="Отметить рекомендованные под текущий фильтр">★ Выбрать рекомендованные</button>
+                          <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(filterRows(visible, sources.get(key), filter), true)} title="Выбрать свободные домены под текущий фильтр">Видимые</button>
+                          <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(filterRows(visible, sources.get(key), filter), false)}>Снять</button>
+                          <button type="button" className="btn-primary btn-sm !px-2.5 !py-1 text-[12.5px] ml-auto" disabled={!!aiBusy || stats.counts.available === 0} onClick={() => runAi([key], key)}>{aiBusy === key ? "ИИ…" : "ИИ-отбор"}</button>
                         </div>
                       )}
                     </>
@@ -316,13 +381,13 @@ function StatsTable({ stats }: { stats: ReturnType<typeof computeStats> }) {
       <div className="table-wrap">
         <table className="table">
           <thead><tr><th colSpan={2}>Зоны</th></tr></thead>
-          <tbody><Row label="Выбрано" pairs={stats.zones.selected} /><Row label="Свободно" pairs={stats.zones.available} /><Row label="Не задействовано" pairs={stats.zones.unused} /></tbody>
+          <tbody><Row label="Выбрано" pairs={stats.zones.selected} /><Row label="Свободно" pairs={stats.zones.available} /><Row label="Свободно, не выбрано" pairs={stats.zones.unused} /></tbody>
         </table>
       </div>
       <div className="table-wrap">
         <table className="table">
           <thead><tr><th colSpan={2}>Приставки</th></tr></thead>
-          <tbody><Row label="Выбрано" pairs={stats.suffixes.selected} /><Row label="Свободно" pairs={stats.suffixes.available} /><Row label="Не задействовано" pairs={stats.suffixes.unused} /></tbody>
+          <tbody><Row label="Выбрано" pairs={stats.suffixes.selected} /><Row label="Свободно" pairs={stats.suffixes.available} /><Row label="Свободно, не выбрано" pairs={stats.suffixes.unused} /></tbody>
         </table>
       </div>
     </div>

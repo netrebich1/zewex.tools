@@ -735,6 +735,8 @@ model DomainCandidate {
   id        String    @id @default(uuid()) @db.Char(36)
   runId     String    @db.Char(36)
   brand     String
+  /// Страна бренда в пачке (alpha-2); пусто у старых подборов
+  country   String    @default("") @db.VarChar(8)
   domain    String
   tld       String
   suffix    String?
@@ -756,6 +758,16 @@ model DomainCandidate {
   @@unique([runId, domain])
   @@index([runId, brand, sortOrder])
   @@index([runId, status])
+}
+
+/// Набор страны для подбора доменов: гео-приставки по уровням и доп. зоны (общий для портала).
+model DomainCountryPreset {
+  countryCode String   @id @db.VarChar(8)
+  /// [[уровень 1], [уровень 2], [уровень 3]]
+  tiers       Json
+  tlds        Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
 }
 
 // ───────────────────────────── Pinterest Articles ─────────────────────────────

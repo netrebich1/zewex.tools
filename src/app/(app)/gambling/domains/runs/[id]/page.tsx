@@ -9,7 +9,7 @@ import { DomainsNav, STATUS_TONE } from "@/components/domains/DomainsNav";
 import { DomainRunView, type RunPayload } from "@/components/domains/DomainRunView";
 import { canAccessDomainRun, parseSettings, runDomains } from "@/lib/domains/runs";
 import { deleteDomainRunAction, restartDomainRunAction, stopDomainRun } from "@/actions/domains";
-import { getCountry, RUN_STATUS_LABELS, type DomainRunProgress } from "@/lib/domains/types";
+import { getCountry, LETTER_MODE_LABELS, RUN_STATUS_LABELS, type DomainRunProgress } from "@/lib/domains/types";
 import { fmtDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +38,8 @@ export default async function DomainRunPage({ params }: { params: Promise<{ id: 
     },
     domains,
   };
-  const country = getCountry(settings.countryCode);
+  const countries = Array.from(new Set(settings.items.map((it) => it.country)));
+  const countryNames = countries.map((c) => getCountry(c)?.name ?? c.toUpperCase()).join(", ");
 
   return (
     <>
@@ -49,7 +50,7 @@ export default async function DomainRunPage({ params }: { params: Promise<{ id: 
         subtitle={
           <>
             <Badge tone={STATUS_TONE[run.status] ?? "neutral"}>{RUN_STATUS_LABELS[run.status] ?? run.status}</Badge>
-            <span className="ml-2">{country?.name ?? settings.countryCode.toUpperCase()} · зоны: {settings.tlds.join(", ")} · {settings.perBrand} на бренд (+{settings.extraPerBrand} запас) · создан {fmtDate(run.createdAt)}{run.finishedAt ? ` · завершён ${fmtDate(run.finishedAt)}` : ""}</span>
+            <span className="ml-2">{countryNames} · зоны: {settings.tlds.join(", ")} · {settings.perBrand} на бренд (+{settings.extraPerBrand} запас) · создан {fmtDate(run.createdAt)}{run.finishedAt ? ` · завершён ${fmtDate(run.finishedAt)}` : ""}</span>
           </>
         }
         actions={
@@ -77,9 +78,16 @@ export default async function DomainRunPage({ params }: { params: Promise<{ id: 
       <div className="space-y-5">
         <Card title="Настройки подбора">
           <div className="grid gap-x-6 gap-y-2 text-[14px] sm:grid-cols-2">
-            <div><span className="label">Приставки, уровень 1</span><span className="font-mono text-[13px]">{settings.suffixTiers[0].join(", ") || "—"}</span></div>
-            <div><span className="label">Приставки, уровень 2</span><span className="font-mono text-[13px]">{settings.suffixTiers[1].join(", ") || "—"}</span></div>
-            <div><span className="label">Приставки, уровень 3</span><span className="font-mono text-[13px]">{settings.suffixTiers[2].join(", ") || "—"}</span></div>
+            <div><span className="label">Общие приставки, уровень 1</span><span className="font-mono text-[13px]">{settings.suffixTiers[0].join(", ") || "—"}</span></div>
+            <div><span className="label">Общие приставки, уровень 2</span><span className="font-mono text-[13px]">{settings.suffixTiers[1].join(", ") || "—"}</span></div>
+            <div><span className="label">Общие приставки, уровень 3</span><span className="font-mono text-[13px]">{settings.suffixTiers[2].join(", ") || "—"}</span></div>
+            {countries.filter((c) => settings.countryPresets[c]).map((c) => {
+              const p = settings.countryPresets[c]!;
+              return (
+                <div key={c}><span className="label">Набор страны {c.toUpperCase()}</span><span className="font-mono text-[13px]">1: {p.tiers[0].join(", ") || "—"} · 2: {p.tiers[1].join(", ") || "—"} · 3: {p.tiers[2].join(", ") || "—"}{p.tlds.length ? ` · зоны: ${p.tlds.join(", ")}` : ""}</span></div>
+              );
+            })}
+            <div><span className="label">Бренд + буква</span>{LETTER_MODE_LABELS[settings.letterMode]} · запас модификаторов (уровни 4–6): {settings.usePool ? "да" : "нет"} · брендов с модификаторами: {settings.items.filter((it) => it.modifiers.length).length}</div>
             <div><span className="label">Дефис</span>{settings.allowHyphen ? "разрешён" : "запрещён"}{settings.serpKeyword ? <> · <span className="label inline">ключ:</span> {settings.serpKeyword}</> : null}</div>
             {settings.serp && (
               <div className="sm:col-span-2"><span className="label">Выдача Google</span><span className="help">{settings.serp.provider === "dataforseo" ? "DataForSEO" : "SerpAPI"} · доменов с брендом: {settings.serp.domains.length} · снято {fmtDate(settings.serp.fetchedAt)}{settings.minedSuffixes.length ? ` · приставки конкурентов: ${settings.minedSuffixes.slice(0, 12).map((m) => `${m.suffix} (${m.count})`).join(", ")}${settings.minedSuffixes.length > 12 ? "…" : ""}` : ""}</span></div>

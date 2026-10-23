@@ -70,7 +70,7 @@ export default async function DomainsHome() {
                         {r.status === "RUNNING" && pct != null && <span className="help ml-2">{pct}% · {r.progress?.brand}</span>}
                       </td>
                       <td>{r.brands} <span className="help">· {r.perBrand} на бренд · зон: {r.tlds}</span></td>
-                      <td className="uppercase">{r.countryCode}</td>
+                      <td className="uppercase">{r.countries.join(", ")}</td>
                       <td>{r.totalChecked}</td>
                       <td className="font-medium">{r.totalAvailable}</td>
                       <td>{r.selected}</td>

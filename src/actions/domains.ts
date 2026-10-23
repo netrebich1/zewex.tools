@@ -9,7 +9,7 @@ export type FormState = { error?: string; ok?: string };
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const fail = (e: unknown): FormState => ({ error: e instanceof Error ? e.message : String(e) });
 
-/** Запуск подбора: настройки из формы, снимок выдачи и приставки из скрытых полей (JSON). */
+/** Запуск подбора: настройки из формы; снимок выдачи, приставки, модификаторы брендов и наборы стран — из скрытых полей (JSON). */
 export async function launchDomainRun(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   let id: string;
@@ -27,6 +27,14 @@ export async function launchDomainRun(_p: FormState, f: FormData): Promise<FormS
     } catch {
       serp = null;
     }
+    const json = <T,>(k: string, d: T): T => {
+      try {
+        const raw = str(f, k);
+        return raw ? (JSON.parse(raw) as T) : d;
+      } catch {
+        return d;
+      }
+    };
     const settings = settingsFromInput({
       brands: str(f, "brands"),
       tlds: str(f, "tlds"),
@@ -38,6 +46,14 @@ export async function launchDomainRun(_p: FormState, f: FormData): Promise<FormS
       allowHyphen: f.get("allowHyphen") === "on",
       countryCode: str(f, "countryCode"),
       serpKeyword: str(f, "serpKeyword"),
+      letterMode: str(f, "letterMode"),
+      usePool: f.get("usePool") === "on",
+      // Режим «максимум» выключается только явным «off»: форма, открытая до появления галочек, поля не шлёт
+      autoResearch: f.get("autoResearch") !== "off",
+      checkAll: f.get("checkAll") !== "off",
+      autoZones: f.get("autoZones") !== "off",
+      items: json<Array<{ brand: string; country: string; modifiers: unknown; research?: unknown }>>("items", []),
+      countryPresets: json<Record<string, unknown>>("countryPresets", {}),
       minedSuffixes: Array.isArray(mined) ? mined : [],
       serp: serp && Array.isArray(serp.domains) ? serp : null,
     });
