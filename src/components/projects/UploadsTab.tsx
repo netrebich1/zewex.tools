@@ -7,6 +7,11 @@ import { markUploaded, markUploadedThrough, unmarkUploaded } from "@/actions/pro
 import { formatRu, todayKey } from "@/lib/pins/schedule/math";
 import { TZ } from "@/lib/pins/runs/stats";
 
+const noteParts = (note: string) => note.split(" · ");
+/** Текст отметки без ссылки на скриншот (автозаливка пишет «авто · агент X · N пинов · https://…»). */
+const noteText = (note: string) => noteParts(note).filter((p) => !p.startsWith("http")).join(" · ");
+const noteShot = (note: string) => noteParts(note).find((p) => p.startsWith("http")) ?? null;
+
 /** Вкладка «Выгрузки»: каждый день, за который скачивали файл экспорта, и отметка «залито в Pinterest». */
 export async function UploadsTab({ accessId, userName }: { accessId: string; userName: (id: string | null) => string | null }) {
   const pinSites = await prisma.pinSite.findMany({ where: { wpConnectionId: accessId }, select: { id: true, name: true } });
@@ -51,6 +56,7 @@ export async function UploadsTab({ accessId, userName }: { accessId: string; use
                         {r.upload ? (
                           <div className="flex items-center gap-2">
                             <span className="badge bg-ok-soft text-ok">✓ залито {r.upload.uploadedAt.toLocaleDateString("ru-RU")}{r.upload.source === "auto" ? " · авто" : r.upload.uploadedById ? ` · ${userName(r.upload.uploadedById) ?? ""}` : ""}</span>
+                            {r.upload.note && <span className="help">{noteText(r.upload.note)}{noteShot(r.upload.note) && <> · <a href={noteShot(r.upload.note)!} target="_blank" rel="noreferrer" className="underline">скриншот</a></>}</span>}
                             <ActionForm action={unmarkUploaded} hidden={{ accessId, pinSiteId: site.id, day: r.day }} className="inline"><SubmitButton className="text-[12px] text-muted hover:text-danger" pendingText="…">снять</SubmitButton></ActionForm>
                           </div>
                         ) : (

@@ -325,5 +325,14 @@ if (pinterest) {
     create: { sectionId: pinterest.id, slug: "projects", name: "Проекты", description: "Все сайты в одном месте: прогоны и запас пинов, выгрузки и заливка в Pinterest, статьи, этапы, задачи, история, финансы", url: "/pinterest/projects", status: "ACTIVE", order: 5 },
   });
 }
+// ───────────────────────────── Pin Uploader (автозаливка CSV в Pinterest через Dolphin Anty) ─────────────────────────────
+// Слоты ключей ИИ не нужны: инструмент раздаёт задания агенту на ПК сотрудника и пишет отметки в «Проекты».
+if (pinterest) {
+  await prisma.project.upsert({
+    where: { slug: "uploader" },
+    update: {},
+    create: { sectionId: pinterest.id, slug: "uploader", name: "Заливка в Pinterest", description: "Автозаливка файлов выгрузки пинов в Pinterest через Dolphin Anty: сайт ↔ профиль, запуск кнопкой и по расписанию, статусы и отметки в «Проектах»", url: "/pinterest/uploader", status: "ACTIVE", order: 6 },
+  });
+}
 console.log("seed done");
 await prisma.$disconnect();

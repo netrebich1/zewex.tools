@@ -12,6 +12,7 @@ import { resyncSheets } from "@/lib/articles/sheets";
 import { failedKeywordsTick } from "@/lib/articles/failedKeywords";
 import { deeplPurgeCache, deeplRequeueStale } from "./deepl";
 import { analyticsPurge, analyticsRequeueStale } from "./analytics";
+import { uploaderTick } from "@/lib/uploader/runs";
 
 /** Периодические задачи воркера: сторож зависших задач, уборка (позже). */
 export function startCron(): () => void {
@@ -44,5 +45,7 @@ export function startCron(): () => void {
   // Трафик сайтов (GA4): зависшие аренды — каждые 5 мин; часы/страницы/разрезы старше 400 дней — раз в сутки.
   timers.push(setInterval(() => analyticsRequeueStale().catch((e) => log.warn("analytics requeueStale failed", e)), 5 * 60_000));
   timers.push(setInterval(() => analyticsPurge().catch((e) => log.warn("analytics purge failed", e)), 24 * 60 * 60_000));
+  // Заливка в Pinterest (Pin Uploader): агенты офлайн, просроченные аренды, фаза проверки, расписание — раз в минуту.
+  timers.push(setInterval(() => uploaderTick().then((r) => { if (r.verify || r.scheduled) log.info(`uploader tick: verify ${r.verify}, scheduled ${r.scheduled}, stale ${r.stale}`); }).catch((e) => log.warn("uploader tick failed", e)), 60_000));
   return () => timers.forEach(clearInterval);
 }

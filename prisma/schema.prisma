@@ -2349,3 +2349,170 @@ model PrjCluster {
 
   @@index([cardId])
 }
+
+// ───────────────────────────── Pin Uploader: автозаливка CSV в Pinterest через Dolphin Anty ─────────────────────────────
+// Портал раздаёт задания, агент на ПК сотрудника (agent/uploader) открывает профиль Dolphin и заливает файл дня.
+// Протокол — src/lib/uploader/agent.ts; запуски — src/lib/uploader/runs.ts.
+
+/// Общие настройки инструмента (одна строка «main»): токен Dolphin API команды, «человечность», задержки проверки
+model UplSettings {
+  id              String   @id @default("main")
+  dolphinTokenEnc String?  @db.Text
+  dolphinHint     String?  @db.VarChar(32)
+  /// Диапазоны пауз и поведения агента (UplHumanize в src/lib/uploader/types.ts)
+  humanize        Json?
+  /// Через сколько минут после конца цикла идти проверять историю загрузок; повторы проверки, мин; число повторов
+  verifyDelayMin  Int      @default(10)
+  verifyRetryMin  Int      @default(30)
+  verifyRetries   Int      @default(3)
+  /// Адрес страницы массовой загрузки Pinterest (если пусто — агент ищет сам)
+  bulkUrl         String?  @db.VarChar(255)
+  updatedAt       DateTime @updatedAt
+}
+
+/// Агент на ПК сотрудника: токен (sha256), состояние, расписание и параллельность
+model UplAgent {
+  id               String    @id @default(uuid()) @db.Char(36)
+  userId           String    @db.VarChar(64)
+  name             String    @default("") @db.VarChar(120)
+  tokenHash        String    @unique @db.Char(64)
+  tokenHint        String    @default("") @db.VarChar(12)
+  version          String?   @db.VarChar(20)
+  /// online | busy | offline (offline ставится кроном, если lastSeenAt старше 2 мин)
+  status           String    @default("offline") @db.VarChar(12)
+  /// Строка состояния от агента («жду задания», «сайт X: загрузка»)
+  state            String?   @db.VarChar(190)
+  lastSeenAt       DateTime?
+  /// ОС, порт Dolphin, версия Dolphin, число профилей
+  hostInfo         Json?
+  /// {enabled, time:"09:30", tz:"Europe/Kyiv"}
+  schedule         Json?
+  /// {parallel:1}
+  settings         Json?
+  lastScheduledDay String?   @db.VarChar(10)
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  runs             UplRun[]
+
+  @@index([userId])
+}
+
+/// Профили Dolphin, которые видят агенты (для выпадающего списка сопоставления)
+model UplProfile {
+  id       String   @id @db.VarChar(40)
+  agentId  String?  @db.Char(36)
+  name     String   @db.VarChar(190)
+  tags     Json?
+  platform String?  @db.VarChar(20)
+  seenAt   DateTime
+
+  @@index([name])
+}
+
+/// Сайт пинов ↔ профиль Dolphin ↔ состояние аккаунта Pinterest
+model UplAccount {
+  id           String    @id @default(uuid()) @db.Char(36)
+  pinSiteId    String    @unique @db.Char(36)
+  profileId    String?   @db.VarChar(40)
+  profileName  String?   @db.VarChar(190)
+  /// Агент, который заливал последним успешно
+  agentId      String?   @db.Char(36)
+  /// ok | needs_login | paused | limited | banned | off
+  status       String    @default("ok") @db.VarChar(16)
+  pausedUntil  DateTime?
+  blockStep    Int       @default(0)
+  lastError    String?   @db.VarChar(255)
+  lastUploadAt DateTime?
+  lastCheckAt  DateTime?
+  /// Логин Pinterest, увиденный агентом в профиле (сверка «тот ли профиль»)
+  pinUsername  String?   @db.VarChar(120)
+  updatedAt    DateTime  @updatedAt
+}
+
+/// Запуск заливки («кнопка» или расписание) = пачка визитов в профили
+model UplRun {
+  id             String    @id @default(uuid()) @db.Char(36)
+  agentId        String    @db.Char(36)
+  userId         String?   @db.VarChar(64)
+  /// manual | schedule
+  source         String    @default("manual") @db.VarChar(12)
+  /// День файлов YYYY-MM-DD
+  day            String    @db.VarChar(10)
+  /// QUEUED | RUNNING | VERIFY_WAIT | VERIFYING | DONE | FAILED | STOPPED
+  status         String    @default("QUEUED") @db.VarChar(12)
+  /// upload | verify
+  phase          String    @default("upload") @db.VarChar(8)
+  verifyAt       DateTime?
+  verifyAttempts Int       @default(0)
+  /// Сколько профилей агенту открывать одновременно
+  parallel       Int       @default(1)
+  total          Int       @default(0)
+  done           Int       @default(0)
+  failed         Int       @default(0)
+  skipped        Int       @default(0)
+  stopRequested  Boolean   @default(false)
+  error          String?   @db.VarChar(255)
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  agent          UplAgent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  tasks          UplTask[]
+
+  @@index([status, createdAt])
+  @@index([agentId, createdAt])
+}
+
+/// Один визит агента в один профиль Dolphin (шаги — steps)
+model UplTask {
+  id         String    @id @default(uuid()) @db.Char(36)
+  runId      String    @db.Char(36)
+  pinSiteId  String    @db.Char(36)
+  profileId  String    @db.VarChar(40)
+  day        String    @db.VarChar(10)
+  /// upload | verify
+  phase      String    @default("upload") @db.VarChar(8)
+  /// [{kind:"upload_csv"}] | [{kind:"check_history"}] | [{kind:"analytics"}]
+  steps      Json
+  /// QUEUED | LEASED | DONE | FAILED | SKIPPED
+  status     String    @default("QUEUED") @db.VarChar(8)
+  attempts   Int       @default(0)
+  leaseUntil DateTime?
+  order      Int       @default(0)
+  /// Строк в файле (из выгрузки)
+  rows       Int?
+  /// Имя файла выгрузки
+  fileName   String?   @db.VarChar(190)
+  /// Что делает агент сейчас (строка шага)
+  step       String?   @db.VarChar(190)
+  /// Результат агента: {accepted, rowsSeen, screenshot, verify:{published,failed,processing}, timings}
+  result     Json?
+  /// dolphin_offline | profile_not_found | not_logged_in | pinterest_rejected | upload_form_changed | no_file | network | unknown
+  errorKind  String?   @db.VarChar(32)
+  error      String?   @db.VarChar(255)
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  run        UplRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, order])
+  @@index([pinSiteId, day])
+  @@index([status, leaseUntil])
+}
+
+/// Журнал по аккаунту: visit | upload | check | fail | blocked | login_lost | paused | resumed
+model UplEvent {
+  id        String   @id @default(uuid()) @db.Char(36)
+  pinSiteId String   @db.Char(36)
+  taskId    String?  @db.Char(36)
+  at        DateTime @default(now())
+  kind      String   @db.VarChar(16)
+  /// ok | error | empty
+  result    String   @default("ok") @db.VarChar(8)
+  summary   String   @db.VarChar(255)
+  payload   Json?
+
+  @@index([pinSiteId, at])
+}

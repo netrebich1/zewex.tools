@@ -5,7 +5,7 @@
 import { prisma } from "@/lib/db";
 
 export type EventKind =
-  | "run_created" | "run_done" | "run_failed" | "export_downloaded" | "export_uploaded" | "export_unmarked"
+  | "run_created" | "run_done" | "run_failed" | "export_downloaded" | "export_uploaded" | "export_unmarked" | "export_upload_failed" | "export_verified"
   | "article_published" | "blog_published"
   | "status_changed" | "owner_changed" | "step_changed" | "strategy_changed" | "cluster_changed"
   | "task_created" | "task_done" | "finance_added" | "card_changed" | "note";
@@ -13,6 +13,7 @@ export type EventKind =
 export const EVENT_LABELS: Record<EventKind, string> = {
   run_created: "Прогон пинов запущен", run_done: "Прогон пинов завершён", run_failed: "Прогон пинов упал",
   export_downloaded: "Выгрузка скачана", export_uploaded: "Залито в Pinterest", export_unmarked: "Отметка заливки снята",
+  export_upload_failed: "Заливка не удалась", export_verified: "Заливка проверена",
   article_published: "Статья опубликована", blog_published: "Блоговая статья опубликована",
   status_changed: "Статус проекта", owner_changed: "Ответственный", step_changed: "Этап", strategy_changed: "Стратегии", cluster_changed: "Кластер",
   task_created: "Задача создана", task_done: "Задача закрыта", finance_added: "Финансы", card_changed: "Карточка", note: "Заметка",
@@ -20,7 +21,7 @@ export const EVENT_LABELS: Record<EventKind, string> = {
 
 /** Группы для фильтра ленты. */
 export const EVENT_GROUPS: Record<string, { label: string; kinds: EventKind[] }> = {
-  pins: { label: "Пины", kinds: ["run_created", "run_done", "run_failed", "export_downloaded", "export_uploaded", "export_unmarked"] },
+  pins: { label: "Пины", kinds: ["run_created", "run_done", "run_failed", "export_downloaded", "export_uploaded", "export_unmarked", "export_upload_failed", "export_verified"] },
   articles: { label: "Статьи", kinds: ["article_published", "blog_published"] },
   changes: { label: "Изменения", kinds: ["status_changed", "owner_changed", "step_changed", "strategy_changed", "cluster_changed", "task_created", "task_done", "card_changed"] },
   finance: { label: "Финансы", kinds: ["finance_added"] },
@@ -85,5 +86,8 @@ export const eventText = {
   runFailed: (name: string, reason: string | null) => `Прогон «${name || "без имени"}» остановлен${reason ? `: ${reason.slice(0, 160)}` : ""}`,
   exportDownloaded: (day: string, rows: number, fileName: string) => `Скачан файл за ${day}: ${rows} пинов (${fileName})`,
   exportUploaded: (day: string) => `Залито в Pinterest: файл за ${day}`,
+  exportUploadedAuto: (day: string, rows: number, agent: string) => `Залито в Pinterest автоматически: файл за ${day}, ${rows} пинов (агент ${agent})`,
+  exportUploadFailed: (day: string, reason: string) => `Автозаливка за ${day} не удалась: ${reason.slice(0, 160)}`,
+  exportVerified: (day: string, published: number | null, failed: number | null) => `Проверка в Pinterest за ${day}: ${published == null ? "статус не прочитан" : `опубликовано ${published}`}${failed ? `, ошибок ${failed}` : ""}`,
   articlePublished: (keyword: string, url: string | null) => `«${keyword}» опубликована${url ? ` — ${url}` : ""}`,
 };
