@@ -77,3 +77,22 @@ export function computeStats<T extends SelectableDomain & { selected: boolean }>
     },
   };
 }
+
+/* ---------- Порядок по гео ---------- */
+
+/** Бренды пачки по стране (код по алфавиту), внутри страны — в порядке ввода. */
+export function itemsByGeo<T extends { country: string }>(items: T[]): T[] {
+  return items.map((it, i) => ({ it, i })).sort((a, b) => a.it.country.localeCompare(b.it.country) || a.i - b.i).map((x) => x.it);
+}
+
+/** Домены по гео → бренду (в порядке itemsByGeo) → порядку проверки. Строки старых подборов без страны — к первому бренду с таким именем. */
+export function rowsByGeo<R extends { brand: string; country: string; sortOrder: number }>(rows: R[], items: Array<{ brand: string; country: string }>): R[] {
+  const order = new Map<string, number>();
+  const firstCountry = new Map<string, string>();
+  itemsByGeo(items).forEach((it, i) => {
+    order.set(`${it.brand}|${it.country}`, i);
+    if (!firstCountry.has(it.brand)) firstCountry.set(it.brand, it.country);
+  });
+  const rank = (r: R) => order.get(`${r.brand}|${r.country || firstCountry.get(r.brand) || ""}`) ?? Number.MAX_SAFE_INTEGER;
+  return [...rows].sort((a, b) => rank(a) - rank(b) || a.sortOrder - b.sortOrder);
+}

@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import { createDomainRun, deleteDomainRun, requestStopRun, restartDomainRun, settingsFromInput } from "@/lib/domains/runs";
+import { createDomainRun, deleteDomainRun, renameDomainRun, requestStopRun, restartDomainRun, settingsFromInput } from "@/lib/domains/runs";
 import type { MinedSuffix, SerpSnapshot } from "@/lib/domains/types";
 
 export type FormState = { error?: string; ok?: string };
@@ -85,6 +85,18 @@ export async function restartDomainRunAction(_p: FormState, f: FormData): Promis
   }
   revalidatePath(`/gambling/domains/runs/${str(f, "id")}`);
   return { ok: "Подбор снова в очереди: прежние результаты стёрты." };
+}
+
+export async function renameDomainRunAction(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  try {
+    await renameDomainRun(me, str(f, "id"), str(f, "name"));
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath(`/gambling/domains/runs/${str(f, "id")}`);
+  revalidatePath("/gambling/domains");
+  return { ok: "Название сохранено" };
 }
 
 export async function deleteDomainRunAction(_p: FormState, f: FormData): Promise<FormState> {

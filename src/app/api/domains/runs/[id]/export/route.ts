@@ -19,7 +19,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     const rows = await runDomains(id);
     const base = fileBase(run.name);
     if (format === "csv") {
-      const csv = buildRunCsv(rows, scope);
+      const csv = buildRunCsv(rows, scope, parseSettings(run.settings).items);
       return new NextResponse(csv, {
         headers: {
           "Content-Type": "text/csv; charset=utf-8",

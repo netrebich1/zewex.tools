@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RenameRun } from "@/components/domains/RenameRun";
 import { requireUser } from "@/lib/auth";
 import { Badge, Card, Empty, PageHeader } from "@/components/ui";
 import { DomainsNav, STATUS_TONE } from "@/components/domains/DomainsNav";
@@ -62,7 +63,7 @@ export default async function DomainsHome() {
                   return (
                     <tr key={r.id}>
                       <td>
-                        <Link href={`/gambling/domains/runs/${r.id}`} className="font-medium hover:underline">{r.name}</Link>
+                        <Link href={`/gambling/domains/runs/${r.id}`} className="font-medium hover:underline">{r.name}</Link><RenameRun id={r.id} name={r.name} compact />
                         {r.error && <div className="help text-danger line-clamp-1">{r.error}</div>}
                       </td>
                       <td>

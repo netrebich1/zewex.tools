@@ -3,7 +3,7 @@
  * Статистика считается только по доменам, попавшим в выгрузку.
  */
 import { buildCsv, buildXlsx, type CellValue, type Sheet } from "@/lib/xlsx";
-import { computeStats, formatCounts, NO_SUFFIX } from "./selection";
+import { computeStats, formatCounts, itemsByGeo, NO_SUFFIX, rowsByGeo } from "./selection";
 import type { RunDomainRow } from "./runs";
 import type { DomainRunSettings } from "./types";
 
@@ -47,7 +47,7 @@ export function fileBase(name: string): string {
 
 export function buildRunXlsx(run: { name: string; settings: DomainRunSettings }, rows: RunDomainRow[], scope: ExportScope): Buffer {
   const exported = scoped(rows, scope);
-  const items = run.settings.items;
+  const items = itemsByGeo(run.settings.items);
   const multi = new Set(items.map((it) => it.country)).size > 1;
   // Строки бренда пачки; у старых подборов страны в строках нет — они относятся к первому бренду с таким именем
   const firstOf = new Map<string, string>();
@@ -107,8 +107,8 @@ export function buildRunXlsx(run: { name: string; settings: DomainRunSettings },
   return buildXlsx(sheets);
 }
 
-export function buildRunCsv(rows: RunDomainRow[], scope: ExportScope): string {
-  const exported = scoped(rows, scope);
+export function buildRunCsv(rows: RunDomainRow[], scope: ExportScope, items: Array<{ brand: string; country: string }> = []): string {
+  const exported = rowsByGeo(scoped(rows, scope), items);
   const stats = statRows(exported);
   const out: CellValue[][] = [];
   const width = HEAD.length;

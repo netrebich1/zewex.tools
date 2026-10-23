@@ -226,6 +226,14 @@ export async function requestStopRun(me: CurrentUser, id: string): Promise<void>
   if (run.status === "RUNNING") await prisma.domainRun.update({ where: { id }, data: { stopRequested: true } });
 }
 
+/** Новое название подбора (видно в списке, карточке и имени файла выгрузки). */
+export async function renameDomainRun(me: CurrentUser, id: string, name: string): Promise<void> {
+  await requireRun(me, id);
+  const clean = name.trim().replace(/\s+/g, " ").slice(0, 120);
+  if (!clean) throw new Error("Название не может быть пустым");
+  await prisma.domainRun.update({ where: { id }, data: { name: clean } });
+}
+
 export async function deleteDomainRun(me: CurrentUser, id: string): Promise<void> {
   const run = await requireRun(me, id);
   if (run.status === "RUNNING") throw new Error("Сначала остановите подбор");

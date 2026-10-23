@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Card } from "@/components/ui";
 import { STATUS_TONE } from "./DomainsNav";
-import { computeStats, formatCounts } from "@/lib/domains/selection";
+import { computeStats, formatCounts, itemsByGeo, rowsByGeo } from "@/lib/domains/selection";
 import { itemKey, RUN_STATUS_LABELS, type DomainRunProgress, type DomainRunSettings } from "@/lib/domains/types";
 import type { RunDomainRow } from "@/lib/domains/runs";
 import { brandTierEntries, brandTldEntries, modifierPool } from "@/lib/domains/generator";
@@ -72,7 +72,8 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live, run.id]);
 
-  const items = run.settings.items;
+  // Бренды по гео (код страны по алфавиту), внутри страны — в порядке ввода
+  const items = useMemo(() => itemsByGeo(run.settings.items), [run.settings.items]);
   const multiCountry = new Set(items.map((it) => it.country)).size > 1;
   /** Подпись бренда пачки; в пачке из одной страны — просто бренд. */
   const labelOf = (it: { brand: string; country: string }) => (multiCountry ? `${it.brand} · ${it.country.toUpperCase()}` : it.brand);
@@ -135,11 +136,12 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
   }
 
   /** Домены по текущему выбору области (как у выгрузки): только выбранные / все свободные / все проверенные. */
-  const scopedRows = (s: typeof scope) => domains.filter((d) => (s === "selected" ? d.selected : s === "available" ? d.status === "available" : true));
+  const scopedRows = (s: typeof scope) => rowsByGeo(domains.filter((d) => (s === "selected" ? d.selected : s === "available" ? d.status === "available" : true)), items);
   async function copyList(format: "domains" | "sheet") {
     const rows = scopedRows(scope);
     if (!rows.length) { setCopied("Нечего копировать: отметьте домены или смените область"); return; }
-    const text = format === "domains" ? rows.map((d) => d.domain).join("\n") : rows.map((d) => (multiCountry ? `${d.brand}\t${(d.country || "").toUpperCase()}\t${d.domain}` : `${d.brand}\t${d.domain}`)).join("\n");
+    // Для таблицы: гео | бренд | домен — три колонки, по гео и бренду
+    const text = format === "domains" ? rows.map((d) => d.domain).join("\n") : rows.map((d) => `${(d.country || "").toUpperCase()}\t${d.brand}\t${d.domain}`).join("\n");
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -150,7 +152,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
       document.execCommand("copy");
       ta.remove();
     }
-    setCopied(`Скопировано: ${rows.length} ${format === "sheet" ? (multiCountry ? "строк (бренд, страна и домен в колонках)" : "строк (бренд и домен в двух колонках)") : "доменов"}`);
+    setCopied(`Скопировано: ${rows.length} ${format === "sheet" ? "строк (гео, бренд и домен в трёх колонках, по гео)" : "доменов (по гео)"}`);
     setTimeout(() => setCopied(null), 4000);
   }
 
@@ -244,7 +246,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
       {domains.length > 0 && (
         <Card
           title="Выгрузка и статистика"
-          description="Область действует и на файлы, и на копирование. «Для таблицы» копирует две колонки: бренд и домен — вставляется в Google Таблицу как есть."
+          description="Область действует и на файлы, и на копирование. «Для таблицы» копирует три колонки: гео, бренд и домен — вставляется в Google Таблицу как есть. Всё упорядочено по гео, внутри — по бренду."
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <select className="input !w-auto !py-1.5 text-[13px]" value={scope} onChange={(e) => setScope(e.target.value as typeof scope)}>

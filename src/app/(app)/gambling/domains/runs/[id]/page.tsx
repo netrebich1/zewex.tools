@@ -7,6 +7,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { DomainsNav, STATUS_TONE } from "@/components/domains/DomainsNav";
 import { DomainRunView, type RunPayload } from "@/components/domains/DomainRunView";
+import { RenameRun } from "@/components/domains/RenameRun";
 import { canAccessDomainRun, parseSettings, runDomains } from "@/lib/domains/runs";
 import { deleteDomainRunAction, restartDomainRunAction, stopDomainRun } from "@/actions/domains";
 import { getCountry, LETTER_MODE_LABELS, RUN_STATUS_LABELS, type DomainRunProgress } from "@/lib/domains/types";
@@ -55,6 +56,7 @@ export default async function DomainRunPage({ params }: { params: Promise<{ id: 
         }
         actions={
           <>
+            <RenameRun id={run.id} name={run.name} />
             {live && (
               <ActionForm action={stopDomainRun} className="inline" hidden={{ id: run.id }}>
                 <SubmitButton className="btn-danger" pendingText="…" confirm="Остановить подбор? Проверенные домены сохранятся.">Остановить</SubmitButton>
