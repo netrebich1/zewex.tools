@@ -48,7 +48,7 @@ export function BrandDomains({ rows, sources, zoneSources, filter, setFilter, on
   );
 
   const Line = ({ d }: { d: RunDomainRow }) => (
-    <li className={`flex items-center gap-2 px-3 py-1.5 text-[13.5px] ${d.selected ? "bg-brand-soft/40" : ""}`} title={[PATTERN_LABELS[d.pattern as CandidatePattern] ?? d.pattern, d.aiReason].filter(Boolean).join(" · ")}>
+    <li className={`flex items-center gap-2 px-3 py-1.5 text-[13.5px] ${d.selected ? "bg-brand-soft/40" : ""}`} title={[PATTERN_LABELS[d.pattern as CandidatePattern] ?? d.pattern, d.status === "available" && d.source === "dns" ? "свободен по DNS: у зоны нет RDAP, перед покупкой проверьте у регистратора" : "", d.aiReason].filter(Boolean).join(" · ")}>
       {d.status === "available" ? (
         <input type="checkbox" className="h-4 w-4 shrink-0" checked={d.selected} onChange={(e) => onToggle(d.id, e.target.checked)} />
       ) : (
