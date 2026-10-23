@@ -34,7 +34,7 @@ const LIVE = new Set(["QUEUED", "RUNNING"]);
 /** Живая карточка подбора: прогресс, домены по брендам, ручной и ИИ-выбор, статистика, выгрузка. */
 export function DomainRunView({ initial }: { initial: RunPayload }) {
   const [data, setData] = useState(initial);
-  const [view, setView] = useState<"available" | "taken" | "all">("available");
+  const [view, setView] = useState<"available" | "selected" | "taken" | "all">("available");
   const [copied, setCopied] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const allKeys = (s: DomainRunSettings) => s.items.map((it) => itemKey(it.brand, it.country));
@@ -268,7 +268,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
         <div className="flex flex-wrap items-center gap-3">
           <input className="input !w-auto min-w-[220px]" placeholder="Поиск по домену или бренду" value={query} onChange={(e) => setQuery(e.target.value)} />
           <div className="flex gap-1.5">
-            {([["available", `Свободные · ${overall.counts.available}`], ["taken", `Занятые · ${overall.counts.taken}`], ["all", `Все · ${overall.counts.total}`]] as const).map(([v, label]) => (
+            {([["available", `Свободные · ${overall.counts.available}`], ["selected", `✓ Выбранные · ${overall.counts.selected}`], ["taken", `Занятые · ${overall.counts.taken}`], ["all", `Все · ${overall.counts.total}`]] as const).map(([v, label]) => (
               <button key={v} type="button" className={`tab ${view === v ? "active" : ""}`} onClick={() => setView(v)}>{label}</button>
             ))}
           </div>
@@ -310,7 +310,9 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
           const rows = byBrand.get(key) ?? [];
           if (q && !brand.toLowerCase().includes(q) && !rows.some((d) => d.domain.includes(q))) return null;
           const stats = computeStats(rows);
-          const visible = rows.filter((d) => (view === "all" || (view === "available" ? d.status === "available" : d.status === "taken")) && (!q || d.domain.includes(q) || brand.toLowerCase().includes(q)));
+          const visible = rows.filter((d) => (view === "all" || (view === "selected" ? d.selected : view === "available" ? d.status === "available" : d.status === "taken")) && (!q || d.domain.includes(q) || brand.toLowerCase().includes(q)));
+          // Во вкладке «Выбранные» бренды без выбора не показываем
+          if (view === "selected" && !rows.some((d) => d.selected)) return null;
           const open = expanded.has(key);
           const filter = brandFilters[key] ?? globalFilter;
           const rec = recFor(key, visible, filter);
