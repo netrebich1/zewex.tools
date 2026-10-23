@@ -313,7 +313,7 @@ export function brandTierEntries(item: BrandItem, s: PlanSettings, pool?: Modifi
     for (const m of item.modifiers.filter((x) => x.tier === tier).sort((a, b) => b.volume - a.volume)) {
       const where = (m.sources ?? []).map((k) => RESEARCH_SOURCE_LABELS[k] ?? k).join(", ");
       const detail = ["ключ бренда", where, m.volume ? `частота ${m.volume}/мес` : "", m.query ? `запрос «${m.query}»` : "", m.reason ? `ИИ: ${m.reason}` : ""].filter(Boolean).join(" · ");
-      push(list, m.suffix, { kind: "brand", tier, detail });
+      push(list, m.suffix, { kind: "brand", tier, detail, ...(m.volume ? { volume: m.volume } : {}) });
     }
     for (const c of s.suffixTiers[i] ?? []) push(list, c, { kind: "common", tier, detail: `общие приставки формы, уровень ${tier}` });
     out.push(list);

@@ -9,6 +9,8 @@
  * У части зон RDAP нет совсем (.co, .gr, .mx, .my, .io, .im…): rdap.org отвечает 404 «No RDAP service». Это НЕ «свободен» —
  * зона запоминается, и дальше для неё решает только DNS (NXDOMAIN → свободен, source "dns"; NS есть → занят).
  * Хост, который не резолвится или не принимает соединения (rdap.nic.co), выключается на 10 минут, чтобы не тратить время.
+ * Зона, чей RDAP стабильно отвечает дольше SLOW_RDAP_MS (rdap.nic.fr ~5 с на запрос), тоже переходит на DNS — иначе бренд
+ * с такой зоной проверяется в десятки раз дольше остальных.
  */
 import type { AvailabilityStatus } from "./types";
 
@@ -83,8 +85,18 @@ async function endpointsFor(domain: string): Promise<string[]> {
 
 /* ---------- Зоны без RDAP и мёртвые хосты ---------- */
 
-/** Зоны, для которых rdap.org ответил «No RDAP service»: проверяем только по DNS. */
+/** Зоны, для которых rdap.org ответил «No RDAP service» или RDAP слишком медленный: проверяем только по DNS. */
 const noRdapTlds = new Set<string>();
+const SLOW_RDAP_MS = 3000;
+const SLOW_RDAP_SAMPLES = 4;
+/** Время ответа RDAP по зоне (последние ответы), мс. */
+const rdapTimes = new Map<string, number[]>();
+
+function noteRdapTime(tld: string, ms: number) {
+  const list = [...(rdapTimes.get(tld) ?? []), ms].slice(-SLOW_RDAP_SAMPLES);
+  rdapTimes.set(tld, list);
+  if (list.length >= SLOW_RDAP_SAMPLES && list.every((t) => t > SLOW_RDAP_MS)) noRdapTlds.add(tld);
+}
 const DEAD_HOST_MS = 10 * 60_000;
 const deadHosts = new Map<string, number>();
 
@@ -175,7 +187,10 @@ async function rdapFetch(url: string, tld: string): Promise<Response | null> {
       if (attempt < MAX_429_RETRIES) await sleep(wait);
       continue;
     }
-    if (res.status === 200 || res.status === 404) noteOk(host);
+    if (res.status === 200 || res.status === 404) {
+      noteOk(host);
+      noteRdapTime(tld, Date.now() - started);
+    }
     return res;
   }
   return null;

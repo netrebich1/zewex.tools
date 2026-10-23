@@ -10,12 +10,16 @@ const KIND_TONE: Record<SuffixSourceKind, string> = {
   pool: "bg-warn-soft text-warn",
 };
 
+/** 1320 → 1.3k, 50 → 50 */
+const fmtVolume = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+
 /** Метка источника приставки: «гео 1», «ключ 2», «общая 3», «запас 4». Подробности — в подсказке. */
 export function SourceTag({ source, suffix }: { source: SuffixSource | undefined; suffix: string | null }) {
   if (!source) return null;
   return (
     <span className={`shrink-0 rounded-md px-1.5 text-[11px] ${KIND_TONE[source.kind]}`} title={`${suffix ?? ""}: ${source.detail} · уровень ${source.tier}`}>
       {SUFFIX_SOURCE_TAGS[source.kind]} {source.tier}
+      {source.volume ? <b className="ml-1 tabular-nums" title="частота в месяц">{fmtVolume(source.volume)}</b> : null}
     </span>
   );
 }

@@ -25,13 +25,15 @@ type Props = {
   onToggle: (id: string, selected: boolean) => void;
   /** Рекомендованные к покупке под текущий фильтр: id → почему */
   rec: Map<string, string>;
+  /** Домены с брендом в TOP-10 Google по бренду (из сбора ключей) */
+  top?: string[];
 };
 
 export const kindOf = (d: RunDomainRow, sources: Props["sources"]): DomainFilter["src"] => (d.suffix ? sources?.get(d.suffix)?.kind ?? "common" : "none");
 const tierOf = (d: RunDomainRow): DomainFilter["tier"] => (d.tier >= 4 ? "4" : (String(d.tier) as DomainFilter["tier"]));
 
 /** Домены одного бренда с вкладками: источник, уровень, зона и вид. */
-export function BrandDomains({ rows, sources, zoneSources, filter, setFilter, onToggle, rec }: Props) {
+export function BrandDomains({ rows, sources, zoneSources, filter, setFilter, onToggle, rec, top = [] }: Props) {
   const zones = useMemo(() => Array.from(new Set(rows.map((d) => d.tld))), [rows]);
   const pass = (d: RunDomainRow, skip?: "src" | "tier" | "zone") =>
     (skip === "src" || filter.src === "all" || kindOf(d, sources) === filter.src) &&
@@ -70,6 +72,16 @@ export function BrandDomains({ rows, sources, zoneSources, filter, setFilter, on
 
   return (
     <div className="flex flex-col min-h-0">
+      {top.length > 0 && (
+        <div className="border-b border-line px-3 py-2">
+          <div className="help mb-1">В TOP-10 Google по бренду · {top.length}</div>
+          <div className="flex flex-wrap gap-1">
+            {top.map((d) => (
+              <a key={d} href={`https://${d}`} target="_blank" rel="noreferrer" className="rounded-md bg-info-soft px-1.5 py-0.5 font-mono text-[11.5px] text-info hover:underline">{d}</a>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="space-y-1.5 border-b border-line px-3 py-2">
         <div className="flex flex-wrap gap-1">
           {SRC_OPTIONS.map(([v, label]) => <Chip key={v} active={filter.src === v} label={label} n={v === "all" ? count("src", () => true) : count("src", (d) => kindOf(d, sources) === v)} onClick={() => set({ src: v })} />)}

@@ -348,6 +348,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
                         setFilter={(f) => setBrandFilters((prev) => ({ ...prev, [key]: f }))}
                         onToggle={toggle}
                         rec={rec}
+                        top={item.research?.competitorDomains}
                       />
                       <div className="help px-3 py-1.5 border-t border-line truncate" title={`Зоны: выбрано ${formatCounts(stats.zones.selected)} · свободно ${formatCounts(stats.zones.available)}\nПриставки: выбрано ${formatCounts(stats.suffixes.selected)} · свободно ${formatCounts(stats.suffixes.available)}`}>
                         {stats.counts.selected ? <>зоны {formatCounts(stats.zones.selected)} · приставки {formatCounts(stats.suffixes.selected)}</> : <>свободно: {formatCounts(stats.zones.available)}</>}

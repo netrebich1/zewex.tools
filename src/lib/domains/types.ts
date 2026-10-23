@@ -95,7 +95,7 @@ export type BrandItem = {
 /** Откуда приставка попала в уровни бренда. */
 export type SuffixSourceKind = "geo" | "brand" | "common" | "pool";
 
-export type SuffixSource = { kind: SuffixSourceKind; tier: number; detail: string };
+export type SuffixSource = { kind: SuffixSourceKind; tier: number; detail: string; /** Частота запроса «бренд + слово» в месяц (для ключей) */ volume?: number };
 
 export const SUFFIX_SOURCE_TAGS: Record<SuffixSourceKind, string> = { geo: "гео", brand: "ключ", common: "общая", pool: "запас" };
 
