@@ -12,11 +12,12 @@ export function TimeChart({ cur, prev, grain, metric: initial, prevLabel }: { cu
   const [metric, setMetric] = useState<Metric>(initial);
   const [hover, setHover] = useState<number | null>(null);
   const box = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(720);
+  // 0 до первого замера: иначе на телефоне сначала рисуется svg шириной 720px.
+  const [width, setWidth] = useState(0);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) => setWidth(Math.max(280, Math.floor(e.contentRect.width))));
+    const ro = new ResizeObserver(([e]) => setWidth(Math.max(240, Math.floor(e.contentRect.width))));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -39,7 +40,7 @@ export function TimeChart({ cur, prev, grain, metric: initial, prevLabel }: { cu
   const total = a.reduce((s, v) => s + v, 0);
   const totalPrev = b ? b.reduce((s, v) => s + v, 0) : null;
 
-  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
+  const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const px = e.clientX - rect.left - PAD.l;
     const i = n > 1 ? Math.round((px / iw) * (n - 1)) : 0;
@@ -61,7 +62,10 @@ export function TimeChart({ cur, prev, grain, metric: initial, prevLabel }: { cu
           {b && <span className="inline-flex items-center gap-1.5"><i className="inline-block h-0 w-4 border-t-2 border-dashed" style={{ borderColor: "var(--viz-prev)" }} /> <b className="tabular-nums">{fmtInt(totalPrev ?? 0)}</b> <span className="text-muted">{prevLabel ?? "сравнение"}</span></span>}
         </div>
       </div>
-      <svg width={width} height={H} viewBox={`0 0 ${width} ${H}`} className="block select-none" onMouseMove={onMove} onMouseLeave={() => setHover(null)} role="img" aria-label="График по периодам">
+      {width === 0 ? <div style={{ height: H }} /> : (
+      // Палец: касание и горизонтальное ведение показывают подсказку, вертикальный свайп прокручивает страницу.
+      <svg width={width} height={H} viewBox={`0 0 ${width} ${H}`} className="block max-w-full select-none" style={{ touchAction: "pan-y" }}
+        onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={(e) => { if (e.pointerType === "mouse") setHover(null); }} role="img" aria-label="График по периодам">
         <defs>
           <linearGradient id="vizFill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="var(--viz-1)" stopOpacity="0.22" />
@@ -88,6 +92,7 @@ export function TimeChart({ cur, prev, grain, metric: initial, prevLabel }: { cu
           </g>
         )}
       </svg>
+      )}
       {hv != null && (
         <div className="pointer-events-none absolute top-14 z-10 w-[230px] -translate-x-1/2 rounded-xl border border-line bg-surface p-3 text-[13px] shadow-[var(--shadow-pop)]" style={{ left: tipLeft }}>
           <div className="font-semibold mb-1.5">{pointLabel(cur[hv].key, grain, true)}</div>

@@ -41,6 +41,24 @@ export default async function DomainRunPage({ params }: { params: Promise<{ id: 
   };
   const countries = Array.from(new Set(settings.items.map((it) => it.country)));
   const countryNames = countries.map((c) => getCountry(c)?.name ?? c.toUpperCase()).join(", ");
+  const settingsGrid = (
+    <div className="grid gap-x-6 gap-y-2 text-[14px] sm:grid-cols-2">
+      <div><span className="label">Общие приставки, уровень 1</span><span className="font-mono text-[13px]">{settings.suffixTiers[0].join(", ") || "—"}</span></div>
+      <div><span className="label">Общие приставки, уровень 2</span><span className="font-mono text-[13px]">{settings.suffixTiers[1].join(", ") || "—"}</span></div>
+      <div><span className="label">Общие приставки, уровень 3</span><span className="font-mono text-[13px]">{settings.suffixTiers[2].join(", ") || "—"}</span></div>
+      {countries.filter((c) => settings.countryPresets[c]).map((c) => {
+        const p = settings.countryPresets[c]!;
+        return (
+          <div key={c}><span className="label">Набор страны {c.toUpperCase()}</span><span className="font-mono text-[13px]">1: {p.tiers[0].join(", ") || "—"} · 2: {p.tiers[1].join(", ") || "—"} · 3: {p.tiers[2].join(", ") || "—"}{p.tlds.length ? ` · зоны: ${p.tlds.join(", ")}` : ""}</span></div>
+        );
+      })}
+      <div><span className="label">Бренд + буква</span>{LETTER_MODE_LABELS[settings.letterMode]} · запас модификаторов (уровни 4–6): {settings.usePool ? "да" : "нет"} · брендов с модификаторами: {settings.items.filter((it) => it.modifiers.length).length}</div>
+      <div><span className="label">Дефис</span>{settings.allowHyphen ? "разрешён" : "запрещён"}{settings.serpKeyword ? <> · <span className="label inline">ключ:</span> {settings.serpKeyword}</> : null}</div>
+      {settings.serp && (
+        <div className="sm:col-span-2"><span className="label">Выдача Google</span><span className="help">{settings.serp.provider === "dataforseo" ? "DataForSEO" : "SerpAPI"} · доменов с брендом: {settings.serp.domains.length} · снято {fmtDate(settings.serp.fetchedAt)}{settings.minedSuffixes.length ? ` · приставки конкурентов: ${settings.minedSuffixes.slice(0, 12).map((m) => `${m.suffix} (${m.count})`).join(", ")}${settings.minedSuffixes.length > 12 ? "…" : ""}` : ""}</span></div>
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -78,24 +96,12 @@ export default async function DomainRunPage({ params }: { params: Promise<{ id: 
       />
 
       <div className="space-y-5">
-        <Card title="Настройки подбора">
-          <div className="grid gap-x-6 gap-y-2 text-[14px] sm:grid-cols-2">
-            <div><span className="label">Общие приставки, уровень 1</span><span className="font-mono text-[13px]">{settings.suffixTiers[0].join(", ") || "—"}</span></div>
-            <div><span className="label">Общие приставки, уровень 2</span><span className="font-mono text-[13px]">{settings.suffixTiers[1].join(", ") || "—"}</span></div>
-            <div><span className="label">Общие приставки, уровень 3</span><span className="font-mono text-[13px]">{settings.suffixTiers[2].join(", ") || "—"}</span></div>
-            {countries.filter((c) => settings.countryPresets[c]).map((c) => {
-              const p = settings.countryPresets[c]!;
-              return (
-                <div key={c}><span className="label">Набор страны {c.toUpperCase()}</span><span className="font-mono text-[13px]">1: {p.tiers[0].join(", ") || "—"} · 2: {p.tiers[1].join(", ") || "—"} · 3: {p.tiers[2].join(", ") || "—"}{p.tlds.length ? ` · зоны: ${p.tlds.join(", ")}` : ""}</span></div>
-              );
-            })}
-            <div><span className="label">Бренд + буква</span>{LETTER_MODE_LABELS[settings.letterMode]} · запас модификаторов (уровни 4–6): {settings.usePool ? "да" : "нет"} · брендов с модификаторами: {settings.items.filter((it) => it.modifiers.length).length}</div>
-            <div><span className="label">Дефис</span>{settings.allowHyphen ? "разрешён" : "запрещён"}{settings.serpKeyword ? <> · <span className="label inline">ключ:</span> {settings.serpKeyword}</> : null}</div>
-            {settings.serp && (
-              <div className="sm:col-span-2"><span className="label">Выдача Google</span><span className="help">{settings.serp.provider === "dataforseo" ? "DataForSEO" : "SerpAPI"} · доменов с брендом: {settings.serp.domains.length} · снято {fmtDate(settings.serp.fetchedAt)}{settings.minedSuffixes.length ? ` · приставки конкурентов: ${settings.minedSuffixes.slice(0, 12).map((m) => `${m.suffix} (${m.count})`).join(", ")}${settings.minedSuffixes.length > 12 ? "…" : ""}` : ""}</span></div>
-            )}
-          </div>
-        </Card>
+        {/* На телефоне настройки свёрнуты — иначе до результатов долго листать. */}
+        <details className="card p-4 sm:hidden">
+          <summary className="h2 cursor-pointer select-none">Настройки подбора</summary>
+          <div className="mt-3">{settingsGrid}</div>
+        </details>
+        <Card title="Настройки подбора" className="hidden sm:block">{settingsGrid}</Card>
         <DomainRunView initial={payload} />
       </div>
     </>

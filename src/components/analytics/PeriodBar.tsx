@@ -41,7 +41,7 @@ export function PeriodBar({ range }: { range: Range }) {
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <label className="inline-flex items-center gap-2 text-[13px] text-muted">
             Сравнить
-            <select className="input !w-auto !py-1.5 !text-[13px] !rounded-lg" value={range.compare} onChange={(e) => go({ cmp: (e.target.value as Compare) === "prev" ? null : e.target.value })}>
+            <select className="input !w-auto !py-1.5 sm:!text-[13px] !rounded-lg" value={range.compare} onChange={(e) => go({ cmp: (e.target.value as Compare) === "prev" ? null : e.target.value })}>
               <option value="prev">с прошлым периодом</option>
               <option value="year">с прошлым годом</option>
               <option value="none">не сравнивать</option>
@@ -49,16 +49,16 @@ export function PeriodBar({ range }: { range: Range }) {
           </label>
           <div className="inline-flex gap-0.5 rounded-full border border-line p-0.5" title="Детализация графика">
             {GRAINS.filter((g) => grains.includes(g.key)).map((g) => (
-              <button key={g.key} type="button" onClick={() => go({ g: g.key as Grain })} className={`rounded-full px-2.5 py-1 text-[12.5px] font-semibold transition ${range.grain === g.key ? "bg-ink text-bg" : "text-muted hover:text-ink"}`}>{g.label.replace("По ", "")}</button>
+              <button key={g.key} type="button" onClick={() => go({ g: g.key as Grain })} className={`rounded-full px-2.5 py-1.5 sm:py-1 text-[12.5px] font-semibold transition ${range.grain === g.key ? "bg-ink text-bg" : "text-muted hover:text-ink"}`}>{g.label.replace("По ", "")}</button>
             ))}
           </div>
         </div>
       </div>
       {custom && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
-          <input type="date" className="input !w-auto !py-1.5 !text-[13.5px] !rounded-lg" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+          <input type="date" className="input !w-auto !py-1.5 sm:!text-[13.5px] !rounded-lg" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
           <span className="text-muted">—</span>
-          <input type="date" className="input !w-auto !py-1.5 !text-[13.5px] !rounded-lg" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
+          <input type="date" className="input !w-auto !py-1.5 sm:!text-[13.5px] !rounded-lg" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
           <button type="button" className="btn-primary btn-sm" onClick={applyCustom}>Показать</button>
           <span className="help">До 800 дней. Данные по часам — за последние 90 дней, по страницам — за 120.</span>
         </div>

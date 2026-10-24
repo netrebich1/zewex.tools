@@ -46,8 +46,8 @@ export default async function ArticlesSitePage({ params, searchParams }: { param
       <PageHeader back={{ href: "/pinterest/articles/sites", label: "Сайты" }} title={site.name} subtitle={subtitle}
         actions={<>{site.accessId && <Link href={`/sites/${site.accessId}`} className="btn-ghost">Доступ и команды</Link>}{site.isActive && <Link href={`/pinterest/articles/runs/new?site=${id}`} className="btn-brand">Новый запуск</Link>}</>} />
       {funnelRow && <div className="mb-4"><SiteFunnel siteId={id} f={funnelRow.funnel} /></div>}
-      <div className="mb-4 flex gap-2">
-        {TABS.map(([k, l]) => <Link key={k} href={`/pinterest/articles/sites/${id}?tab=${k}`} className={`badge px-3 py-1 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {TABS.map(([k, l]) => <Link key={k} href={`/pinterest/articles/sites/${id}?tab=${k}`} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}
       </div>
 
       {tab === "queue" && <QueueTab siteId={id} q={q} />}
@@ -156,7 +156,7 @@ async function StatsTab({ siteId, me, days }: { siteId: string; me: CurrentUser;
       </Card>
       <div className="flex flex-wrap items-center gap-2">
         <span className="help">Период расходов и ошибок:</span>
-        {[7, 30, 90].map((d) => <Link key={d} href={periodLink(d)} className={`badge px-3 py-1 ${days === d ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{d} дн.</Link>)}
+        {[7, 30, 90].map((d) => <Link key={d} href={periodLink(d)} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${days === d ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{d} дн.</Link>)}
       </div>
       <Card title={`Время работы запусков за ${days} дн.`} description="Старт — воркер взял первую статью запуска, конец — закончилась последняя (опубликована, ошибка или остановлена). Пока статьи в очереди, в работе или ждут человека — запуск идёт.">
         {runTimes.length === 0 ? <p className="help">Запусков за период нет.</p> : (

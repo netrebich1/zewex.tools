@@ -61,7 +61,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
       <PageHeader back={{ href: "/pinterest/projects", label: "Проекты" }} title={access.name} subtitle={`${team?.name ?? "—"} · ${access.baseUrl}`}
         actions={<><Link href={`/sites/${id}`} className="btn-ghost">Доступ и команды</Link>{p.tool?.ids[0] && <Link href={`/pinterest/pins/sites/${p.tool.ids[0]}`} className="btn-ghost">Pinterest Pins</Link>}{s.articles.tool?.ids[0] && <Link href={`/pinterest/articles/sites/${s.articles.tool.ids[0]}`} className="btn-ghost">Статьи</Link>}{s.blog.tool?.ids[0] && <Link href={`/pinterest/blog/sites/${s.blog.tool.ids[0]}`} className="btn-ghost">Блог</Link>}</>} />
       <ProjectHeader accessId={id} card={card} members={members} alerts={alerts} />
-      <div className="mb-4 flex flex-wrap gap-2">{tabs.map(([k, l]) => <Link key={k} href={href(k)} className={`badge px-3 py-1 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}{k === "tasks" && openTasks.length ? <span className="ml-1 opacity-70">{openTasks.length}</span> : null}{k === "uploads" && p.uploads.pendingDays ? <span className="ml-1 text-warn">{p.uploads.pendingDays}</span> : null}</Link>)}</div>
+      <div className="mb-4 flex flex-wrap gap-2">{tabs.map(([k, l]) => <Link key={k} href={href(k)} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}{k === "tasks" && openTasks.length ? <span className="ml-1 opacity-70">{openTasks.length}</span> : null}{k === "uploads" && p.uploads.pendingDays ? <span className="ml-1 text-warn">{p.uploads.pendingDays}</span> : null}</Link>)}</div>
 
       {tab === "overview" && (
         <div className="space-y-4">

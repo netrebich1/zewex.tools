@@ -39,26 +39,26 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
         {view === "post" && <p className="help">Здесь видны одобренные пины, в том числе из прогонов с автоодобрением, с датой сегодня и позже или ещё без даты. Отклонённый пин уходит из выгрузки и освобождает место в своём дне. Если файл за этот день уже скачан или загружен в Pinterest, там пин останется: скачайте файл дня заново.</p>}
         <Card>
           <div className="flex flex-wrap gap-2 items-center">
-            <Link href={qs({ site: undefined, run: undefined })} className={`badge px-3 py-1 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты · {counts.total}</Link>
+            <Link href={qs({ site: undefined, run: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты · {counts.total}</Link>
             {counts.sites.map((s) => (
-              <Link key={s.siteId} href={qs({ site: s.siteId, run: undefined })} className={`badge px-3 py-1 ${siteId === s.siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{s.siteName || "без сайта"} · {s.total}</Link>
+              <Link key={s.siteId} href={qs({ site: s.siteId, run: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${siteId === s.siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{s.siteName || "без сайта"} · {s.total}</Link>
             ))}
           </div>
           {visibleRuns.length > 1 && (
             <div className="mt-3 flex flex-wrap gap-2 items-center">
-              <Link href={qs({ run: undefined })} className={`badge px-3 py-1 ${!runId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все прогоны</Link>
+              <Link href={qs({ run: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${!runId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все прогоны</Link>
               {visibleRuns.map((r) => (
                 <span key={r.runId} className="inline-flex items-center gap-1">
-                  <Link href={qs({ run: r.runId })} className={`badge px-3 py-1 ${runId === r.runId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{r.name} · {r.total}</Link>
-                  <Link href={`/pinterest/pins/runs/${r.runId}`} className="help underline" title="Открыть страницу прогона">↗</Link>
+                  <Link href={qs({ run: r.runId })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${runId === r.runId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{r.name} · {r.total}</Link>
+                  <Link href={`/pinterest/pins/runs/${r.runId}`} className="help inline-flex min-h-8 min-w-8 items-center justify-center rounded-full underline hover:bg-ink/5" title="Открыть страницу прогона" aria-label="Открыть страницу прогона">↗</Link>
                 </span>
               ))}
             </div>
           )}
           <div className="mt-3 flex flex-wrap gap-2 items-center">
-            <Link href={qs({ engine: undefined })} className={`badge px-3 py-1 ${!engine ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все типы</Link>
+            <Link href={qs({ engine: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${!engine ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все типы</Link>
             {["OPENAI", "PINORA", "PHOTO", "CANVAS"].map((e) => (
-              <Link key={e} href={qs({ engine: e })} className={`badge px-3 py-1 ${engine === e ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{ENGINE_LABELS[e]}</Link>
+              <Link key={e} href={qs({ engine: e })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${engine === e ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{ENGINE_LABELS[e]}</Link>
             ))}
           </div>
         </Card>

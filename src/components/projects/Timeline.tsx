@@ -43,7 +43,7 @@ export function Timeline({ accessId, items, userName, finance, filter, meId, isA
                     {i.userId && <span className="ml-2 text-[12.5px] text-muted">— {userName(i.userId)}</span>}
                     {i.refId && (i.kind === "run_created" || i.kind === "run_done" || i.kind === "run_failed") && <Link href={`/pinterest/pins/runs/${i.refId}`} className="ml-2 text-[12.5px] text-muted hover:underline">открыть</Link>}
                   </div>
-                  {i.isNote && (i.userId === meId || isAdmin) && <ActionForm action={deleteProjectNote} hidden={{ accessId, noteId: i.id }} className="inline"><SubmitButton className="text-[12px] text-muted hover:text-danger" pendingText="…" confirm="Удалить заметку?">×</SubmitButton></ActionForm>}
+                  {i.isNote && (i.userId === meId || isAdmin) && <ActionForm action={deleteProjectNote} hidden={{ accessId, noteId: i.id }} className="inline"><SubmitButton className="inline-flex items-center justify-center max-sm:min-h-9 max-sm:min-w-9 text-[12px] max-sm:text-[18px] text-muted hover:text-danger" pendingText="…" confirm="Удалить заметку?">×</SubmitButton></ActionForm>}
                 </div>
               </li>
             );

@@ -148,7 +148,7 @@ export default async function RecipePage({ params, searchParams }: { params: Pro
 
       {tab === "prompts" && (
         <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-          <Card className="lg:sticky lg:top-4 self-start">
+          <Card className="lg:sticky lg:top-[4.5rem] self-start">
             <h3 className="h2 mb-2">Шаги формата</h3>
             <ul className="space-y-0.5">
               {steps.map((s) => {

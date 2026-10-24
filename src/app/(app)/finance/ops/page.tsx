@@ -42,7 +42,7 @@ export default async function FinanceOps({ searchParams }: { searchParams: Promi
       <FinanceNav cur={cur} />
       <DirTabs dirs={tops} active={tab} href={tabHref} />
       <Card className="mb-4">
-        <form className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[140px_1fr_130px_130px_1fr_1fr_1fr_auto] items-end">
+        <form className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[140px_1fr_130px_130px_1fr_1fr_1fr_auto] items-end">
           <label className="block"><span className="label">Период</span>
             <select name="p" className="input" defaultValue={filter.p}>{PERIODS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}</select>
           </label>
@@ -65,10 +65,10 @@ export default async function FinanceOps({ searchParams }: { searchParams: Promi
           <label className="block"><span className="label">Контрагент</span>
             <select name="cp" className="input" defaultValue={filter.cp ?? ""}><option value="">Все</option>{refs.counterparties.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
           </label>
-          <label className="block"><span className="label">Поиск</span>
+          <label className="block col-span-2 sm:col-span-1"><span className="label">Поиск</span>
             <input name="q" className="input" placeholder="комментарий, кошелёк, контрагент" defaultValue={filter.q ?? ""} />
           </label>
-          <div className="flex gap-2"><button className="btn-primary">Показать</button>{qs !== "p=all" && <Link href="/finance/ops" className="btn-ghost">Сброс</Link>}</div>
+          <div className="col-span-2 sm:col-span-1 flex gap-2"><button className="btn-primary">Показать</button>{qs !== "p=all" && <Link href="/finance/ops" className="btn-ghost">Сброс</Link>}</div>
         </form>
       </Card>
 

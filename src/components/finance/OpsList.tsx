@@ -10,7 +10,7 @@ const TYPE = { EXPENSE: { label: "расход", tone: "neutral" }, INCOME: { la
 /** Таблица операций: сумма в валюте операции и в валюте показа, кто платил, кто внёс. */
 export type OpRow = FinOp & { counterparty?: { name: string } | null };
 
-export function OpsList({ ops, refs, cur, factor, compact, names }: { ops: OpRow[]; refs: Refs; cur: string; factor: number; compact?: boolean; names?: Map<string, string> }) {
+export function OpsList({ ops, refs, cur, factor, compact, names, back }: { ops: OpRow[]; refs: Refs; cur: string; factor: number; compact?: boolean; names?: Map<string, string>; back?: string }) {
   if (!ops.length) return <p className="help">Операций пока нет.</p>;
   const dir = new Map(refs.dirOptions.map((d) => [d.id, d.label]));
   const cat = new Map(refs.cats.map((c) => [c.id, c.name]));
@@ -18,8 +18,8 @@ export function OpsList({ ops, refs, cur, factor, compact, names }: { ops: OpRow
   return (
     <div className="table-wrap"><table className="table">
       <thead><tr>
-        <th>Дата</th><th>Операция</th><th className="text-right">Сумма</th><th>Кто</th>
-        {!compact && <th>Внёс</th>}{!compact && <th />}
+        <th className="col-sm">Дата</th><th>Операция</th><th className="text-right">Сумма</th><th className="col-sm">Кто</th>
+        {!compact && <th className="col-sm">Внёс</th>}<th className="col-sm" />
       </tr></thead>
       <tbody>
         {ops.map((o) => {
@@ -30,12 +30,18 @@ export function OpsList({ ops, refs, cur, factor, compact, names }: { ops: OpRow
           const title = o.type === "SETTLEMENT" ? "Возврат долга" : o.counterparty?.name ?? (o.categoryId ? cat.get(o.categoryId) : null) ?? where;
           const sub = [o.type !== "SETTLEMENT" && o.counterparty ? where : o.type !== "SETTLEMENT" && o.categoryId ? (o.directionId ? dir.get(o.directionId) : "Без направления") : null, o.note, o.account].filter(Boolean).join(" · ");
           const sign = o.type === "INCOME" ? 1 : o.type === "EXPENSE" ? -1 : 0;
+          const date = o.date.toISOString().slice(0, 10).split("-").reverse().join(".");
+          const payer = `${who.get(o.partnerId)}${o.toPartnerId ? ` → ${who.get(o.toPartnerId)}` : ""}`;
+          const actions = <OpActions id={o.id} back={back} label={`${fmtAmount(amount, o.currency, { digits: 2 })}, ${title}`} />;
           return (
             <tr key={o.id}>
-              <td className="whitespace-nowrap tabular-nums text-ink-2">{o.date.toISOString().slice(0, 10).split("-").reverse().join(".")}</td>
+              <td className="col-sm whitespace-nowrap tabular-nums text-ink-2">{date}</td>
               <td className="min-w-[180px]">
                 <div className="flex items-center gap-1.5"><Badge tone={t.tone}>{t.label}</Badge><span className="font-medium">{title}</span></div>
-                {sub && <div className="help mt-0.5">{sub}</div>}
+                {sub && <div className="help mt-0.5 [overflow-wrap:anywhere]">{sub}</div>}
+                {/* На телефоне дата, кто платил и кнопки — под названием: их колонки скрыты. */}
+                <div className="help mt-0.5 tabular-nums sm:hidden">{date} · {payer}</div>
+                <div className="mt-1.5 flex justify-start sm:hidden">{actions}</div>
               </td>
               <td className="text-right whitespace-nowrap">
                 <div className={`font-semibold tabular-nums ${sign > 0 ? "text-ok" : ""}`}>{fmtAmount(sign < 0 ? -amount : amount, o.currency, { sign: sign > 0, digits: 2 })}</div>
@@ -45,14 +51,14 @@ export function OpsList({ ops, refs, cur, factor, compact, names }: { ops: OpRow
                   </div>
                 )}
               </td>
-              <td className="whitespace-nowrap">{who.get(o.partnerId)}{o.toPartnerId ? ` → ${who.get(o.toPartnerId)}` : ""}</td>
+              <td className="col-sm whitespace-nowrap">{payer}</td>
               {!compact && (
-                <td className="help whitespace-nowrap">
+                <td className="col-sm help whitespace-nowrap">
                   {names?.get(o.createdById) ?? "—"}
-                  {o.updatedById && <div title={`изменено ${o.updatedAt.toLocaleString("ru-RU")}`}>изм.: {names?.get(o.updatedById) ?? "—"}</div>}
+                  {o.updatedById && <div title={`изменено ${o.updatedAt.toLocaleString("ru-RU")}`}>изм.: {names?.get(o.updatedById) ?? "—"}, {o.updatedAt.toLocaleDateString("ru-RU")}</div>}
                 </td>
               )}
-              {!compact && <td><OpActions id={o.id} label={`${fmtAmount(amount, o.currency, { digits: 2 })}, ${title}`} /></td>}
+              <td className="col-sm">{actions}</td>
             </tr>
           );
         })}

@@ -37,20 +37,26 @@ export default async function SitesPage() {
             <Card key={team} title={team}>
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>Сайт</th><th>Адрес</th><th>Команды и видимость</th><th>Инструменты</th><th>Pinterest Pins</th><th>Проверка</th><th></th></tr></thead>
+                  <thead><tr><th>Сайт</th><th className="col-sm">Адрес</th><th className="col-md">Команды и видимость</th><th>Инструменты</th><th className="col-sm">Pinterest Pins</th><th className="col-sm">Проверка</th><th className="col-sm"></th></tr></thead>
                   <tbody>
                     {list.map((w) => {
                       const pr = (w.projects as string[] | null) ?? [];
                       const ps = pinsByAccess.get(w.id);
                       return (
                         <tr key={w.id}>
-                          <td><Link href={`/sites/${w.id}`} className="font-medium hover:underline">{w.name}</Link></td>
-                          <td className="text-muted">{w.baseUrl}{(!w.username || !w.appPasswordEnc) && <span className="ml-2"><Badge tone="warn">нет доступа REST API</Badge></span>}</td>
-                          <td className="text-muted">{w.teams.length ? `+ ${w.teams.map((t) => teamName(t.teamId)).join(", ")}` : "только владелец"}{w.viewers.length ? ` · видят ${w.viewers.length} сотр.` : " · видят только лидеры"}</td>
+                          <td>
+                            <Link href={`/sites/${w.id}`} className="font-medium hover:underline">{w.name}</Link>
+                            {/* На телефоне вместо колонок «Адрес» и «Проверка» — строкой под названием. */}
+                            <div className="help break-all sm:hidden">{w.baseUrl}</div>
+                            {(!w.username || !w.appPasswordEnc) && <div className="mt-1 sm:hidden"><Badge tone="warn">нет доступа REST API</Badge></div>}
+                            {w.lastCheckOk === false && <div className="help text-danger sm:hidden">✕ проверка: {w.lastCheckNote ?? "ошибка"}</div>}
+                          </td>
+                          <td className="col-sm text-muted">{w.baseUrl}{(!w.username || !w.appPasswordEnc) && <span className="ml-2"><Badge tone="warn">нет доступа REST API</Badge></span>}</td>
+                          <td className="col-md text-muted">{w.teams.length ? `+ ${w.teams.map((t) => teamName(t.teamId)).join(", ")}` : "только владелец"}{w.viewers.length ? ` · видят ${w.viewers.length} сотр.` : " · видят только лидеры"}</td>
                           <td><span className="flex flex-wrap gap-1">{pr.length ? pr.map((s) => <Badge key={s}>{projName(s)}</Badge>) : <Badge>все инструменты</Badge>}</span></td>
-                          <td className="text-muted">{ps ? <Link href={`/pinterest/pins/sites/${ps.id}?tab=settings`} className="hover:underline">{ps.isActive ? "подключён" : "отключён"} · настройки</Link> : "не подключён"}</td>
-                          <td>{w.lastCheckOk == null ? <span className="text-muted">—</span> : w.lastCheckOk ? <span className="text-ok" title={w.lastCheckNote ?? ""}>✓ {fmtDate(w.lastCheckedAt)}</span> : <span className="text-danger" title={w.lastCheckNote ?? ""}>✕ ошибка</span>}</td>
-                          <td className="text-right">{canManageTeam(me, w.teamId) && <Link href={`/sites/${w.id}?delete=1#delete`} className="text-[13px] text-muted hover:text-danger">Удалить</Link>}</td>
+                          <td className="col-sm text-muted">{ps ? <Link href={`/pinterest/pins/sites/${ps.id}?tab=settings`} className="hover:underline">{ps.isActive ? "подключён" : "отключён"} · настройки</Link> : "не подключён"}</td>
+                          <td className="col-sm">{w.lastCheckOk == null ? <span className="text-muted">—</span> : w.lastCheckOk ? <span className="text-ok" title={w.lastCheckNote ?? ""}>✓ {fmtDate(w.lastCheckedAt)}</span> : <span className="text-danger" title={w.lastCheckNote ?? ""}>✕ ошибка</span>}</td>
+                          <td className="col-sm text-right">{canManageTeam(me, w.teamId) && <Link href={`/sites/${w.id}?delete=1#delete`} className="text-[13px] text-muted hover:text-danger">Удалить</Link>}</td>
                         </tr>
                       );
                     })}

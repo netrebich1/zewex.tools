@@ -53,10 +53,10 @@ export function StartRunForm({ sites, agents, day }: { sites: StartSite[]; agent
       </div>
       <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
         {sites.map((s) => (
-          <label key={s.id} className={`flex items-center gap-2 rounded-lg border border-line px-2.5 py-1.5 text-[13px] ${s.ready ? "" : "opacity-60"}`}>
+          <label key={s.id} className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-line px-2.5 py-1.5 text-[13px] ${s.ready ? "" : "opacity-60"}`}>
             <input type="checkbox" name="site" value={s.id} checked={checked.has(s.id)} onChange={() => toggle(s.id)} />
             <span className="min-w-0 flex-1 truncate">{s.name}</span>
-            <span className="help whitespace-nowrap">{s.count ? `${s.count} пин.` : "нет файла"}{s.uploaded ? " · залито" : ""}{s.why ? ` · ${s.why}` : ""}</span>
+            <span className="help max-w-full">{s.count ? `${s.count} пин.` : "нет файла"}{s.uploaded ? " · залито" : ""}{s.why ? ` · ${s.why}` : ""}</span>
           </label>
         ))}
       </div>

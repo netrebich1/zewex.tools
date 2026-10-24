@@ -75,6 +75,7 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
   const [blockers, setBlockers] = useState<Blockers | null>(null);
   const skipped = useRef<Set<string>>(new Set());
   const [skippedCount, setSkippedCount] = useState(0);
+  const workRef = useRef<HTMLDivElement>(null);
 
   // Закрепление открытой статьи: пинг раз в минуту, release при уходе со страницы/смене статьи.
   const currentId = current?.id ?? null;
@@ -112,7 +113,9 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
     setPanel(null);
     setReason("");
     setEmpty(false);
-    window.scrollTo({ top: 0 });
+    // На телефоне список статей стоит над рабочей областью — прокручиваем к самой статье, а не в начало страницы.
+    if (window.matchMedia("(min-width: 1024px)").matches) window.scrollTo({ top: 0 });
+    else workRef.current?.scrollIntoView({ block: "start" });
   }, []);
 
   /** Открыть статью (закрепить и загрузить). false — не удалось: занята коллегой, ушла дальше, ошибка. */
@@ -291,14 +294,14 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
   const counts = header?.counts;
 
   const main = (
-    <div className="space-y-4 min-w-0">
-      {/* Sticky-шапка статьи */}
-      <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-bg/95 backdrop-blur border-b border-line">
+    <div ref={workRef} className="space-y-4 min-w-0 scroll-mt-16 pb-20 lg:pb-0">
+      {/* Шапка статьи: закреплена только на десктопе (на телефоне заняла бы полэкрана), главные кнопки там — в нижней панели */}
+      <div className="lg:sticky lg:top-14 z-20 -mx-4 px-4 py-3 bg-bg/95 backdrop-blur border-b border-line">
         {a && counts ? (
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="text-[17px] font-semibold uppercase tracking-wide truncate">{a.keyword}</span>
+                <span className="text-[17px] font-semibold uppercase tracking-wide min-w-0 [overflow-wrap:anywhere] sm:truncate">{a.keyword}</span>
                 {a.keywordRu && <span className="text-muted">🇷🇺 {a.keywordRu}</span>}
               </div>
               <div className="help flex flex-wrap items-center gap-x-2">
@@ -326,10 +329,10 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
                   Список
                 </Link>
               )}
-              <button type="button" className="btn-ghost btn-sm" disabled={!!busy || !history.length} onClick={prev} title="Предыдущая (←)">
+              <button type="button" className="btn-ghost btn-sm max-lg:!hidden" disabled={!!busy || !history.length} onClick={prev} title="Предыдущая (←)">
                 ←
               </button>
-              <button type="button" className="btn-ghost btn-sm" disabled={!!busy} onClick={skip} title="Пропустить: статья уйдёт в конец вашей очереди (→)">
+              <button type="button" className="btn-ghost btn-sm max-lg:!hidden" disabled={!!busy} onClick={skip} title="Пропустить: статья уйдёт в конец вашей очереди (→)">
                 Пропустить
               </button>
               <button type="button" className="btn-ghost btn-sm text-danger" disabled={!!busy} onClick={remove} title="Удалить статью из системы совсем — если решили её не писать">
@@ -341,7 +344,7 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
               <button type="button" className={`btn-ghost btn-sm ${panel === "topup" ? "bg-ink/10" : ""}`} disabled={!!busy} onClick={() => setPanel((p) => (p === "topup" ? null : "topup"))} title="Новый поиск: статья вернётся на модерацию с пополненным резервом">
                 Добрать фото
               </button>
-              <button type="button" className="btn-brand" disabled={!!busy || !counts.canApprove} onClick={approve} title={counts.canApprove ? (confirmWhy ? `Enter — сначала подтверждение: ${confirmWhy}` : "Enter") : `Нужно ещё ${counts.missing} фото`}>
+              <button type="button" className="btn-brand max-lg:!hidden" disabled={!!busy || !counts.canApprove} onClick={approve} title={counts.canApprove ? (confirmWhy ? `Enter — сначала подтверждение: ${confirmWhy}` : "Enter") : `Нужно ещё ${counts.missing} фото`}>
                 {busy === "approve" ? "Сохраняю…" : "Одобрить и писать"}
               </button>
             </div>
@@ -426,13 +429,28 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
           </div>
         </div>
       ) : null}
+
+      {/* Телефон: главные действия внизу экрана */}
+      {a && counts && (
+        <div className="fixed inset-x-0 bottom-0 z-30 flex gap-2 border-t border-line bg-bg/95 p-2 pb-[max(.5rem,env(safe-area-inset-bottom))] lg:hidden">
+          <button type="button" className="btn-ghost" disabled={!!busy || !history.length} onClick={prev} aria-label="Предыдущая">
+            ←
+          </button>
+          <button type="button" className="btn-ghost flex-1" disabled={!!busy} onClick={skip}>
+            Пропустить
+          </button>
+          <button type="button" className="btn-brand flex-1" disabled={!!busy || !counts.canApprove} onClick={approve}>
+            {busy === "approve" ? "Сохраняю…" : panel === "confirm" ? "Да, одобрить" : "Одобрить"}
+          </button>
+        </div>
+      )}
     </div>
   );
 
   if (!listMode) return main;
   return (
     <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-      <aside className="card p-2 lg:max-h-[80vh] lg:overflow-auto lg:sticky lg:top-4">
+      <aside className="card p-2 max-h-56 overflow-auto lg:max-h-[80vh] lg:sticky lg:top-[4.5rem]">
         {list.length === 0 ? (
           <p className="help p-3">Статей нет.</p>
         ) : (
@@ -492,7 +510,13 @@ function AiBanner({ ai, active, plan, busy, onUndo }: { ai: NonNullable<PhotoMod
               {over ? ` — больше нормы на ${active - norm}` : ""}
             </span>
           </div>
-          {opinion && <div className="text-ink-2">{opinion}</div>}
+          {opinion && <div className="text-ink-2 hidden lg:block">{opinion}</div>}
+          {opinion && (
+            <details className="text-ink-2 lg:hidden">
+              <summary className="cursor-pointer underline">Мнение модели</summary>
+              <div className="mt-1">{opinion}</div>
+            </details>
+          )}
         </div>
         {ai.canUndo && (
           <button type="button" className="btn-ghost btn-sm shrink-0 bg-surface" disabled={busy} onClick={onUndo} title="Вернуть снятые ИИ кадры, убрать добавленные ИИ, порядок как до проверки">

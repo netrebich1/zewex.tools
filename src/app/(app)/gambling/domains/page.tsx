@@ -25,14 +25,15 @@ export default async function DomainsHome() {
         actions={<Link href="/gambling/domains/new" className="btn-brand">Новый подбор</Link>}
       />
 
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-1 gap-3 mb-6 sm:grid-cols-3">
         {[
           { label: "Подборов в работе", value: live },
           { label: "Свободных доменов найдено", value: totalAvailable },
           { label: "Выбрано для регистрации", value: totalSelected },
         ].map((s) => (
-          <div key={s.label} className="kpi">
-            <div className="kpi-value">{s.value}</div>
+          // На телефоне плитка — строка «число подпись»; `!` — .kpi вне слоёв.
+          <div key={s.label} className="kpi min-w-0 !flex-row items-baseline gap-3 sm:!flex-col sm:gap-1">
+            <div className="kpi-value !text-[22px] sm:!text-[30px]">{s.value}</div>
             <div className="help">{s.label}</div>
           </div>
         ))}
@@ -48,13 +49,13 @@ export default async function DomainsHome() {
                 <tr>
                   <th>Подбор</th>
                   <th>Статус</th>
-                  <th>Бренды</th>
-                  <th>Страна</th>
-                  <th>Проверено</th>
+                  <th className="col-sm">Бренды</th>
+                  <th className="col-sm">Страна</th>
+                  <th className="col-sm">Проверено</th>
                   <th>Свободно</th>
                   <th>Выбрано</th>
-                  <th>Создан</th>
-                  <th></th>
+                  <th className="col-sm">Создан</th>
+                  <th className="col-sm"></th>
                 </tr>
               </thead>
               <tbody>
@@ -70,13 +71,13 @@ export default async function DomainsHome() {
                         <Badge tone={STATUS_TONE[r.status] ?? "neutral"}>{RUN_STATUS_LABELS[r.status] ?? r.status}</Badge>
                         {r.status === "RUNNING" && pct != null && <span className="help ml-2">{pct}% · {r.progress?.brand}</span>}
                       </td>
-                      <td>{r.brands} <span className="help">· {r.perBrand} на бренд · зон: {r.tlds}</span></td>
-                      <td className="uppercase">{r.countries.join(", ")}</td>
-                      <td>{r.totalChecked}</td>
+                      <td className="col-sm">{r.brands} <span className="help">· {r.perBrand} на бренд · зон: {r.tlds}</span></td>
+                      <td className="col-sm uppercase">{r.countries.join(", ")}</td>
+                      <td className="col-sm">{r.totalChecked}</td>
                       <td className="font-medium">{r.totalAvailable}</td>
                       <td>{r.selected}</td>
-                      <td className="help whitespace-nowrap">{fmtDate(r.createdAt)}</td>
-                      <td className="text-right"><Link href={`/gambling/domains/runs/${r.id}`} className="btn-primary btn-sm">Открыть →</Link></td>
+                      <td className="col-sm help whitespace-nowrap">{fmtDate(r.createdAt)}</td>
+                      <td className="col-sm text-right"><Link href={`/gambling/domains/runs/${r.id}`} className="btn-primary btn-sm">Открыть →</Link></td>
                     </tr>
                   );
                 })}

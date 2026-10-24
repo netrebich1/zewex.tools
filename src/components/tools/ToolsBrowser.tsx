@@ -36,7 +36,7 @@ function Star({ active, pending, onClick }: { active: boolean; pending: boolean;
       type="button"
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick(); }}
       disabled={pending}
-      className={`relative z-10 inline-flex h-8 w-8 items-center justify-center rounded-full transition ${active ? "text-brand" : "text-muted/60 hover:text-ink hover:bg-ink/5"}`}
+      className={`relative z-10 inline-flex h-9 w-9 items-center justify-center rounded-full transition ${active ? "text-brand" : "text-muted/60 hover:text-ink hover:bg-ink/5"}`}
       aria-pressed={active}
       aria-label={active ? "Убрать из избранного" : "В избранное"}
       title={active ? "Убрать из избранного" : "В избранное"}

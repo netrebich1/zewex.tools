@@ -135,6 +135,7 @@ export function PhotoQueueList({ queue, siteId, initialGroup, minPhotos, only }:
                     {i.photos} / {i.norm}
                   </div>
                   <div className="text-muted">фото / план</div>
+                  <div className="text-muted sm:hidden">нужно ≥ {need}</div>
                 </div>
               </>
             );

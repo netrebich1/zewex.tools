@@ -30,7 +30,7 @@ export default async function StylesPage({ searchParams }: { searchParams: Promi
     <>
       <PageHeader title="Стили" subtitle="Как выглядят пины: наборы ИИ-стилей с примерами, каталог Canvas и типы Pinora. Наборы и скрытия — отдельно для каждого сайта." />
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {tabs.map(([k, l]) => <Link key={k} href={qs(k)} className={`badge px-3 py-1 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}
+        {tabs.map(([k, l]) => <Link key={k} href={qs(k)} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}
         {site && <StylesSiteSwitch tab={tab} siteId={site.id} sites={sites.map((s) => ({ id: s.id, name: s.name }))} />}
       </div>
       {/* key={site.id}: при смене сайта галерея и выбор создаются заново, без остатков от прошлого сайта */}

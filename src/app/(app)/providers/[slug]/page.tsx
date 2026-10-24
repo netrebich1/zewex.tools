@@ -37,7 +37,7 @@ export default async function ProviderPage({ params, searchParams }: { params: P
           {provider.apiKeys.length === 0 ? <p className="help">Ключей нет.</p> : (
             <ul className="flex flex-wrap gap-2">
               {provider.apiKeys.filter((k) => canViewKey(me, k)).map((k) => (
-                <li key={k.id}><Link href={`/keys/${k.id}`} className={`badge border ${k.status === "ACTIVE" ? "border-line bg-surface hover:border-ink/40" : "border-danger/30 bg-danger-soft text-danger"}`}>{k.label} · {k.secretHint}</Link></li>
+                <li key={k.id} className="min-w-0 max-w-full"><Link href={`/keys/${k.id}`} className={`badge border !whitespace-normal [overflow-wrap:anywhere] text-left ${k.status === "ACTIVE" ? "border-line bg-surface hover:border-ink/40" : "border-danger/30 bg-danger-soft text-danger"}`}>{k.label} · {k.secretHint}</Link></li>
               ))}
             </ul>
           )}
@@ -64,16 +64,16 @@ export default async function ProviderPage({ params, searchParams }: { params: P
             ) : (
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>Модель</th><th>ID в API</th><th>Тип</th><th>Вход</th><th>Выход</th><th>Контекст</th><th></th></tr></thead>
+                  <thead><tr><th>Модель</th><th className="col-md">ID в API</th><th className="col-sm">Тип</th><th>Вход</th><th>Выход</th><th className="col-sm">Контекст</th><th></th></tr></thead>
                   <tbody>
                     {visibleModels.slice(0, 300).map((m) => (
                       <tr key={m.id} className={m.isEnabled ? "" : "opacity-60"}>
-                        <td className="font-medium">{m.name}</td>
-                        <td className="font-mono text-[12px]">{m.modelId}</td>
-                        <td className="text-[12px]">{m.capabilities.split(",").map((c) => CAPABILITY_LABELS[c] ?? c).join(", ")}</td>
+                        <td className="font-medium">{m.name}<div className="font-mono text-[11.5px] font-normal text-muted break-all md:hidden">{m.modelId}</div></td>
+                        <td className="col-md font-mono text-[12px]">{m.modelId}</td>
+                        <td className="col-sm text-[12px]">{m.capabilities.split(",").map((c) => CAPABILITY_LABELS[c] ?? c).join(", ")}</td>
                         <td>{fmtMoney(m.inputPrice)}</td>
                         <td>{fmtMoney(m.outputPrice)}</td>
-                        <td className="text-muted">{m.contextLength ? `${Math.round(m.contextLength / 1000)}k` : "—"}</td>
+                        <td className="col-sm text-muted">{m.contextLength ? `${Math.round(m.contextLength / 1000)}k` : "—"}</td>
                         <td className="text-right whitespace-nowrap">
                           {isAdmin && (
                             <span className="inline-flex gap-1">

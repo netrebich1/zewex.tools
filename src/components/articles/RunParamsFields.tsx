@@ -23,7 +23,7 @@ export function RunParamsFields({ s, siteLevel = false, aiModOn = false }: { s: 
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="rounded-xl border border-line p-3 space-y-2">
         <div className="text-[13px] font-semibold">Фото</div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <Field label="Сколько фото" hint={mode === "exact" ? "Одно число для всех статей" : "Случайно из диапазона для каждой статьи"}>
             <select name="photoCountMode" className="input py-1.5" value={mode} onChange={(e) => setMode(e.target.value as "exact" | "range")}>
               <option value="exact">Точно</option>
@@ -62,7 +62,7 @@ export function RunParamsFields({ s, siteLevel = false, aiModOn = false }: { s: 
       <section className="rounded-xl border border-line p-3 space-y-2 lg:col-span-2">
         <div className="text-[13px] font-semibold">Поиск фото: гео, язык, свежесть</div>
         <p className="help">Переопределяют настройки поиска из сценария. Пусто — берётся из сценария.</p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <Field label="Страна" hint="Код страны Google: us, gb, de…">
             <input name="searchCountry" list="art-countries" className="input py-1.5" defaultValue={s.search.country} placeholder="из сценария" maxLength={8} />
             <datalist id="art-countries">{COUNTRIES.map((c) => <option key={c} value={c} />)}</datalist>

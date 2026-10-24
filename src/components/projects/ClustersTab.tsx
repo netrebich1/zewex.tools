@@ -43,7 +43,7 @@ export async function ClustersTab({ accessId, cardId }: { accessId: string; card
                   <td className="text-right whitespace-nowrap">
                     <details className="inline-block text-left">
                       <summary className="cursor-pointer text-[12.5px] text-muted hover:text-ink">править</summary>
-                      <ActionForm action={saveProjectCluster} hidden={{ accessId, id: c.id }} className="absolute z-10 mt-1 w-[360px] card p-3 space-y-2 right-4">
+                      <ActionForm action={saveProjectCluster} hidden={{ accessId, id: c.id }} className="fixed inset-x-4 top-20 z-50 max-h-[80dvh] overflow-y-auto sm:absolute sm:inset-x-auto sm:top-auto sm:z-10 sm:mt-1 sm:w-[360px] sm:right-4 sm:max-h-none sm:overflow-visible card p-3 space-y-2">
                         <input name="name" className="input py-1.5" defaultValue={c.name} placeholder="Название" />
                         <textarea name="keywords" className="input py-1.5 min-h-[80px]" defaultValue={c.keywords ?? ""} placeholder="Ключи — по одному на строку (число посчитается само)" />
                         <input name="articleUrl" className="input py-1.5" defaultValue={c.articleUrl ?? ""} placeholder="Ссылка на статью" />

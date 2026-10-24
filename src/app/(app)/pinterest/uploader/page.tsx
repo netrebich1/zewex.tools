@@ -27,7 +27,7 @@ export default async function UploaderTodayPage({ searchParams }: { searchParams
     const why = !a?.profileId ? "нет профиля" : a.status === "needs_login" ? "нужен вход" : a.status === "off" ? "выключен" : a.status === "banned" ? "заблокирован" : paused ? `пауза до ${dt(a.pausedUntil)}` : r.lastTask && ["QUEUED", "LEASED"].includes(r.lastTask.status) ? "уже в очереди" : null;
     return { id: r.site.id, name: r.site.name, count: r.file!.count, ready: !why, why, uploaded: !!r.uploaded };
   });
-  const quick = (d: string, label: string) => <Link href={`/pinterest/uploader?day=${d}`} className={`badge px-3 py-1 ${day === d ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{label}</Link>;
+  const quick = (d: string, label: string) => <Link href={`/pinterest/uploader?day=${d}`} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${day === d ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{label}</Link>;
 
   return (
     <>

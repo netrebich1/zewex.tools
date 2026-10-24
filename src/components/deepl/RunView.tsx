@@ -57,17 +57,17 @@ export function RunView({ jobId, initialStatus, initialItems, publishDefaults }:
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {[
           { label: "Статей", value: items.length },
           { label: "Готово", value: by("done") },
           { label: "Проверить", value: by("warning") },
           { label: "Ошибок", value: by("error") },
           { label: "Опубликовано", value: published },
-          { label: "ИИ / DeepL", value: `$${cost.toFixed(3)} · ${Math.round(chars / 1000)}k` },
+          { label: "ИИ / DeepL", value: `$${cost.toFixed(3)} · ${Math.round(chars / 1000)}k`, small: true },
         ].map((s) => (
-          <div key={s.label} className="kpi">
-            <div className="kpi-value">{s.value}</div>
+          <div key={s.label} className="kpi min-w-0">
+            <div className={`kpi-value ${"small" in s ? "!text-[20px] whitespace-nowrap" : ""}`}>{s.value}</div>
             <div className="help">{s.label}</div>
           </div>
         ))}
@@ -96,7 +96,7 @@ export function RunView({ jobId, initialStatus, initialItems, publishDefaults }:
         <div className="table-wrap">
           <table className="table">
             <thead>
-              <tr><th>#</th><th>Статья</th><th>Статус</th><th>Ключи</th><th>WordPress</th><th></th></tr>
+              <tr><th className="col-sm">#</th><th>Статья</th><th>Статус</th><th className="col-sm">Ключи</th><th className="col-sm">WordPress</th><th></th></tr>
             </thead>
             <tbody>
               {shown.map((it) => {
@@ -105,18 +105,20 @@ export function RunView({ jobId, initialStatus, initialItems, publishDefaults }:
                 return (
                   <Fragment key={it.id}>
                     <tr className={open === it.id ? "bg-ink/5" : ""}>
-                      <td className="help">{it.position + 1}</td>
-                      <td className="max-w-[420px]">
+                      <td className="col-sm help">{it.position + 1}</td>
+                      <td>
+                        <div className="max-w-[420px]">
                         <button type="button" className="text-left font-medium hover:underline" onClick={() => setOpen(open === it.id ? null : it.id)}>{it.title || `Пост #${it.wpPostId}`}</button>
                         <div className="help">{it.wpDate ?? ""}{it.wpStatus ? ` · ${it.wpStatus}` : ""}{warns.length ? ` · замечаний ${warns.length}` : ""}</div>
-                        {it.error && <div className="help text-danger line-clamp-2">{it.error}</div>}
+                        {it.error && <div className="help text-danger line-clamp-2 [overflow-wrap:anywhere]">{it.error}</div>}
+                        </div>
                       </td>
                       <td className="whitespace-nowrap">
                         <Badge tone={ITEM_TONE[it.status] ?? "neutral"}>{ITEM_STATUS_LABELS[it.status] ?? it.status}</Badge>
                         {it.status === "processing" && <div className="help">{STAGE_LABELS[it.stage] ?? it.stage}</div>}
                       </td>
-                      <td className="help whitespace-nowrap">{it.keywordReport.length ? `${kwOk}/${it.keywordReport.length} в норме` : "—"}</td>
-                      <td className="whitespace-nowrap">
+                      <td className="col-sm help whitespace-nowrap">{it.keywordReport.length ? `${kwOk}/${it.keywordReport.length} в норме` : "—"}</td>
+                      <td className="col-sm whitespace-nowrap">
                         {it.publishedUrl ? <a href={it.publishedUrl} target="_blank" rel="noreferrer" className="hover:underline">{it.publishMode === "new" ? "новый пост" : "обновлён"} ↗</a> : it.revertedAt ? <span className="help">возвращён оригинал</span> : it.sourceUrl ? <a href={it.sourceUrl} target="_blank" rel="noreferrer" className="help hover:underline">исходник ↗</a> : "—"}
                       </td>
                       <td className="text-right"><button type="button" className="btn-ghost btn-sm" onClick={() => setOpen(open === it.id ? null : it.id)}>{open === it.id ? "Скрыть" : "Открыть"}</button></td>
@@ -124,7 +126,10 @@ export function RunView({ jobId, initialStatus, initialItems, publishDefaults }:
                     {open === it.id && (
                       <tr>
                         <td colSpan={6} className="!p-0">
-                          <ItemPanel jobId={jobId} item={it} publishDefaults={publishDefaults} />
+                          {/* На телефоне панель по ширине карточки и не уезжает при прокрутке таблицы вбок. */}
+                          <div className="sticky left-4 w-[calc(100vw-4rem-2px)] sm:static sm:w-auto">
+                            <ItemPanel jobId={jobId} item={it} publishDefaults={publishDefaults} />
+                          </div>
                         </td>
                       </tr>
                     )}

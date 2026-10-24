@@ -31,7 +31,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
   const name = <T extends { id: string }>(list: T[], id: string | null, f: (t: T) => string) => (id ? list.find((x) => x.id === id) : null) ? f(list.find((x) => x.id === id)!) : "—";
 
   const Tab = ({ v, label }: { v: string; label: string }) => (
-    <a href={`/usage?period=${v}`} className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium border ${period === v ? "bg-ink text-bg border-ink" : "bg-surface border-line hover:border-ink/40"}`}>{label}</a>
+    <a href={`/usage?period=${v}`} className={`rounded-full px-3.5 py-2 sm:py-1.5 text-[13px] font-medium border ${period === v ? "bg-ink text-bg border-ink" : "bg-surface border-line hover:border-ink/40"}`}>{label}</a>
   );
   const subtitle = scope === "all" ? "Все вызовы через портал. Стоимость считается по ценам моделей; у SERP-провайдеров цена не известна." : onlyMine ? "Ваши вызовы через портал." : "Ваши вызовы и вызовы ваших команд.";
 
@@ -74,18 +74,21 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
           <Card title="Последние вызовы" className="lg:col-span-3">
             <div className="table-wrap">
               <table className="table">
-                <thead><tr><th>Когда</th>{!onlyMine && <th>Кто</th>}<th>Инструмент · слот</th><th>Провайдер · модель</th><th>Ключ</th><th>Токены</th><th>Цена</th><th>Время</th><th>Статус</th></tr></thead>
+                <thead><tr><th>Когда</th>{!onlyMine && <th className="col-sm">Кто</th>}<th>Инструмент · слот</th><th className="col-sm">Провайдер · модель</th><th className="col-md">Ключ</th><th className="col-md">Токены</th><th>Цена</th><th className="col-md">Время</th><th>Статус</th></tr></thead>
                 <tbody>
                   {recent.map((r) => (
                     <tr key={r.id}>
                       <td className="whitespace-nowrap text-muted">{fmtDate(r.createdAt)}</td>
-                      {!onlyMine && <td>{r.user?.name ?? "—"}</td>}
-                      <td>{r.project?.name ?? "—"}<span className="text-muted"> · {r.slot?.name ?? "—"}</span></td>
-                      <td>{r.provider.name}{r.model ? <span className="text-muted"> · {r.model.modelId}</span> : null}</td>
-                      <td>{r.apiKey?.label ?? "—"}</td>
-                      <td className="text-muted">{r.inputTokens}/{r.outputTokens}</td>
+                      {!onlyMine && <td className="col-sm">{r.user?.name ?? "—"}</td>}
+                      <td>
+                        {r.project?.name ?? "—"}<span className="text-muted"> · {r.slot?.name ?? "—"}</span>
+                        <div className="help sm:hidden">{!onlyMine && <>{r.user?.name ?? "—"} · </>}{r.provider.name}</div>
+                      </td>
+                      <td className="col-sm">{r.provider.name}{r.model ? <span className="text-muted"> · {r.model.modelId}</span> : null}</td>
+                      <td className="col-md">{r.apiKey?.label ?? "—"}</td>
+                      <td className="col-md text-muted">{r.inputTokens}/{r.outputTokens}</td>
                       <td>{fmtMoney(r.costUsd)}</td>
-                      <td className="text-muted">{(r.durationMs / 1000).toFixed(1)}с</td>
+                      <td className="col-md text-muted">{(r.durationMs / 1000).toFixed(1)}с</td>
                       <td>{r.ok ? <Badge tone="ok">ok</Badge> : <Badge tone="danger" >{(r.error ?? "ошибка").slice(0, 40)}</Badge>}</td>
                     </tr>
                   ))}

@@ -5,14 +5,14 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Alert, Card } from "@/components/ui";
 import { launchDeeplJob, saveDeeplScenario } from "@/actions/deepl";
-import { DEEPL_LANGS, describeSettings, MAX_JOB_ITEMS, WP_STATUSES, type DeeplSettings } from "@/lib/deepl/types";
+import { DEEPL_LANGS, describeSettings, MAX_JOB_ITEMS, RECOMMENDED_MODELS, WP_STATUSES, type DeeplSettings } from "@/lib/deepl/types";
 
 type Site = { id: string; name: string; baseUrl: string; ready: boolean };
 type Prompt = { id: string; name: string; purpose: string };
 type Scenario = { id: string; name: string; settings: DeeplSettings };
 type Post = { id: number; title: string; date: string; status: string; link: string; categories: number[] };
 
-const MODELS = ["google/gemini-2.5-flash", "google/gemini-2.5-pro", "openai/gpt-4.1-mini"];
+const MODELS = [RECOMMENDED_MODELS.edit, RECOMMENDED_MODELS.headings, "anthropic/claude-haiku-5.5", "google/gemini-2.5-flash"];
 const SOURCE_LANGS = DEEPL_LANGS.filter((l) => !l.targetOnly);
 const baseCode = (c: string) => c.split("-")[0]!;
 
@@ -277,11 +277,11 @@ export function NewJobForm({ sites, prompts, scenarios, initial, initialSite, ha
                     <input type="checkbox" checked={s.seo.auto} onChange={(e) => upd({ seo: { ...s.seo, auto: e.target.checked } })} />
                     Ключи из исходника автоматически (до 10 частых фраз)
                   </label>
-                  <div className="flex items-center gap-2 text-[14px]">
+                  <div className="flex flex-wrap items-center gap-2 text-[14px]">
                     <span>Вернуть</span>
-                    <input type="number" min={0} max={100} className="input w-20" value={s.seo.minPct} onChange={(e) => upd({ seo: { ...s.seo, minPct: Number(e.target.value) } })} />
+                    <input type="number" min={0} max={100} className="input !w-20" value={s.seo.minPct} onChange={(e) => upd({ seo: { ...s.seo, minPct: Number(e.target.value) } })} />
                     <span>–</span>
-                    <input type="number" min={0} max={200} className="input w-20" value={s.seo.maxPct} onChange={(e) => upd({ seo: { ...s.seo, maxPct: Number(e.target.value) } })} />
+                    <input type="number" min={0} max={200} className="input !w-20" value={s.seo.maxPct} onChange={(e) => upd({ seo: { ...s.seo, maxPct: Number(e.target.value) } })} />
                     <span>% вхождений</span>
                   </div>
                   <p className="help">От числа вхождений ключа в исходной статье: 25–70% — ключ звучит, но без переспама.</p>
@@ -295,16 +295,27 @@ export function NewJobForm({ sites, prompts, scenarios, initial, initialSite, ha
           </section>
 
           <section className="grid gap-4 lg:grid-cols-2">
-            <label className="block">
-              <span className="label">Модель OpenRouter для редактуры</span>
-              <input className="input" list="deepl-models" value={s.model} placeholder="пусто — модель из правила ключа" onChange={(e) => upd({ model: e.target.value })} />
+            <div className="space-y-2">
+              <label className="block">
+                <span className="label">Модель OpenRouter: постредактура и ключи</span>
+                <input className="input" list="deepl-models" value={s.model} placeholder="пусто — модель из правила ключа" onChange={(e) => upd({ model: e.target.value })} />
+              </label>
+              <label className="block">
+                <span className="label">Модель OpenRouter: заголовки H2</span>
+                <input className="input" list="deepl-models" value={s.headingsModel} placeholder="пусто — как для постредактуры" onChange={(e) => upd({ headingsModel: e.target.value })} />
+              </label>
               <datalist id="deepl-models">{MODELS.map((m) => <option key={m} value={m} />)}</datalist>
+              <p className="help">Подобраны на тестах: {RECOMMENDED_MODELS.edit} — самая дешёвая и точная в правке перевода; {RECOMMENDED_MODELS.headings} — лучшие H2 без штампов.{" "}
+                {(s.model !== RECOMMENDED_MODELS.edit || s.headingsModel !== RECOMMENDED_MODELS.headings) && (
+                  <button type="button" className="underline" onClick={() => upd({ model: RECOMMENDED_MODELS.edit, headingsModel: RECOMMENDED_MODELS.headings })}>Поставить рекомендованные</button>
+                )}
+              </p>
               {!hasEditKey && (
                 <p className="help mt-1 text-warn">
                   Ключ OpenRouter ещё не подключён к инструменту — {isAdmin ? <Link href="/projects/deepl" className="underline">подключить</Link> : "попросите администратора"}. Без него работает только перевод.
                 </p>
               )}
-            </label>
+            </div>
             <div>
               <label className="flex items-center gap-2 font-medium">
                 <input type="checkbox" checked={s.publish.enabled} onChange={(e) => upd({ publish: { ...s.publish, enabled: e.target.checked } })} />

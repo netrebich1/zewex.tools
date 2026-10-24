@@ -127,7 +127,7 @@ export function AiStylePicker({ siteId, teamId, styles, categories, types, sets,
                 <button type="button" className={`btn-sm ${all ? "btn-primary" : "btn-ghost"}`} onClick={() => setMany(ids, !all)}>{all ? "Снять все" : `Выбрать все ${ids.length}`}</button>
               </div>
 
-              <div className="mt-3 grid grid-cols-5 gap-1.5">
+              <div className="mt-3 grid grid-cols-3 sm:grid-cols-5 gap-1.5">
                 {g.variants.map((v, i) => {
                   const on = selected.has(v.id);
                   const img = v.examples[0] ?? g.examples[i] ?? g.examples[0];
@@ -172,7 +172,7 @@ export function AiStylePicker({ siteId, teamId, styles, categories, types, sets,
       </div>
       {list.length === 0 && <p className="help">Ничего не найдено.</p>}
 
-      <div className="sticky bottom-0 mt-4 -mx-4 sm:-mx-5 px-4 sm:px-5 py-3 border-t border-line bg-surface/95 backdrop-blur">
+      <div className="static sm:sticky bottom-0 mt-4 -mx-4 sm:-mx-5 px-4 sm:px-5 py-3 border-t border-line bg-surface/95 backdrop-blur">
         <ActionForm action={saveAiSet} className="flex flex-wrap items-end gap-2" hidden={{ siteId, id: editSet }}>
           {[...selected].map((id) => <input key={id} type="hidden" name="styleIds" value={id} />)}
           <span className="text-[14px] self-center">Выбрано вариантов: <b>{selected.size}</b></span>

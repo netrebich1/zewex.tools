@@ -50,9 +50,9 @@ export default async function DeeplKeysPage() {
             <div className="flex flex-wrap items-end gap-3">
               <label className="block">
                 <span className="label">Лимит символов на ключ</span>
-                <input name="limit" className="input w-48" placeholder="пусто — из DeepL" />
+                <input name="limit" className="input w-48" defaultValue="1000000" placeholder="пусто — из DeepL" />
               </label>
-              <p className="help max-w-md pb-2">Пусто — лимит возьмётся из DeepL (у бесплатного ключа 500 000 в месяц). Число — свой лимит, например 450000, чтобы оставить запас.</p>
+              <p className="help max-w-md pb-2">По умолчанию 1 000 000 символов на ключ. Можно вписать другое число; если очистить поле — лимит возьмётся из DeepL.</p>
               <SubmitButton className="btn-brand ml-auto" pendingText="Проверяю ключи в DeepL…">Добавить ключи</SubmitButton>
             </div>
           </ActionForm>
@@ -78,12 +78,12 @@ export default async function DeeplKeysPage() {
             <>
               <ActionForm action={updateDeeplKey} className="mb-3 flex flex-wrap items-center gap-2" hidden={{ id: "", op: "limit_all" }}>
                 <span className="text-[14px]">Задать лимит всем ключам:</span>
-                <input name="limit" className="input w-40" placeholder="500000" />
+                <input name="limit" className="input w-40" defaultValue="1000000" />
                 <SubmitButton className="btn-ghost btn-sm" pendingText="…" confirm="Поставить этот лимит всем ключам?">Применить</SubmitButton>
               </ActionForm>
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>#</th><th>Ключ</th><th>Расход</th><th>Осталось</th><th>Лимит</th><th>Статус</th><th></th></tr></thead>
+                  <thead><tr><th>#</th><th>Ключ</th><th>Расход</th><th>Осталось</th><th className="col-sm">Лимит</th><th>Статус</th><th></th></tr></thead>
                   <tbody>
                     {keys.map((k, i) => {
                       const pct = k.charLimit ? Math.min(100, Math.round((k.charUsed / k.charLimit) * 100)) : 0;
@@ -100,7 +100,7 @@ export default async function DeeplKeysPage() {
                             {k.charLimit ? <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-ink/10"><div className={`h-full ${pct >= 95 ? "bg-danger" : pct >= 80 ? "bg-warn" : "bg-ok"}`} style={{ width: `${pct}%` }} /></div> : null}
                           </td>
                           <td className="whitespace-nowrap font-medium">{k.charLimit == null ? "без лимита" : fmt(Math.max(0, k.charLimit - k.charUsed))}</td>
-                          <td>
+                          <td className="col-sm">
                             <ActionForm action={updateDeeplKey} className="flex items-center gap-1" hidden={{ id: k.id, op: "limit" }}>
                               <input name="limit" className="input w-28 !py-1 text-[13px]" defaultValue={k.charLimit ?? ""} />
                               <SubmitButton className="btn-ghost btn-sm" pendingText="…">OK</SubmitButton>

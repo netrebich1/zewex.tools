@@ -31,7 +31,7 @@ export function ErrorGroups({ groups, scope, showSites = true, articlesLimit = 1
                 <Badge>{errStageLabel(g.stage)}</Badge>
                 {g.kind && <Badge tone={g.kind === "bug" ? "warn" : "neutral"}>{g.kind === "bug" ? "поломка" : "внешняя причина"}</Badge>}
                 {!g.open && <Badge tone="ok">устранено</Badge>}
-                <span className="font-medium">{g.title ?? g.signature.replace(/^[^:]+:\s*/, "").slice(0, 140)}</span>
+                <span className="font-medium min-w-0 [overflow-wrap:anywhere]">{g.title ?? g.signature.replace(/^[^:]+:\s*/, "").slice(0, 140)}</span>
               </div>
               <div className="help mt-1 whitespace-pre-wrap break-words">{g.sample.slice(0, 600)}</div>
               {g.hint && <div className="help mt-1"><b>Что делать:</b> {g.hint}</div>}

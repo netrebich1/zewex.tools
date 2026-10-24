@@ -70,9 +70,9 @@ export default async function UserPage({ params }: { params: Promise<{ id: strin
             {u.memberships.length === 0 ? <p className="help">Не состоит ни в одной команде.</p> : (
               <ul className="divide-y divide-line">
                 {u.memberships.map((m) => (
-                  <li key={m.teamId} className="flex items-center justify-between gap-3 py-2">
-                    <div><span className="font-medium">{m.team.name}</span> {m.role === "LEAD" && <Badge tone="brand">лидер</Badge>}</div>
-                    <div className="flex items-center gap-1">
+                  <li key={m.teamId} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-2">
+                    <div className="min-w-0 flex-1"><span className="font-medium">{m.team.name}</span> {m.role === "LEAD" && <Badge tone="brand">лидер</Badge>}</div>
+                    <div className="flex shrink-0 items-center gap-1">
                       <ActionForm action={addTeamMember} className="inline" hidden={{ teamId: m.teamId, userId: u.id, slug: m.team.slug, role: m.role === "LEAD" ? "MEMBER" : "LEAD" }}>
                         <SubmitButton className="btn-ghost btn-sm" pendingText="…">{m.role === "LEAD" ? "Снять лидера" : "Сделать лидером"}</SubmitButton>
                       </ActionForm>

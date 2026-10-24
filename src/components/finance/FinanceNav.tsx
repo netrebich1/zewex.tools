@@ -26,7 +26,7 @@ export function FinanceNav({ cur }: { cur: DisplayCur }) {
       })}
       <div className="ml-auto inline-flex items-center gap-0.5 rounded-full border border-line p-0.5" title="В какой валюте показывать итоги">
         {DISPLAY.map((c) => (
-          <button key={c} type="button" onClick={() => pick(c)} className={`rounded-full px-2.5 py-1 text-[12.5px] font-semibold transition ${c === cur ? "bg-ink text-bg" : "text-muted hover:text-ink"}`}>{c}</button>
+          <button key={c} type="button" onClick={() => pick(c)} className={`min-h-9 min-w-9 rounded-full px-2.5 py-1 text-[12.5px] font-semibold transition ${c === cur ? "bg-ink text-bg" : "text-muted hover:text-ink"}`}>{c}</button>
         ))}
       </div>
     </div>

@@ -13,6 +13,9 @@ import { Card, Empty, sp, type SearchParams } from "@/components/ui";
 export const dynamic = "force-dynamic";
 
 type Fmt = (v: number, o?: { sign?: boolean }) => string;
+// На телефоне плитка — строка «подпись … сумма». `!` нужен: .kpi/.kpi-value вне слоёв и перебивают утилиты.
+const KPI = "kpi min-w-0 !flex-row items-baseline justify-between gap-3 sm:!flex-col sm:items-stretch sm:justify-start sm:gap-1";
+const KPI_VALUE = "kpi-value tabular-nums !text-[22px] sm:!text-[30px]";
 
 /**
  * Обзор. Вкладка «Вся Wexora»: кто кому должен, итоги по направлениям. Вкладка направления (`?d=`):
@@ -59,6 +62,8 @@ export default async function FinanceHome({ searchParams }: { searchParams: Prom
     <>
       <FinanceNav cur={cur} />
       <DirTabs dirs={tops} active={dir?.id} href={(id) => link({ d: id })} />
+      {/* Форма на телефоне в самом низу — ссылка к ней сверху. */}
+      <a href="#add" className="btn-brand w-full mb-4 lg:!hidden">Добавить операцию</a>
       <div className="grid gap-4 lg:grid-cols-[1fr_400px]">
         <div className="space-y-4 min-w-0">
           {debt && (
@@ -87,10 +92,10 @@ export default async function FinanceHome({ searchParams }: { searchParams: Prom
             {PERIODS.map((p) => <Link key={p.key} href={link({ p: p.key === "month" ? undefined : p.key })} className={`tab ${p.key === period ? "active" : ""}`}>{p.label}</Link>)}
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="kpi"><span className="help">Доходы</span><span className="kpi-value text-ok tabular-nums">{f(sum.income)}</span></div>
-            <div className="kpi"><span className="help">Расходы</span><span className="kpi-value tabular-nums">{f(sum.expense)}</span></div>
-            <div className="kpi"><span className="help">{sum.profit < 0 ? "Убыток" : "Прибыль"}</span><span className={`kpi-value tabular-nums ${sum.profit < 0 ? "text-danger" : "text-ok"}`}>{f(sum.profit, { sign: true })}</span></div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className={KPI}><span className="help">Доходы</span><span className={`${KPI_VALUE} text-ok`}>{f(sum.income)}</span></div>
+            <div className={KPI}><span className="help">Расходы</span><span className={KPI_VALUE}>{f(sum.expense)}</span></div>
+            <div className={KPI}><span className="help">{sum.profit < 0 ? "Убыток" : "Прибыль"}</span><span className={`${KPI_VALUE} ${sum.profit < 0 ? "text-danger" : "text-ok"}`}>{f(sum.profit, { sign: true })}</span></div>
           </div>
 
           <Pnl pnl={pnl} f={f} />
@@ -152,11 +157,11 @@ export default async function FinanceHome({ searchParams }: { searchParams: Prom
           <Months months={months} f={f} />
 
           <Card title={dir ? `Операции · ${dir.name}` : "Последние операции"} actions={<Link href={dir ? `/finance/ops?dir=${dir.id}` : "/finance/ops"} className="btn-ghost btn-sm">Все операции</Link>}>
-            <OpsList ops={recent} refs={refs} cur={cur} factor={ctx.factor} compact />
+            <OpsList ops={recent} refs={refs} cur={cur} factor={ctx.factor} compact back={dir ? `/finance?d=${dir.id}` : "/finance"} />
           </Card>
         </div>
 
-        <div id="add" className="lg:sticky lg:top-20 self-start">
+        <div id="add" className="lg:sticky lg:top-20 self-start scroll-mt-16">
           <Card title={settling ? "Возврат долга" : dir ? `Добавить в «${dir.name}»` : "Добавить операцию"}>
             <OpForm
               key={`${dir?.id ?? "all"}-${settling ? "settle" : "new"}`}
@@ -189,16 +194,26 @@ function Months({ months, f }: { months: { key: string; label: string; income: n
   return (
     <Card title="По месяцам" description="Последние 12 месяцев: зелёный — доходы, серый — расходы.">
       <div className="flex items-end gap-1.5 h-36">
-        {months.map((m) => (
+        {months.map((m, i) => (
           <div key={m.key} className="flex-1 min-w-0 flex flex-col items-center gap-1" title={`${m.key}: доход ${f(m.income)}, расход ${f(m.expense)}`}>
             <div className="flex w-full items-end justify-center gap-0.5 h-28">
               <div className="w-1/2 max-w-3 rounded-t bg-ok" style={{ height: `${(m.income / max) * 100}%` }} />
               <div className="w-1/2 max-w-3 rounded-t bg-ink/30" style={{ height: `${(m.expense / max) * 100}%` }} />
             </div>
-            <span className="text-[10.5px] text-muted truncate">{m.label}</span>
+            {/* На телефоне подпись через месяц: 12 подписей не помещаются. */}
+            <span className={`text-[10.5px] text-muted truncate ${(months.length - 1 - i) % 2 ? "invisible sm:visible" : ""}`}>{m.label}</span>
           </div>
         ))}
       </div>
+      {/* Суммы на телефоне: всплывающая подсказка (title) пальцем не открывается. */}
+      <ul className="mt-3 space-y-1 text-[13.5px] sm:hidden">
+        {months.filter((m) => m.income || m.expense).map((m) => (
+          <li key={m.key} className="flex items-baseline justify-between gap-3">
+            <span className="text-muted">{m.label}</span>
+            <span className="tabular-nums"><span className="text-ok">{f(m.income)}</span> / {f(m.expense)}</span>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }

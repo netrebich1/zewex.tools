@@ -24,14 +24,14 @@ export function TasksList({ rows, accessId, members, showSite, now = Date.now() 
             return (
               <li key={t.id} className="flex items-center gap-3 py-2">
                 <ActionForm action={setProjectTask} hidden={{ accessId: aid, taskId: t.id, status: t.status === "done" ? "open" : "done" }} className="inline">
-                  <SubmitButton className={`h-5 w-5 rounded border flex items-center justify-center text-[11px] ${t.status === "done" ? "bg-ok border-ok text-white" : "border-line-2 bg-surface"}`} pendingText="…">{t.status === "done" ? "✓" : ""}</SubmitButton>
+                  <SubmitButton className={`relative after:absolute after:-inset-2 after:content-[''] h-5 w-5 rounded border flex items-center justify-center text-[11px] ${t.status === "done" ? "bg-ok border-ok text-white" : "border-line-2 bg-surface"}`} pendingText="…">{t.status === "done" ? "✓" : ""}</SubmitButton>
                 </ActionForm>
                 <div className="flex-1 min-w-0">
                   <div className={`text-[14px] ${t.status === "done" ? "text-muted line-through" : ""}`}>{t.title}{showSite && <Link href={`/pinterest/projects/${aid}?tab=tasks`} className="ml-2 text-[12.5px] text-muted hover:underline">{t.siteName}</Link>}</div>
                   <div className="help">{t.assigneeName ?? "без исполнителя"}{t.dueAt ? <span className={overdue ? " text-danger" : ""}> · до {new Date(t.dueAt).toLocaleDateString("ru-RU")}</span> : ""}{t.status === "doing" ? " · в работе" : ""}{t.description ? ` · ${t.description}` : ""}</div>
                 </div>
-                {t.status === "open" && <ActionForm action={setProjectTask} hidden={{ accessId: aid, taskId: t.id, status: "doing" }} className="inline"><SubmitButton className="text-[12px] text-muted hover:text-ink" pendingText="…">в работу</SubmitButton></ActionForm>}
-                <ActionForm action={setProjectTask} hidden={{ accessId: aid, taskId: t.id, status: "delete" }} className="inline"><SubmitButton className="text-[12px] text-muted hover:text-danger" pendingText="…" confirm="Удалить задачу?">×</SubmitButton></ActionForm>
+                {t.status === "open" && <ActionForm action={setProjectTask} hidden={{ accessId: aid, taskId: t.id, status: "doing" }} className="inline"><SubmitButton className="inline-flex items-center justify-center max-sm:min-h-9 max-sm:min-w-9 text-[12px] text-muted hover:text-ink" pendingText="…">в работу</SubmitButton></ActionForm>}
+                <ActionForm action={setProjectTask} hidden={{ accessId: aid, taskId: t.id, status: "delete" }} className="inline"><SubmitButton className="inline-flex items-center justify-center max-sm:min-h-9 max-sm:min-w-9 text-[12px] max-sm:text-[18px] text-muted hover:text-danger" pendingText="…" confirm="Удалить задачу?">×</SubmitButton></ActionForm>
               </li>
             );
           })}

@@ -61,9 +61,9 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
         </div>
         {sites.length > 1 && (
           <div className="mt-3 flex flex-wrap gap-2 items-center">
-            <Link href={qs({ site: undefined, run: undefined })} className={`badge px-3 py-1 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты</Link>
+            <Link href={qs({ site: undefined, run: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты</Link>
             {sites.map((s) => (
-              <Link key={s.id} href={qs({ site: s.id, run: undefined })} className={`badge px-3 py-1 ${siteId === s.id ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{s.name}</Link>
+              <Link key={s.id} href={qs({ site: s.id, run: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${siteId === s.id ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{s.name}</Link>
             ))}
           </div>
         )}
@@ -135,7 +135,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
                   <li key={sig} className="flex flex-wrap items-center gap-2">
                     <Badge tone={h.now > h.prev ? "danger" : "warn"}>{h.now} за час</Badge>
                     <span className="help">было {h.prev}</span>
-                    <span className="font-medium">{h.title}</span>
+                    <span className="font-medium min-w-0 [overflow-wrap:anywhere]">{h.title}</span>
                     <span className="help">· {errStageLabel(h.stage)}</span>
                   </li>
                 ))}
@@ -195,9 +195,9 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
                     <th>Когда</th>
                     <th>Статья</th>
                     <th>Слот</th>
-                    <th>Провайдер · модель</th>
-                    <th>Токены</th>
-                    <th>Время</th>
+                    <th className="col-md">Провайдер · модель</th>
+                    <th className="col-md">Токены</th>
+                    <th className="col-md">Время</th>
                     <th>Стоимость</th>
                     <th>Итог</th>
                   </tr>
@@ -219,11 +219,23 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
                           )}
                         </td>
                         <td className="whitespace-nowrap">{l.slot?.name ?? l.slot?.key ?? "—"}</td>
-                        <td className="whitespace-nowrap">{l.provider.name}{l.model ? ` · ${l.model.modelId}` : ""}</td>
-                        <td className="whitespace-nowrap help">{l.inputTokens.toLocaleString("ru-RU")} / {l.outputTokens.toLocaleString("ru-RU")}</td>
-                        <td className="whitespace-nowrap help">{(l.durationMs / 1000).toFixed(1)} с</td>
+                        <td className="col-md whitespace-nowrap">{l.provider.name}{l.model ? ` · ${l.model.modelId}` : ""}</td>
+                        <td className="col-md whitespace-nowrap help">{l.inputTokens.toLocaleString("ru-RU")} / {l.outputTokens.toLocaleString("ru-RU")}</td>
+                        <td className="col-md whitespace-nowrap help">{(l.durationMs / 1000).toFixed(1)} с</td>
                         <td className="whitespace-nowrap">{canCosts ? fmtMoney(l.costUsd) : "—"}</td>
-                        <td>{l.ok ? <Badge tone="ok">ок</Badge> : <span title={l.error ?? ""}><Badge tone="danger">ошибка</Badge></span>}</td>
+                        <td>
+                          {l.ok ? (
+                            <Badge tone="ok">ок</Badge>
+                          ) : l.error ? (
+                            // текст ошибки по нажатию: title на телефоне не виден
+                            <details title={l.error}>
+                              <summary className="cursor-pointer list-none"><Badge tone="danger">ошибка</Badge></summary>
+                              <div className="help mt-1 max-w-xs [overflow-wrap:anywhere]">{l.error}</div>
+                            </details>
+                          ) : (
+                            <Badge tone="danger">ошибка</Badge>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}

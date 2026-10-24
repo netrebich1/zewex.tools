@@ -68,7 +68,7 @@ export function StockCalendar({ sites, days }: { sites: StockSite[]; days: strin
         <table className="table text-[12px]">
           <thead>
             <tr>
-              <th className="sticky left-0 bg-surface z-10 min-w-[180px]">Сайт</th>
+              <th className="sticky left-0 bg-surface z-10 min-w-[110px] sm:min-w-[180px]">Сайт</th>
               <th className="whitespace-nowrap">Закрыт до</th>
               <th className="whitespace-nowrap">Запас</th>
               <th className="whitespace-nowrap">В день</th>
@@ -86,7 +86,7 @@ export function StockCalendar({ sites, days }: { sites: StockSite[]; days: strin
               const st = stats(s);
               return (
                 <tr key={s.id}>
-                  <td className="sticky left-0 bg-surface z-10"><Link href={`/pinterest/pins/sites/${s.id}`} className="font-semibold text-[13px] hover:underline">{s.name}</Link></td>
+                  <td className="sticky left-0 bg-surface z-10 max-w-[140px] sm:max-w-none"><Link href={`/pinterest/pins/sites/${s.id}`} className="font-semibold text-[13px] hover:underline [overflow-wrap:anywhere]">{s.name}</Link></td>
                   <td className="whitespace-nowrap">{fmt(st.closedUntil)}</td>
                   <td><span className={`badge px-2 py-0.5 ${stockTone(st.stock)}`}>{st.stock} дн.</span></td>
                   <td className="text-muted">{s.target}</td>

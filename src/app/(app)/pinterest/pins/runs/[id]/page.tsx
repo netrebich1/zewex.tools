@@ -39,7 +39,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
       <PageHeader back={{ href: "/pinterest/pins/runs", label: "Прогоны" }} title={run.name || `Прогон ${id.slice(0, 8)}`} subtitle={`${run.site?.name ?? "—"} · ИИ ${r.mix.ai}, фото ${r.mix.photos}, canvas ${r.mix.canvas}, pinora ${r.mix.pinora} на ссылку · ${r.schedule.pinsPerDay}/день · модерация: ${r.schedule.moderationMode === "auto" ? "авто" : "обязательна"} · режим: ${run.stepByStep ? "пошаговый" : "автопилот"}`} />
       <div className="mb-4 flex flex-wrap gap-2">
         {[["overview", "Обзор"], ["pins", `Страницы и пины · ${view.pages.total}/${view.total.planned}`], ["schedule", `Расписание · ${view.total.scheduled}`], ["log", "Журнал этапов"], ["settings", "Настройки"]].map(([k, l]) => (
-          <Link key={k} href={`/pinterest/pins/runs/${id}?tab=${k}`} className={`badge px-3 py-1 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>
+          <Link key={k} href={`/pinterest/pins/runs/${id}?tab=${k}`} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>
         ))}
       </div>
       {tab === "overview" && (
@@ -61,7 +61,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
             </ActionForm>
             {run.status === "WAITING_MODERATION" && <Link href={`/pinterest/pins/moderation?run=${id}`} className="btn-brand">Модерация этого прогона</Link>}
             {run.status === "DONE" && <Link href={`/pinterest/pins/export?site=${run.siteId ?? ""}`} className="btn-ghost">Выгрузка CSV</Link>}
-            {run.siteId && view.total.scheduled > 0 && <a href={`/api/pins/export/all?site=${run.siteId}`} className="btn-ghost">Выгрузить все сформированные для {run.site?.name}</a>}
+            {run.siteId && view.total.scheduled > 0 && <a href={`/api/pins/export/all?site=${run.siteId}`} className="btn-ghost !whitespace-normal text-left max-w-full">Выгрузить все сформированные для {run.site?.name}</a>}
             <ActionForm action={deleteRunAction} className="inline ml-auto" hidden={{ id }}>
               <SubmitButton className="btn-danger" confirm={deleteConfirmText(run.name || id.slice(0, 8), impact)} pendingText="Удаляю…">Удалить прогон</SubmitButton>
             </ActionForm>

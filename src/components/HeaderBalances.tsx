@@ -98,7 +98,7 @@ export function HeaderBalances({ mine = false, teamName = null }: { mine?: boole
       </button>
 
       {open && (
-        <div className="menu overflow-hidden" style={{ width: 340, padding: 0 }} role="dialog" aria-label={title}>
+        <div className="menu popover !p-0 sm:!w-[340px]" role="dialog" aria-label={title}>
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-line">
             <div>
               <div className="text-[14px] font-semibold">{mine ? (teamName ? `Ключи команды «${teamName}»` : "Балансы ваших ключей") : "Балансы"}</div>

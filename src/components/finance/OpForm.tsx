@@ -33,7 +33,7 @@ export type OpValues = {
 const TABS = [
   { key: "EXPENSE", label: "Расход" },
   { key: "INCOME", label: "Доход" },
-  { key: "SETTLEMENT", label: "Возврат долга" },
+  { key: "SETTLEMENT", label: "Возврат долга", short: "Возврат" },
 ] as const;
 const CUR_SIGN: Record<string, string> = { EUR: "€", USD: "$", UAH: "₴", USDT: "₮" };
 const LS = "zx_fin_last";
@@ -137,7 +137,9 @@ export function OpForm({ refs, initial, myPartnerId, onDone, lockDirection }: { 
 
       <div className="grid grid-cols-3 gap-1 rounded-xl bg-ink/5 p-1">
         {TABS.map((t) => (
-          <button key={t.key} type="button" onClick={() => set("type", t.key)} className={`rounded-lg px-2 py-1.5 text-[13.5px] font-medium transition ${v.type === t.key ? "bg-surface text-ink shadow-[var(--shadow-card)]" : "text-muted hover:text-ink"}`}>{t.label}</button>
+          <button key={t.key} type="button" onClick={() => set("type", t.key)} className={`rounded-lg px-2 py-1.5 text-[13.5px] font-medium transition ${v.type === t.key ? "bg-surface text-ink shadow-[var(--shadow-card)]" : "text-muted hover:text-ink"}`}>
+            {"short" in t ? <><span className="sm:hidden">{t.short}</span><span className="hidden sm:inline">{t.label}</span></> : t.label}
+          </button>
         ))}
       </div>
 

@@ -16,7 +16,7 @@ export function ParamSelect({ param, options, allLabel, className = "", resetPag
     start(() => router.replace(`${pathname}${q.toString() ? `?${q}` : ""}`, { scroll: false }));
   };
   return (
-    <select className={`input !w-auto !py-2 !text-[13.5px] ${pending ? "opacity-70" : ""} ${className}`} value={cur} onChange={(e) => set(e.target.value)}>
+    <select className={`input !w-auto !py-2 sm:!text-[13.5px] ${pending ? "opacity-70" : ""} ${className}`} value={cur} onChange={(e) => set(e.target.value)}>
       {allLabel != null && <option value="">{allLabel}</option>}
       {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>

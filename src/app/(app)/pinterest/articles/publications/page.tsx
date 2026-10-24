@@ -79,9 +79,9 @@ export default async function PublicationsPage({ searchParams }: { searchParams:
           </div>
           {sites.length > 1 && (
             <div className="mt-3 flex flex-wrap gap-2 items-center">
-              <Link href={qs({ site: undefined })} className={`badge px-3 py-1 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты</Link>
+              <Link href={qs({ site: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты</Link>
               {sites.map((s) => (
-                <Link key={s.id} href={qs({ site: s.id })} className={`badge px-3 py-1 ${siteId === s.id ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{s.name}</Link>
+                <Link key={s.id} href={qs({ site: s.id })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${siteId === s.id ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{s.name}</Link>
               ))}
             </div>
           )}
@@ -91,16 +91,16 @@ export default async function PublicationsPage({ searchParams }: { searchParams:
           <Empty title={tab === "errors" ? "Ошибок публикации нет" : tab === "queued" ? "Очередь публикации пуста" : "За этот период ничего не опубликовано"} />
         ) : (
           <Card className="p-0 sm:p-0">
-            <div className="table-wrap">
+            <div className="table-wrap !mx-0 !px-0">
               <table className="table">
                 <thead>
                   <tr>
                     <th>Статья</th>
-                    <th>Сайт</th>
+                    <th className="col-sm">Сайт</th>
                     <th>Состояние</th>
-                    {tab !== "published" && <th>Попыток</th>}
-                    <th>{tab === "published" ? "Опубликована" : tab === "queued" ? "Следующая попытка" : "Зафиксировано"}</th>
-                    <th></th>
+                    {tab !== "published" && <th className="col-sm">Попыток</th>}
+                    <th className="col-sm">{tab === "published" ? "Опубликована" : tab === "queued" ? "Следующая попытка" : "Зафиксировано"}</th>
+                    <th className="col-sm"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -110,15 +110,32 @@ export default async function PublicationsPage({ searchParams }: { searchParams:
                         <td>
                           <Link href={`/pinterest/articles/articles/${r.id}`} className="font-medium hover:underline">{r.keyword}</Link>
                           {tab === "errors" && r.error && <div className="help mt-0.5 max-w-xl whitespace-pre-wrap break-words">{r.error.slice(0, 400)}</div>}
+                          {/* Телефон: скрытые колонки — строкой под ключом, кнопки — здесь же */}
+                          <div className="help mt-0.5 sm:hidden">
+                            {r.site.name}
+                            {tab !== "published" && ` · попыток ${r.publishAttempts}`} · {tab === "published" ? fmtDate(r.publishedAt) : tab === "queued" ? (r.nextRunAt ? fmtDate(r.nextRunAt) : "сейчас") : fmtDate(r.updatedAt)}
+                          </div>
+                          {(r.wpUrl || tab === "errors") && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 sm:hidden">
+                              {r.wpUrl && (
+                                <a href={r.wpUrl} target="_blank" rel="noreferrer" className="btn-ghost btn-sm">На сайте ↗</a>
+                              )}
+                              {tab === "errors" && (
+                                <ActionForm action={retryPublishAction} hidden={{ id: r.id }} className="inline">
+                                  <SubmitButton className="btn-primary btn-sm" pendingText="…">Повторить</SubmitButton>
+                                </ActionForm>
+                              )}
+                            </div>
+                          )}
                         </td>
-                        <td className="whitespace-nowrap">{r.site.name}</td>
+                        <td className="col-sm whitespace-nowrap">{r.site.name}</td>
                         <td>
                           <StatusBadge status={r.status} />
                           {r.wpStatus && tab !== "published" && <div className="help mt-0.5">WP: {r.wpStatus}</div>}
                         </td>
-                        {tab !== "published" && <td>{r.publishAttempts}</td>}
-                        <td className="whitespace-nowrap">{tab === "published" ? fmtDate(r.publishedAt) : tab === "queued" ? (r.nextRunAt ? fmtDate(r.nextRunAt) : "сейчас") : fmtDate(r.updatedAt)}</td>
-                        <td>
+                        {tab !== "published" && <td className="col-sm">{r.publishAttempts}</td>}
+                        <td className="col-sm whitespace-nowrap">{tab === "published" ? fmtDate(r.publishedAt) : tab === "queued" ? (r.nextRunAt ? fmtDate(r.nextRunAt) : "сейчас") : fmtDate(r.updatedAt)}</td>
+                        <td className="col-sm">
                           <div className="flex flex-wrap items-center gap-1.5 justify-end">
                             {r.wpUrl && (
                               <a href={r.wpUrl} target="_blank" rel="noreferrer" className="btn-ghost btn-sm" title="Открыть на сайте">На сайте ↗</a>

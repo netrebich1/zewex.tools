@@ -91,7 +91,7 @@ export default async function BlogPostPage({ params, searchParams }: { params: P
 
         <Card title="Этапы" description="Что уже сделано, сколько заняло и стоило."><PostTimeline logs={a.stageLogs} /></Card>
 
-        <div className="flex flex-wrap gap-2">{TABS.map(([k, l]) => <Link key={k} href={`/pinterest/blog/posts/${id}?tab=${k}`} className={`badge px-3 py-1 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}</div>
+        <div className="flex flex-wrap gap-2">{TABS.map(([k, l]) => <Link key={k} href={`/pinterest/blog/posts/${id}?tab=${k}`} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}</div>
 
         {tab === "plan" && <PlanTab brief={(a.brief as BlogBrief | null) ?? null} outline={(a.outline as BlogOutline | null) ?? null} />}
         {tab === "photos" && <VideoCard postId={id} video={(a.video ?? null) as BlogVideoState | null} running={running} />}
@@ -99,7 +99,7 @@ export default async function BlogPostPage({ params, searchParams }: { params: P
         {tab === "text" && <TextTab a={{ id, h1: a.h1, metaTitle: a.metaTitle, metaDescription: a.metaDescription, slug: a.slug, introHtml: a.introHtml, takeawaysHtml: a.takeawaysHtml, conclusionHtml: a.conclusionHtml, disclaimerHtml: a.disclaimerHtml, faq: a.faq, running }} />}
         {tab === "preview" && (
           <Card title="Предпросмотр" description="Так статья уходит в WordPress (стили темы сайта не учитываются).">
-            {a.html ? <article className="zx-preview prose max-w-none text-[15px] leading-relaxed [&_h2]:mt-7 [&_h2]:text-[1.35em] [&_h2]:font-semibold [&_h3]:mt-4 [&_h3]:font-semibold [&_p]:my-3 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_img]:my-3 [&_img]:max-w-[480px] [&_img]:rounded-xl [&_table]:my-4 [&_script]:hidden" dangerouslySetInnerHTML={{ __html: previewHtml(a.html) }} /> : <p className="help">HTML ещё не собран: появится после этапа «Сборка HTML».</p>}
+            {a.html ? <article className="zx-preview prose max-w-none text-[15px] leading-relaxed [&_h2]:mt-7 [&_h2]:text-[1.35em] [&_h2]:font-semibold [&_h3]:mt-4 [&_h3]:font-semibold [&_p]:my-3 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_img]:my-3 [&_img]:max-w-full sm:[&_img]:max-w-[480px] [&_img]:h-auto [&_figure]:max-w-full [&_img]:rounded-xl [&_table]:my-4 [&_table]:block [&_table]:overflow-x-auto [&_script]:hidden" dangerouslySetInnerHTML={{ __html: previewHtml(a.html) }} /> : <p className="help">HTML ещё не собран: появится после этапа «Сборка HTML».</p>}
             {a.html && <details className="mt-4"><summary className="help cursor-pointer">Показать HTML ({Math.round(a.html.length / 1024)} КБ)</summary><pre className="mono mt-2 max-h-[480px] overflow-auto rounded-lg bg-surface-2 p-3 text-[11.5px] whitespace-pre-wrap break-words">{a.html}</pre></details>}
           </Card>
         )}
@@ -110,7 +110,7 @@ export default async function BlogPostPage({ params, searchParams }: { params: P
               <div className="flex justify-between gap-3"><dt className="text-muted">Пост WordPress</dt><dd>{a.wpPostId ? `#${a.wpPostId}${a.wpStatus ? ` · ${a.wpStatus === "publish" ? "опубликован" : a.wpStatus === "draft" ? "черновик" : a.wpStatus}` : ""}` : "ещё не создан"}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Ссылка</dt><dd className="truncate max-w-[320px]">{a.wpUrl ? <a href={a.wpUrl} target="_blank" rel="noreferrer" className="text-info hover:underline">{a.wpUrl}</a> : "—"}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Попыток публикации</dt><dd>{a.publishAttempts}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-muted">Адрес (slug)</dt><dd className="mono">{a.slug || "—"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted">Адрес (slug)</dt><dd className="mono min-w-0 text-right [overflow-wrap:anywhere]">{a.slug || "—"}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Слов в статье</dt><dd>{a.wordCount || "—"}</dd></div>
             </dl>
             {(a.status === "PUBLISH_ERROR" || a.errorStage === "publish") && a.error && <div className="mt-3"><Alert tone="danger">{a.error}</Alert></div>}
@@ -245,7 +245,7 @@ async function PhotosTab({ postId, running }: { postId: string; running: boolean
         return (
           <Card key={s.id} title={`${s.key === "hero" ? "Главное фото" : s.key === "closing" ? "Последнее фото" : `Секция ${s.sectionPosition}`} · ${s.key}`} description={`Запрос: «${s.query}»${s.mustShow ? ` · должно быть видно: ${s.mustShow}` : ""} · поисков ${s.searches} · ${s.status}`}>
             <div className="grid gap-4 md:grid-cols-[200px_1fr]">
-              <div>
+              <div className="max-w-[180px] md:max-w-none">
                 {p && thumb(p) ? (
                   <figure className="rounded-xl border border-line p-1.5"><a href={p.path ? publicUrl(p.path) : p.wpUrl || p.sourceUrl} target="_blank" rel="noreferrer"><img src={thumb(p)} alt={p.altText} loading="lazy" className="w-full rounded-lg object-cover aspect-[3/4]" /></a>
                     <figcaption className="mt-1 text-[11.5px] leading-tight"><div className="flex items-center justify-between"><b>#{p.position}</b>{p.aiScore != null && <span>★ {p.aiScore.toFixed(1)}</span>}</div><div className="truncate text-muted" title={p.sourcePageUrl}>{p.sourceDomain || "—"}</div>{p.width && p.height && <div className="text-muted">{p.width}×{p.height}{p.wpMediaId ? " · в WP" : ""}</div>}</figcaption>
@@ -262,12 +262,12 @@ async function PhotosTab({ postId, running }: { postId: string; running: boolean
                 <div>
                   <div className="text-[12.5px] font-semibold text-muted mb-1">Резерв — нажмите, чтобы поставить вместо текущего</div>
                   {res.length === 0 ? <p className="help">Резерва нет. Измените запрос ниже и повторите этап «Поиск фото».</p> : (
-                    <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                       {res.map((c) => (
                         <ActionForm key={c.id} action={swapSlotPhoto} hidden={{ candidateId: c.id }} className="rounded-lg border border-line p-1">
                           {thumb(c) ? <img src={thumb(c)} alt="" loading="lazy" className="aspect-[3/4] w-full rounded-md object-cover" /> : <div className="aspect-[3/4] rounded-md bg-ink/5" />}
                           <div className="help truncate" title={`${c.aiDescription ?? ""} · ${c.pageUrl ?? ""}`}>{c.aiScore != null ? `★ ${c.aiScore.toFixed(1)} · ` : ""}{c.domain || "—"}</div>
-                          <SubmitButton className="btn-ghost btn-sm w-full mt-1" pendingText="…">Поставить</SubmitButton>
+                          <SubmitButton className="btn-ghost btn-sm w-full mt-1 max-sm:!px-1 max-sm:!text-[12px]" pendingText="…">Поставить</SubmitButton>
                         </ActionForm>
                       ))}
                     </div>

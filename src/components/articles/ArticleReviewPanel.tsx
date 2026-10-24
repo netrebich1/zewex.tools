@@ -45,6 +45,7 @@ export function ArticleReviewPanel({ userId, mode, items, initialId, initialStat
   const [history, setHistory] = useState<string[]>([]);
   const metaRef = useRef(meta);
   metaRef.current = meta;
+  const workRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -98,7 +99,9 @@ export function ArticleReviewPanel({ userId, mode, items, initialId, initialStat
         setDirty(false);
         setReworkOpen(false);
         setList((l) => l.map((x) => (x.id === id ? { ...x, claimedById: userId, claimedByName: "вы", claimedFresh: true } : x)));
-        window.scrollTo({ top: 0 });
+        // На телефоне список стоит над карточкой — прокручиваем к карточке, а не в начало страницы.
+        if (window.matchMedia("(min-width: 1024px)").matches) window.scrollTo({ top: 0 });
+        else workRef.current?.scrollIntoView({ block: "start" });
       } catch (e) {
         const err = e as Error & { stale?: boolean };
         setMsg({ text: err.message, tone: err.stale ? "neutral" : "danger" });
@@ -254,7 +257,7 @@ export function ArticleReviewPanel({ userId, mode, items, initialId, initialStat
   return (
     <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
       {/* Список */}
-      <aside className="card p-2 lg:max-h-[80vh] lg:overflow-auto lg:sticky lg:top-4">
+      <aside className="card p-2 max-h-56 overflow-auto lg:max-h-[80vh] lg:sticky lg:top-[4.5rem]">
         {list.length === 0 ? (
           <p className="help p-3">Статей нет.</p>
         ) : (
@@ -279,19 +282,20 @@ export function ArticleReviewPanel({ userId, mode, items, initialId, initialStat
       </aside>
 
       {/* Карточка */}
-      <div className="space-y-4 min-w-0">
+      <div ref={workRef} className="space-y-4 min-w-0 scroll-mt-16 pb-20 lg:pb-0">
         {!a || !state ? (
           <div className="rounded-2xl border border-dashed border-line px-6 py-10 text-center">
-            <p className="font-medium">{list.length ? "Выберите статью слева" : "Всё проверено"}</p>
+            <p className="font-medium">{list.length ? "Выберите статью в списке" : "Всё проверено"}</p>
             {msg && <p className={`mt-2 text-[13px] ${msg.tone === "danger" ? "text-danger" : "text-muted"}`}>{msg.text}</p>}
           </div>
         ) : (
           <>
-            <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-bg/95 backdrop-blur border-b border-line">
+            {/* Шапка закреплена только на десктопе; на телефоне главные кнопки — в нижней панели */}
+            <div className="lg:sticky lg:top-14 z-20 -mx-4 px-4 py-3 bg-bg/95 backdrop-blur border-b border-line">
               <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-[17px] font-semibold uppercase tracking-wide truncate">{a.keyword}</span>
+                    <span className="text-[17px] font-semibold uppercase tracking-wide min-w-0 [overflow-wrap:anywhere] sm:truncate">{a.keyword}</span>
                     {a.keywordRu && <span className="text-muted">🇷🇺 {a.keywordRu}</span>}
                   </div>
                   <div className="help flex flex-wrap gap-x-2">
@@ -304,8 +308,8 @@ export function ArticleReviewPanel({ userId, mode, items, initialId, initialStat
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button type="button" className="btn-ghost btn-sm" disabled={!!busy || !history.length} onClick={prev} title="Назад (Backspace)">←</button>
-                  <button type="button" className="btn-ghost btn-sm" disabled={!!busy} onClick={skip} title="Пропустить (S)">Пропустить</button>
+                  <button type="button" className="btn-ghost btn-sm max-lg:!hidden" disabled={!!busy || !history.length} onClick={prev} title="Назад (Backspace)">←</button>
+                  <button type="button" className="btn-ghost btn-sm max-lg:!hidden" disabled={!!busy} onClick={skip} title="Пропустить (S)">Пропустить</button>
                   <button type="button" className="btn-ghost btn-sm text-danger" disabled={!!busy} onClick={remove} title="Удалить статью из системы совсем — если решили её не писать">Удалить</button>
                   {mode === "articles" && (
                     <button type="button" className={`btn-ghost btn-sm ${reworkOpen ? "bg-ink/10" : ""}`} disabled={!!busy} onClick={() => setReworkOpen((v) => !v)}>
@@ -315,7 +319,7 @@ export function ArticleReviewPanel({ userId, mode, items, initialId, initialStat
                   <label className="inline-flex items-center gap-1.5 text-[13px]" title="После одобрения публиковать с приоритетом">
                     <input type="checkbox" checked={publishNow} onChange={(e) => togglePublishNow(e.target.checked)} /> публиковать сразу
                   </label>
-                  <button type="button" className="btn-brand" disabled={!!busy} onClick={approve} title="Enter">
+                  <button type="button" className="btn-brand max-lg:!hidden" disabled={!!busy} onClick={approve} title="Enter">
                     {busy === "approve" ? "Сохраняю…" : publishNow ? "Одобрить и опубликовать" : "Одобрить"}
                   </button>
                 </div>
@@ -379,6 +383,19 @@ export function ArticleReviewPanel({ userId, mode, items, initialId, initialStat
             {gridInitial && (
               <PhotoModerationGrid key={a.id} initial={gridInitial} userKey={userId} mode={mode} onState={onGridState} onStale={onStale} onApprove={approve} renderUnderPhoto={renderUnder} hideReserve />
             )}
+
+            {/* Телефон: главные действия внизу экрана */}
+            <div className="fixed inset-x-0 bottom-0 z-30 flex gap-2 border-t border-line bg-bg/95 p-2 pb-[max(.5rem,env(safe-area-inset-bottom))] lg:hidden">
+              <button type="button" className="btn-ghost" disabled={!!busy || !history.length} onClick={prev} aria-label="Назад">
+                ←
+              </button>
+              <button type="button" className="btn-ghost flex-1" disabled={!!busy} onClick={skip}>
+                Пропустить
+              </button>
+              <button type="button" className="btn-brand flex-1" disabled={!!busy} onClick={approve}>
+                {busy === "approve" ? "Сохраняю…" : publishNow ? "Одобрить и опубл." : "Одобрить"}
+              </button>
+            </div>
           </>
         )}
       </div>

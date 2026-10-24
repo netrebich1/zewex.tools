@@ -16,9 +16,15 @@ const BASE = "/pinterest/articles/moderation/articles";
 type Tab = PhotoQueueGroup | "review" | "rework";
 const TABS: Tab[] = ["ai", "new", "low", "review", "rework"];
 const PHOTO_HINT: Record<PhotoQueueGroup, string> = {
-  ai: "ИИ проверил фото и отдал людям (или только предложил правки в тест-режиме) — причина под ключом. Enter — одобрить и писать, → — пропустить, ← — предыдущая.",
-  new: "Фото, которые ИИ не смотрел: проверка ИИ у сайта выключена или ещё не дошла. Enter — одобрить и писать, → — пропустить, ← — предыдущая.",
+  ai: "ИИ проверил фото и отдал людям (или только предложил правки в тест-режиме) — причина под ключом.",
+  new: "Фото, которые ИИ не смотрел: проверка ИИ у сайта выключена или ещё не дошла.",
   low: "Подходящих кадров не хватило. Верните на модерацию, отправьте добирать или закройте.",
+};
+/** Подсказки по клавишам: на сенсорных экранах клавиатуры нет — там их не показываем. */
+const PHOTO_KEYS: Record<PhotoQueueGroup, string | null> = {
+  ai: "Enter — одобрить и писать, → — пропустить, ← — предыдущая.",
+  new: "Enter — одобрить и писать, → — пропустить, ← — предыдущая.",
+  low: null,
 };
 
 /**
@@ -85,19 +91,26 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
         ))}
       </div>
       <div className="mt-3 flex flex-wrap gap-2 items-center">
-        <Link href={qs({ site: null })} className={`badge px-3 py-1 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты · {tabTotal}</Link>
+        <Link href={qs({ site: null })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты · {tabTotal}</Link>
         {sites.map((s) => (
-          <Link key={s.siteId} href={qs({ site: s.siteId })} className={`badge px-3 py-1 ${siteId === s.siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>
+          <Link key={s.siteId} href={qs({ site: s.siteId })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${siteId === s.siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>
             {s.siteName} · {s.count}
           </Link>
         ))}
       </div>
       <p className="help mt-3">
-        {photoTab
-          ? PHOTO_HINT[tab as PhotoQueueGroup]
-          : tab === "rework"
-            ? "Статьи с замечанием модератора. Исправьте фото или мета и нажмите «Одобрить» — статья пойдёт на публикацию; либо откройте карточку и перезапустите с нужного этапа."
-            : "Готовые статьи: проверьте мета-поля, категорию и текст под каждым фото. Enter — одобрить, S — пропустить. Снятые фото удаляются из статьи при одобрении, HTML пересобирается."}
+        {photoTab ? (
+          <>
+            {PHOTO_HINT[tab as PhotoQueueGroup]}
+            {PHOTO_KEYS[tab as PhotoQueueGroup] && <span className="[@media(hover:none)]:hidden"> {PHOTO_KEYS[tab as PhotoQueueGroup]}</span>}
+          </>
+        ) : tab === "rework" ? (
+          "Статьи с замечанием модератора. Исправьте фото или мета и нажмите «Одобрить» — статья пойдёт на публикацию; либо откройте карточку и перезапустите с нужного этапа."
+        ) : (
+          <>
+            Готовые статьи: проверьте мета-поля, категорию и текст под каждым фото.<span className="[@media(hover:none)]:hidden"> Enter — одобрить, S — пропустить.</span> Снятые фото удаляются из статьи при одобрении, HTML пересобирается.
+          </>
+        )}
         {photoTab && queue.counts.aiBusy > 0 && ` Ещё ${queue.counts.aiBusy} сейчас проверяет ИИ — появятся после решения.`}
       </p>
     </Card>

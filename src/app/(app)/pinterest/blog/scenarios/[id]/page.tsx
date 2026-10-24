@@ -113,7 +113,7 @@ export default async function BlogRecipePage({ params, searchParams }: { params:
 
       {tab === "prompts" && (
         <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-          <Card className="lg:sticky lg:top-4 self-start">
+          <Card className="lg:sticky lg:top-[4.5rem] self-start">
             <h3 className="h2 mb-2">Шаги</h3>
             <ul className="space-y-0.5">{steps.map((s) => {
               const ok = hasPrompt(shape.prompts[s.key]);

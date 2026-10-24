@@ -106,7 +106,8 @@ body {
 
 /* ───────── Формы ───────── */
 .input {
-  @apply w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[14.5px] text-ink placeholder:text-muted/60
+  /* 16px на телефоне: iOS увеличивает страницу при фокусе на поле со шрифтом меньше 16px. */
+  @apply w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[16px] sm:text-[14.5px] text-ink placeholder:text-muted/60
     transition focus:outline-none focus:ring-4 focus:ring-brand/25 focus:border-brand disabled:opacity-60;
 }
 select.input { @apply pr-9 appearance-none bg-no-repeat; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236f7380' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>"); background-position: right 0.75rem center; }
@@ -123,7 +124,7 @@ input[type="checkbox"] { accent-color: var(--color-ink); }
 .btn-brand { @apply bg-brand text-[#1a1200] hover:bg-brand-2 active:scale-[0.99] shadow-[0_1px_0_rgba(0,0,0,0.08)]; }
 .btn-ghost { @apply bg-surface text-ink hover:bg-surface-2 border border-line hover:border-line-2; }
 .btn-danger { @apply bg-danger-soft text-danger hover:bg-danger hover:text-white; }
-.btn-sm { @apply px-3 py-1.5 text-[13px] rounded-lg; }
+.btn-sm { @apply px-3 py-2 sm:py-1.5 text-[13px] rounded-lg; }
 
 /* ───────── Бейджи, таблицы, навигация ───────── */
 .badge { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[12px] font-semibold whitespace-nowrap; }
@@ -132,16 +133,22 @@ input[type="checkbox"] { accent-color: var(--color-ink); }
 .table td { @apply px-3 py-2.5 border-b border-line/70 align-middle; }
 .table tbody tr { @apply transition-colors hover:bg-surface-2/70; }
 .table tr:last-child td { @apply border-b-0; }
-.table-wrap { @apply overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0; }
+.table-wrap { @apply overflow-x-auto overscroll-x-contain -mx-4 px-4 sm:mx-0 sm:px-0; }
+/* Колонки, которые на телефоне не нужны: прячем, главное остаётся без прокрутки вбок. */
+.col-sm { @apply hidden sm:table-cell; }
+.col-md { @apply hidden md:table-cell; }
 .nav-link { @apply flex items-center gap-2.5 rounded-xl px-3 py-2 text-[14px] font-medium text-ink-2 hover:bg-ink/5 transition; }
 .nav-link.active { @apply bg-ink text-bg hover:bg-ink; }
 .tab { @apply inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13.5px] font-medium border border-transparent text-ink-2 hover:bg-ink/5 transition; }
 .tab.active { @apply bg-ink text-bg; }
-.menu { @apply absolute right-0 top-full mt-2 w-64 bg-surface border border-line rounded-2xl p-1.5 z-50 shadow-[var(--shadow-pop)]; }
+/* Меню не длиннее экрана: шапка закреплена, без прокрутки низ меню на телефоне недоступен. */
+.menu { @apply absolute right-0 top-full mt-2 w-64 max-h-[calc(100dvh-4.5rem)] overflow-y-auto bg-surface border border-line rounded-2xl p-1.5 z-50 shadow-[var(--shadow-pop)]; }
+/* Окно из шапки (балансы, сервер): на телефоне во всю ширину под шапкой, а не от правого края кнопки за левый край экрана. */
+.popover { @apply max-sm:fixed max-sm:inset-x-2 max-sm:top-[3.75rem] max-sm:mt-0 max-sm:w-auto; }
 .menu-item { @apply flex items-center gap-2.5 w-full rounded-lg px-3 py-2 text-[14px] text-ink-2 hover:bg-ink/5 hover:text-ink transition text-left; }
 
 /* ───────── Типографика ───────── */
-.h1 { @apply text-[24px] sm:text-[28px] font-bold tracking-[-0.02em]; }
+.h1 { @apply text-[24px] sm:text-[28px] font-bold tracking-[-0.02em] [overflow-wrap:anywhere]; }
 .h2 { @apply text-[17px] font-semibold tracking-[-0.01em]; }
 .help { @apply text-[13px] text-muted leading-snug; }
 .mono { @apply font-mono text-[12.5px]; }

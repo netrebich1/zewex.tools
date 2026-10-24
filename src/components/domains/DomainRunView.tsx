@@ -269,7 +269,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
       {domains.length > 0 && (
         <div className="flex flex-wrap items-center gap-3">
           <input className="input !w-auto min-w-[220px]" placeholder="Поиск по домену или бренду" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {([["available", `Свободные · ${overall.counts.available}`], ["selected", `✓ Выбранные · ${overall.counts.selected}`], ["taken", `Занятые · ${overall.counts.taken}`], ["all", `Все · ${overall.counts.total}`]] as const).map(([v, label]) => (
               <button key={v} type="button" className={`tab ${view === v ? "active" : ""}`} onClick={() => setView(v)}>{label}</button>
             ))}
@@ -297,7 +297,8 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
             {MODE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
           {!live && <button type="button" className="btn-primary btn-sm" onClick={selectAllRecommended} title="У каждого бренда отметить рекомендованные под его фильтр">★ Выбрать рекомендованные во всех</button>}
-          <div className="ml-auto flex items-center gap-1">
+          {/* Ниже md всегда одна колонка — переключатель там ничего не меняет. */}
+          <div className="ml-auto hidden md:flex items-center gap-1">
             <span className="help">Колонок:</span>
             {([1, 2, 3] as const).map((n) => <button key={n} type="button" className={`tab !px-2 !py-0.5 ${cols === n ? "active" : ""}`} onClick={() => setCols(n)}>{n}</button>)}
           </div>
@@ -325,7 +326,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
           return (
             <section key={key} className="card flex flex-col min-w-0">
               <div className="flex items-center gap-2 px-3 py-2.5">
-                {!live && <input type="checkbox" className="h-4 w-4 shrink-0" checked={groupBrands.has(key)} onChange={(e) => setGroupBrands((prev) => { const n = new Set(prev); if (e.target.checked) n.add(key); else n.delete(key); return n; })} title="В группу для ИИ-отбора" />}
+                {!live && <label className="-m-2 p-2 shrink-0 cursor-pointer" title="В группу для ИИ-отбора"><input type="checkbox" className="block h-4 w-4" checked={groupBrands.has(key)} onChange={(e) => setGroupBrands((prev) => { const n = new Set(prev); if (e.target.checked) n.add(key); else n.delete(key); return n; })} /></label>}
                 <button type="button" className="min-w-0 flex-1 text-left font-semibold text-[15px] truncate hover:underline" onClick={toggleOpen} title={label}>
                   {label}
                 </button>
@@ -336,7 +337,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
                   <span className="text-muted"> / </span><b className="text-ok">{stats.counts.available}</b>
                   <span className="text-muted"> / {stats.counts.taken}</span>
                 </span>
-                <button type="button" className="shrink-0 text-muted hover:text-ink px-1" onClick={toggleOpen} aria-label={open ? "Свернуть" : "Развернуть"}>{open ? "▾" : "▸"}</button>
+                <button type="button" className="shrink-0 text-muted hover:text-ink px-2 py-1" onClick={toggleOpen} aria-label={open ? "Свернуть" : "Развернуть"}>{open ? "▾" : "▸"}</button>
               </div>
               {open && (
                 <div className="border-t border-line flex flex-col min-h-0">
@@ -358,8 +359,8 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
                         {stats.counts.selected ? <>зоны {formatCounts(stats.zones.selected)} · приставки {formatCounts(stats.suffixes.selected)}</> : <>свободно: {formatCounts(stats.zones.available)}</>}
                       </div>
                       {!live && (
-                        <div className="flex gap-1.5 px-3 py-2 border-t border-line">
-                          <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(visible.filter((d) => rec.has(d.id)), true)} title="Отметить рекомендованные под текущий фильтр">★ Выбрать рекомендованные</button>
+                        <div className="flex flex-wrap gap-1.5 px-3 py-2 border-t border-line">
+                          <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(visible.filter((d) => rec.has(d.id)), true)} title="Отметить рекомендованные под текущий фильтр"><span className="sm:hidden">★ Реком.</span><span className="hidden sm:inline">★ Выбрать рекомендованные</span></button>
                           <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(filterRows(visible, sources.get(key), filter), true)} title="Выбрать свободные домены под текущий фильтр">Видимые</button>
                           <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(filterRows(visible, sources.get(key), filter), false)}>Снять</button>
                           <button type="button" className="btn-primary btn-sm !px-2.5 !py-1 text-[12.5px] ml-auto" disabled={!!aiBusy || stats.counts.available === 0} onClick={() => runAi([key], key)}>{aiBusy === key ? "ИИ…" : "ИИ-отбор"}</button>

@@ -100,7 +100,7 @@ export function NewArticlesRunForm({ sites, recipes, presetSiteId, sheets }: { s
           <div className="font-medium">3. Ключи</div>
           <div className="flex gap-1.5">
             {([["manual", "Вставить списком"], ["sheet", "Из Google Таблицы"]] as const).map(([k, l]) => (
-              <button key={k} type="button" onClick={() => { setSource(k); setCount(0); }} className={`badge px-3 py-1 ${source === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</button>
+              <button key={k} type="button" onClick={() => { setSource(k); setCount(0); }} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${source === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</button>
             ))}
           </div>
         </div>

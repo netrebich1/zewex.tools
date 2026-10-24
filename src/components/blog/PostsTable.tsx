@@ -33,7 +33,7 @@ export function PostsTable({ rows, showRun = false, showSite = false, emptyText 
           {!confirmDelete ? (
             <button type="button" className="btn-danger btn-sm" disabled={!picked.length} onClick={() => setConfirmDelete(true)}>Удалить</button>
           ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-danger-soft px-2 py-1 text-[13px] text-danger">
+            <span className="flex flex-wrap items-center gap-1.5 rounded-lg bg-danger-soft px-2 py-1 text-[13px] text-danger">
               Удалить {picked.length} статей вместе с фото и текстами?
               <button type="submit" name="op" value="delete" className="btn-danger btn-sm" onClick={() => setConfirmDelete(false)}>Да, удалить</button>
               <button type="button" className="btn-ghost btn-sm" onClick={() => setConfirmDelete(false)}>Отмена</button>

@@ -54,10 +54,10 @@ export default async function DeeplHome() {
                   <th>Прогон</th>
                   <th>Статус</th>
                   <th>Статьи</th>
-                  <th>Опубликовано</th>
-                  <th>Расход</th>
-                  <th>Создан</th>
-                  <th></th>
+                  <th className="col-sm">Опубликовано</th>
+                  <th className="col-sm">Расход</th>
+                  <th className="col-sm">Создан</th>
+                  <th className="col-sm"></th>
                 </tr>
               </thead>
               <tbody>
@@ -78,10 +78,10 @@ export default async function DeeplHome() {
                         {j.counts.warning > 0 && <span className="help ml-2 text-warn">проверить {j.counts.warning}</span>}
                         {j.counts.error > 0 && <span className="help ml-2 text-danger">ошибок {j.counts.error}</span>}
                       </td>
-                      <td>{j.published || "—"}</td>
-                      <td className="help whitespace-nowrap">{fmtMoney(j.costUsd)} · {fmtChars(j.deeplChars)} симв.</td>
-                      <td className="help whitespace-nowrap">{fmtDate(j.createdAt)}</td>
-                      <td className="text-right"><Link href={`/discovery/deepl/runs/${j.id}`} className="btn-primary btn-sm">Открыть →</Link></td>
+                      <td className="col-sm">{j.published || "—"}</td>
+                      <td className="col-sm help whitespace-nowrap">{fmtMoney(j.costUsd)} · {fmtChars(j.deeplChars)} симв.</td>
+                      <td className="col-sm help whitespace-nowrap">{fmtDate(j.createdAt)}</td>
+                      <td className="col-sm text-right"><Link href={`/discovery/deepl/runs/${j.id}`} className="btn-primary btn-sm">Открыть →</Link></td>
                     </tr>
                   );
                 })}

@@ -33,9 +33,10 @@ export function PagesTable({ rows, sites, showSite, total, page, perPage, pageHr
               const d = delta(r.pageviews, r.prevViews);
               return (
                 <tr key={`${r.propertyId}|${r.pathHash}`}>
-                  <td className="max-w-[520px]">
-                    <div className="font-medium text-[14px] leading-snug truncate" title={r.title}>{r.title || <span className="text-muted">без заголовка</span>}</div>
-                    <div className="help truncate">
+                  <td>
+                    {/* max-w у td игнорируется — ограничиваем строки внутри. */}
+                    <div className="font-medium text-[14px] leading-snug truncate max-w-[60vw] sm:max-w-[520px]" title={r.title}>{r.title || <span className="text-muted">без заголовка</span>}</div>
+                    <div className="help truncate max-w-[60vw] sm:max-w-[520px]">
                       {full ? <a href={full} target="_blank" rel="noopener noreferrer" className="hover:text-ink hover:underline" title={full}>{r.path}</a> : r.path}
                     </div>
                   </td>

@@ -47,8 +47,8 @@ export function SitesTable({ rows, qs }: { rows: SiteRow[]; qs: string }) {
     return f;
   }, [rows, q, sort, desc, online]);
 
-  const th = (key: SortKey, label: string, right = true) => (
-    <th className={`${right ? "text-right" : ""} cursor-pointer select-none hover:text-ink`} onClick={() => { if (sort === key) setDesc((v) => !v); else { setSort(key); setDesc(key !== "name"); } }}>
+  const th = (key: SortKey, label: string, right = true, cls = "") => (
+    <th className={`${right ? "text-right" : ""} ${cls} cursor-pointer select-none hover:text-ink`} onClick={() => { if (sort === key) setDesc((v) => !v); else { setSort(key); setDesc(key !== "name"); } }}>
       <span className="inline-flex items-center gap-1">{label}{sort === key && <svg width="9" height="9" viewBox="0 0 10 10" className={desc ? "rotate-180" : ""} aria-hidden><path d="M5 1l4 5H1z" fill="currentColor" /></svg>}</span>
     </th>
   );
@@ -58,7 +58,7 @@ export function SitesTable({ rows, qs }: { rows: SiteRow[]; qs: string }) {
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <input className="input !w-64 !py-2 !text-[13.5px]" placeholder="Найти сайт…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input !w-64 !py-2 sm:!text-[13.5px]" placeholder="Найти сайт…" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="help">{list.length} из {rows.length}</span>
         {hasOnline && <span className="ml-auto inline-flex items-center gap-1.5 text-[13px] text-ink-2"><i className="inline-block h-2 w-2 rounded-full bg-ok animate-pulse" /> Сейчас на сайтах: <b className="tabular-nums">{fmtInt(totalOnline)}</b></span>}
       </div>
@@ -66,12 +66,13 @@ export function SitesTable({ rows, qs }: { rows: SiteRow[]; qs: string }) {
         <table className="table">
           <thead>
             <tr>
-              {th("name", "Сайт", false)}
+              {/* Сайт закреплён слева при прокрутке вбок; фон непрозрачный — как у шапки и при наведении. */}
+              {th("name", "Сайт", false, "sticky left-0 z-10 !bg-[color-mix(in_oklab,var(--color-surface-2)_60%,var(--color-surface))]")}
               <th className="hidden md:table-cell"></th>
               {th("sessions", "Визиты")}
               {th("delta", "Изменение")}
-              {th("users", "Посетители")}
-              {th("pageviews", "Просмотры")}
+              {th("users", "Посетители", true, "col-sm")}
+              {th("pageviews", "Просмотры", true, "col-sm")}
               <th className="text-right hidden lg:table-cell">Отказы</th>
               <th className="text-right hidden lg:table-cell">Время</th>
               {th("online", "Сейчас")}
@@ -83,18 +84,18 @@ export function SitesTable({ rows, qs }: { rows: SiteRow[]; qs: string }) {
               const href = `/analytics/sites/${r.id}${qs ? `?${qs}` : ""}`;
               return (
                 <tr key={r.id} className="group">
-                  <td className="min-w-[200px]">
+                  <td className="sticky left-0 z-10 bg-surface group-hover:bg-[color-mix(in_oklab,var(--color-surface-2)_70%,var(--color-surface))] min-w-[140px] sm:min-w-[200px]">
                     <Link href={href} className="block">
                       <span className="font-semibold text-[14px] group-hover:text-brand transition">{r.host || r.name}</span>
-                      <span className="block help truncate max-w-[260px]">{r.host ? r.name : ""}{r.groups.length > 0 && <span className="inline-flex gap-1 ml-1 align-middle">{r.groups.map((g) => <i key={g.id} title={g.name} className="inline-block h-2 w-2 rounded-full" style={{ background: g.color }} />)}</span>}</span>
+                      <span className="block help truncate max-w-[160px] sm:max-w-[260px]">{r.host ? r.name : ""}{r.groups.length > 0 && <span className="inline-flex gap-1 ml-1 align-middle">{r.groups.map((g) => <i key={g.id} title={g.name} className="inline-block h-2 w-2 rounded-full" style={{ background: g.color }} />)}</span>}</span>
                       {r.error ? <span className="badge bg-danger-soft text-danger text-[11px] py-0 mt-0.5">ошибка синхронизации</span> : r.backfilling ? <span className="badge bg-info-soft text-info text-[11px] py-0 mt-0.5">история загружается</span> : null}
                     </Link>
                   </td>
                   <td className="hidden md:table-cell w-[120px]"><Sparkline values={r.spark} /></td>
                   <td className="text-right tabular-nums font-semibold">{fmtInt(r.sessions)}</td>
                   <td className="text-right"><Delta d={d} /></td>
-                  <td className="text-right tabular-nums">{fmtInt(r.users)}</td>
-                  <td className="text-right tabular-nums">{fmtInt(r.pageviews)}</td>
+                  <td className="col-sm text-right tabular-nums">{fmtInt(r.users)}</td>
+                  <td className="col-sm text-right tabular-nums">{fmtInt(r.pageviews)}</td>
                   <td className="text-right tabular-nums hidden lg:table-cell">{fmtPct(r.bounce, 0)}</td>
                   <td className="text-right tabular-nums hidden lg:table-cell">{fmtDuration(r.duration)}</td>
                   <td className="text-right tabular-nums">{online[r.id] == null ? <span className="text-muted">{hasOnline ? "—" : "…"}</span> : <span className={online[r.id] ? "text-ok font-semibold" : "text-muted"}>{fmtInt(online[r.id])}</span>}</td>

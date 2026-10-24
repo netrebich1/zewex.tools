@@ -127,7 +127,7 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
 
       <section className="space-y-3">
         <div className="font-medium">3. Ссылки на статьи</div>
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           <button type="button" className={`tab ${source === "manual" ? "active" : ""}`} onClick={() => setSource("manual")}>Вставить вручную</button>
           <button type="button" className={`tab ${source === "wp" ? "active" : ""}`} onClick={() => setSource("wp")} disabled={!site?.hasWp} title={site?.hasWp ? "" : "Нет доступа WordPress"}>Из WordPress (REST API)</button>
         </div>

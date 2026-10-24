@@ -11,6 +11,7 @@
 - `src/actions/*.ts` — все мутации (server actions), формы через `components/ActionForm.tsx`.
 - `prisma/seed.mjs` — провайдеры, модели Perplexity, разделы (идемпотентен).
 - Tailwind 4: нельзя `@apply` своих классов, только встроенные утилиты.
+- Свои классы в `globals.css` (`.input`, `.btn*`, `.badge`, `.menu`, `.kpi*`, `.tab`, `.table td/th`, `.table-wrap`) лежат вне `@layer`: утилита на том же элементе их свойство не перебивает, перекрывать только с `!` (`!whitespace-normal`, `sm:!w-[340px]`, `lg:!hidden`). Мобильная вёрстка (телефон 360–390 px): правила и итоги аудита — `docs/mobile-audit-2026-10-24.md` (поля 16px на телефоне, `.col-sm`/`.col-md` для колонок таблиц, `.popover` для окон из шапки, без `sticky top-0` под шапкой портала, действия по наведению дублировать для `hover:none`).
 
 ## Сборка и деплой
 Рабочее место — Windows (`D:\Projects\zewex-tools`, Git Bash), Node локально не нужен: только редактируем, собираем на сервере.

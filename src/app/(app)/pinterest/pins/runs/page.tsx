@@ -53,31 +53,31 @@ export default async function RunsPage({ searchParams }: { searchParams: Promise
       <div className="space-y-4">
         <Card>
           <div className="flex flex-wrap gap-2 items-center">
-            <Link href={qs({ site: undefined, page: undefined })} className={`badge px-3 py-1 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты</Link>
-            {sites.map((s) => <Link key={s.id} href={qs({ site: s.id, page: undefined })} className={`badge px-3 py-1 ${siteId === s.id ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{s.name}</Link>)}
+            <Link href={qs({ site: undefined, page: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты</Link>
+            {sites.map((s) => <Link key={s.id} href={qs({ site: s.id, page: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${siteId === s.id ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{s.name}</Link>)}
           </div>
           <div className="mt-3 flex flex-wrap gap-2 items-center">
-            <Link href={qs({ status: undefined, page: undefined })} className={`badge px-3 py-1 ${!status ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все статусы</Link>
-            {STATUSES.map((s) => <Link key={s} href={qs({ status: s, page: undefined })} className={`badge px-3 py-1 ${status === s ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{RUN_STATUS_LABELS[s]}</Link>)}
+            <Link href={qs({ status: undefined, page: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${!status ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все статусы</Link>
+            {STATUSES.map((s) => <Link key={s} href={qs({ status: s, page: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${status === s ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{RUN_STATUS_LABELS[s]}</Link>)}
           </div>
         </Card>
         {runs.length === 0 ? <Empty title="Прогонов нет" hint="По выбранному фильтру ничего не найдено." /> : (
           <Card>
             <div className="table-wrap"><table className="table">
-              <thead><tr><th>Прогон</th><th>Сайт</th><th>Статус</th><th>Проблемы</th><th>Этап</th><th>Статей</th><th>Пинов</th><th>Даты пинов</th><th>Расход</th><th>Создан</th><th></th></tr></thead>
+              <thead><tr><th>Прогон</th><th>Сайт</th><th>Статус</th><th>Проблемы</th><th className="col-sm">Этап</th><th className="col-sm">Статей</th><th>Пинов</th><th className="col-sm">Даты пинов</th><th className="col-sm">Расход</th><th className="col-sm">Создан</th><th className="col-sm"></th></tr></thead>
               <tbody>{runs.map((r) => (
                 <tr key={r.id}>
                   <td><Link href={`/pinterest/pins/runs/${r.id}`} className="font-medium hover:underline">{r.name || r.id.slice(0, 8)}</Link>{r.stepByStep && <span className="help ml-1">пошаговый</span>}</td>
                   <td className="text-muted">{r.site?.name ?? "—"}</td>
                   <td><Badge tone={runStatusTone(r.status)}>{RUN_STATUS_LABELS[r.status]}</Badge></td>
                   <td className="max-w-[420px]">{problems.get(r.id)?.length ? <ProblemsDetails problems={problems.get(r.id)!} runStatus={r.status} /> : <span className="text-muted">нет</span>}</td>
-                  <td className="text-muted">{STAGE_LABELS[r.stage as PinStage] ?? r.stage}</td>
-                  <td>{r._count.pages}</td>
+                  <td className="col-sm text-muted">{STAGE_LABELS[r.stage as PinStage] ?? r.stage}</td>
+                  <td className="col-sm">{r._count.pages}</td>
                   <td>{r._count.items}</td>
-                  <td className="text-muted whitespace-nowrap">{span(r.id)}</td>
-                  <td className="text-muted">${r.costUsd.toFixed(2)}</td>
-                  <td className="text-muted whitespace-nowrap">{fmtDate(r.createdAt)}</td>
-                  <td className="text-right">
+                  <td className="col-sm text-muted whitespace-nowrap">{span(r.id)}</td>
+                  <td className="col-sm text-muted">${r.costUsd.toFixed(2)}</td>
+                  <td className="col-sm text-muted whitespace-nowrap">{fmtDate(r.createdAt)}</td>
+                  <td className="col-sm text-right">
                     <ActionForm action={deleteRunAction} className="inline" hidden={{ id: r.id, back: qs({}) }}>
                       <SubmitButton className="btn-ghost btn-sm text-danger" confirm={deleteConfirmText(r.name || r.id.slice(0, 8), impacts.get(r.id)!)} pendingText="…">Удалить</SubmitButton>
                     </ActionForm>

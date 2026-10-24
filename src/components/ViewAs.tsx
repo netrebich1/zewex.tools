@@ -81,7 +81,7 @@ export function ViewAsPicker() {
   }
   return (
     <div className="px-1.5 py-1.5">
-      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Имя, логин или команда" className="input !py-1.5 !text-[13.5px]" />
+      <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Имя, логин или команда" className="input !py-1.5 sm:!text-[13.5px]" />
       {error && <p className="mt-1.5 px-1 text-[12.5px] text-danger">{error}</p>}
       <div className="mt-1.5 max-h-64 overflow-y-auto">
         {!list ? <p className="help px-2 py-2">Загружаю…</p> : shown.length === 0 ? <p className="help px-2 py-2">Никого не найдено</p> : shown.map((u) => (
@@ -119,7 +119,7 @@ export function ImpersonationBar({ name, email, by }: { name: string; email: str
         <span className="font-semibold">Вы в кабинете: {name}</span>
         <span className="opacity-80 hidden md:inline">{email} · всё, что вы делаете, делается от имени этого сотрудника</span>
         <form action={stopImpersonation} className="ml-auto">
-          <button className="rounded-full bg-white/95 px-3 py-0.5 text-[12.5px] font-semibold hover:bg-white" style={{ color: "var(--view-as)" }} title={`Вернуться в кабинет ${by}`}>
+          <button className="inline-flex h-8 items-center rounded-full bg-white/95 px-3.5 text-[12.5px] font-semibold hover:bg-white" style={{ color: "var(--view-as)" }} title={`Вернуться в кабинет ${by}`}>
             Вернуться в свой кабинет
           </button>
         </form>

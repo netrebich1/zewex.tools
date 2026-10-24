@@ -44,14 +44,14 @@ export function ArticlesNav({ counts: initial }: { counts?: NavCounts | null }) 
   }, [pathname]);
 
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-1.5 border-b border-line pb-3">
-      <span className="text-[13px] font-semibold text-muted mr-2">Pinterest Articles</span>
+    <div className="mb-5 flex flex-nowrap items-center gap-1.5 overflow-x-auto -mx-4 px-4 sm:flex-wrap sm:mx-0 sm:px-0 border-b border-line pb-3">
+      <span className="text-[13px] font-semibold text-muted mr-2 shrink-0 whitespace-nowrap">Pinterest Articles</span>
       {ITEMS.map((it) => {
         const active = it.exact ? pathname === it.href : pathname.startsWith(it.href) && !(it.not && pathname.startsWith(it.not));
         const n = !it.count || !counts ? 0 : it.count === "moderation" ? counts.photos + counts.articles : counts[it.count];
         const title = it.count === "moderation" && counts ? `Фото на проверке: ${counts.photos}; статьи на проверке: ${counts.articles}${counts.insufficient ? `; «Мало фото»: ${counts.insufficient}` : ""}` : undefined;
         return (
-          <Link key={it.href} href={it.href} className={`tab ${active ? "active" : ""}`} title={title}>
+          <Link key={it.href} href={it.href} className={`tab shrink-0 whitespace-nowrap ${active ? "active" : ""}`} title={title}>
             {it.label}
             {n > 0 && <span className={`rounded-full px-1.5 text-[11.5px] font-semibold tabular-nums ${active ? "bg-bg/20" : "bg-brand-soft text-warn"}`}>{n}</span>}
           </Link>

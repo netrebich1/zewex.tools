@@ -168,7 +168,7 @@ export function BrandResearchPanel({
                     <b className="min-w-0 flex-1 truncate text-[14px]">{label(it)}</b>
                     {e.status === "loading" && <Badge tone="brand">собираю…</Badge>}
                     {e.status === "error" && <Badge tone="danger">ошибка</Badge>}
-                    {e.status === "done" && <span className="help whitespace-nowrap">оставлено <b className="text-ink">{kept}</b> из {mods.length}{e.result?.queries ? ` · запросов ${e.result.queries}` : ""}</span>}
+                    {e.status === "done" && <span className="help whitespace-nowrap">оставлено <b className="text-ink">{kept}</b> из {mods.length}{e.result?.queries ? <span className="hidden sm:inline"> · запросов {e.result.queries}</span> : ""}</span>}
                     {!!e.result?.errors.length && <Badge tone="warn">{e.result.errors.length} предупр.</Badge>}
                     <span className="text-muted">{isOpen ? "▾" : "▸"}</span>
                   </button>

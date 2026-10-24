@@ -103,7 +103,7 @@ export function HeaderServer() {
       </button>
 
       {open && (
-        <div className="menu overflow-hidden" style={{ width: 320, padding: 0 }} role="dialog" aria-label="Состояние сервера">
+        <div className="menu popover !p-0 sm:!w-[320px]" role="dialog" aria-label="Состояние сервера">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-line">
             <div>
               <div className="text-[14px] font-semibold">Сервер</div>

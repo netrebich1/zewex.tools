@@ -37,7 +37,7 @@ export default async function KeysPage() {
             <Card key={providerName} title={providerName}>
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>Название</th><th>Ключ</th><th>Чей</th><th>Статус</th><th>Проверка</th><th>Расход за месяц</th>{manualBalanceProvider(list[0].provider) && <th title="Вписанная сумма минус расход через портал">Остаток</th>}<th>Правил</th></tr></thead>
+                  <thead><tr><th>Название</th><th className="col-sm">Ключ</th><th>Чей</th><th className="col-sm">Статус</th><th className="col-sm">Проверка</th><th>Расход за месяц</th>{manualBalanceProvider(list[0].provider) && <th title="Вписанная сумма минус расход через портал">Остаток</th>}<th className="col-sm">Правил</th></tr></thead>
                   <tbody>
                     {list.map((k) => {
                       const spent = spendMap.get(k.id) ?? 0;
@@ -45,14 +45,20 @@ export default async function KeysPage() {
                       const left = balances.get(k.id)?.remaining ?? null;
                       return (
                         <tr key={k.id}>
-                          <td><Link href={`/keys/${k.id}`} className="font-medium hover:underline">{k.label}</Link></td>
-                          <td className="font-mono text-[12px] text-muted">{k.secretHint}</td>
+                          <td>
+                            <Link href={`/keys/${k.id}`} className="font-medium hover:underline">{k.label}</Link>
+                            {/* На телефоне вместо колонок «Ключ», «Статус», «Проверка» — строкой под названием. */}
+                            <div className="font-mono text-[11.5px] text-muted sm:hidden">{k.secretHint}</div>
+                            {k.status !== "ACTIVE" && <div className="mt-1 sm:hidden"><Badge tone="danger">выключен</Badge></div>}
+                            {k.lastCheckOk === false && <div className="help text-danger sm:hidden">✕ проверка: {k.lastCheckNote ?? "ошибка"}</div>}
+                          </td>
+                          <td className="col-sm font-mono text-[12px] text-muted">{k.secretHint}</td>
                           <td>{k.owner ? <Badge tone="brand">личный · {k.owner.name}</Badge> : k.team ? <Badge tone="ink">команда · {k.team.name}</Badge> : <Badge>общий</Badge>}</td>
-                          <td>{k.status === "ACTIVE" ? <Badge tone="ok">активен</Badge> : <Badge tone="danger">выключен</Badge>}</td>
-                          <td>{k.lastCheckOk == null ? <span className="text-muted">—</span> : k.lastCheckOk ? <span className="text-ok" title={k.lastCheckNote ?? ""}>✓ {fmtDate(k.lastCheckedAt)}</span> : <span className="text-danger" title={k.lastCheckNote ?? ""}>✕ ошибка</span>}</td>
+                          <td className="col-sm">{k.status === "ACTIVE" ? <Badge tone="ok">активен</Badge> : <Badge tone="danger">выключен</Badge>}</td>
+                          <td className="col-sm">{k.lastCheckOk == null ? <span className="text-muted">—</span> : k.lastCheckOk ? <span className="text-ok" title={k.lastCheckNote ?? ""}>✓ {fmtDate(k.lastCheckedAt)}</span> : <span className="text-danger" title={k.lastCheckNote ?? ""}>✕ ошибка</span>}</td>
                           <td className={over ? "text-danger font-medium" : ""}>{fmtMoney(spent)}{k.monthlyLimitUsd != null ? <span className="text-muted"> / {fmtMoney(k.monthlyLimitUsd)}</span> : null}</td>
                           {manualBalanceProvider(k.provider) && <td className="tabular-nums">{left == null ? <span className="text-muted">—</span> : <span className={left < 5 ? "text-danger font-medium" : left < 20 ? "text-warn font-medium" : ""}>{fmtMoney(left)}</span>}</td>}
-                          <td>{k._count.bindings}</td>
+                          <td className="col-sm">{k._count.bindings}</td>
                         </tr>
                       );
                     })}

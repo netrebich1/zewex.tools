@@ -19,9 +19,9 @@ import type { ModCandidate, ModPhoto, PhotoModerationState } from "@/lib/article
 export type GridSize = "s" | "m" | "l";
 const SIZE_LABELS: Record<GridSize, string> = { s: "Компактно", m: "Крупно", l: "Очень крупно" };
 const COLS: Record<GridSize, string> = {
-  s: "grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10",
-  m: "grid-cols-3 sm:grid-cols-4 lg:grid-cols-6",
-  l: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
+  s: "grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10",
+  m: "grid-cols-2 sm:grid-cols-4 lg:grid-cols-6",
+  l: "grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
 };
 /** Минимальная сторона кадра для сайта (08-plan §3 п.11: 550). */
 const MIN_SIDE = 550;
@@ -32,6 +32,13 @@ type Inverse = Record<string, unknown> | ((result: unknown) => Record<string, un
 
 /** Кнопки на карточке: на устройствах с мышью — при наведении (и при фокусе с клавиатуры), на сенсорных — всегда. */
 const HOVER_REVEAL = "opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100";
+/** Кнопка-иконка под фото на сенсорных экранах (там кнопки не поверх кадра: в узкой плитке они обрезались). */
+const TOUCH_BTN = "inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-surface text-[14px] disabled:opacity-40";
+/** Сенсорный экран: увеличение одним касанием (двойной клик там не работает). Касание по кнопке — не увеличение. */
+const tapZoom = (e: { target: EventTarget }, zoom: () => void) => {
+  if ((e.target as HTMLElement).closest("button")) return;
+  if (window.matchMedia("(hover: none)").matches) zoom();
+};
 
 export type ApiResponse = { ok?: boolean; error?: string; stale?: boolean; state?: PhotoModerationState | null; result?: unknown };
 
@@ -167,9 +174,20 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
   const [msg, setMsg] = useState<{ text: string; tone: "ok" | "danger" } | null>(null);
   const [zoom, setZoom] = useState<{ url: string; title: string } | null>(null);
   const [menu, setMenu] = useState(false);
+  const menuRef = useRef<HTMLSpanElement>(null);
   const [undo, setUndo] = useState<Undo[]>([]);
   const dragId = useRef<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
+
+  // Меню «Раскладка»: на телефоне нет onMouseLeave — закрываем касанием вне меню
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenu(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [menu]);
 
   // Новая статья — сброс
   useEffect(() => {
@@ -307,6 +325,8 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
   const reserveList = tab === "reserve" ? state.reserve : state.rejected;
   const filtered = reserveList.filter((c) => shapeFilter === "all" || shape(c.width, c.height) === shapeFilter);
   const aspect = size === "s" ? "aspect-square" : "aspect-[3/4]";
+  // Модерация статьи (текст секции под фото): на телефоне — список «фото слева, текст справа», а не текст под плиткой в 109px
+  const listView = !!renderUnderPhoto;
 
   return (
     <div className="space-y-6">
@@ -328,12 +348,12 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
             </button>
           )}
           {editable && (
-            <span className="relative">
+            <span className="relative" ref={menuRef}>
               <button type="button" className="btn-ghost btn-sm" onClick={() => setMenu((m) => !m)} disabled={!!busy || activePhotos.length < 2}>
                 Раскладка ▾
               </button>
               {menu && (
-                <div className="menu" onMouseLeave={() => setMenu(false)}>
+                <div className="menu max-w-[calc(100vw-2rem)]" onMouseLeave={() => setMenu(false)}>
                   {LAYOUTS.map((l) => (
                     <button key={l.key} type="button" className="menu-item" onClick={() => applyLayout(l.key)} title={l.help}>
                       <span>{l.label}</span>
@@ -360,7 +380,7 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
         {state.photos.length === 0 ? (
           <p className="help">Фото пока нет — добавьте из резерва.</p>
         ) : (
-          <div className={`grid gap-2 ${COLS[size]}`}>
+          <div className={`grid gap-2 ${COLS[size]} ${listView ? "max-sm:grid-cols-1" : ""}`}>
             {state.photos.map((p, i) => {
               const small = (p.width ?? 0) < MIN_SIDE || (p.height ?? 0) < MIN_SIDE;
               // Пометки ИИ-модерации: снято ИИ (причина), добавлено ИИ (причина), предложено убрать (тест, не применено).
@@ -369,9 +389,9 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
               const aiPropose = !p.excluded && ai && !ai.applied ? (ai.removed[p.id] ?? null) : null;
               const border = p.excluded ? "border-line opacity-50" : !p.hasDescription ? "border-danger ring-1 ring-danger/40" : dragOver === p.id ? "border-brand ring-2 ring-brand/40" : "border-line";
               return (
-                <div key={p.id} className="flex flex-col gap-1">
+                <div key={p.id} className={`flex flex-col gap-1 ${listView ? "max-sm:flex-row max-sm:gap-3" : ""}`}>
                   <div
-                    className={`relative rounded-xl overflow-hidden border bg-ink/5 group ${border} ${editable && !p.excluded ? "cursor-grab" : ""}`}
+                    className={`relative rounded-xl overflow-hidden border bg-ink/5 group ${border} ${editable && !p.excluded ? "cursor-grab" : ""} ${listView ? "max-sm:w-24 max-sm:shrink-0 max-sm:self-start" : ""}`}
                     draggable={editable && !p.excluded}
                     onDragStart={(e) => {
                       dragId.current = p.id;
@@ -392,29 +412,25 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
                       setDragOver(null);
                     }}
                     onDoubleClick={() => setZoom({ url: p.imageUrl, title: `${i + 1}. ${p.sourceDomain || ""} ${p.width ?? "?"}×${p.height ?? "?"}` })}
+                    onClick={(e) => tapZoom(e, () => setZoom({ url: p.imageUrl, title: `${i + 1}. ${p.sourceDomain || ""} ${p.width ?? "?"}×${p.height ?? "?"}` }))}
                     title="Двойной клик — увеличить; перетащите, чтобы поменять порядок"
                   >
                     <img src={p.thumbUrl} alt="" loading="lazy" draggable={false} className={`w-full ${aspect} object-cover ${p.excluded ? "grayscale" : ""}`} />
-                    <span className="absolute top-1.5 left-1.5 inline-flex gap-1">
+                    <span className="absolute top-1.5 left-1.5 inline-flex flex-wrap gap-1 max-w-[calc(100%-3.5rem)]">
                       <span className="badge bg-ink/80 text-bg">{p.excluded ? (aiRemoved ? "ИИ ✕" : "снято") : i + 1}</span>
                       {aiAdded != null && !p.excluded && <span className="badge bg-ok text-white" title={aiAdded || "Добавлено ИИ из резерва"}>+ИИ</span>}
-                      {aiPropose != null && <span className="badge bg-warn text-white" title={aiPropose}>ИИ: убрать?</span>}
+                      {aiPropose != null && (
+                        <span className="badge bg-warn text-white" title={aiPropose}>
+                          <span className="sm:hidden">ИИ ✕?</span>
+                          <span className="max-sm:hidden">ИИ: убрать?</span>
+                        </span>
+                      )}
                     </span>
                     {p.aiScore != null && <span className="absolute top-1.5 right-1.5 badge bg-surface/90">★ {Number(p.aiScore).toFixed(1)}</span>}
                     {!p.hasDescription && !p.excluded && <span className="absolute bottom-1.5 left-1.5 badge bg-danger text-white">нет описания</span>}
                     {p.person && !p.excluded && <span className="absolute bottom-1.5 right-1.5 badge bg-danger text-white" title="Интерьер и декор — без людей: ИИ-оценка увидела в кадре человека. Снимите фото.">человек</span>}
                     {editable && (
-                      <div className={`absolute inset-x-0 bottom-0 flex justify-end gap-1 p-1.5 transition bg-gradient-to-t from-ink/60 to-transparent ${HOVER_REVEAL}`}>
-                        {!p.excluded && (
-                          <span className="mr-auto inline-flex gap-1 [@media(hover:hover)]:hidden">
-                            <button type="button" className="btn-ghost btn-sm bg-surface/90" disabled={!!busy || i === 0} onClick={() => move(p.id, -1)} aria-label="Раньше">
-                              ◀
-                            </button>
-                            <button type="button" className="btn-ghost btn-sm bg-surface/90" disabled={!!busy || i === state.photos.length - 1} onClick={() => move(p.id, 1)} aria-label="Позже">
-                              ▶
-                            </button>
-                          </span>
-                        )}
+                      <div className={`absolute inset-x-0 bottom-0 flex justify-end gap-1 p-1.5 transition bg-gradient-to-t from-ink/60 to-transparent ${HOVER_REVEAL} [@media(hover:none)]:hidden`}>
                         {p.excluded ? (
                           <button type="button" className="btn-ghost btn-sm" disabled={!!busy} onClick={() => act("restore", { action: "restore", photoId: p.id }, { action: "exclude", photoId: p.id })}>
                             Вернуть
@@ -431,7 +447,33 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
                         )}
                       </div>
                     )}
+                    {/* Сенсорный экран: действия под кадром (◀ ▶ — замена перетаскиванию) */}
+                    {editable && (
+                      <div className="hidden [@media(hover:none)]:flex flex-wrap gap-1 p-1 bg-surface">
+                        {p.excluded ? (
+                          <button type="button" className={`${TOUCH_BTN} w-auto px-2 text-[12.5px]`} disabled={!!busy} onClick={() => act("restore", { action: "restore", photoId: p.id }, { action: "exclude", photoId: p.id })}>
+                            Вернуть
+                          </button>
+                        ) : (
+                          <>
+                            <button type="button" className={TOUCH_BTN} disabled={!!busy || i === 0} onClick={() => move(p.id, -1)} aria-label="Раньше">
+                              ◀
+                            </button>
+                            <button type="button" className={TOUCH_BTN} disabled={!!busy || i === state.photos.length - 1} onClick={() => move(p.id, 1)} aria-label="Позже">
+                              ▶
+                            </button>
+                            <button type="button" className={TOUCH_BTN} disabled={!!busy} onClick={() => act("outdated", { action: "outdated", photoId: p.id }, { action: "restore", photoId: p.id })} aria-label="Устарело" title="Устарело">
+                              ⌛
+                            </button>
+                            <button type="button" className={`${TOUCH_BTN} border-transparent bg-danger-soft text-danger`} disabled={!!busy} onClick={() => act("exclude", { action: "exclude", photoId: p.id }, { action: "restore", photoId: p.id })} aria-label="Снять фото">
+                              ✕
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
+                  <div className={listView ? "flex min-w-0 flex-1 flex-col gap-1 sm:contents" : "contents"}>
                   {size !== "s" && (
                     <div className="px-0.5 text-[11px] text-muted truncate">
                       <span className={small ? "text-danger" : ""}>{p.width ?? "?"}×{p.height ?? "?"}</span>
@@ -444,6 +486,7 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
                     </div>
                   )}
                   {renderUnderPhoto?.(p)}
+                  </div>
                 </div>
               );
             })}
@@ -495,7 +538,7 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
       {zoom && (
         <div className="fixed inset-0 z-50 bg-ink/85 flex items-center justify-center p-4" onClick={() => setZoom(null)}>
           <div className="relative max-h-full" onClick={(e) => e.stopPropagation()}>
-            <img src={zoom.url} alt="" className="max-h-[88vh] max-w-[95vw] rounded-xl object-contain" />
+            <img src={zoom.url} alt="" className="max-h-[calc(100dvh-7rem)] max-w-[95vw] rounded-xl object-contain" />
             <div className="mt-2 flex items-center gap-2 text-white text-[13px]">
               <span className="truncate">{zoom.title}</span>
               <button type="button" className="btn-ghost btn-sm bg-surface ml-auto" onClick={() => setZoom(null)}>
@@ -513,10 +556,10 @@ function ReserveCard({ c, aspect, compact, busy, editable, aiSuggest, onAdd, onZ
   const small = (c.width ?? 0) < MIN_SIDE || (c.height ?? 0) < MIN_SIDE;
   return (
     <div className="flex flex-col gap-1">
-      <div className="relative rounded-xl overflow-hidden border border-line bg-ink/5 group" onDoubleClick={onZoom} title={c.reason || "Двойной клик — увеличить"}>
+      <div className="relative rounded-xl overflow-hidden border border-line bg-ink/5 group" onDoubleClick={onZoom} onClick={(e) => tapZoom(e, onZoom)} title={c.reason || "Двойной клик — увеличить"}>
         <img src={c.thumbUrl} alt="" loading="lazy" className={`w-full ${aspect} object-cover`} />
         {c.aiScore != null && <span className="absolute top-1.5 right-1.5 badge bg-surface/90">★ {Number(c.aiScore).toFixed(1)}</span>}
-        <span className="absolute top-1.5 left-1.5 inline-flex gap-1">
+        <span className="absolute top-1.5 left-1.5 inline-flex flex-wrap gap-1 max-w-[calc(100%-3.5rem)]">
           {c.status === "rejected" && <span className="badge bg-danger text-white">отклонено</span>}
           {c.person && <span className="badge bg-danger text-white" title="Интерьер и декор — без людей: в кадре человек">человек</span>}
           {aiSuggest != null && <span className="badge bg-ok text-white" title={aiSuggest || "ИИ предлагает добавить"}>ИИ: добавить?</span>}

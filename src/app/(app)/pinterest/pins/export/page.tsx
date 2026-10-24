@@ -25,7 +25,7 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   const todayPins = todayFiles.reduce((n, f) => n + f.count, 0);
   const ready = await futureReadyBySite(sites.map((s) => s.id));
   const readySites = sites.filter((s) => ready.has(s.id));
-  const quick = (f: string, t: string, label: string) => <Link href={`/pinterest/pins/export?from=${f}&to=${t}`} className={`badge px-3 py-1 ${from === f && to === t ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{label}</Link>;
+  const quick = (f: string, t: string, label: string) => <Link href={`/pinterest/pins/export?from=${f}&to=${t}`} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${from === f && to === t ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{label}</Link>;
 
   return (
     <>
@@ -67,7 +67,7 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
           {readySites.length === 0 ? <p className="help">Готовых пинов с датами на сегодня и позже пока нет.</p> : (
             <div className="flex flex-wrap gap-2">
               {readySites.map((s) => { const r = ready.get(s.id)!; return (
-                <a key={s.id} href={`/api/pins/export/all?site=${s.id}`} className="btn-ghost" title={`до ${formatRu(r.lastDay)}`}>Выгрузить все для {s.name} <span className="help">· {r.pins} пинов, {r.days} дн.</span></a>
+                <a key={s.id} href={`/api/pins/export/all?site=${s.id}`} className="btn-ghost !whitespace-normal text-left max-w-full" title={`до ${formatRu(r.lastDay)}`}>Выгрузить все для {s.name} <span className="help">· {r.pins} пинов, {r.days} дн.</span></a>
               ); })}
             </div>
           )}
@@ -77,16 +77,16 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
         ) : (
           <Card title={`Файлы: ${files.length}`}>
             <div className="table-wrap"><table className="table">
-              <thead><tr><th>День</th><th>Сайт</th><th>Файл</th><th>Пинов</th><th>Правки</th><th>Скачан</th><th></th></tr></thead>
+              <thead><tr><th>День</th><th>Сайт</th><th className="col-sm">Файл</th><th>Пинов</th><th className="col-sm">Правки</th><th className="col-sm">Скачан</th><th></th></tr></thead>
               <tbody>
                 {files.map((f) => (
                   <tr key={`${f.siteId}-${f.day}`}>
                     <td>{formatRu(f.day)}{f.day === today && <Badge tone="brand">сегодня</Badge>}</td>
                     <td>{f.siteName}</td>
-                    <td className="font-mono text-[12px]">{f.fileName}</td>
+                    <td className="col-sm font-mono text-[12px]">{f.fileName}</td>
                     <td>{f.count}{f.issues ? <span className="text-danger"> · проблем {f.issues}</span> : null}</td>
-                    <td className="text-muted text-[12px]">{f.retimed ? `перенесено ${f.retimed}` : ""}{f.linksReplaced ? ` · ссылок ${f.linksReplaced}` : ""}</td>
-                    <td className="text-muted text-[12px]">{f.downloadedAt ? fmtDate(f.downloadedAt) : "—"}</td>
+                    <td className="col-sm text-muted text-[12px]">{f.retimed ? `перенесено ${f.retimed}` : ""}{f.linksReplaced ? ` · ссылок ${f.linksReplaced}` : ""}</td>
+                    <td className="col-sm text-muted text-[12px]">{f.downloadedAt ? fmtDate(f.downloadedAt) : "—"}</td>
                     <td className="text-right"><a href={`/api/pins/export?site=${f.siteId}&day=${f.day}`} className="btn-brand btn-sm">Скачать CSV</a></td>
                   </tr>
                 ))}

@@ -28,10 +28,10 @@ export default async function ArticlesHome() {
         subtitle="Статьи-подборки под Pinterest: поиск реальных фото → модерация → текст → публикация в WordPress. Здесь — что происходит по каждому сайту."
         actions={
           <>
-            <Link href="/pinterest/articles/moderation/articles" className={`btn-ghost ${mod.photos ? "ring-2 ring-warn/40" : ""}`} title="Статьи, которые можно взять на проверку фото (без тех, что сейчас проверяет ИИ)">Модерация фото{mod.photos ? ` (${mod.photos})` : ""}</Link>
-            {mod.insufficient > 0 && <Link href="/pinterest/articles/moderation/articles?tab=low" className="btn-ghost" title="Статьи с пометкой «Мало фото»: вернуть на модерацию, добрать или закрыть">Мало фото ({mod.insufficient})</Link>}
-            <Link href="/pinterest/articles/moderation/articles?tab=review" className={`btn-ghost ${mod.articles ? "ring-2 ring-warn/40" : ""}`}>Модерация статей{mod.articles ? ` (${mod.articles})` : ""}</Link>
-            <Link href="/pinterest/articles/automation" className="btn-ghost" title="Переключатели и лимиты цепочек по всем сайтам, что мешает запуску">Автозапуск всех сайтов</Link>
+            <Link href="/pinterest/articles/moderation/articles" className={`btn-ghost max-sm:!px-3 max-sm:!py-2 max-sm:!text-[13px] max-sm:!rounded-lg ${mod.photos ? "ring-2 ring-warn/40" : ""}`} title="Статьи, которые можно взять на проверку фото (без тех, что сейчас проверяет ИИ)">Модерация фото{mod.photos ? ` (${mod.photos})` : ""}</Link>
+            {mod.insufficient > 0 && <Link href="/pinterest/articles/moderation/articles?tab=low" className="btn-ghost max-sm:!px-3 max-sm:!py-2 max-sm:!text-[13px] max-sm:!rounded-lg" title="Статьи с пометкой «Мало фото»: вернуть на модерацию, добрать или закрыть">Мало фото ({mod.insufficient})</Link>}
+            <Link href="/pinterest/articles/moderation/articles?tab=review" className={`btn-ghost max-sm:!px-3 max-sm:!py-2 max-sm:!text-[13px] max-sm:!rounded-lg ${mod.articles ? "ring-2 ring-warn/40" : ""}`}>Модерация статей{mod.articles ? ` (${mod.articles})` : ""}</Link>
+            <Link href="/pinterest/articles/automation" className="btn-ghost max-sm:!px-3 max-sm:!py-2 max-sm:!text-[13px] max-sm:!rounded-lg" title="Переключатели и лимиты цепочек по всем сайтам, что мешает запуску">Автозапуск всех сайтов</Link>
             <Link href="/pinterest/articles/runs/new" className="btn-brand">Новый запуск</Link>
           </>
         }

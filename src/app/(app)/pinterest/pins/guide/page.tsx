@@ -298,7 +298,7 @@ export default async function PinsGuidePage({ searchParams }: { searchParams: Pr
   const steps = tab === "cooking" ? COOKING : MAIN;
   const urls = new Map<string, string | null>();
   await Promise.all(steps.flatMap((s) => s.shots).map(async (sh) => urls.set(sh.file, await shotUrl(sh.file))));
-  const pill = (k: string, label: string) => <Link href={`/pinterest/pins/guide${k === "main" ? "" : `?tab=${k}`}`} className={`badge px-3 py-1 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{label}</Link>;
+  const pill = (k: string, label: string) => <Link href={`/pinterest/pins/guide${k === "main" ? "" : `?tab=${k}`}`} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{label}</Link>;
 
   return (
     <>

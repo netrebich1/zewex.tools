@@ -33,7 +33,7 @@ export async function RunPins({ runId, page }: { runId: string; page: number }) 
     <div className="space-y-4">
       {nav}
       {pages.map((p) => (
-        <Card key={p.id} title={<a href={p.url} target="_blank" rel="noreferrer" className="hover:underline">{p.pageTitle || p.url}</a>} description={`${p.keyword ? `ключ: ${p.keyword} · ` : ""}${p.topic ? `тема: ${p.topic} · ` : ""}${p.niche ? `ниша: ${p.niche} · ` : ""}фото: ${p.imageCount} (в разделах ${p.sectionImageCount}) · доски: ${((p.boards as string[]) ?? []).join(", ") || "—"}${p.status === "error" ? ` · ОШИБКА: ${p.error ?? ""}` : ""}`}>
+        <Card key={p.id} title={<a href={p.url} target="_blank" rel="noreferrer" className="hover:underline [overflow-wrap:anywhere]">{p.pageTitle || p.url}</a>} description={`${p.keyword ? `ключ: ${p.keyword} · ` : ""}${p.topic ? `тема: ${p.topic} · ` : ""}${p.niche ? `ниша: ${p.niche} · ` : ""}фото: ${p.imageCount} (в разделах ${p.sectionImageCount}) · доски: ${((p.boards as string[]) ?? []).join(", ") || "—"}${p.status === "error" ? ` · ОШИБКА: ${p.error ?? ""}` : ""}`}>
           {p.items.length === 0 ? <p className="help">Пинов для этой статьи ещё нет.</p> : (
             <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
               {p.items.map((it) => {
@@ -74,9 +74,9 @@ export async function RunSchedule({ runId }: { runId: string }) {
         {[...byDay.entries()].map(([day, list]) => (
           <details key={day} className="rounded-xl border border-line px-3 py-2">
             <summary className="cursor-pointer flex items-center gap-3 text-[14px]"><b>{day}</b><span className="help">{list.length} пинов</span></summary>
-            <table className="table mt-2"><tbody>
-              {list.map((it) => <tr key={it.id}><td className="text-muted whitespace-nowrap">{it.scheduledAt!.toISOString().slice(11, 16)}</td><td>{ENGINE_LABELS[it.engine] ?? it.engine}</td><td className="truncate max-w-[360px]">{it.title || it.page.keyword}</td><td className="text-muted">{it.boardName}</td></tr>)}
-            </tbody></table>
+            <div className="table-wrap"><table className="table mt-2"><tbody>
+              {list.map((it) => <tr key={it.id}><td className="text-muted whitespace-nowrap">{it.scheduledAt!.toISOString().slice(11, 16)}</td><td>{ENGINE_LABELS[it.engine] ?? it.engine}</td><td className="truncate max-w-[160px] sm:max-w-[360px]">{it.title || it.page.keyword}</td><td className="col-sm text-muted">{it.boardName}</td></tr>)}
+            </tbody></table></div>
           </details>
         ))}
       </div>
@@ -92,16 +92,16 @@ export async function RunLog({ runId }: { runId: string }) {
   return (
     <Card title="Журнал этапов" description="Каждая строка — задача воркера. Ошибка задачи означает остановку прогона на этом этапе.">
       <div className="table-wrap"><table className="table">
-        <thead><tr><th>Этап</th><th>Состояние</th><th>Сделано</th><th>Начало</th><th>Длительность</th><th>Попытки</th><th>Ошибка</th></tr></thead>
+        <thead><tr><th>Этап</th><th>Состояние</th><th>Сделано</th><th>Начало</th><th className="col-sm">Длительность</th><th className="col-sm">Попытки</th><th>Ошибка</th></tr></thead>
         <tbody>{jobs.map((j) => (
           <tr key={j.id}>
             <td className="font-medium">{STAGE_LABELS[j.stage as PinStage] ?? j.stage}</td>
             <td><Badge tone={j.status === "DONE" ? "ok" : j.status === "ERROR" ? "danger" : j.status === "RUNNING" ? "brand" : "neutral"}>{j.status.toLowerCase()}</Badge></td>
             <td className="text-muted">{j.total ? `${j.done}/${j.total}` : j.done || ""} {j.label && <span className="help">{j.label}</span>}</td>
             <td className="text-muted whitespace-nowrap">{fmtDate(j.startedAt ?? j.createdAt)}</td>
-            <td className="text-muted">{dur(j.startedAt, j.finishedAt)}</td>
-            <td className="text-muted">{j.attempts}</td>
-            <td className="text-danger max-w-[420px] truncate" title={j.error ?? ""}>{j.error ?? ""}</td>
+            <td className="col-sm text-muted">{dur(j.startedAt, j.finishedAt)}</td>
+            <td className="col-sm text-muted">{j.attempts}</td>
+            <td className={`text-danger max-w-[420px] whitespace-normal break-words [overflow-wrap:anywhere] ${j.error ? "min-w-[200px]" : ""}`}>{j.error ?? ""}</td>
           </tr>
         ))}</tbody>
       </table></div>

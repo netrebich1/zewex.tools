@@ -86,7 +86,7 @@ export default async function AnalyticsSettings({ searchParams }: { searchParams
             <form key={g.id} action={renameGroupAction} className="flex flex-wrap items-center gap-2 rounded-xl border border-line px-3 py-2">
               <input type="hidden" name="id" value={g.id} />
               <i className="inline-block h-3 w-3 rounded-full shrink-0" style={{ background: g.color }} />
-              <input name="name" defaultValue={g.name} className="input !w-56 !py-1.5 !text-[13.5px]" />
+              <input name="name" defaultValue={g.name} className="input !w-56 !py-1.5 sm:!text-[13.5px]" />
               <ColorPicker value={g.color} name="color" />
               <span className="help">{g._count.properties} {g._count.properties === 1 ? "сайт" : g._count.properties >= 2 && g._count.properties <= 4 ? "сайта" : "сайтов"}</span>
               <span className="ml-auto flex gap-2">

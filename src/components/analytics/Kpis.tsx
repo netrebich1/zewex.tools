@@ -17,9 +17,9 @@ export function Kpis({ cur, prev }: { cur: Totals; prev: Totals | null }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6 mb-4">
       {tiles.map((t) => (
-        <div key={t.label} className="kpi">
+        <div key={t.label} className="kpi min-w-0">
           <span className="text-[12.5px] font-semibold uppercase tracking-wider text-muted">{t.label}</span>
-          <span className="kpi-value tabular-nums">{t.value}</span>
+          <span className="kpi-value tabular-nums !text-[22px] sm:!text-[30px]">{t.value}</span>
           <span className="flex items-center gap-2 min-h-[20px]">
             {t.label === "Отказы" ? <BounceDelta d={t.d} /> : <Delta d={t.d} invert={t.invert} size="md" />}
             {t.hint && <span className="help truncate">{t.hint}</span>}

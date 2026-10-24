@@ -48,10 +48,10 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
           {team.members.length === 0 ? <p className="help">Пока никого.</p> : (
             <ul className="divide-y divide-line">
               {team.members.map((m) => (
-                <li key={m.userId} className="flex items-center justify-between gap-3 py-2">
-                  <div><span className="font-medium">{m.user.name}</span> <span className="help">{m.user.email}</span> {m.role === "LEAD" && <Badge tone="brand">лидер</Badge>}</div>
+                <li key={m.userId} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-2">
+                  <div className="min-w-0 flex-1"><span className="font-medium">{m.user.name}</span> <span className="help break-all">{m.user.email}</span> {m.role === "LEAD" && <Badge tone="brand">лидер</Badge>}</div>
                   {canManage && (
-                    <div className="flex items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-1">
                       <ActionForm action={addTeamMember} className="inline" hidden={{ teamId: team.id, userId: m.userId, slug, role: m.role === "LEAD" ? "MEMBER" : "LEAD" }}>
                         <SubmitButton className="btn-ghost btn-sm" pendingText="…">{m.role === "LEAD" ? "Снять лидера" : "Сделать лидером"}</SubmitButton>
                       </ActionForm>
@@ -79,7 +79,7 @@ export default async function TeamPage({ params }: { params: Promise<{ slug: str
           {teamKeys.length === 0 ? <p className="help">У команды нет своих ключей: участники пользуются общими ключами по правилам сервисов.</p> : (
             <ul className="flex flex-wrap gap-2">
               {teamKeys.map((k) => (
-                <li key={k.id}><Link href={`/keys/${k.id}`} className={`badge border ${k.status === "ACTIVE" ? "border-line bg-surface hover:border-ink/40" : "border-danger/30 bg-danger-soft text-danger"}`}>{k.label} · {k.provider.name} · {k.secretHint}</Link></li>
+                <li key={k.id} className="min-w-0 max-w-full"><Link href={`/keys/${k.id}`} className={`badge border !whitespace-normal [overflow-wrap:anywhere] text-left ${k.status === "ACTIVE" ? "border-line bg-surface hover:border-ink/40" : "border-danger/30 bg-danger-soft text-danger"}`}>{k.label} · {k.provider.name} · {k.secretHint}</Link></li>
               ))}
             </ul>
           )}

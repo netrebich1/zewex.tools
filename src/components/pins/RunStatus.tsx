@@ -70,12 +70,12 @@ export function RunStatus({ initial }: { initial: RunStatusView }) {
       <Card title="Счётчики" description={`Страниц: ${v.pages.total}, с ключом: ${v.pages.withKeyword}${v.pages.errors ? `, с ошибкой: ${v.pages.errors}` : ""}`}>
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Тип</th><th>План</th><th>Промт</th><th>Картинка</th><th>Одобрено</th><th>Отклонено</th><th>Текст</th><th>WP</th><th>Дата</th><th>Ошибки</th></tr></thead>
+            <thead><tr><th>Тип</th><th>План</th><th className="col-sm">Промт</th><th>Картинка</th><th>Одобрено</th><th>Отклонено</th><th className="col-sm">Текст</th><th className="col-sm">WP</th><th className="col-sm">Дата</th><th>Ошибки</th></tr></thead>
             <tbody>
               {[...v.counters, v.total].map((c) => (
                 <tr key={c.engine} className={c.engine === "ALL" ? "font-semibold" : ""}>
                   <td>{ENGINE_LABELS[c.engine] ?? c.engine}</td>
-                  <td>{c.planned}</td><td>{c.withPrompt}</td><td>{c.withImage}</td><td>{c.approved}</td><td>{c.rejected}</td><td>{c.withText}</td><td>{c.uploaded}</td><td>{c.scheduled}</td>
+                  <td>{c.planned}</td><td className="col-sm">{c.withPrompt}</td><td>{c.withImage}</td><td>{c.approved}</td><td>{c.rejected}</td><td className="col-sm">{c.withText}</td><td className="col-sm">{c.uploaded}</td><td className="col-sm">{c.scheduled}</td>
                   <td className={c.errors ? (v.health === "critical" ? "text-danger" : "text-warn") : ""}>{c.errors}</td>
                 </tr>
               ))}

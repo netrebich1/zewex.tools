@@ -17,27 +17,27 @@ export function StepsChecklist({ accessId, steps, userName }: { accessId: string
           return (
             <li key={s.id} className="flex items-center gap-3 py-2">
               <ActionForm action={setProjectStep} hidden={{ accessId, stepId: s.id, state: next(s.state) }} className="inline">
-                <SubmitButton className={`h-6 w-6 rounded-full border flex items-center justify-center text-[12px] ${circle}`} pendingText="…">{s.state === "done" ? "✓" : s.state === "doing" ? "…" : ""}</SubmitButton>
+                <SubmitButton className={`relative after:absolute after:-inset-1.5 after:content-[''] h-6 w-6 rounded-full border flex items-center justify-center text-[12px] ${circle}`} pendingText="…">{s.state === "done" ? "✓" : s.state === "doing" ? "…" : ""}</SubmitButton>
               </ActionForm>
               <div className="flex-1 min-w-0">
                 <div className={`text-[14px] ${s.state === "skip" ? "text-muted line-through" : s.state === "done" ? "" : ""}`}>{s.title}</div>
                 <div className="help">{st.label}{s.doneAt ? ` · ${s.doneAt.toLocaleDateString("ru-RU")}` : ""}{s.doneById ? ` · ${userName(s.doneById) ?? ""}` : ""}{s.note ? ` · ${s.note}` : ""}</div>
               </div>
               {s.state !== "skip" && s.state !== "done" && (
-                <ActionForm action={setProjectStep} hidden={{ accessId, stepId: s.id, state: "skip" }} className="inline"><SubmitButton className="text-[12px] text-muted hover:text-ink" pendingText="…">не нужно</SubmitButton></ActionForm>
+                <ActionForm action={setProjectStep} hidden={{ accessId, stepId: s.id, state: "skip" }} className="inline"><SubmitButton className="inline-flex items-center justify-center max-sm:min-h-9 max-sm:min-w-9 text-[12px] text-muted hover:text-ink" pendingText="…">не нужно</SubmitButton></ActionForm>
               )}
               {s.state === "skip" && (
-                <ActionForm action={setProjectStep} hidden={{ accessId, stepId: s.id, state: "todo" }} className="inline"><SubmitButton className="text-[12px] text-muted hover:text-ink" pendingText="…">вернуть</SubmitButton></ActionForm>
+                <ActionForm action={setProjectStep} hidden={{ accessId, stepId: s.id, state: "todo" }} className="inline"><SubmitButton className="inline-flex items-center justify-center max-sm:min-h-9 max-sm:min-w-9 text-[12px] text-muted hover:text-ink" pendingText="…">вернуть</SubmitButton></ActionForm>
               )}
               {s.key.startsWith("custom:") && (
-                <ActionForm action={deleteProjectStep} hidden={{ accessId, stepId: s.id }} className="inline"><SubmitButton className="text-[12px] text-muted hover:text-danger" pendingText="…" confirm="Удалить этап?">×</SubmitButton></ActionForm>
+                <ActionForm action={deleteProjectStep} hidden={{ accessId, stepId: s.id }} className="inline"><SubmitButton className="inline-flex items-center justify-center max-sm:min-h-9 max-sm:min-w-9 text-[12px] max-sm:text-[18px] text-muted hover:text-danger" pendingText="…" confirm="Удалить этап?">×</SubmitButton></ActionForm>
               )}
             </li>
           );
         })}
       </ul>
       <ActionForm action={addProjectStep} hidden={{ accessId }} className="mt-2 flex gap-2">
-        <input name="title" className="input py-1.5 text-[13.5px]" placeholder="Свой этап, например «Перевод на 2 язык»" />
+        <input name="title" className="input py-1.5 sm:text-[13.5px]" placeholder="Свой этап, например «Перевод на 2 язык»" />
         <SubmitButton className="btn-ghost btn-sm" pendingText="…">Добавить</SubmitButton>
       </ActionForm>
     </div>

@@ -55,7 +55,7 @@ export function PropertiesTable({ items, groups }: { items: PropertyItem[]; grou
   return (
     <div>
       {error && <p className="mb-3 rounded-xl border border-danger/20 bg-danger-soft px-3.5 py-2.5 text-[14px] text-danger">{error}</p>}
-      {items.length > 8 && <input className="input !w-72 !py-2 !text-[13.5px] mb-3" placeholder="Найти сайт или аккаунт GA…" value={q} onChange={(e) => setQ(e.target.value)} />}
+      {items.length > 8 && <input className="input !w-72 !py-2 sm:!text-[13.5px] mb-3" placeholder="Найти сайт или аккаунт GA…" value={q} onChange={(e) => setQ(e.target.value)} />}
       <div className="table-wrap">
         <table className="table">
           <thead>

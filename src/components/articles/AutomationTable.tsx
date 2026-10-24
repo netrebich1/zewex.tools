@@ -84,6 +84,9 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
   const { sites, totals, global, worker, canEditGlobal } = data;
   const n = sites.length;
   const every = (f: (s: SiteAutostartRow) => boolean) => n > 0 && sites.every(f);
+  const allPhoto = (v: boolean) => askAll(`${v ? "Включить" : "Выключить"} поиск фото на всех сайтах?`, v ? "Воркер начнёт брать статьи, ждущие поиска фото, на каждом сайте." : "Новые статьи перестанут уходить в поиск фото; текущие доработают этап. Сами этапы не включатся — только вручную.", { autostart: { photoEnabled: v } });
+  const allWriting = (v: boolean) => askAll(`${v ? "Включить" : "Выключить"} написание на всех сайтах?`, v ? "Статьи с одобренными фото пойдут в текст на каждом сайте." : "Новые статьи перестанут уходить в написание; текущие доработают этап. Сами этапы не включатся — только вручную.", { autostart: { writingEnabled: v } });
+  const allAi = (v: boolean) => askAll(`${v ? "Включить" : "Выключить"} ИИ-проверку фото на всех сайтах?`, v ? "Фото каждой статьи после отбора будет проверять ИИ, сразу, без пачек. Новые запуски получат «модерацию фото до текста» автоматически." : "Все статьи с подобранными фото будут ждать сотрудника.", { aiModeration: { enabled: v } });
   const aiTotals = sites.reduce((acc, s) => ({ checking: acc.checking + (s.ai?.checking ?? 0), waiting: acc.waiting + (s.ai?.waiting ?? 0), staff: acc.staff + (s.ai?.staff ?? s.counts.review) }), { checking: 0, waiting: 0, staff: 0 });
 
   const tiles: Array<{ step: string; label: string; value: number; detail: string; problem?: boolean; href?: string }> = [
@@ -132,7 +135,7 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
         <WorkerPill w={{ running: worker.running, alive: worker.runningTotal, pending: worker.pending, stuck: worker.running > 0 && worker.runningTotal === 0 }} />
         {worker.cap > 0 && (
           <span
-            className={`badge px-2.5 py-1 tabular-nums ${worker.runningTotal >= worker.cap ? "bg-warn-soft text-warn" : "bg-ink/5"}`}
+            className={`badge px-2.5 py-1 tabular-nums !whitespace-normal !rounded-lg text-left ${worker.runningTotal >= worker.cap ? "bg-warn-soft text-warn" : "bg-ink/5"}`}
             title={`Потолок воркера (ARTICLES_WORKER_CONCURRENCY в службе zewex-worker): больше ${worker.cap} статей сразу не идёт на всех сайтах вместе — поиск, написание и публикация делят эти места. Лимиты сайтов действуют внутри него.`}
           >
             Потолок воркера: {worker.runningTotal} / {worker.cap}
@@ -140,7 +143,7 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
         )}
         {worker.disk && (
           <span
-            className={`badge px-2.5 py-1 tabular-nums ${worker.disk.freeMb < worker.disk.totalMb * 0.15 ? "bg-danger-soft text-danger" : "bg-ink/5"}`}
+            className={`badge px-2.5 py-1 tabular-nums !whitespace-normal !rounded-lg text-left ${worker.disk.freeMb < worker.disk.totalMb * 0.15 ? "bg-danger-soft text-danger" : "bg-ink/5"}`}
             title={`Файлы статей хранятся (фото статей и одобренные ИИ кандидаты); удаляются только отклонённые. Свободно ${gb(worker.disk.freeMb)} из ${gb(worker.disk.totalMb)} на диске сервера. Замер ${new Date(worker.disk.at).toLocaleString("ru-RU")}, обновляется раз в 30 мин.`}
           >
             Диск: статьи {gb(worker.disk.storageMb)} · свободно {gb(worker.disk.freeMb)} из {gb(worker.disk.totalMb)}
@@ -176,8 +179,29 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
         </div>
       )}
 
+      {/* Телефон: карточки вместо таблицы на 19 колонок */}
+      <div className="md:hidden space-y-2">
+        <div className="card p-3 space-y-2 text-[13px]">
+          <p className="font-semibold">Все сайты</p>
+          <CardRow title="Поиск фото" info={<>ждут {num(totals.photoWait)} · сейчас {num(totals.photoRun, "run")}</>}>
+            <Switch label="Поиск фото на всех сайтах" on={every((s) => s.autostart.photoEnabled)} disabled={!n || saving === "all"} onChange={allPhoto} />
+          </CardRow>
+          <CardRow title="Проверка фото" info={<>ждут {num(totals.review)} · мало фото {num(totals.few, "bad")}</>} />
+          <CardRow title="Написание" info={<>ждут {num(totals.writeWait)} · сейчас {num(totals.writeRun, "run")}</>}>
+            <Switch label="Написание на всех сайтах" on={every((s) => s.autostart.writingEnabled)} disabled={!n || saving === "all"} onChange={allWriting} />
+          </CardRow>
+          <CardRow title="Публикация" info={<>ждут {num(totals.publishWait)}</>} />
+          <CardRow title="ИИ-проверка фото">
+            <Switch label="ИИ-проверка фото на всех сайтах" on={every((s) => s.aiModeration.enabled)} disabled={!n || saving === "all"} onChange={allAi} />
+          </CardRow>
+          <CardRow title="Пауза / ошибка" info={num(totals.problems, "bad")} />
+        </div>
+        {n === 0 && <p className="card p-5 text-center help">Сайтов в сервисе нет. <Link href="/pinterest/articles/sites" className="underline">Подключить сайт</Link></p>}
+        {sites.map((s) => <SiteCard key={s.id} s={s} saving={saving} onSave={(patch, key) => saveSite(s, patch, key)} />)}
+      </div>
+
       {/* Таблица */}
-      <div className="card overflow-x-auto">
+      <div className="card overflow-x-auto hidden md:block">
         <table className="w-full min-w-[1560px] text-[12.5px]">
           <thead className="text-muted">
             <tr className="border-b border-line [&>th]:px-2 [&>th]:pt-2.5 [&>th]:pb-1 [&>th]:text-center [&>th]:font-semibold [&>th]:text-ink">
@@ -203,13 +227,13 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
             {/* Все сайты */}
             <tr className="border-b border-line bg-surface-2/60 [&>th]:px-2 [&>th]:py-2 [&>th]:text-center">
               <th className="!text-left pl-3 text-ink">Все сайты</th>
-              <th className="border-l border-line/60"><Switch label="Поиск фото на всех сайтах" on={every((s) => s.autostart.photoEnabled)} disabled={!n || saving === "all"} onChange={(v) => askAll(`${v ? "Включить" : "Выключить"} поиск фото на всех сайтах?`, v ? "Воркер начнёт брать статьи, ждущие поиска фото, на каждом сайте." : "Новые статьи перестанут уходить в поиск фото; текущие доработают этап. Сами этапы не включатся — только вручную.", { autostart: { photoEnabled: v } })} /></th>
+              <th className="border-l border-line/60"><Switch label="Поиск фото на всех сайтах" on={every((s) => s.autostart.photoEnabled)} disabled={!n || saving === "all"} onChange={allPhoto} /></th>
               <th /><th>{num(totals.photoWait)}</th><th>{num(totals.photoRun, "run")}</th>
               <th className="border-l border-line/60">{num(totals.review)}</th><th>{num(totals.few, "bad")}</th>
-              <th className="border-l border-line/60"><Switch label="Написание на всех сайтах" on={every((s) => s.autostart.writingEnabled)} disabled={!n || saving === "all"} onChange={(v) => askAll(`${v ? "Включить" : "Выключить"} написание на всех сайтах?`, v ? "Статьи с одобренными фото пойдут в текст на каждом сайте." : "Новые статьи перестанут уходить в написание; текущие доработают этап. Сами этапы не включатся — только вручную.", { autostart: { writingEnabled: v } })} /></th>
+              <th className="border-l border-line/60"><Switch label="Написание на всех сайтах" on={every((s) => s.autostart.writingEnabled)} disabled={!n || saving === "all"} onChange={allWriting} /></th>
               <th /><th>{num(totals.writeWait)}</th><th>{num(totals.writeRun, "run")}</th>
               <th className="border-l border-line/60" /><th>{num(totals.publishWait)}</th>
-              <th className="border-l border-line/60"><Switch label="ИИ-проверка фото на всех сайтах" on={every((s) => s.aiModeration.enabled)} disabled={!n || saving === "all"} onChange={(v) => askAll(`${v ? "Включить" : "Выключить"} ИИ-проверку фото на всех сайтах?`, v ? "Фото каждой статьи после отбора будет проверять ИИ, сразу, без пачек. Новые запуски получат «модерацию фото до текста» автоматически." : "Все статьи с подобранными фото будут ждать сотрудника.", { aiModeration: { enabled: v } })} /></th>
+              <th className="border-l border-line/60"><Switch label="ИИ-проверка фото на всех сайтах" on={every((s) => s.aiModeration.enabled)} disabled={!n || saving === "all"} onChange={allAi} /></th>
               <th /><th /><th />
               <th className="border-l border-line/60">{num(totals.problems, "bad")}</th>
               <th className="border-l border-line/60" />
@@ -275,6 +299,85 @@ function SiteRow({ s, saving, onSave }: { s: SiteAutostartRow; saving: string | 
   );
 }
 
+/* ───────── Карточка сайта (телефон): те же переключатели, поля и ключи сохранения, что в строке таблицы ───────── */
+
+function SiteCard({ s, saving, onSave }: { s: SiteAutostartRow; saving: string | null; onSave: (patch: SiteAutomationPatch, key: string) => void }) {
+  const c = s.counts;
+  const a = s.autostart;
+  const m = s.aiModeration;
+  const ai = s.ai ?? { on: false, checking: 0, waiting: 0, staff: c.review };
+  const k = (f: string) => `${s.id}:${f}`;
+  return (
+    <div className={`card p-3 space-y-2 text-[13px] ${s.isActive ? "" : "opacity-60"}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Link href={`/pinterest/articles/sites/${s.id}?tab=settings`} className="font-semibold hover:underline min-w-0 [overflow-wrap:anywhere]">{s.name}</Link>
+        {c.problems > 0 && <span className="badge bg-danger-soft text-danger">пауза / ошибка {c.problems}</span>}
+        {!s.isActive && <span className="text-[11.5px] text-muted">в архиве</span>}
+      </div>
+      <CardRow title="Поиск фото" info={<>ждут {num(c.photoWait)} · сейчас {num(c.photoRun, "run")}</>}>
+        <Switch label={`Поиск фото: ${s.name}`} on={a.photoEnabled} disabled={saving === k("photoEnabled")} onChange={(v) => onSave({ autostart: { photoEnabled: v } }, k("photoEnabled"))} />
+        <NumInput value={a.photoLimit} min={L.photoLimit[0]} max={L.photoLimit[1]} onSave={(v) => onSave({ autostart: { photoLimit: v } }, k("photoLimit"))} />
+      </CardRow>
+      <CardRow
+        title="Проверка фото"
+        info={
+          <>
+            ждут {num(c.review)}
+            {c.review > 0 && <span className="text-muted">{ai.on ? ` (ИИ ${ai.checking + ai.waiting} · сотр. ${ai.staff})` : " (сотрудник)"}</span>} · мало фото {num(c.few, "bad")}
+          </>
+        }
+      />
+      <CardRow title="Написание" info={<>ждут {num(c.writeWait)} · сейчас {num(c.writeRun, "run")}</>}>
+        <Switch label={`Написание: ${s.name}`} on={a.writingEnabled} disabled={saving === k("writingEnabled")} onChange={(v) => onSave({ autostart: { writingEnabled: v } }, k("writingEnabled"))} />
+        <NumInput value={a.writingLimit} min={L.writingLimit[0]} max={L.writingLimit[1]} onSave={(v) => onSave({ autostart: { writingLimit: v } }, k("writingLimit"))} />
+      </CardRow>
+      <CardRow title="Публикация" info={<>ждут {num(c.publishWait)} · сейчас {num(c.publishRun, "run")}</>}>
+        <NumInput value={a.publishLimit} min={L.publishLimit[0]} max={L.publishLimit[1]} onSave={(v) => onSave({ autostart: { publishLimit: v } }, k("publishLimit"))} />
+      </CardRow>
+      <CardRow
+        title="ИИ-проверка"
+        info={
+          m.enabled && !ai.on ? <span className="text-danger">мастер выкл.</span> : ai.on && (ai.checking > 0 || ai.waiting > 0) ? <span className="text-brand">проверяет {ai.checking} · ждёт {ai.waiting}</span> : null
+        }
+      >
+        <Switch label={`ИИ-проверка фото: ${s.name}`} on={m.enabled} disabled={saving === k("aiEnabled")} onChange={(v) => onSave({ aiModeration: { enabled: v } }, k("aiEnabled"))} />
+      </CardRow>
+      <details>
+        <summary className="cursor-pointer text-muted">Настройки ИИ-проверки</summary>
+        <div className="mt-2 space-y-2">
+          <CardRow title="Параллельно" info={`${L.concurrency[0]}–${L.concurrency[1]}`}>
+            <NumInput value={m.concurrency} min={L.concurrency[0]} max={L.concurrency[1]} onSave={(v) => onSave({ aiModeration: { concurrency: v } }, k("aiConc"))} />
+          </CardRow>
+          <CardRow title="Запуск от" info="статей в ожидании">
+            <NumInput value={m.batchFrom} min={L.batchFrom[0]} max={L.batchFrom[1]} onSave={(v) => onSave({ aiModeration: { batchFrom: v } }, k("aiBatch"))} />
+          </CardRow>
+          <CardRow title="Ждать, если в публ. ≥" info="0 — не ждать">
+            <NumInput value={m.backlogThreshold} min={L.backlogThreshold[0]} max={L.backlogThreshold[1]} onSave={(v) => onSave({ aiModeration: { backlogThreshold: v } }, k("aiBacklog"))} />
+          </CardRow>
+        </div>
+      </details>
+      {s.blockers.length > 0 && (
+        <div className="border-t border-line/70 pt-2 text-[12px] leading-snug">
+          {s.blockers.map((b, i) => <p key={i} className={b.bad ? "text-danger" : "text-muted"}>{b.text}</p>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Строка карточки: название и счётчики слева, переключатель и лимит справа. */
+function CardRow({ title, info, children }: { title: string; info?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="min-w-0">
+        <p className="font-medium">{title}</p>
+        {info != null && <p className="text-[12px] text-muted">{info}</p>}
+      </div>
+      {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
+    </div>
+  );
+}
+
 /* ───────── Примитивы ───────── */
 
 function num(v: number, tone: "wait" | "run" | "bad" = "wait"): ReactNode {
@@ -288,19 +391,20 @@ function Switch({ on, onChange, label, disabled }: { on: boolean; onChange: (v: 
     <button
       type="button" role="switch" aria-checked={on} aria-label={label} title={label} disabled={disabled}
       onClick={() => onChange(!on)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition ${on ? "bg-ok border-ok" : "bg-ink/10 border-line-2"} ${disabled ? "opacity-50 cursor-wait" : "cursor-pointer"}`}
+      className={`relative inline-flex h-6 w-11 sm:h-5 sm:w-9 shrink-0 items-center rounded-full border transition ${on ? "bg-ok border-ok" : "bg-ink/10 border-line-2"} ${disabled ? "opacity-50 cursor-wait" : "cursor-pointer"}`}
     >
-      <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+      <span className={`inline-block h-5 w-5 sm:h-4 sm:w-4 rounded-full bg-white shadow transition-transform ${on ? "translate-x-[22px] sm:translate-x-[18px]" : "translate-x-0.5"}`} />
     </button>
   );
 }
 
 function MasterSwitch({ label, on, onChange, disabled, saving, title }: { label: string; on: boolean; onChange: (v: boolean) => void; disabled?: boolean; saving?: boolean; title?: string }) {
   return (
-    <span title={title} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] ${on ? "border-line" : "border-danger/40 bg-danger-soft"}`}>
+    // label: касание по всей пилюле (и по подписи) переключает
+    <label title={title} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] ${disabled || saving ? "" : "cursor-pointer"} ${on ? "border-line" : "border-danger/40 bg-danger-soft"}`}>
       <Switch label={`Мастер-выключатель: ${label}`} on={on} onChange={onChange} disabled={disabled || saving} />
       <span className={on ? "" : "text-danger"}>{label}</span>
-    </span>
+    </label>
   );
 }
 
@@ -322,7 +426,7 @@ function NumInput({ value, min, max, onSave, disabled }: { value: number; min: n
       onFocus={() => setFocused(true)}
       onBlur={() => { setFocused(false); commit(); }}
       onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLInputElement).blur(); } }}
-      className="input !w-16 !py-1 !px-1.5 text-center text-[12.5px] tabular-nums disabled:opacity-50"
+      className="input !w-16 !py-1 !px-1.5 text-center sm:!text-[12.5px] tabular-nums disabled:opacity-50"
     />
   );
 }

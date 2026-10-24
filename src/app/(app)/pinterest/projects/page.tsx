@@ -130,9 +130,9 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
 
 function Kpi({ label, value, tone, href, small }: { label: string; value: number | string; tone?: "danger" | "warn"; href?: string; small?: boolean }) {
   const body = (
-    <div className="kpi">
+    <div className="kpi min-w-0">
       <div className="help">{label}</div>
-      <div className={`kpi-value ${small ? "!text-[18px] sm:!text-[20px]" : ""} ${tone === "danger" ? "text-danger" : tone === "warn" ? "text-warn" : ""}`}>{value}</div>
+      <div className={`kpi-value ${small ? "!text-[18px] sm:!text-[20px] !leading-tight break-words" : ""} ${tone === "danger" ? "text-danger" : tone === "warn" ? "text-warn" : ""}`}>{value}</div>
     </div>
   );
   return href ? <Link href={href} className="block hover:opacity-90">{body}</Link> : body;
@@ -153,8 +153,8 @@ function ProjectRows({ rows, finance, teamName, ownerName, now }: { rows: Row[];
         const bar = Math.min(100, Math.round((p.schedule.stockRunDays / 30) * 100));
         const owner = ownerName(r.card?.ownerId ?? null);
         return (
-          <div key={r.site.id} className="grid items-center gap-x-5 gap-y-2 py-3 lg:grid-cols-[minmax(220px,1.3fr)_170px_170px_150px_minmax(140px,1fr)_auto]">
-            <div className="flex items-start gap-2.5 min-w-0">
+          <div key={r.site.id} className="grid grid-cols-2 grid-flow-row-dense items-center gap-x-5 gap-y-2 py-3 lg:grid-flow-row lg:grid-cols-[minmax(220px,1.3fr)_170px_170px_150px_minmax(140px,1fr)_auto]">
+            <div className="col-span-2 lg:col-span-1 flex items-start gap-2.5 min-w-0">
               <span title={r.alerts.map((a) => a.text).join(" · ") || "Сигналов нет"} className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5"><Link href={href} className="font-semibold hover:underline truncate">{r.site.name}</Link><Badge tone={statusTone(r.status)}>{statusLabel(r.status)}</Badge></div>
@@ -187,7 +187,7 @@ function ProjectRows({ rows, finance, teamName, ownerName, now }: { rows: Row[];
                 </>
               )}
             </div>
-            <div className="min-w-0">
+            <div className="col-span-2 lg:col-span-1 min-w-0">
               <div className="help">Что дальше</div>
               {r.card?.nextAction ? <><div className="truncate">{r.card.nextAction}</div>{r.card.nextDueAt && <div className={`help ${r.card.nextDueAt.getTime() < now ? "text-danger" : ""}`}>до {r.card.nextDueAt.toLocaleDateString("ru-RU")}</div>}</> : <div className="text-muted">{p.runs.last ? <>прогон {dateShort(p.runs.last.createdAt)}{p.runs.total > 1 ? ` · всего ${p.runs.total}` : ""}</> : "—"}</div>}
               {r.overdueN > 0 && <div className="help text-danger">просрочено задач: {r.overdueN}</div>}

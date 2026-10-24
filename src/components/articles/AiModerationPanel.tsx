@@ -250,14 +250,14 @@ function ResultsTab({ data, busy, act, notify }: { data: AiOverview; busy: strin
         </div>
       )}
 
-      <div className="card table-wrap">
+      <div className="card table-wrap !mx-0 !px-0">
         <table className="table">
           <thead>
             <tr>
               <th className="w-8">
                 <input type="checkbox" aria-label="Отметить все ждущие решения" checked={selectable.length > 0 && selectable.every((r) => sel.has(r.id))} disabled={!selectable.length} onChange={(e) => setSel(e.target.checked ? new Set(selectable.map((r) => r.id)) : new Set())} />
               </th>
-              <th>Ключ</th><th>Сайт</th><th>Решение ИИ</th><th>Уверенность</th><th>Фото</th><th>−/+</th><th>Причина</th><th>Статус</th><th>Аудит</th>{data.canSeeCosts && <th>$</th>}
+              <th>Ключ</th><th>Сайт</th><th>Решение ИИ</th><th className="col-sm">Уверенность</th><th className="col-sm">Фото</th><th className="col-sm">−/+</th><th className="col-md">Причина</th><th>Статус</th><th className="col-sm">Аудит</th>{data.canSeeCosts && <th className="col-sm">$</th>}
             </tr>
           </thead>
           <tbody>
@@ -274,13 +274,13 @@ function ResultsTab({ data, busy, act, notify }: { data: AiOverview; busy: strin
                   </td>
                   <td className="whitespace-nowrap">{r.siteName}</td>
                   <td>{d ? <Badge tone={d.tone}>{d.label}</Badge> : <Badge tone="neutral">{r.status === "failed" ? "Ошибка" : r.status === "processing" ? "…" : "Пропущено"}</Badge>}</td>
-                  <td className="tabular-nums">{r.confidence ?? "—"}</td>
-                  <td className="tabular-nums whitespace-nowrap">{r.photosBefore} → {r.photosAfter}</td>
-                  <td className="tabular-nums whitespace-nowrap">−{r.removed.length} / +{r.added.length}</td>
-                  <td className="max-w-md text-muted"><span className="line-clamp-2" title={r.error || r.summary || ""}>{r.error || r.summary || "—"}</span></td>
+                  <td className="col-sm tabular-nums">{r.confidence ?? "—"}</td>
+                  <td className="col-sm tabular-nums whitespace-nowrap">{r.photosBefore} → {r.photosAfter}</td>
+                  <td className="col-sm tabular-nums whitespace-nowrap">−{r.removed.length} / +{r.added.length}</td>
+                  <td className="col-md max-w-md text-muted"><span className="line-clamp-2" title={r.error || r.summary || ""}>{r.error || r.summary || "—"}</span></td>
                   <td className="whitespace-nowrap">{STATUS[r.status] ?? r.status}</td>
-                  <td className="whitespace-nowrap">{r.review?.audit ? <Badge tone={auditTone(r.review.audit.score)}>{r.review.audit.score}/10</Badge> : <span className="text-muted">—</span>}</td>
-                  {data.canSeeCosts && <td className="tabular-nums text-muted">{r.costUsd ? usd(r.costUsd) : "—"}</td>}
+                  <td className="col-sm whitespace-nowrap">{r.review?.audit ? <Badge tone={auditTone(r.review.audit.score)}>{r.review.audit.score}/10</Badge> : <span className="text-muted">—</span>}</td>
+                  {data.canSeeCosts && <td className="col-sm tabular-nums text-muted">{r.costUsd ? usd(r.costUsd) : "—"}</td>}
                 </tr>
               );
             })}
@@ -330,9 +330,10 @@ function ResultDialog({ r, canSeeCosts, busy, onClose, onResolve, onRerun, siteN
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4 sm:p-8" onClick={onClose} role="dialog" aria-modal="true">
       <div className="card w-full max-w-6xl p-5 space-y-4 text-[14px]" onClick={(e) => e.stopPropagation()}>
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <h2 className="h2">
+        {/* Шапка с «Закрыть» не уезжает при прокрутке длинного окна на телефоне */}
+        <div className="sticky top-0 z-10 -mx-5 -mt-5 bg-surface px-5 pt-5 pb-2 rounded-t-2xl flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="h2 [overflow-wrap:anywhere]">
               <Link href={`/pinterest/articles/articles/${r.articleId}`} className="hover:underline">{r.keyword}</Link>
               {d && <> · <Badge tone={d.tone}>{d.label}</Badge></>} · уверенность {r.confidence ?? "—"}
             </h2>
@@ -362,12 +363,12 @@ function ResultDialog({ r, canSeeCosts, busy, onClose, onResolve, onRerun, siteN
           </>}
           {r.review?.needed != null && <Badge tone="neutral">Нужно {r.review.needed}, минимум {r.review.minOk}</Badge>}
           {r.review?.passes != null && <Badge tone="neutral">Проходов: {r.review.passes}</Badge>}
-          {!!r.review?.humanReasons?.length && <Badge tone="warn">Людям: {r.review.humanReasons.join(", ")}</Badge>}
+          {!!r.review?.humanReasons?.length && <span className="badge bg-warn-soft text-warn !whitespace-normal !rounded-lg text-left">Людям: {r.review.humanReasons.join(", ")}</span>}
         </div>
         <section>
           <h3 className="mb-2 font-medium">Итоговая подборка ({r.finalOrder.length})</h3>
           {r.finalOrder.length ? (
-            <div className="grid grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
               {r.finalOrder.map((f, i) => (
                 <Thumb key={f.id + i} url={f.url} fallback={f.kind === "R" ? addedBy.get(f.id)?.sourceUrl : undefined} tone={f.kind === "R" ? "add" : undefined} audit={ap[f.id]} note={`${i + 1}${f.kind === "R" ? ` · добавлено (${f.src === "reject" ? "отклонённые ИИ" : "одобренные ИИ"})` : ""}`} />
               ))}
@@ -377,7 +378,7 @@ function ResultDialog({ r, canSeeCosts, busy, onClose, onResolve, onRerun, siteN
         {r.removed.length > 0 && (
           <section>
             <h3 className="mb-2 font-medium">Удалено ({r.removed.length})</h3>
-            <div className="grid grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
               {r.removed.map((x) => <Thumb key={x.photoId} url={x.url} fallback={x.sourceUrl} tone="bad" audit={ap[x.photoId]} note={x.reason} />)}
             </div>
           </section>
@@ -385,7 +386,7 @@ function ResultDialog({ r, canSeeCosts, busy, onClose, onResolve, onRerun, siteN
         {r.added.length > 0 && (
           <section>
             <h3 className="mb-2 font-medium">Добавлено из резерва ({r.added.length})</h3>
-            <div className="grid grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
               {r.added.map((x) => <Thumb key={x.candidateId} url={x.url} fallback={x.sourceUrl} tone="add" audit={ap[x.candidateId]} note={`${x.src === "reject" ? "Отклонённые ИИ" : "Одобренные ИИ"}${x.reason ? ` · ${x.reason}` : ""}`} />)}
             </div>
           </section>
@@ -481,24 +482,25 @@ function InsufficientTab({ rows, busy, act }: { rows: InsufficientRow[]; busy: s
       </div>
       {sites.length > 1 && (
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={`badge px-3 py-1 ${fSite === "all" ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`} onClick={() => setFSite("all")}>Все сайты · {rows.length}</button>
-          {sites.map(([id, name]) => <button key={id} type="button" className={`badge px-3 py-1 ${fSite === id ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`} onClick={() => setFSite(id)}>{name} · {rows.filter((r) => r.siteId === id).length}</button>)}
+          <button type="button" className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${fSite === "all" ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`} onClick={() => setFSite("all")}>Все сайты · {rows.length}</button>
+          {sites.map(([id, name]) => <button key={id} type="button" className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${fSite === id ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`} onClick={() => setFSite(id)}>{name} · {rows.filter((r) => r.siteId === id).length}</button>)}
         </div>
       )}
       {shown.length ? (
-        <div className="card table-wrap">
+        <div className="card table-wrap !mx-0 !px-0">
           <table className="table">
-            <thead><tr><th>Ключ</th><th>Сайт</th><th>Кто</th><th>Когда</th><th>Причина</th><th /></tr></thead>
+            <thead><tr><th>Ключ</th><th>Сайт</th><th className="col-sm">Кто</th><th className="col-sm">Когда</th><th>Причина</th><th /></tr></thead>
             <tbody>
               {shown.map((r) => (
                 <tr key={r.id}>
                   <td className="font-medium max-w-xs">
                     <Link href={`/pinterest/articles/articles/${r.id}`} className="block truncate hover:underline" title={r.keyword}>{r.keyword}</Link>
                     {r.status === "WAITING_FOR_PHOTOS" && <span className="text-[11px] text-muted">воркер не набрал фото</span>}
+                    <span className="help block font-normal sm:hidden">{r.byName ?? "Владелец"} · {fmt(r.at)}</span>
                   </td>
                   <td className="whitespace-nowrap">{r.siteName}</td>
-                  <td className="whitespace-nowrap">{r.byName ?? "Владелец"}</td>
-                  <td className="whitespace-nowrap tabular-nums text-muted">{fmt(r.at)}</td>
+                  <td className="col-sm whitespace-nowrap">{r.byName ?? "Владелец"}</td>
+                  <td className="col-sm whitespace-nowrap tabular-nums text-muted">{fmt(r.at)}</td>
                   <td className="max-w-md text-muted"><span className="line-clamp-2" title={r.reason ?? ""}>{r.reason || "—"}</span></td>
                   <td className="whitespace-nowrap">
                     <div className="flex flex-wrap justify-end gap-1">

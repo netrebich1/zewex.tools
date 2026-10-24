@@ -26,7 +26,7 @@ export function ProblemsDetails({ problems, runStatus, open = false }: { problem
                 <div className="font-medium text-ink">{p.title}</div>
                 <div className="text-ink-2">{p.meaning}</div>
                 <div className="text-ink-2"><b>Что делать:</b> {p.action}</div>
-                {p.raw && <div className="truncate text-[11.5px] text-muted" title={p.raw}>Ответ провайдера: {p.raw}</div>}
+                {p.raw && <div className="line-clamp-3 break-all text-[11.5px] text-muted" title={p.raw}>Ответ провайдера: {p.raw}</div>}
               </div>
             </li>
           ))}

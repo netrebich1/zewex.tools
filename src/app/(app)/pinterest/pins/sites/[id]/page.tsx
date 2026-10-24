@@ -39,7 +39,7 @@ export default async function SitePage({ params, searchParams }: { params: Promi
     <>
       <PageHeader back={{ href: "/pinterest/pins/sites", label: "Сайты" }} title={site.name} subtitle={`${site.team.name} · досок ${site.boards.length} · ${styles} · язык ${r.text.language}${site.isActive ? "" : " · в архиве"}`} actions={<>{site.wpConnectionId && <Link href={`/sites/${site.wpConnectionId}`} className="btn-ghost">Доступ и команды</Link>}<a href={`/api/pins/export/all?site=${id}`} className="btn-ghost">Выгрузить все пины</a><Link href={`/pinterest/pins/runs/new?site=${id}`} className="btn-brand">Новый прогон</Link></>} />
       <div className="mb-4 flex gap-2">
-        {tabs.map(([k, l]) => <Link key={k} href={`/pinterest/pins/sites/${id}?tab=${k}`} className={`badge px-3 py-1 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}
+        {tabs.map(([k, l]) => <Link key={k} href={`/pinterest/pins/sites/${id}?tab=${k}`} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}
       </div>
 
       {tab === "overview" && (

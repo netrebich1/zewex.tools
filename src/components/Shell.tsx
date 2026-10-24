@@ -67,12 +67,13 @@ export function Shell({ user, children }: { user: ShellUser; children: ReactNode
     <div className={`min-h-dvh flex flex-col ${view}`}>
       {user.impersonator && <ImpersonationBar name={user.name} email={user.email} by={user.impersonator.name} />}
       <header className="view-header sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-md">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 h-14 flex items-center gap-3">
+        <div className="mx-auto max-w-7xl h-14 flex items-center gap-2 sm:gap-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:px-6">
           <Link href="/" className="shrink-0" aria-label="Zewex Tools"><LogoFull className="h-6 w-auto hidden sm:block" /><LogoMark className="h-6 w-auto sm:hidden" /></Link>
-          <nav className="flex items-center gap-1 ml-2">
+          {/* На телефоне вкладку не показываем: логотип и так ведёт к инструментам, а места в шапке нет. */}
+          <nav className="hidden sm:flex items-center gap-1 ml-2">
             <Link href="/" className={`tab ${isTools ? "active" : ""}`}><Icon.grid width={15} height={15} /> Инструменты</Link>
           </nav>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
             {user.impersonator && <span className="view-chip hidden lg:inline-flex">Кабинет сотрудника</span>}
             <HeaderServer />
             {showsBalances(user) && <HeaderBalances key={user.activeTeamId ?? "all"} mine={!canSeeBalances(user)} teamName={user.teams.find((t) => t.id === user.activeTeamId)?.name ?? null} />}
@@ -80,7 +81,7 @@ export function Shell({ user, children }: { user: ShellUser; children: ReactNode
             {teamSwitch && <TeamSwitch teams={user.teams} activeTeamId={user.activeTeamId} />}
             <ThemeSwitch />
           </div>
-          <div className="relative flex items-center gap-2" ref={ref}>
+          <div className="relative flex shrink-0 items-center gap-2" ref={ref}>
             <button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 h-9 rounded-full border border-line bg-surface pl-1 pr-2.5 hover:border-line-2 transition" aria-haspopup="menu" aria-expanded={open}>
               <span className="view-avatar inline-flex h-7 w-7 items-center justify-center rounded-full bg-ink text-bg text-[12px] font-bold">{initials(user.name)}</span>
               <span className="hidden sm:block text-[13.5px] font-medium max-w-[140px] truncate">{user.name}</span>

@@ -93,7 +93,7 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
         </Card>
 
         <div className="flex flex-wrap gap-2">
-          {TABS.map(([k, l]) => <Link key={k} href={`/pinterest/articles/articles/${id}?tab=${k}`} className={`badge px-3 py-1 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}
+          {TABS.map(([k, l]) => <Link key={k} href={`/pinterest/articles/articles/${id}?tab=${k}`} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>)}
         </div>
 
         {tab === "photos" && <PhotosTab articleId={id} />}
@@ -107,11 +107,11 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
               <div className="flex justify-between gap-3"><dt className="text-muted">Ссылка</dt><dd className="truncate max-w-[320px]">{a.wpUrl ? <a href={a.wpUrl} target="_blank" rel="noreferrer" className="text-info hover:underline">{a.wpUrl}</a> : "—"}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Попыток публикации</dt><dd>{a.publishAttempts}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Опубликована</dt><dd>{a.publishedAt ? fmtDate(a.publishedAt) : "—"}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-muted">Адрес (slug)</dt><dd className="mono">{a.slug || "—"}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted">Адрес (slug)</dt><dd className="mono min-w-0 text-right [overflow-wrap:anywhere]">{a.slug || "—"}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Файлы на сервере</dt><dd>{a.purgedAt ? `хранятся, отклонённые кандидаты удалены ${fmtDate(a.purgedAt)}` : "хранятся"}</dd></div>
               {a.sheetRow != null && (
                 <div className="flex justify-between gap-3"><dt className="text-muted">Google Таблица</dt>
-                  <dd className={a.sheetSyncState === "error" ? "text-danger" : ""} title={a.sheetSyncError ?? undefined}>
+                  <dd className={`min-w-0 text-right [overflow-wrap:anywhere] ${a.sheetSyncState === "error" ? "text-danger" : ""}`} title={a.sheetSyncError ?? undefined}>
                     строка {a.sheetRow}{a.sheetTab ? ` · ${a.sheetTab}` : ""} · {a.sheetSyncState === "ok" ? "отчёт записан" : a.sheetSyncState === "error" ? `отчёт не записан: ${a.sheetSyncError ?? "ошибка"}` : "отчёт запишется после публикации"}
                   </dd>
                 </div>
@@ -272,7 +272,19 @@ async function LogTab({ articleId }: { articleId: string }) {
                 <td className="hidden sm:table-cell text-right tabular-nums text-muted">{u.inputTokens || u.outputTokens ? `${u.inputTokens} / ${u.outputTokens}` : "—"}</td>
                 <td className="text-right tabular-nums">{u.costUsd != null ? `$${u.costUsd.toFixed(4)}` : "—"}</td>
                 <td className="hidden sm:table-cell text-right tabular-nums text-muted">{u.durationMs ? `${(u.durationMs / 1000).toFixed(1)} с` : "—"}</td>
-                <td>{u.ok ? <Badge tone="ok">ок</Badge> : <span title={u.error ?? ""}><Badge tone="danger">ошибка</Badge></span>}</td>
+                <td>
+                  {u.ok ? (
+                    <Badge tone="ok">ок</Badge>
+                  ) : u.error ? (
+                    // текст ошибки по нажатию: title на телефоне не виден
+                    <details title={u.error}>
+                      <summary className="cursor-pointer list-none"><Badge tone="danger">ошибка</Badge></summary>
+                      <div className="help mt-1 max-w-xs [overflow-wrap:anywhere]">{u.error}</div>
+                    </details>
+                  ) : (
+                    <Badge tone="danger">ошибка</Badge>
+                  )}
+                </td>
               </tr>
             ))}</tbody>
           </table></div>
