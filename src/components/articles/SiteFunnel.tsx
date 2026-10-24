@@ -43,11 +43,14 @@ export function SiteFunnel({ siteId, f, compact = false }: { siteId: string; f: 
   );
 }
 
-/** Подпись-легенда воронки (один раз над таблицей). */
+/**
+ * Подпись-легенда воронки (один раз над таблицей). <span>, а не <p>: её кладут в `Card description`, который сам <p>,
+ * а <p> внутри <p> браузер разбирает иначе, чем React, — ошибка гидратации (React 418) на обзоре статей.
+ */
 export function FunnelLegend() {
   return (
-    <p className="help">
+    <span className="help">
       Воронка: {FUNNEL_COLUMNS.map((c) => c.label.toLowerCase()).join(" → ")}. Нажмите на число, чтобы открыть эти статьи в очереди сайта.
-    </p>
+    </span>
   );
 }

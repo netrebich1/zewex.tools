@@ -36,7 +36,14 @@ const RUN_STATUS: Record<string, { label: string; tone: "brand" | "ok" | "neutra
   failed: { label: "сбой", tone: "danger" },
 };
 
-const fmt = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
+/**
+ * Время показываем только в браузере: сервер в UTC, у человека свой пояс, и строки времени (и «воркер не отвечает»
+ * от Date.now) расходились с разметкой сервера — ошибка гидратации React 418. До первой отрисовки в браузере
+ * вместо времени пусто, затем панель перерисовывается (`clientReady` ставит эффект в AiModerationPanel).
+ * Переход на страницу внутри портала гидратации не делает — там флаг уже true и время видно сразу.
+ */
+let clientReady = false;
+const fmt = (iso: string | null | undefined) => (!iso ? "—" : !clientReady ? "" : new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }));
 const day = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
 const usd = (v: number) => `$${v.toFixed(v < 0.1 ? 3 : 2)}`;
 
@@ -55,6 +62,8 @@ export function AiModerationPanel({ initial }: { initial: AiOverview }) {
   const [msg, setMsg] = useState<{ text: string; tone: "ok" | "danger" | "neutral" } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const busyRef = useRef(false);
+  const [, setReady] = useState(clientReady);
+  useEffect(() => { if (!clientReady) { clientReady = true; setReady(true); } }, []);
 
   const refresh = useCallback(async () => {
     if (busyRef.current) return;
@@ -103,7 +112,7 @@ export function AiModerationPanel({ initial }: { initial: AiOverview }) {
       <div className="flex flex-wrap items-center gap-1.5">
         <button type="button" className={`tab ${tab === "results" ? "active" : ""}`} onClick={() => setTab("results")}>Результаты · {data.results.length}</button>
         <button type="button" className={`tab ${tab === "insufficient" ? "active" : ""}`} onClick={() => setTab("insufficient")}>Мало фото · {data.insufficient.length}</button>
-        <span className="help ml-auto">Обновлено {new Date(data.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+        <span className="help ml-auto">{clientReady ? `Обновлено ${new Date(data.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}</span>
         <button type="button" className="btn-ghost btn-sm" onClick={() => void refresh()}>Обновить</button>
       </div>
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
@@ -298,7 +307,7 @@ function ResultsTab({ data, busy, act, notify }: { data: AiOverview; busy: strin
 
 function RunLine({ r, canSeeCosts, busy, onStop }: { r: AiRunRow; canSeeCosts: boolean; busy: string | null; onStop: () => void }) {
   const st = RUN_STATUS[r.status] ?? { label: r.status, tone: "neutral" as const };
-  const stale = r.status === "running" && r.heartbeatAt && Date.now() - new Date(r.heartbeatAt).getTime() > 3 * 60_000;
+  const stale = clientReady && r.status === "running" && r.heartbeatAt && Date.now() - new Date(r.heartbeatAt).getTime() > 3 * 60_000;
   return (
     <li className="flex flex-wrap items-center gap-2">
       <span className="text-muted tabular-nums">{fmt(r.createdAt)}</span>
