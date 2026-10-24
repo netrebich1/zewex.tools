@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { resolveSlot, runSlot, disableKey, type ResolvedSlot } from "@/lib/run";
+import { confirmKeyFailure, zeroManualBalance } from "@/lib/keyHealth";
 import { PROJECT_SLUG, SLOT_IMAGE_MAIN, SLOT_TEXT_FAST, SLOT_TEXT_MAIN } from "../types";
 import { AiError, classifyAiError } from "./errors";
 import { acquire, DEFAULT_LIMITS, keyOk, pauseKey } from "./limiter";
@@ -35,6 +36,12 @@ async function handleFailure(ctx: AiCtx, res: { status: number; error?: string }
   // Лимит провайдера (TPM/RPM) общий на ключ: ставим ключ на паузу для всех прогонов, а не долбим дальше.
   if (cls.code === "rate_limited") pauseKey(apiKeyId);
   if (cls.kind === "fatal_run" && (cls.code === "no_credits" || cls.code === "auth")) {
+    // Перед выключением — проверочный запрос: если ключ отвечает, это разовый сбой провайдера, а не пустой счёт.
+    const check = await confirmKeyFailure(apiKeyId);
+    if (check.ok) {
+      throw new AiError({ code: "unknown", kind: "transient", message: `Разовая ошибка провайдера, проверка ключа прошла: ${cls.message}`.slice(0, 500) }, res.status);
+    }
+    if (cls.code === "no_credits") await zeroManualBalance(apiKeyId);
     await disableKey(apiKeyId, `Автоотключён: ${cls.code === "no_credits" ? "закончился баланс" : "ключ отклонён провайдером"} (${cls.message.slice(0, 120)})`);
     cls.message = `Ключ «${keyLabel}»: ${cls.message}`;
   }

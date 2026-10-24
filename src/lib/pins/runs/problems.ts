@@ -62,6 +62,8 @@ export function explainItemError(kind: string, stage: string, raw: string, count
 export function explainBlocked(reason: string, stage: string): Problem {
   const r = reason.toLowerCase();
   const base = { severity: "critical" as const, count: 1, stage, kind: "blocked", raw: reason };
+  const costlier = reason.split("\n").find((l) => l.startsWith("Запасной ключ картинок дороже"));
+  if (costlier) return { ...base, title: "Прогон ждёт: на основном ключе картинок нет денег, а запасной дороже", meaning: costlier, action: "Пополните основной ключ — прогон продолжится сам в течение 10 минут. Если нужно сейчас и дороже — нажмите «Продолжить»." };
   if (/баланс|no credits|insufficient|quota|закончил/.test(r)) return { ...base, title: "Прогон остановлен: закончились деньги на ключе ИИ", meaning: "Без баланса провайдер не выполняет запросы.", action: "Попросите администратора пополнить баланс, затем нажмите «Продолжить»." };
   if (/ключ|api key|unauthorized|отклонён/.test(r)) return { ...base, title: "Прогон остановлен: ключ ИИ не работает", meaning: "Провайдер отклонил ключ.", action: "Попросите администратора проверить ключ в разделе «Ключи ИИ», затем «Продолжить»." };
   if (/набор|стил/.test(r)) return { ...base, title: "Прогон остановлен: не выбраны стили", meaning: reason, action: "Откройте вкладку «Настройки» прогона, отметьте наборы стилей, сохраните и нажмите «Продолжить»." };

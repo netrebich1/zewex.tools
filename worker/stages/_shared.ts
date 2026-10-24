@@ -31,17 +31,29 @@ export async function loadRunCtx(ctx: StageCtx): Promise<RunCtx> {
   };
 }
 
-/** Параллельная очередь с ограничением и остановкой по сигналу. */
+/**
+ * Параллельная очередь с ограничением и остановкой по сигналу.
+ * После первой ошибки новые элементы не берутся, начатые дорабатывают, и только потом ошибка пробрасывается.
+ * Раньше `Promise.all` отпускал этап сразу, а остальные потоки продолжали рисовать: задача уходила на повтор,
+ * новая копия этапа брала те же пины, и картинки оплачивались дважды (прогон bellaromakitchen 2026-10-23, 311 лишних).
+ */
 export async function runQueue<T>(items: T[], concurrency: number, fn: (item: T, index: number) => Promise<void>, signal?: AbortSignal): Promise<void> {
   let i = 0;
+  let failed: { error: unknown } | null = null;
   const workers = Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, async () => {
-    while (i < items.length) {
+    while (i < items.length && !failed) {
       if (signal?.aborted) return;
       const idx = i++;
-      await fn(items[idx], idx);
+      try {
+        await fn(items[idx], idx);
+      } catch (e) {
+        failed ??= { error: e };
+        return;
+      }
     }
   });
   await Promise.all(workers);
+  if (failed) throw (failed as { error: unknown }).error;
 }
 
 export function chunk<T>(arr: T[], size: number): T[][] {

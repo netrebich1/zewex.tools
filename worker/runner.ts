@@ -177,6 +177,9 @@ export async function processJob(job: PinJob, shuttingDown: () => boolean): Prom
     log.error(`job ${job.id} failed`, err);
   } finally {
     clearInterval(heartbeat);
+    // Задача закончена (готово, повтор, ошибка): всё, что этап ещё запустил в фоне, должно остановиться,
+    // иначе после повтора по тем же пинам работают две копии этапа.
+    if (!ac.signal.aborted) ac.abort(new Error("job finished"));
     await refreshRunCost(job.runId).catch((e) => log.warn(`cost refresh failed for run ${job.runId}`, e));
   }
 }

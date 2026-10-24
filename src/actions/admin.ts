@@ -6,6 +6,7 @@ import { LOGIN_RE, allowedRegistrationEmails, getCurrentUser, hashPassword, norm
 import { encryptSecret, decryptSecret, secretHint } from "@/lib/crypto";
 import { checkKey, fetchModels } from "@/lib/adapters";
 import { manualBalanceProvider } from "@/lib/balances";
+import { clearZeroBalanceAfterHeal, probeKey, zeroManualBalance } from "@/lib/keyHealth";
 import { parseNumber, slugify } from "@/lib/utils";
 import {
   assignScope, canAssignGlobal, canAssignKey, canCreatePersonalKey, canCreateSharedKey, canCreateTeam, canDeleteBinding, canManageKey, canManageProviders,
@@ -459,16 +460,42 @@ async function moveKeyRules(tx: Prisma.TransactionClient, keyId: string, target:
   return { kept: next.size, dropped };
 }
 
+/** Включить выключенный ключ одной кнопкой из карточки «Состояние» (те же права, что у настроек ключа). */
+export async function enableKey(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  const id = str(f, "id");
+  const key = await prisma.apiKey.findUnique({ where: { id } });
+  if (!key) return { error: "Ключ не найден" };
+  if (!canManageKey(me, key)) return { error: "Нет прав" };
+  await prisma.apiKey.update({ where: { id }, data: { status: "ACTIVE" } });
+  console.log(`[keys] ${key.label} enabled by ${me.email}`);
+  revalidatePath(`/keys/${id}`);
+  revalidatePath("/keys");
+  return { ok: "Ключ включён" };
+}
+
 export async function testKey(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const id = str(f, "id");
   const key = await prisma.apiKey.findUnique({ where: { id }, include: { provider: true } });
   if (!key) return { error: "Ключ не найден" };
   if (!canManageKey(me, key)) return { error: "Нет прав" };
-  const check = await checkKey(key.provider, decryptSecret(key.secretEnc), await probeModelFor(key.providerId));
-  await prisma.apiKey.update({ where: { id }, data: { lastCheckedAt: new Date(), lastCheckOk: check.ok, lastCheckNote: check.note } });
+  // Чатовые провайдеры отдают список моделей и при нулевом балансе: проверяем настоящим запросом (как автопроверка),
+  // иначе пустой ключ показывается «работает» и включается обратно (ключ alexandrzewex 2026-10-23).
+  const check = key.provider.adapter === "OPENAI_COMPAT"
+    ? await probeKey(key.id)
+    : await checkKey(key.provider, decryptSecret(key.secretEnc), await probeModelFor(key.providerId));
+  // Ключ, который портал выключил сам (нет баланса / отклонён провайдером — `disableKey`), после успешной проверки снова включается.
+  // Выключенный вручную остаётся выключенным.
+  const reenable = check.ok && key.status === "DISABLED" && /^Автоотключён/.test(key.lastCheckNote ?? "");
+  await prisma.apiKey.update({ where: { id }, data: { lastCheckedAt: new Date(), lastCheckOk: check.ok, lastCheckNote: check.note, ...(reenable ? { status: "ACTIVE" } : {}) } });
+  if (reenable) {
+    console.log(`[keys] ${key.label} re-enabled after a successful check by ${me.email}`);
+    await clearZeroBalanceAfterHeal(key.id);
+  }
+  if (!check.ok && /no credits|insufficient_quota|exceeded your current quota|配额不足|insufficient credits/i.test(check.note)) await zeroManualBalance(key.id);
   revalidatePath(`/keys/${id}`);
-  return check.ok ? { ok: check.note } : { error: check.note };
+  return check.ok ? { ok: reenable ? `${check.note}. Ключ снова включён (его выключал портал автоматически).` : check.note } : { error: check.note };
 }
 
 export async function deleteKey(_p: FormState, f: FormData): Promise<FormState> {
