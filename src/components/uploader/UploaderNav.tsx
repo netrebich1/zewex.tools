@@ -6,6 +6,7 @@ const ITEMS: Array<{ href: string; label: string; exact?: boolean }> = [
   { href: "/pinterest/uploader", label: "Сегодня", exact: true },
   { href: "/pinterest/uploader/runs", label: "Запуски" },
   { href: "/pinterest/uploader/mapping", label: "Сопоставление" },
+  { href: "/pinterest/uploader/sets", label: "Наборы" },
   { href: "/pinterest/uploader/agents", label: "Агенты" },
   { href: "/pinterest/uploader/settings", label: "Настройки" },
   { href: "/pinterest/uploader/guide", label: "Инструкция" },

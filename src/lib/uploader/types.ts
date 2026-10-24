@@ -82,8 +82,8 @@ export const HUMANIZE_FIELDS: Array<{ key: keyof Omit<UplHumanize, "browseFeed">
 ];
 
 export type AgentSettings = { parallel: number };
-export type AgentSchedule = { enabled: boolean; time: string; tz: string };
-export const DEFAULT_SCHEDULE: AgentSchedule = { enabled: false, time: "09:30", tz: "Europe/Kyiv" };
+export type AgentSchedule = { enabled: boolean; time: string; tz: string; /** Набор сайтов (UplSet); null — все сайты с профилем */ setId: string | null };
+export const DEFAULT_SCHEDULE: AgentSchedule = { enabled: false, time: "09:30", tz: "Europe/Kyiv", setId: null };
 
 export function parseAgentSettings(v: unknown): AgentSettings {
   const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
@@ -96,6 +96,7 @@ export function parseSchedule(v: unknown): AgentSchedule {
     enabled: o.enabled === true,
     time: typeof o.time === "string" && /^\d{2}:\d{2}$/.test(o.time) ? o.time : DEFAULT_SCHEDULE.time,
     tz: typeof o.tz === "string" && o.tz ? o.tz : DEFAULT_SCHEDULE.tz,
+    setId: typeof o.setId === "string" && o.setId ? o.setId : null,
   };
 }
 const pair = (v: unknown, d: [number, number]): [number, number] => {

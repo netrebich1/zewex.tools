@@ -7,10 +7,13 @@ import { encryptSecret, secretHint } from "@/lib/crypto";
 import { TZ } from "@/lib/pins/runs/stats";
 import { todayKey } from "@/lib/pins/schedule/math";
 import { agentFor, isAdmin, requireUploader, runFor, visiblePinSites } from "@/lib/uploader/access";
+import type { CurrentUser } from "@/lib/auth";
 import { issueAgentToken } from "@/lib/uploader/agent";
 import { publishAgentBuild } from "@/lib/uploader/release";
 import { createRun, retryFailed, stopRun, uplSettings } from "@/lib/uploader/runs";
 import { ACCOUNT_STATUS_LABELS, DEFAULT_HUMANIZE, HUMANIZE_FIELDS, isDay, parseHumanize, parseSchedule, type UplHumanize } from "@/lib/uploader/types";
+import { suggestProfiles } from "@/lib/uploader/match";
+import { setFor } from "@/lib/uploader/sets";
 
 export type FormState = { error?: string; ok?: string };
 export type TokenState = FormState & { token?: string };
@@ -50,7 +53,9 @@ export async function saveAgentAction(_p: FormState, f: FormData): Promise<FormS
     const a = await agentFor(me, str(f, "agentId"));
     const parallel = Math.max(1, Math.min(5, Number(str(f, "parallel")) || 1));
     const time = str(f, "time");
-    const schedule = { enabled: str(f, "enabled") === "on", time: /^\d{2}:\d{2}$/.test(time) ? time : parseSchedule(a.schedule).time, tz: str(f, "tz") || parseSchedule(a.schedule).tz };
+    const setId = str(f, "setId");
+    if (setId && !(await setFor(me, setId))) throw new Error("Набор не найден");
+    const schedule = { enabled: str(f, "enabled") === "on", time: /^\d{2}:\d{2}$/.test(time) ? time : parseSchedule(a.schedule).time, tz: str(f, "tz") || parseSchedule(a.schedule).tz, setId: setId || null };
     const name = str(f, "name").slice(0, 120) || a.name;
     await prisma.uplAgent.update({ where: { id: a.id }, data: { name, settings: { parallel }, schedule } });
     refresh(`${BASE}/agents`);
@@ -75,11 +80,8 @@ export async function uploadAgentBuildAction(_p: FormState, f: FormData): Promis
 
 // ───────────── сопоставление ─────────────
 
-/** Сайт ↔ профиль Dolphin (селект отправляется сам). Пустое значение — снять сопоставление. */
-export async function setProfileAction(_p: FormState, f: FormData): Promise<FormState> {
-  const me = await requireUploader();
-  const pinSiteId = str(f, "pinSiteId"), profileId = str(f, "profileId");
-  try {
+/** Привязка профиля к сайту с проверками (1 сайт = 1 профиль). Пустой profileId — снять. */
+async function bindProfile(me: CurrentUser, pinSiteId: string, profileId: string): Promise<string> {
     if (!(await visiblePinSites(me)).some((s) => s.id === pinSiteId)) throw new Error("Сайт не найден или закрыт для вас");
     const profile = profileId ? await prisma.uplProfile.findUnique({ where: { id: profileId } }) : null;
     if (profileId && !profile) throw new Error("Профиль не найден в списке агентов");
@@ -93,8 +95,74 @@ export async function setProfileAction(_p: FormState, f: FormData): Promise<Form
       update: { profileId: profile?.id ?? null, profileName: profile?.name ?? null, ...(profile ? {} : { pinUsername: null }) },
       create: { pinSiteId, profileId: profile?.id ?? null, profileName: profile?.name ?? null },
     });
+    return profile ? `Привязан профиль «${profile.name}»` : "Сопоставление снято";
+}
+
+/** Сайт ↔ профиль Dolphin (селект отправляется сам). Пустое значение — снять сопоставление. */
+export async function setProfileAction(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUploader();
+  try {
+    const ok = await bindProfile(me, str(f, "pinSiteId"), str(f, "profileId"));
     refresh(`${BASE}/mapping`);
-    return { ok: profile ? `Привязан профиль «${profile.name}»` : "Сопоставление снято" };
+    return { ok };
+  } catch (e) { return fail(e); }
+}
+
+/** Принять одно предложение автосопоставления. */
+export async function acceptSuggestionAction(pinSiteId: string, profileId: string): Promise<FormState> {
+  const me = await requireUploader();
+  try {
+    const ok = await bindProfile(me, pinSiteId, profileId);
+    refresh(`${BASE}/mapping`);
+    return { ok };
+  } catch (e) { return fail(e); }
+}
+
+/** Принять все однозначные предложения (домен сайта найден ровно в одном свободном профиле). */
+export async function acceptAllSureAction(): Promise<FormState> {
+  const me = await requireUploader();
+  try {
+    const sites = await visiblePinSites(me);
+    const [profiles, accounts] = await Promise.all([prisma.uplProfile.findMany({ select: { id: true, name: true, tags: true } }), prisma.uplAccount.findMany({ where: { profileId: { not: null } }, select: { pinSiteId: true, profileId: true } })]);
+    const sug = suggestProfiles(sites, profiles, accounts);
+    let n = 0;
+    for (const [siteId, list] of sug) {
+      if (!list[0]?.sure) continue;
+      try { await bindProfile(me, siteId, list[0].profileId); n++; } catch { /* занято между запросами — пропускаем */ }
+    }
+    refresh(`${BASE}/mapping`);
+    return n ? { ok: `Сопоставлено: ${n}` } : { error: "Однозначных предложений нет" };
+  } catch (e) { return fail(e); }
+}
+
+// ───────────── наборы сайтов ─────────────
+
+export async function saveSetAction(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUploader();
+  const id = str(f, "id"), name = str(f, "name").slice(0, 120);
+  if (!name) return { error: "Введите название набора" };
+  try {
+    const visible = new Set((await visiblePinSites(me)).map((s) => s.id));
+    const siteIds = [...new Set(f.getAll("site").map(String).filter((x) => visible.has(x)))];
+    if (id) {
+      if (!(await setFor(me, id))) throw new Error("Набор не найден");
+      await prisma.uplSet.update({ where: { id }, data: { name, siteIds } });
+    } else {
+      await prisma.uplSet.create({ data: { userId: me.id, name, siteIds } });
+    }
+    refresh(`${BASE}/sets`, `${BASE}/agents`);
+    return { ok: `Набор «${name}»: ${siteIds.length} сайт(ов)` };
+  } catch (e) { return fail(e); }
+}
+
+export async function deleteSetAction(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUploader();
+  const id = str(f, "id");
+  try {
+    if (!(await setFor(me, id))) throw new Error("Набор не найден");
+    await prisma.uplSet.delete({ where: { id } });
+    refresh(`${BASE}/sets`, `${BASE}/agents`);
+    return { ok: "Набор удалён" };
   } catch (e) { return fail(e); }
 }
 

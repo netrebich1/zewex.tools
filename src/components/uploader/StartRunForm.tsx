@@ -7,9 +7,10 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 
 export type StartSite = { id: string; name: string; count: number; ready: boolean; why: string | null; uploaded: boolean };
 export type StartAgent = { id: string; name: string; status: string; parallel: number };
+export type StartSet = { id: string; name: string; siteIds: string[] };
 
 /** Кнопка «Запустить»: выбор агента, сайтов (по умолчанию все готовые без отметки), параллельности. */
-export function StartRunForm({ sites, agents, day }: { sites: StartSite[]; agents: StartAgent[]; day: string }) {
+export function StartRunForm({ sites, agents, day, sets = [] }: { sites: StartSite[]; agents: StartAgent[]; day: string; sets?: StartSet[] }) {
   const router = useRouter();
   const [state, action] = useActionState<StartState, FormData>(async (p, f) => { const r = await startRunAction(p, f); if (r.runId) router.push(`/pinterest/uploader/runs/${r.runId}`); return r; }, {});
   const online = agents.filter((a) => a.status !== "offline");
@@ -42,6 +43,15 @@ export function StartRunForm({ sites, agents, day }: { sites: StartSite[]; agent
           <span className="label">Профилей одновременно</span>
           <input name="parallel" type="number" min={1} max={5} className="input w-[110px]" defaultValue={agent?.parallel ?? 1} key={agentId} />
         </label>
+        {sets.length > 0 && (
+          <label className="block">
+            <span className="label">Набор сайтов</span>
+            <select className="input" defaultValue="" onChange={(e) => { const st = sets.find((x) => x.id === e.target.value); if (st) setChecked(new Set(sites.filter((s) => s.ready && st.siteIds.includes(s.id)).map((s) => s.id))); }}>
+              <option value="">— вручную —</option>
+              {sets.map((st) => <option key={st.id} value={st.id}>{st.name} ({st.siteIds.length})</option>)}
+            </select>
+          </label>
+        )}
         <label className="flex items-center gap-1.5 text-[13px] pb-2"><input type="checkbox" name="force" /> Заливать и уже отмеченные залитыми</label>
       </div>
       {agent?.status === "offline" && <p className="text-[13px] text-warn">Агент «{agent.name}» сейчас не на связи: запуск встанет в очередь и начнётся, когда агент выйдет на связь.</p>}

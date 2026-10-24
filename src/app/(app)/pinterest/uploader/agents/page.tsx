@@ -5,7 +5,8 @@ import { AutoForm } from "@/components/projects/AutoForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { isAdmin, requireUploader } from "@/lib/uploader/access";
 import { agentRows } from "@/lib/uploader/views";
-import { agentLatestVersion, agentZipExists, olderVersion } from "@/lib/uploader/release";
+import { agentLatestVersion, downloads, olderVersion } from "@/lib/uploader/release";
+import { setRows } from "@/lib/uploader/sets";
 import { saveAgentAction, uploadAgentBuildAction } from "@/actions/uploader";
 import { AgentTokenForm, RevokeAgentButton } from "@/components/uploader/AgentControls";
 import { AgentBadge, ago } from "@/components/uploader/ui";
@@ -17,8 +18,7 @@ const TZS = ["Europe/Kyiv", "Europe/Warsaw", "Europe/Berlin", "Europe/Moscow", "
 /** Агенты: токены, состояние, параллельность, расписание; скачивание сборки; загрузка сборки (админ). */
 export default async function UploaderAgentsPage() {
   const me = await requireUploader();
-  const [agents, latest] = await Promise.all([agentRows(me), agentLatestVersion()]);
-  const hasZip = await agentZipExists(latest);
+  const [agents, latest, dl, sets] = await Promise.all([agentRows(me), agentLatestVersion(), downloads(), setRows(me)]);
   const now = new Date();
   return (
     <>
@@ -42,8 +42,14 @@ export default async function UploaderAgentsPage() {
                     <label className="flex items-center gap-1.5 text-[13px] pb-2"><input type="checkbox" name="enabled" defaultChecked={a.schedule.enabled} /> Запускать каждый день в</label>
                     <input name="time" type="time" className="input py-1 w-[110px]" defaultValue={a.schedule.time} />
                     <select name="tz" className="input py-1" defaultValue={a.schedule.tz}>{[...new Set([a.schedule.tz, ...TZS])].map((tz) => <option key={tz} value={tz}>{tz}</option>)}</select>
+                    <label className="block"><span className="label">Набор сайтов</span>
+                      <select name="setId" className="input py-1" defaultValue={a.schedule.setId ?? ""}>
+                        <option value="">все сайты с профилем</option>
+                        {sets.map((st) => <option key={st.id} value={st.id}>{st.name} ({st.siteIds.length})</option>)}
+                      </select>
+                    </label>
                   </AutoForm>
-                  <p className="help mt-1">Расписание срабатывает, только если агент на связи: берутся все ваши сайты с профилем и файлом на сегодня без отметки «залито».</p>
+                  <p className="help mt-1">Расписание срабатывает, только если агент на связи: берутся сайты набора (или все ваши с профилем), у которых есть файл на сегодня и нет отметки «залито». Наборы — на <Link href="/pinterest/uploader/sets" className="underline">странице «Наборы»</Link>.</p>
                 </div>
               ))}</div>
             )}
@@ -51,14 +57,15 @@ export default async function UploaderAgentsPage() {
         </div>
         <div className="space-y-4">
           <Card title="Добавить агента"><AgentTokenForm /></Card>
-          <Card title="Программа агента" description={hasZip ? `Текущая сборка: ${latest}.` : "Сборка ещё не загружена."}>
+          <Card title="Скачать" description="Всё лежит на нашем сервере. Ничего дополнительно ставить не нужно.">
             <div className="space-y-2">
-              {hasZip ? <a href="/api/uploader/agent" className="btn-brand w-full">Скачать Zewex Uploader {latest}</a> : <span className="btn-ghost w-full opacity-60">Скачать (пока нет сборки)</span>}
-              <Link href="/pinterest/uploader/guide" className="btn-ghost w-full">Как установить и запустить</Link>
+              {dl.agent ? <a href={dl.agent.url} className="btn-brand w-full">Zewex Uploader {dl.agent.version} · {dl.agent.sizeMb} МБ</a> : <span className="btn-ghost w-full opacity-60">Zewex Uploader (сборка появится после деплоя)</span>}
+              {dl.dolphin ? <a href={dl.dolphin.url} className="btn-ghost w-full">Dolphin Anty · {dl.dolphin.sizeMb} МБ{dl.dolphin.date ? ` · ${dl.dolphin.date}` : ""}</a> : <span className="btn-ghost w-full opacity-60">Dolphin Anty (нет файла)</span>}
+              <Link href="/pinterest/uploader/guide" className="btn-ghost w-full">Инструкция по установке</Link>
             </div>
           </Card>
           {isAdmin(me) && (
-            <Card title="Загрузить сборку (админ)" description="ZIP из agent/uploader/build.ps1. После загрузки агенты увидят новую версию при следующем выходе на связь.">
+            <Card title="Загрузить сборку вручную (админ)" description="Обычно не нужно: сборка собирается на сервере при каждом деплое (scripts/uploader/build-agent.sh). Сюда — только если собирали отдельно.">
               <ActionForm action={uploadAgentBuildAction} className="space-y-2">
                 <label className="block"><span className="label">Версия</span><input name="version" className="input" placeholder="1.0.0" required /></label>
                 <label className="block"><span className="label">ZIP</span><input name="zip" type="file" accept=".zip" className="input" required /></label>

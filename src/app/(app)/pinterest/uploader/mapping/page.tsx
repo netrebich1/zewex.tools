@@ -3,19 +3,24 @@ import { prisma } from "@/lib/db";
 import { Card, PageHeader } from "@/components/ui";
 import { AutoForm } from "@/components/projects/AutoForm";
 import { requireUploader, visiblePinSites } from "@/lib/uploader/access";
+import { suggestProfiles } from "@/lib/uploader/match";
 import { setAccountStatusAction, setProfileAction } from "@/actions/uploader";
 import { AccountBadge, dt } from "@/components/uploader/ui";
 import { ProfileSelect } from "@/components/uploader/ProfileSelect";
+import { AcceptAllSure, AcceptSuggestion } from "@/components/uploader/MappingControls";
 
 export const dynamic = "force-dynamic";
 
-/** Сопоставление: сайт ↔ профиль Dolphin (1:1), состояние аккаунта Pinterest, журнал по аккаунту. */
+/**
+ * Сопоставление: сайт ↔ профиль Dolphin (1:1), автопредложения по домену сайта в имени/тегах/заметке профиля,
+ * состояние аккаунта Pinterest, журнал проблем.
+ */
 export default async function UploaderMappingPage() {
   const me = await requireUploader();
   const sites = await visiblePinSites(me);
   const [accounts, profiles, lastEvents] = await Promise.all([
     prisma.uplAccount.findMany({ where: { pinSiteId: { in: sites.map((s) => s.id) } } }),
-    prisma.uplProfile.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, seenAt: true } }),
+    prisma.uplProfile.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, tags: true, seenAt: true } }),
     prisma.uplEvent.findMany({ where: { pinSiteId: { in: sites.map((s) => s.id) }, result: { not: "ok" } }, orderBy: { at: "desc" }, take: 30 }),
   ]);
   const accBy = new Map(accounts.map((a) => [a.pinSiteId, a]));
@@ -24,18 +29,22 @@ export default async function UploaderMappingPage() {
   const nameBy = new Map(sites.map((s) => [s.id, s.name]));
   const now = new Date();
   const unmapped = sites.filter((s) => !accBy.get(s.id)?.profileId).length;
+  const allAccounts = await prisma.uplAccount.findMany({ where: { profileId: { not: null } }, select: { pinSiteId: true, profileId: true } });
+  const suggestions = suggestProfiles(sites, profiles, allAccounts);
+  const sure = [...suggestions.values()].filter((l) => l[0]?.sure).length;
 
   return (
     <>
-      <PageHeader title="Сопоставление сайтов и профилей" subtitle="Один сайт = один аккаунт Pinterest = один профиль Dolphin Anty. Список профилей присылает агент, когда выходит на связь (раз в час)." />
+      <PageHeader title="Сопоставление сайтов и профилей" subtitle="Один сайт = один аккаунт Pinterest = один профиль Dolphin Anty. Называйте профиль в Dolphin доменом сайта (или впишите домен в тег/заметку) — тогда портал предложит пару сам. Список профилей присылает агент (раз в час)." />
       <div className="space-y-4">
         {!profiles.length && <Card><p className="help">Профилей пока нет: запустите агент на ПК с открытым Dolphin Anty — он пришлёт список. <Link href="/pinterest/uploader/agents" className="underline">Агенты</Link>.</p></Card>}
-        <Card title={`Сайты · ${sites.length}`} description={unmapped ? `Без профиля: ${unmapped}. Выберите профиль в строке — сохраняется сразу.` : "Все сайты сопоставлены."}>
+        <Card title={`Сайты · ${sites.length}`} description={unmapped ? `Без профиля: ${unmapped}${suggestions.size ? `, с предложением: ${suggestions.size}` : ""}. Выбор в строке сохраняется сразу.` : "Все сайты сопоставлены."} actions={<AcceptAllSure count={sure} />}>
           <div className="table-wrap"><table className="table">
-            <thead><tr><th>Сайт</th><th>Профиль Dolphin</th><th>Аккаунт Pinterest</th><th>Последняя заливка</th><th>Состояние</th><th></th></tr></thead>
+            <thead><tr><th>Сайт</th><th>Профиль Dolphin</th><th>Предложение</th><th>Аккаунт Pinterest</th><th>Последняя заливка</th><th>Состояние</th><th></th></tr></thead>
             <tbody>{sites.map((s) => {
               const a = accBy.get(s.id);
               const options = profiles.filter((p) => !takenBy.has(p.id) || takenBy.get(p.id) === s.id);
+              const sug = suggestions.get(s.id)?.[0];
               return (
                 <tr key={s.id} className={a?.profileId ? "" : "bg-warn-soft/40"}>
                   <td className="font-medium">{s.wpConnectionId ? <Link href={`/pinterest/projects/${s.wpConnectionId}`} className="hover:underline">{s.name}</Link> : s.name}</td>
@@ -44,6 +53,7 @@ export default async function UploaderMappingPage() {
                       <ProfileSelect name="profileId" value={a?.profileId ?? ""} options={options.map((p) => ({ id: p.id, name: p.name }))} />
                     </AutoForm>
                   </td>
+                  <td>{!a?.profileId && sug ? <AcceptSuggestion pinSiteId={s.id} profileId={sug.profileId} profileName={sug.profileName} sure={sug.sure} /> : <span className="help">{a?.profileId ? "" : "—"}</span>}</td>
                   <td className="help">{a?.pinUsername ? `@${a.pinUsername}` : "—"}</td>
                   <td className="help whitespace-nowrap">{a?.lastUploadAt ? dt(a.lastUploadAt) : "—"}</td>
                   <td>{a ? <><AccountBadge status={a.status} />{a.pausedUntil && a.pausedUntil > now ? <span className="help ml-1">до {dt(a.pausedUntil)}</span> : null}{a.lastError ? <div className="text-[12px] text-danger">{a.lastError}</div> : null}</> : <span className="help">—</span>}</td>

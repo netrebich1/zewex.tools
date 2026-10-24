@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Card, PageHeader, sp, type SearchParams } from "@/components/ui";
 import { requireUploader } from "@/lib/uploader/access";
 import { agentRows, runRows, todayRows } from "@/lib/uploader/views";
+import { setRows } from "@/lib/uploader/sets";
 import { ERROR_LABELS, isDay, type ErrorKind } from "@/lib/uploader/types";
 import { TZ } from "@/lib/pins/runs/stats";
 import { addDays, formatRu, todayKey } from "@/lib/pins/schedule/math";
@@ -16,7 +17,7 @@ export default async function UploaderTodayPage({ searchParams }: { searchParams
   const q = await searchParams;
   const today = todayKey(new Date(), TZ);
   const day = isDay(sp(q, "day") ?? "") ? (sp(q, "day") as string) : today;
-  const [rows, agents, runs] = await Promise.all([todayRows(me, day), agentRows(me), runRows(me, 5)]);
+  const [rows, agents, runs, sets] = await Promise.all([todayRows(me, day), agentRows(me), runRows(me, 5), setRows(me)]);
   const now = new Date();
   const withFile = rows.filter((r) => r.file);
   const uploaded = withFile.filter((r) => r.uploaded).length;
@@ -38,7 +39,7 @@ export default async function UploaderTodayPage({ searchParams }: { searchParams
           <span className="help ml-2">Сайтов с файлом: <b>{withFile.length}</b> · залито: <b>{uploaded}</b>{noProfile ? <> · <span className="text-warn">без профиля: {noProfile}</span> (<Link href="/pinterest/uploader/mapping" className="underline">сопоставить</Link>)</> : null}</span>
         </div>
         <Card title="Запустить заливку" description="Отмечены сайты, у которых есть файл на день и нет отметки «залито». Агент идёт по сайтам по очереди (или по несколько, если задано), с паузами как у человека.">
-          {withFile.length ? <StartRunForm sites={sites} agents={agents.map((a) => ({ id: a.id, name: a.name, status: a.status, parallel: a.settings.parallel }))} day={day} /> : <p className="help">На {formatRu(day)} готовых пинов нет ни у одного сайта.</p>}
+          {withFile.length ? <StartRunForm sites={sites} agents={agents.map((a) => ({ id: a.id, name: a.name, status: a.status, parallel: a.settings.parallel }))} day={day} sets={sets.map((x) => ({ id: x.id, name: x.name, siteIds: x.siteIds }))} /> : <p className="help">На {formatRu(day)} готовых пинов нет ни у одного сайта.</p>}
         </Card>
         <Card title={`Сайты · ${rows.length}`}>
           <div className="table-wrap"><table className="table">

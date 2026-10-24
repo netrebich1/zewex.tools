@@ -5,7 +5,7 @@ import { TZ } from "@/lib/pins/runs/stats";
 import { todayKey } from "@/lib/pins/schedule/math";
 import { previewDay } from "./csv";
 import { visiblePinSites } from "./sites";
-import { ERROR_LABELS, parseAgentSettings, parseSchedule, type ErrorKind, type TaskResult } from "./types";
+import { ERROR_LABELS, parseAgentSettings, parseSchedule, type AgentSchedule, type AgentSettings, type ErrorKind, type TaskResult } from "./types";
 
 export type TodayRow = {
   site: { id: string; name: string; accessId: string | null };
@@ -48,7 +48,7 @@ export async function todayRows(me: CurrentUser, day = todayKey(new Date(), TZ))
 
 export type AgentRow = {
   id: string; name: string; userId: string; userName: string; status: string; state: string | null; lastSeenAt: Date | null; version: string | null;
-  hostInfo: Record<string, unknown> | null; settings: { parallel: number }; schedule: { enabled: boolean; time: string; tz: string }; tokenHint: string; createdAt: Date;
+  hostInfo: Record<string, unknown> | null; settings: AgentSettings; schedule: AgentSchedule; tokenHint: string; createdAt: Date;
 };
 
 /** Агенты: свои (админ — все), с именами владельцев. */

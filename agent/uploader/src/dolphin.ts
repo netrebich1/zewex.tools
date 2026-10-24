@@ -62,7 +62,14 @@ export class Dolphin {
     const parse = (j: unknown): { items: DolphinProfile[]; total: number | null } => {
       const o = (j && typeof j === "object" ? j : {}) as { data?: unknown; total?: unknown };
       const arr = Array.isArray(o.data) ? o.data : [];
-      const items = arr.map((p) => { const r = (p ?? {}) as Record<string, unknown>; return { id: String(r.id ?? ""), name: String(r.name ?? ""), tags: r.tags, platform: typeof r.platform === "string" ? r.platform : null }; }).filter((p) => p.id && p.name);
+      const items = arr.map((p) => {
+        const r = (p ?? {}) as Record<string, unknown>;
+        // Теги + заметка профиля (Dolphin: notes.content или строка) — портал ищет в них домен сайта для автосопоставления.
+        const tags = Array.isArray(r.tags) ? r.tags.map((t) => (typeof t === "string" ? t : typeof t === "object" && t ? String((t as { name?: unknown }).name ?? "") : "")).filter(Boolean) : [];
+        const notesRaw = r.notes && typeof r.notes === "object" ? (r.notes as { content?: unknown }).content : r.notes;
+        const note = typeof notesRaw === "string" ? notesRaw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300) : "";
+        return { id: String(r.id ?? ""), name: String(r.name ?? ""), tags: note ? [...tags, `note:${note}`] : tags, platform: typeof r.platform === "string" ? r.platform : null };
+      }).filter((p) => p.id && p.name);
       return { items, total: typeof o.total === "number" ? o.total : null };
     };
     const fetchAll = async (get: (page: number) => Promise<{ status: number; json: unknown }>) => {

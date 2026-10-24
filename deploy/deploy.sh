@@ -63,6 +63,8 @@ sudo -u zewex_tools_usr -H npx prisma db push --skip-generate
 sudo -u zewex_tools_usr -H npx prisma generate >/dev/null
 sudo -u zewex_tools_usr -H node prisma/seed.mjs
 sudo -u zewex_tools_usr -H npx next build 2>&1 | tail -3
+# Заливка в Pinterest: сборка ZIP агента (node.exe + dist + зависимости) в storage/uploader/agent — не роняет деплой при сбое
+sudo -u zewex_tools_usr -H bash scripts/uploader/build-agent.sh 2>&1 | tail -2 || echo "agent build failed (portal deployed anyway)"
 # standalone needs static + public next to it, and nginx serves static straight from the web root
 rm -rf .next/standalone/.next/static .next/standalone/public
 cp -r .next/static .next/standalone/.next/static

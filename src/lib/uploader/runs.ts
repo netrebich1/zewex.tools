@@ -10,6 +10,7 @@ import { TZ } from "@/lib/pins/runs/stats";
 import { todayKey } from "@/lib/pins/schedule/math";
 import { previewDay } from "./csv";
 import { userAsCurrent, visiblePinSites } from "./sites";
+import { setSiteIds } from "./sets";
 import { ERROR_LABELS, LEASE_SEC, MAX_ATTEMPTS, OFFLINE_SEC, parseAgentSettings, parseSchedule, type ErrorKind, type TaskResult, type VerifyResult } from "./types";
 
 export type CreateRunInput = { agentId: string; day: string; siteIds: string[]; parallel?: number; source?: "manual" | "schedule"; force?: boolean; userId?: string | null };
@@ -193,7 +194,11 @@ export async function uploaderTick(now = new Date()): Promise<{ stale: number; v
     const me = await userAsCurrent(a.userId);
     if (!me) continue;
     await prisma.uplAgent.update({ where: { id: a.id }, data: { lastScheduledDay: day } });
-    const sites = await visiblePinSites(me);
+    let sites = await visiblePinSites(me);
+    if (sch.setId) {
+      const ids = await setSiteIds(sch.setId);
+      if (ids) sites = sites.filter((s) => ids.includes(s.id));
+    }
     const mapped = await prisma.uplAccount.findMany({ where: { pinSiteId: { in: sites.map((s) => s.id) }, profileId: { not: null } }, select: { pinSiteId: true } });
     if (!mapped.length) continue;
     try {
