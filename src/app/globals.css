@@ -134,6 +134,15 @@ input[type="checkbox"] { accent-color: var(--color-ink); }
 .table tbody tr { @apply transition-colors hover:bg-surface-2/70; }
 .table tr:last-child td { @apply border-b-0; }
 .table-wrap { @apply overflow-x-auto overscroll-x-contain -mx-4 px-4 sm:mx-0 sm:px-0; }
+/*
+ * Сетка без базовой колонки (`grid sm:grid-cols-2`, `grid lg:grid-cols-3`) на телефоне получает одну неявную колонку
+ * по ширине самого широкого содержимого — и распирает страницу вбок (карточки инструментов, «По ключам» в расходе,
+ * доска прогонов). Здесь такой сетке на телефоне задаётся одна колонка по ширине экрана. Сетки с явной колонкой
+ * без префикса (`grid-cols-2`, `grid-cols-[…]`) не трогаем; с 640 px правило не действует, работают sm:/md:/lg:.
+ */
+@media (max-width: 639.98px) {
+  .grid:not([class*=" grid-cols-"]):not([class^="grid-cols-"]) { grid-template-columns: minmax(0, 1fr); }
+}
 /* Колонки, которые на телефоне не нужны: прячем, главное остаётся без прокрутки вбок. */
 .col-sm { @apply hidden sm:table-cell; }
 .col-md { @apply hidden md:table-cell; }

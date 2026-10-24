@@ -505,7 +505,7 @@ export function PhotoModerationGrid({ initial, userKey, editable = true, mode = 
             <button type="button" className={`tab ${tab === "rejected" ? "active" : ""}`} onClick={() => { setTab("rejected"); setShown(60); }}>
               Отклонённые оценкой · {state.counts.rejected}
             </button>
-            <span className="ml-auto inline-flex gap-1">
+            <span className="ml-auto inline-flex flex-wrap justify-end gap-1">
               {(["all", "tall", "square"] as const).map((s) => (
                 <button key={s} type="button" className={`btn-ghost btn-sm ${shapeFilter === s ? "bg-ink/10" : ""}`} onClick={() => setShapeFilter(s)}>
                   {s === "all" ? "Все форматы" : s === "tall" ? "Вертикальные" : "Квадратные"}

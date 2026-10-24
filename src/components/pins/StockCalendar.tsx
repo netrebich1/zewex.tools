@@ -47,7 +47,7 @@ export function StockCalendar({ sites, days }: { sites: StockSite[]; days: strin
         <div className="rounded-xl border border-danger/30 bg-danger-soft/40 p-3">
           <div className="text-[13px] font-semibold text-danger mb-1.5">Нужно заполнить в первую очередь</div>
           <div className="flex flex-wrap gap-1.5">
-            {empty.map((s) => <Link key={s.id} href={`/pinterest/pins/runs/new?site=${s.id}`} className="badge bg-surface border border-line px-2.5 py-1 hover:border-danger"><b className="text-ink">{s.name}</b><span className="text-danger ml-1.5">пинов нет · запустить</span></Link>)}
+            {empty.map((s) => <Link key={s.id} href={`/pinterest/pins/runs/new?site=${s.id}`} className="badge bg-surface border border-line px-2.5 py-1 hover:border-danger max-w-full !whitespace-normal [overflow-wrap:anywhere]"><b className="text-ink">{s.name}</b><span className="text-danger ml-1.5">пинов нет · запустить</span></Link>)}
           </div>
         </div>
       )}

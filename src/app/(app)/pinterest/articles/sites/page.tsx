@@ -39,7 +39,7 @@ export default async function ArticlesSitesPage() {
           <Card>
             <div className="table-wrap">
               <table className="table">
-                <thead><tr><th>Сайт</th><th className="hidden md:table-cell">Ниша · сценарий</th><th className="hidden lg:table-cell">Режим</th><th>Воронка</th><th className="hidden lg:table-cell">Последний запуск</th><th></th></tr></thead>
+                <thead><tr><th>Сайт</th><th className="hidden md:table-cell">Ниша · сценарий</th><th className="hidden lg:table-cell">Режим</th><th className="col-sm">Воронка</th><th className="hidden lg:table-cell">Последний запуск</th><th className="col-sm"></th></tr></thead>
                 <tbody>
                   {funnel.map((s) => {
                     const x = extra.get(s.id);
@@ -51,12 +51,15 @@ export default async function ArticlesSitesPage() {
                         <td>
                           <Link href={`/pinterest/articles/sites/${s.id}`} className="font-medium hover:underline">{s.name}</Link>{!s.isActive && <span className="ml-2"><Badge>в архиве</Badge></span>}
                           <div className="help">{s.teamName}{x?.access ? ` · ${x.access.baseUrl}` : " · без доступа WordPress"}{noCreds && <span className="text-warn"> · нет логина REST API</span>}</div>
+                          {/* На телефоне воронка и кнопки — под названием во всю ширину, а не узкими колонками справа. */}
+                          <div className="mt-2 sm:hidden"><SiteFunnel siteId={s.id} f={s.funnel} compact /></div>
+                          <div className="mt-2 flex gap-2 sm:hidden"><Link href={`/pinterest/articles/sites/${s.id}?tab=settings`} className="btn-ghost btn-sm">Настройки</Link>{s.isActive && <Link href={`/pinterest/articles/runs/new?site=${s.id}`} className="btn-ghost btn-sm">Запуск</Link>}</div>
                         </td>
                         <td className="hidden md:table-cell text-muted">{nicheName(s.nicheCode)}<div className="help">{s.recipeName ?? "сценарий не задан"}</div></td>
                         <td className="hidden lg:table-cell text-muted"><div>{st.photoCount.mode === "exact" ? `${st.photoCount.min} фото` : `${st.photoCount.min}–${st.photoCount.max} фото`}</div><div className="help">{st.photoReview ? "модерация фото" : "без модерации фото"} · {PUBLISH_MODES.find((m) => m.value === st.publishMode)?.label}</div></td>
-                        <td><SiteFunnel siteId={s.id} f={s.funnel} compact /></td>
+                        <td className="col-sm"><SiteFunnel siteId={s.id} f={s.funnel} compact /></td>
                         <td className="hidden lg:table-cell text-muted">{last ? <Link href={`/pinterest/articles/runs/${last.id}`} className="hover:underline">{last.name || last.id.slice(0, 8)} · {fmtDate(last.createdAt)}</Link> : "—"}</td>
-                        <td className="text-right whitespace-nowrap"><Link href={`/pinterest/articles/sites/${s.id}?tab=settings`} className="btn-ghost btn-sm">Настройки</Link> {s.isActive && <Link href={`/pinterest/articles/runs/new?site=${s.id}`} className="btn-ghost btn-sm">Запуск</Link>}</td>
+                        <td className="col-sm text-right whitespace-nowrap"><Link href={`/pinterest/articles/sites/${s.id}?tab=settings`} className="btn-ghost btn-sm">Настройки</Link> {s.isActive && <Link href={`/pinterest/articles/runs/new?site=${s.id}`} className="btn-ghost btn-sm">Запуск</Link>}</td>
                       </tr>
                     );
                   })}
