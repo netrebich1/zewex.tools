@@ -43,6 +43,9 @@ export async function resolveSlot(userId: string, projectSlug: string, slotKey: 
   const slot = project.slots.find((s) => s.key === slotKey);
   if (!slot) return { ok: false, status: 404, error: `Слот «${slotKey}» не найден в проекте «${project.name}»` };
   const resolved = await resolveBinding(userId, slot.id, teamId);
+  if (!resolved.binding && resolved.onlyProviders) {
+    return { ok: false, status: 409, error: `Слот «${slot.name}» работает только через ${resolved.onlyProviders.join(", ")}, а рабочего ключа ${resolved.onlyProviders.join("/")} сейчас нет (закончились деньги или ключ выключен). Пополните или включите ключ — прогон продолжится сам.` };
+  }
   if (!resolved.binding) {
     return { ok: false, status: 409, error: `Для слота «${slot.name}» не настроено ни одного правила (ключ + модель). Откройте страницу проекта и добавьте привязку.` };
   }

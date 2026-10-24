@@ -17,7 +17,7 @@ const PRICE_DAYS = 60;
  */
 
 /** Тексты причин из `handleFailure` (`Ключ «…»: …`) и `resolveSlot` (нет ни одного правила — все ключи слота выключены). */
-const KEY_REASON = /Ключ «[^»]*»:|не настроено ни одного правила/;
+const KEY_REASON = /Ключ «[^»]*»:|не настроено ни одного правила|работает только через/;
 /** Старые блокировки не воскрешаем: владелец мог уже забыть про прогон. */
 const MAX_AGE_MS = 3 * 24 * 60 * 60_000;
 
@@ -119,6 +119,8 @@ async function keysReady(userId: string, teamId: string, reason: string, probe: 
     if (!r.ok) {
       // Слот без правил не нужен прогону, если блокировка не про него (например, сайт только на Canvas).
       if (reason.includes(r.error)) return false;
+      // Картинки только через OpenAI, а ключа OpenAI нет: прогон, вставший из-за ключа картинок, ждёт его.
+      if (slot === SLOT_IMAGE_MAIN && /работает только через/.test(r.error) && /Ключ «[^»]*»:|работает только через/.test(reason)) return false;
       continue;
     }
     if (!(await probe(r.value.binding.apiKey.id)).ok) return false;
