@@ -32,9 +32,12 @@ export function clear(bucket: string) {
 
 export async function clientIp(): Promise<string> {
   const h = await headers();
+  const real = h.get("x-real-ip");
+  if (real) return real.trim();
   const xff = h.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0].trim();
-  return h.get("x-real-ip") ?? "unknown";
+  // nginx дописывает адрес клиента последним: первый элемент может подделать сам клиент.
+  if (xff) { const parts = xff.split(",").map((s) => s.trim()).filter(Boolean); return parts[parts.length - 1] ?? "unknown"; }
+  return "unknown";
 }
 
 export function tooMany(retryIn: number): string {

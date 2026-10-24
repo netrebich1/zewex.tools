@@ -11,7 +11,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
-  serverExternalPackages: ["@prisma/client", "bcryptjs"],
+  serverExternalPackages: ["@prisma/client", "bcryptjs", "sharp", "@napi-rs/canvas"],
+  // прогон до 3000 ссылок: список ссылок приходит в server action одним запросом
+  experimental: { serverActions: { bodySizeLimit: "8mb" } },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

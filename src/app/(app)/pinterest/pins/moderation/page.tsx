@@ -1,0 +1,74 @@
+import Link from "next/link";
+import { requireUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { Card, Empty, PageHeader, type SearchParams, sp } from "@/components/ui";
+import { moderationBatch, moderationCounts } from "@/lib/pins/runs/moderation";
+import { ModerationGrid } from "@/components/pins/ModerationGrid";
+import { ENGINE_LABELS } from "@/components/pins/labels";
+
+export const dynamic = "force-dynamic";
+
+export default async function ModerationPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const me = await requireUser();
+  const params = await searchParams;
+  const siteId = sp(params, "site");
+  const runId = sp(params, "run");
+  const engine = sp(params, "engine");
+  const view = sp(params, "view") === "post" ? "post" : "pre";
+  const [counts, otherCounts, first] = await Promise.all([moderationCounts(me, view), moderationCounts(me, view === "post" ? "pre" : "post"), moderationBatch(me, { siteId, runId, engine, limit: 60, view })]);
+  const preTotal = view === "pre" ? counts.total : otherCounts.total;
+  const postTotal = view === "post" ? counts.total : otherCounts.total;
+  const qs = (patch: Record<string, string | undefined>) => {
+    const u = new URLSearchParams();
+    const all = { view: view === "post" ? "post" : undefined, site: siteId, run: runId, engine, ...patch };
+    for (const [k, v] of Object.entries(all)) if (v) u.set(k, v);
+    const s = u.toString();
+    return `/pinterest/pins/moderation${s ? `?${s}` : ""}`;
+  };
+  const visibleRuns = counts.runs.filter((r) => !siteId || r.siteId === siteId);
+  const currentRun = runId ? await prisma.pinRun.findUnique({ where: { id: runId }, select: { id: true, name: true } }) : null;
+
+  return (
+    <>
+      <PageHeader back={currentRun ? { href: `/pinterest/pins/runs/${currentRun.id}`, label: `Прогон «${currentRun.name || currentRun.id.slice(0, 8)}»` } : { href: "/pinterest/pins", label: "Сегодня" }} title="Модерация" subtitle={view === "post" ? `Пост-модерация: одобренные пины, которые ещё не ушли в Pinterest (${counts.total}). Клик помечает пин на отклонение; остальные остаются одобренными.` : `Непроверенных пинов: ${counts.total}. Клик по пину помечает его на отклонение, остальные одобряются кнопкой внизу.`} actions={currentRun ? <Link href={`/pinterest/pins/runs/${currentRun.id}`} className="btn-ghost">К прогону</Link> : <Link href="/pinterest/pins/runs" className="btn-ghost">Все прогоны</Link>} />
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <Link href="/pinterest/pins/moderation" className={`tab ${view === "pre" ? "active" : ""}`}>Модерация · {preTotal}</Link>
+          <Link href="/pinterest/pins/moderation?view=post" className={`tab ${view === "post" ? "active" : ""}`}>Пост-модерация · {postTotal}</Link>
+        </div>
+        {view === "post" && <p className="help">Здесь видны одобренные пины, в том числе из прогонов с автоодобрением, с датой сегодня и позже или ещё без даты. Отклонённый пин уходит из выгрузки и освобождает место в своём дне. Если файл за этот день уже скачан или загружен в Pinterest, там пин останется: скачайте файл дня заново.</p>}
+        <Card>
+          <div className="flex flex-wrap gap-2 items-center">
+            <Link href={qs({ site: undefined, run: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты · {counts.total}</Link>
+            {counts.sites.map((s) => (
+              <Link key={s.siteId} href={qs({ site: s.siteId, run: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${siteId === s.siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{s.siteName || "без сайта"} · {s.total}</Link>
+            ))}
+          </div>
+          {visibleRuns.length > 1 && (
+            <div className="mt-3 flex flex-wrap gap-2 items-center">
+              <Link href={qs({ run: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${!runId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все прогоны</Link>
+              {visibleRuns.map((r) => (
+                <span key={r.runId} className="inline-flex items-center gap-1">
+                  <Link href={qs({ run: r.runId })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${runId === r.runId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{r.name} · {r.total}</Link>
+                  <Link href={`/pinterest/pins/runs/${r.runId}`} className="help inline-flex min-h-8 min-w-8 items-center justify-center rounded-full underline hover:bg-ink/5" title="Открыть страницу прогона" aria-label="Открыть страницу прогона">↗</Link>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2 items-center">
+            <Link href={qs({ engine: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${!engine ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все типы</Link>
+            {["OPENAI", "PINORA", "PHOTO", "CANVAS"].map((e) => (
+              <Link key={e} href={qs({ engine: e })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${engine === e ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{ENGINE_LABELS[e]}</Link>
+            ))}
+          </div>
+        </Card>
+        {first.items.length === 0 ? (
+          <Empty title="Всё проверено" hint={view === "post" ? "Одобренных пинов для повторной проверки по этому фильтру нет." : "Непроверенных пинов по этому фильтру нет."} />
+        ) : (
+          // key: при смене фильтра сетка создаётся заново — иначе в ней остаются пины прошлого фильтра
+          <ModerationGrid key={`${view}|${siteId ?? ""}|${runId ?? ""}|${engine ?? ""}`} post={view === "post"} initial={first} filter={{ siteId, runId, engine }} showSite={!siteId && counts.sites.length > 1} />
+        )}
+      </div>
+    </>
+  );
+}

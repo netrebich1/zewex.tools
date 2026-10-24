@@ -1,0 +1,51 @@
+import { requeueStale } from "./queue";
+import { log } from "./log";
+import { domainsRequeueStale } from "./domains";
+import { requeueStaleArticles } from "./articles";
+import { requeueStalePosts } from "./blog";
+import { autostartTick } from "./articles/autostart";
+import { purgePublishedBacklog } from "@/lib/articles/wp/cleanup";
+import { measureStorage } from "@/lib/articles/storage";
+import { prisma } from "@/lib/db";
+import { purgeOldRuns } from "@/lib/pins/runs/cleanup";
+import { resyncSheets } from "@/lib/articles/sheets";
+import { failedKeywordsTick } from "@/lib/articles/failedKeywords";
+import { deeplPurgeCache, deeplRequeueStale } from "./deepl";
+import { analyticsPurge, analyticsRequeueStale } from "./analytics";
+import { uploaderTick } from "@/lib/uploader/runs";
+
+/** Периодические задачи воркера: сторож зависших задач, уборка (позже). */
+export function startCron(): () => void {
+  const timers: NodeJS.Timeout[] = [];
+  timers.push(setInterval(() => requeueStale().catch((e) => log.warn("requeueStale failed", e)), 5 * 60_000));
+  timers.push(setInterval(() => domainsRequeueStale().catch((e) => log.warn("domains requeueStale failed", e)), 5 * 60_000));
+  // Уборка прогонов старше 90 дней после последнего пина: раз в сутки и через минуту после старта.
+  const purge = () => purgeOldRuns().then((r) => { if (r.deleted.length) log.info(`purged ${r.deleted.length} old runs`); }).catch((e) => log.warn("purgeOldRuns failed", e));
+  timers.push(setTimeout(purge, 60_000));
+  timers.push(setInterval(purge, 24 * 60 * 60_000));
+  timers.push(setInterval(() => requeueStaleArticles().catch((e) => log.warn("articles requeueStale failed", e)), 5 * 60_000));
+  // Инфо-статьи (Pin Blog Article): посты с истёкшей арендой — в очередь.
+  timers.push(setInterval(() => requeueStalePosts().catch((e) => log.warn("blog requeueStale failed", e)), 5 * 60_000));
+  // Статьи: файлы фото опубликованных статей — каждые 30 мин. Строки опубликованных статей НЕ удаляются (аудит 2026-10-14):
+  // журнал, расходы, защита от повторного ключа и досылка в Google Таблицу живут на них.
+  timers.push(setInterval(() => purgePublishedBacklog(50).catch((e) => log.warn("articles purgePublishedBacklog failed", e)), 30 * 60_000));
+  // Статьи: разовая миграция старых настроек автозапуска (выключение по простою убрано 2026-10-15, см. worker/articles/autostart.ts).
+  timers.push(setInterval(() => autostartTick().then((r) => { if (r.enabled || r.disabled) log.info(`articles autostart: enabled ${r.enabled}, disabled ${r.disabled}`); }).catch((e) => log.warn("articles autostartTick failed", e)), 60_000));
+  // Статьи: досылка отчётов в Google Таблицы, которые не записались при публикации (оригинал: publish-worker, каждый тик).
+  timers.push(setInterval(() => resyncSheets(10).then((r) => { if (r.tried) log.info(`articles sheets resync: ${r.ok}/${r.tried}`); }).catch((e) => log.warn("articles resyncSheets failed", e)), 5 * 60_000));
+  // Статьи: место на диске для экрана «Автозапуск» (данные хранятся, решение 2026-10-19) — через 2 мин после старта и раз в 30 мин.
+  const disk = () => measureStorage().then((d) => prisma.artSettings.upsert({ where: { id: "main" }, update: { ...d, storageAt: new Date() }, create: { id: "main", ...d, storageAt: new Date() } })).catch((e) => log.warn("articles measureStorage failed", e));
+  timers.push(setTimeout(disk, 2 * 60_000), setInterval(disk, 30 * 60_000));
+  // Статьи: список «Неудачные ключи» — полный проход через 90 с после старта (он же бэкфилл), затем изменения каждые 10 мин.
+  const failedKw = (full: boolean) => () => failedKeywordsTick(full).then((r) => { if (r.created || r.updated || r.orphansDeleted) log.info(`articles failed keywords${r.full ? " (full)" : ""}: +${r.created}, ~${r.updated}, -${r.orphansDeleted}`); }).catch((e) => log.warn("articles failedKeywords failed", e));
+  timers.push(setTimeout(failedKw(true), 90_000), setInterval(failedKw(false), 10 * 60_000));
+  // DeepL Articler: статьи с истёкшей арендой — в очередь; кэш переводов старше 90 дней — раз в сутки.
+  timers.push(setInterval(() => deeplRequeueStale().catch((e) => log.warn("deepl requeueStale failed", e)), 2 * 60_000));
+  timers.push(setInterval(() => deeplPurgeCache().catch((e) => log.warn("deepl purgeCache failed", e)), 24 * 60 * 60_000));
+  // Трафик сайтов (GA4): зависшие аренды — каждые 5 мин; часы/страницы/разрезы старше 400 дней — раз в сутки.
+  timers.push(setInterval(() => analyticsRequeueStale().catch((e) => log.warn("analytics requeueStale failed", e)), 5 * 60_000));
+  timers.push(setInterval(() => analyticsPurge().catch((e) => log.warn("analytics purge failed", e)), 24 * 60 * 60_000));
+  // Заливка в Pinterest (Pin Uploader): агенты офлайн, просроченные аренды, фаза проверки, расписание — раз в минуту.
+  timers.push(setInterval(() => uploaderTick().then((r) => { if (r.verify || r.scheduled) log.info(`uploader tick: verify ${r.verify}, scheduled ${r.scheduled}, stale ${r.stale}`); }).catch((e) => log.warn("uploader tick failed", e)), 60_000));
+  return () => timers.forEach(clearInterval);
+}

@@ -1,0 +1,28 @@
+[Unit]
+Description=Zewex Tools pins worker (background jobs, canvas rendering)
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=zewex_tools_usr
+Group=zewex_tools_usr
+WorkingDirectory=/var/www/zewex_tools_usr/data/app
+EnvironmentFile=/var/www/zewex_tools_usr/data/app/.env
+# На сервере нет IPv6, а Node пробует AAAA первым и ждёт таймаут соединения
+Environment=NODE_OPTIONS=--dns-result-order=ipv4first
+Environment=NODE_ENV=production
+Environment=PINS_STORAGE_DIR=/var/www/zewex_tools_usr/data/storage
+# Статьи: сколько статей воркер ведёт одновременно на все сайты (лимиты сайтов на экране «Автозапуск» — внутри этого потолка).
+# Было 3, потом 10, 30 — лимиты сайтов упирались в него (2026-10-16, 2026-10-19: 30, 2026-10-23: 45 на 4 ядрах). Статьи ждут ИИ/поиск, CPU почти не нужен.
+Environment=ARTICLES_WORKER_CONCURRENCY=45
+ExecStart=/var/www/zewex_tools_usr/data/app/node_modules/.bin/tsx worker/index.ts
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=90
+# 45 статей одновременно скачивают и обрабатывают фото (sharp); при 30 воркер держал до 11,5 ГБ (с кэшем) — 24G; на сервере 64G.
+MemoryMax=24G
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

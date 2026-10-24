@@ -1,0 +1,1197 @@
+[
+ {
+  "articleId": "054c8b1b-4c2d-4152-be04-13987876e1d4",
+  "keyword": "micro french nails",
+  "status": "applied",
+  "before": 12,
+  "after": 12,
+  "target": 12,
+  "score": 8,
+  "verdict": "верно",
+  "summary": "Подборка микрофренча чистая, добавлено ровно одно фото взамен удалённого. Удаление S9 спорное: это микрофренч с цветочками, а правило ключа «только тонкий белый кончик» слишком узкое (бывает цветной микрофренч). Итог в описании про «водяные знаки» не соответствует действиям.",
+  "photos": [
+   {
+    "id": "e802bc21-605f-4e30-bf33-b02cb4a51a2d",
+    "label": "S1",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "609835b4-1886-42db-a6b9-42f5bb41a390",
+    "label": "S2",
+    "kind": "kept",
+    "ok": true,
+    "note": "оставлено после спора верно: тонкая тёмная линия — это микрофренч"
+   },
+   {
+    "id": "07847e28-f70f-4386-a86b-4d0afd116318",
+    "label": "S3",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "24366538-2be3-4dfb-887d-aa59d912faa7",
+    "label": "S4",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "b97ea168-168d-4dba-bc50-3b66980acec1",
+    "label": "S5",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "acf90c7c-e727-42b2-ad39-5e99629ef809",
+    "label": "S6",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "8b606ab4-6a40-4367-9c62-e6af981e5656",
+    "label": "S7",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "27c16bd5-a03d-40bf-9e50-adb8763d776e",
+    "label": "S8",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "b40fc0bf-bf95-4757-8720-b1310f3f520f",
+    "label": "S9",
+    "kind": "removed",
+    "ok": false,
+    "note": "зря: цветной микрофренч с цветочками, это вариант ключа"
+   },
+   {
+    "id": "29697f68-44e7-4a3c-b0bd-8fc208bb581e",
+    "label": "S10",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "85cf1a1c-5b47-42b1-903b-eb675eb064c3",
+    "label": "S11",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "24c133e3-c56a-45be-a241-1bc4dd307068",
+    "label": "S12",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "697c37b4-ab0e-4b27-b3bc-24a33c5384a4",
+    "kind": "added",
+    "ok": true,
+    "note": "хороший тонкий золотистый микрофренч, добор до нормы",
+    "why": "добор до 12, оценка 90"
+   }
+  ]
+ },
+ {
+  "articleId": "31f27c3c-2ff3-4811-9782-a6669a898e1d",
+  "keyword": "chrome french nails",
+  "status": "sent_to_human",
+  "before": 18,
+  "after": 16,
+  "target": 18,
+  "score": 6,
+  "verdict": "частично",
+  "summary": "Модель смысла ключа сузила chrome french до «хром только на кончиках», дешёвая модель отметила 13 из 18 фото, и спор зря убрал перламутровые хромовые кончики (S4, S7), а обе модели — S12. Добавления хорошие (серебряный хром на кончиках). Отправка людям оправдана, но ошибки есть и в удалениях, и пропущен водяной знак на S11.",
+  "photos": [
+   {
+    "id": "90fb4c6f-313c-49a7-be62-58119f095bb4",
+    "label": "S1",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "69b0b821-b267-4edb-8232-8b4f8abd2427",
+    "label": "S2",
+    "kind": "kept",
+    "ok": true,
+    "note": "золотистые хромовые кончики, спор оставил верно"
+   },
+   {
+    "id": "e5aca7ca-92e8-46ea-bf51-90b85bb587b4",
+    "label": "S3",
+    "kind": "removed",
+    "ok": true,
+    "note": "спорно, но допустимо: глазурь по всей пластине, хромовых кончиков не видно"
+   },
+   {
+    "id": "82a61455-cde2-4fe3-bbba-6a3116ec3577",
+    "label": "S4",
+    "kind": "removed",
+    "ok": false,
+    "note": "зря: белые перламутрово-хромовые кончики со стразами — это chrome french"
+   },
+   {
+    "id": "fae7b56c-693a-4afd-9904-136a40375213",
+    "label": "S5",
+    "kind": "removed",
+    "ok": true,
+    "note": "допустимо: перламутровые хлопья, а не зеркальный хром"
+   },
+   {
+    "id": "ef2ce71a-4a5e-4f96-bff8-7e39a5f93fc2",
+    "label": "S6",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: жемчужный однотон без френча"
+   },
+   {
+    "id": "0ec8ee3c-8eee-4aa4-a447-30ddd292d9a2",
+    "label": "S7",
+    "kind": "removed",
+    "ok": false,
+    "note": "зря: перламутровые белые кончики — хромированный френч, причина «хром на всей пластине» неверна"
+   },
+   {
+    "id": "19c36819-7c55-46d3-9ba5-ca034603d13d",
+    "label": "S8",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "4af4db7a-e374-4b52-ad3a-92b7e03fe7d1",
+    "label": "S9",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "b4c85369-561c-49bf-9045-23f5250c2426",
+    "label": "S10",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "b87e7378-b5a2-4024-bd8a-d33fb2a43c1a",
+    "label": "S11",
+    "kind": "kept",
+    "ok": false,
+    "note": "пропущено: подпись-водяной знак nailbarbie на пальце"
+   },
+   {
+    "id": "827edb4e-7368-4f33-aaa7-69f90cac2f1f",
+    "label": "S12",
+    "kind": "removed",
+    "ok": false,
+    "note": "зря: жемчужная втирка поверх белого френча — классический chrome french"
+   },
+   {
+    "id": "2ebff31e-112b-4881-b1ba-03d6b13d1246",
+    "label": "S13",
+    "kind": "kept",
+    "ok": true,
+    "note": "голографический хром на кончиках"
+   },
+   {
+    "id": "1a02c71a-7653-46f6-8f36-01b30bccba78",
+    "label": "S14",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "1444fa4f-83e4-43de-a5a3-5d0df8570c83",
+    "label": "S15",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: розовый френч, хрома почти не видно"
+   },
+   {
+    "id": "49698f8d-4bc9-4b86-8859-087396b8fd72",
+    "label": "S16",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: тонкая тёмная линия, хрома не видно"
+   },
+   {
+    "id": "a261a4b2-85b7-4cc8-8d41-8c3b1d5e5b18",
+    "label": "S17",
+    "kind": "kept",
+    "ok": true,
+    "note": "золотой и синий хром на кончиках"
+   },
+   {
+    "id": "a9ad0114-9365-4519-b2c3-532ab15be348",
+    "label": "S18",
+    "kind": "kept",
+    "ok": true,
+    "note": "тонкий хромовый кончик"
+   },
+   {
+    "id": "15154f04-04ce-4b82-8b6b-c6e1472f460f",
+    "kind": "added",
+    "ok": true,
+    "note": "серебряный хром на кончиках",
+    "why": "добор до 18, оценка 90"
+   },
+   {
+    "id": "7627434b-20c6-447e-8923-6fed592b7f13",
+    "kind": "added",
+    "ok": true,
+    "note": "серебряный хром на кончиках",
+    "why": "добор до 18, оценка 86"
+   },
+   {
+    "id": "0f185523-f184-40ea-a726-9a2c4f7e52b4",
+    "kind": "added",
+    "ok": true,
+    "note": "серебряный хром на кончиках",
+    "why": "добор до 18, оценка 77"
+   },
+   {
+    "id": "83e837ce-c4c4-4ebb-a7d4-b14531a1eb51",
+    "kind": "added",
+    "ok": true,
+    "note": "серебряный хром на кончиках",
+    "why": "добор до 18, оценка 83"
+   },
+   {
+    "id": "a2429243-f242-4164-95c7-59d30c640e95",
+    "kind": "added",
+    "ok": true,
+    "note": "золото/серебро на кончиках",
+    "why": "добор до 18, оценка 75"
+   },
+   {
+    "id": "d1344f79-047f-4db9-aecf-0b621c1bd0b6",
+    "kind": "added",
+    "ok": true,
+    "note": "из отклонённых, розовое золото по краю — допустимо, но слабее",
+    "why": "добор до 18, оценка 68"
+   }
+  ]
+ },
+ {
+  "articleId": "429318c8-4dfc-4d1c-90c7-c1a8baf5950e",
+  "keyword": "butter yellow nails",
+  "status": "applied",
+  "before": 10,
+  "after": 10,
+  "target": 10,
+  "score": 8,
+  "verdict": "верно",
+  "summary": "Удалений и добавлений нет, почти всё по теме. Пропущен мелкий водяной знак @POP_POLISHED на S8; S7 скорее кремово-бежевый, чем жёлтый, но допустимо.",
+  "photos": [
+   {
+    "id": "2f8438d8-deee-4c64-a55f-8e5eac9f9028",
+    "label": "S1",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "3eb7889f-4b0e-4146-9129-fb4ffe3311dd",
+    "label": "S2",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "387cc25a-1edc-43c5-a518-393a29680754",
+    "label": "S3",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "910121f5-49d3-441c-a385-979b01b9393f",
+    "label": "S4",
+    "kind": "kept",
+    "ok": true,
+    "note": "жёлтый френч — допустимый вариант"
+   },
+   {
+    "id": "8c2c8427-0a37-45e4-9e8c-fa61f497f774",
+    "label": "S5",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "4b7abb1b-0374-471d-9159-2ce9a1686501",
+    "label": "S6",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "09edd089-b443-4241-9b44-156fbc725c92",
+    "label": "S7",
+    "kind": "kept",
+    "ok": true,
+    "note": "пограничный: почти бежевый, но ещё «ванильный»"
+   },
+   {
+    "id": "6ecf3784-902f-4022-844b-f7d6b5f6c438",
+    "label": "S8",
+    "kind": "kept",
+    "ok": false,
+    "note": "пропущено: водяной знак @POP_POLISHED в углу"
+   },
+   {
+    "id": "33f8de05-a38e-421c-a1e7-7a087c0378bd",
+    "label": "S9",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "2cd9c641-c8d9-4012-a405-d821bf362022",
+    "label": "S10",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   }
+  ]
+ },
+ {
+  "articleId": "5f5b9236-7f9e-47cb-b92c-6329ba05f1a7",
+  "keyword": "pleated skirt outfits",
+  "status": "applied",
+  "before": 16,
+  "after": 16,
+  "target": 16,
+  "score": 7,
+  "verdict": "частично",
+  "summary": "Все 4 фото с подписями сайтов удалены верно, норма восстановлена без раздувания. Но 2 из 4 добавлений и одно оставленное фото похожи на ИИ-генерацию; в итоге сказано «удалена ИИ-генерация», хотя такого удаления не было.",
+  "photos": [
+   {
+    "id": "b6937053-7faf-447d-85fb-f5c1e55741b2",
+    "label": "S1",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "f882f6a7-29f0-409f-843c-32868c17464e",
+    "label": "S2",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "5896836b-83d0-4ea1-b1db-70619c3b34e1",
+    "label": "S3",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: подпись сайта внизу"
+   },
+   {
+    "id": "bdf05ed4-e7c7-4a38-890e-496afd613469",
+    "label": "S4",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "35bbcab2-eb56-47a2-94a4-729fa619e43f",
+    "label": "S5",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "77890bde-5312-4325-a296-2d919f019159",
+    "label": "S6",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "042b869d-7422-497f-abb4-13e3a432db24",
+    "label": "S7",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "8ca54fe4-ce3e-4ea0-9b31-cbd37e4fae04",
+    "label": "S8",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: подпись сайта внизу"
+   },
+   {
+    "id": "5a689967-50d0-4569-81dc-3dd59b0dd950",
+    "label": "S9",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "6256218c-9f1e-4ef1-8d91-897f0f4f2ebb",
+    "label": "S10",
+    "kind": "kept",
+    "ok": true,
+    "note": "зеркальная вывеска, но фото реальное"
+   },
+   {
+    "id": "490ca107-ea8f-4f77-9af9-3d197838328e",
+    "label": "S11",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "75796c09-0a64-439e-9bd4-c98fcc739345",
+    "label": "S12",
+    "kind": "kept",
+    "ok": false,
+    "note": "пропущено: похоже на ИИ (идеальная витрина, та же серия, что добавленное розовое фото)"
+   },
+   {
+    "id": "c085e24a-4e8a-4466-bade-aa8cccb42ae8",
+    "label": "S13",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: подпись сайта внизу"
+   },
+   {
+    "id": "752e64cc-71ed-4ddd-a5ef-f7e57ac77dc7",
+    "label": "S14",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: @-подпись внизу"
+   },
+   {
+    "id": "3893579a-f17e-46ba-87ee-f7985a2f0101",
+    "label": "S15",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "1498c7a2-a9bc-4a0e-962c-a4bdc3248716",
+    "label": "S16",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "092b169f-5a11-4e39-aa10-f4e4167a9f53",
+    "kind": "added",
+    "ok": true,
+    "note": "хорошая плиссированная юбка в движении",
+    "why": "добор до 16, оценка 85"
+   },
+   {
+    "id": "2f7146a3-2af7-4649-abc0-c3408df450b7",
+    "kind": "added",
+    "ok": false,
+    "note": "похоже на ИИ-генерацию, та же стилистика, что S12",
+    "why": "добор до 16, оценка 83"
+   },
+   {
+    "id": "0d7c6b4e-b4bc-465b-8893-92beb719073d",
+    "kind": "added",
+    "ok": false,
+    "note": "похоже на ИИ-рендер интерьера",
+    "why": "добор до 16, оценка 80"
+   },
+   {
+    "id": "1c24a115-fe98-4b6a-9aa0-ff0e3e7ab28f",
+    "kind": "added",
+    "ok": true,
+    "note": "реальный стрит-стайл, плиссе видно",
+    "why": "добор до 16, оценка 79"
+   }
+  ]
+ },
+ {
+  "articleId": "70d97dd1-63e1-4074-bf1d-d6ef07adef8a",
+  "keyword": "mary jane shoes outfits",
+  "status": "applied",
+  "before": 15,
+  "after": 16,
+  "target": 15,
+  "score": 6,
+  "verdict": "частично",
+  "summary": "Оставленные фото хорошие, добавления до нормы сильные. Но S8 и S11 убраны зря: мужчина-прохожий на фоне — не «не та аудитория». Добавление сверх нормы — кадр одних ног без образа, для статьи об образах не «явно сильное».",
+  "photos": [
+   {
+    "id": "80b39199-c6ff-47ca-8c6e-e6b7a87148f8",
+    "label": "S1",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "11bd3688-320a-47ba-ba0d-fc4a8c75dbdd",
+    "label": "S2",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "1d2d259a-091a-45c7-b646-3da7aafc96a7",
+    "label": "S3",
+    "kind": "kept",
+    "ok": true,
+    "note": "обувь мелко, похоже на лоферы — пограничный"
+   },
+   {
+    "id": "31661547-757b-497d-acb2-58134f503f08",
+    "label": "S4",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "a00f71d5-9dce-47e8-942c-a5b4013dadb6",
+    "label": "S5",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "979b7212-91d4-4e50-a5fd-748089ff3d23",
+    "label": "S6",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "a67ece17-47fc-4ec8-88fc-bfe40b9a8dba",
+    "label": "S7",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "37c972bd-aeb5-47a8-bc70-589e310d45fb",
+    "label": "S8",
+    "kind": "removed",
+    "ok": false,
+    "note": "зря: прохожий-мужчина на фоне не делает образ мужским"
+   },
+   {
+    "id": "5c8c0a4a-6004-427a-add1-425ac9c53d15",
+    "label": "S9",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "14b0161a-7c42-4a10-a7b6-e8ebe6101439",
+    "label": "S10",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "db9c0f81-52ea-499b-83bb-9b253c45e7b8",
+    "label": "S11",
+    "kind": "removed",
+    "ok": false,
+    "note": "зря: прохожий-мужчина на краю кадра, мэри джейн видны"
+   },
+   {
+    "id": "d07004d2-15d4-4820-a3e2-1646fed5a2e2",
+    "label": "S12",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "6b22f6da-9b00-4b77-b55f-de9caac69458",
+    "label": "S13",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "66c31086-7957-413d-a89c-52582a31bb79",
+    "label": "S14",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "9a21cfe0-f7ce-4658-8631-71218db24549",
+    "label": "S15",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "56cc20f9-8cc0-46b1-af1f-6213d5e0ac9c",
+    "kind": "added",
+    "ok": true,
+    "note": "красные мэри джейн, образ целиком",
+    "why": "добор до 15, оценка 89"
+   },
+   {
+    "id": "4ae5bac6-b3df-4765-a18f-9317ebe6e686",
+    "kind": "added",
+    "ok": true,
+    "note": "красные мэри джейн, хороший кадр",
+    "why": "добор до 15, оценка 87"
+   },
+   {
+    "id": "1fcebce4-ebbb-4f6e-ab9e-a8ba532d800a",
+    "kind": "added",
+    "ok": false,
+    "note": "сверх нормы: кроп ног без образа, не явно сильное фото",
+    "why": "сверх нормы: оценка 86 ≥ 85"
+   }
+  ]
+ },
+ {
+  "articleId": "90676da8-29c2-4851-948e-9331f08974da",
+  "keyword": "bomber jacket outfits",
+  "status": "applied",
+  "before": 18,
+  "after": 18,
+  "target": 18,
+  "score": 7,
+  "verdict": "частично",
+  "summary": "Удаления верные (кожаная куртка не бомбер, логотип в углу), добавлены 2 настоящих бомбера. Но непоследовательно: похожие небомберы S12 (кожанка с лацканами) и S13 (замшевая рубашка-куртка, стоит первой) оставлены.",
+  "photos": [
+   {
+    "id": "db3f6802-d44d-4d95-ac46-ac41e2a04524",
+    "label": "S1",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "94a2fafb-f01f-4e4c-bbbb-075e3defbb1d",
+    "label": "S2",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "92d1ac6c-f4a3-4a04-b981-9b86d58b5ef2",
+    "label": "S3",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "60b93411-4b93-4069-8442-5a0efb19dd04",
+    "label": "S4",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "ff43e6e9-b972-4d1f-9b16-e7ebc8eff783",
+    "label": "S5",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "d59698d9-ae3f-4a00-b02f-5b1c47dcbf80",
+    "label": "S6",
+    "kind": "kept",
+    "ok": true,
+    "note": "оставлено после спора: объёмная кожаная куртка, допустимо"
+   },
+   {
+    "id": "3db2fd28-a011-45ad-a831-3f496a52c0d8",
+    "label": "S7",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "2cf3dd13-d2fc-496b-a655-51452c5fb6cf",
+    "label": "S8",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "8af92a80-bfa1-4652-9b91-287046e10706",
+    "label": "S9",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "6a7909d2-0d0d-4d4e-abff-2f397b5f3884",
+    "label": "S10",
+    "kind": "kept",
+    "ok": true,
+    "note": "пограничный: кожаная куртка, похожа на бомбер"
+   },
+   {
+    "id": "141e3a05-5d46-49ab-84cd-d7cc8f59b243",
+    "label": "S11",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "49c83131-2551-406d-af61-33772cb09635",
+    "label": "S12",
+    "kind": "kept",
+    "ok": false,
+    "note": "пропущено: укороченная кожанка с лацканами, не бомбер"
+   },
+   {
+    "id": "b1ecc8f0-2273-49fc-9a34-2685400040b7",
+    "label": "S13",
+    "kind": "kept",
+    "ok": false,
+    "note": "пропущено: замшевая куртка-рубашка, не бомбер; стоит первой в статье"
+   },
+   {
+    "id": "c386beef-a4be-4794-8e66-8a6d4cbd2c38",
+    "label": "S14",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "60dbcd7c-e01f-4384-9af1-8a60ebe765d8",
+    "label": "S15",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: приталенная кожанка, не бомбер"
+   },
+   {
+    "id": "cde931ff-dd95-4db8-93b2-a2134813028b",
+    "label": "S16",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: логотип/подпись в углу"
+   },
+   {
+    "id": "24fde598-772b-4076-b9a0-102983cb981a",
+    "label": "S17",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "badf6602-fe85-4cbb-8674-a2b24529c144",
+    "label": "S18",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "28370432-7fc4-4962-9bd3-360fc6e87e3a",
+    "kind": "added",
+    "ok": true,
+    "note": "кожаный бомбер с резинкой, сильный кадр",
+    "why": "добор до 18, оценка 88"
+   },
+   {
+    "id": "33ebc3a7-7573-4aa8-b435-865ecb24400b",
+    "kind": "added",
+    "ok": true,
+    "note": "бомбер, реальный стрит-стайл",
+    "why": "добор до 18, оценка 84"
+   }
+  ]
+ },
+ {
+  "articleId": "a2273c00-d82f-4a60-b9c1-42d3145af166",
+  "keyword": "curly shag haircut",
+  "status": "applied",
+  "before": 10,
+  "after": 11,
+  "target": 10,
+  "score": 6,
+  "verdict": "частично",
+  "summary": "Определение ключа взято из словаря для «shag» и потеряло «curly», поэтому прямые и волнистые шэги проходят. Пропущены ИИ-портрет S1 и некудрявая S7, добавлено ИИ-похожее фото до нормы; добавление сверх нормы хорошее.",
+  "photos": [
+   {
+    "id": "5cdc6b2c-318f-4692-9eba-70aca4d9c28d",
+    "label": "S1",
+    "kind": "kept",
+    "ok": false,
+    "note": "пропущено: похоже на ИИ-портрет"
+   },
+   {
+    "id": "a7f6c4f7-c338-4617-aeb6-1c05ef3c67d7",
+    "label": "S2",
+    "kind": "kept",
+    "ok": true,
+    "note": "кудри с чёлкой"
+   },
+   {
+    "id": "f0cd4245-0dfd-4295-aa46-fc296c5a364d",
+    "label": "S3",
+    "kind": "kept",
+    "ok": true,
+    "note": "волнистые с чёлкой, спор оставил — пограничный"
+   },
+   {
+    "id": "ead877fa-14ee-4722-9a74-87eecdb655f0",
+    "label": "S4",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "0525a902-a8f6-414d-abda-fa2c265e2826",
+    "label": "S5",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "746957bf-ee8a-43f1-ad79-85ca8bf87440",
+    "label": "S6",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "6643e4ac-3337-4aed-aaa0-b8f27ab4d049",
+    "label": "S7",
+    "kind": "kept",
+    "ok": false,
+    "note": "пропущено: прямой шэг, не кудрявый"
+   },
+   {
+    "id": "9c6c96ad-0cab-4584-9d88-6eb3b0996552",
+    "label": "S8",
+    "kind": "removed",
+    "ok": true,
+    "note": "миниатюры нет; по источнику — каре до подбородка, не curly shag, удаление верно по сути"
+   },
+   {
+    "id": "f4510720-c1cc-4ace-86fd-082215878507",
+    "label": "S9",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "83bd1104-96d8-409e-8ece-da6313fb000e",
+    "label": "S10",
+    "kind": "kept",
+    "ok": true,
+    "note": "волнистый шэг, пограничный"
+   },
+   {
+    "id": "3baa6e82-75d6-47ca-9ebf-37c6edea7097",
+    "kind": "added",
+    "ok": false,
+    "note": "похоже на ИИ-портрет (идеальная кожа и фон)",
+    "why": "добор до 10, оценка 92"
+   },
+   {
+    "id": "5cab0c37-a584-469d-887e-06592d230dcd",
+    "kind": "added",
+    "ok": true,
+    "note": "сверх нормы, но настоящий кудрявый шэг, в пределах +30%",
+    "why": "сверх нормы: оценка 86 ≥ 86"
+   }
+  ]
+ },
+ {
+  "articleId": "ac69b73c-34ab-44e9-83c5-310cbd9bfa7d",
+  "keyword": "sleek low bun",
+  "status": "sent_to_human",
+  "before": 16,
+  "after": 16,
+  "target": 16,
+  "score": 7,
+  "verdict": "частично",
+  "summary": "Все 5 удалений верные (небрежные, высокие, плетёные пучки), норма восстановлена. Пропущены плетёный пучок S9 (такой же S10 убран) и мягкий пучок с локонами S6; 2 из 5 добавлений похожи на ИИ-рендер. Людям ушло по порогу «больше 30% убрано», хотя сама модерация справилась.",
+  "photos": [
+   {
+    "id": "3ee0ce42-1f39-403a-8bbf-2ae1c7be7d15",
+    "label": "S1",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: небрежный пучок"
+   },
+   {
+    "id": "600fcd60-ecf9-42c4-8824-c1efb5f12f10",
+    "label": "S2",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "86a84659-a146-4234-9c2a-2ad00272833a",
+    "label": "S3",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "83e6f5f1-af0d-41bf-aaa9-439b095c1fd2",
+    "label": "S4",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: высокий пучок"
+   },
+   {
+    "id": "5b6091c1-f956-4fab-b456-883b0de2a82d",
+    "label": "S5",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: объёмный небрежный пучок"
+   },
+   {
+    "id": "507470c7-8ed0-4bbd-a4e8-9a53884a40bb",
+    "label": "S6",
+    "kind": "kept",
+    "ok": false,
+    "note": "пропущено: выпущенные локоны, не «гладкий без прядей»"
+   },
+   {
+    "id": "93ec7ec0-3071-4eb2-baa7-606b4f34d337",
+    "label": "S7",
+    "kind": "kept",
+    "ok": true,
+    "note": "гладкий низкий, возможно ИИ"
+   },
+   {
+    "id": "6d6a7e1e-5c6d-4a9c-ae67-d99046af2858",
+    "label": "S8",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "38afd753-f248-4c48-bf7a-55a7d5c25c15",
+    "label": "S9",
+    "kind": "kept",
+    "ok": false,
+    "note": "пропущено: плетёный пучок, такой же S10 убран"
+   },
+   {
+    "id": "256aee9f-f4ce-4a48-9ee1-c097217333a4",
+    "label": "S10",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: плетение, не гладкий"
+   },
+   {
+    "id": "203291a7-cc85-491b-9343-081f302581d1",
+    "label": "S11",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "f3b8fbc6-7f40-474f-ad4f-7fada5e938c5",
+    "label": "S12",
+    "kind": "kept",
+    "ok": true,
+    "note": "пограничный: выпущены пряди у лица"
+   },
+   {
+    "id": "11f1251c-0d37-4954-8be2-f8d8f3da4c0a",
+    "label": "S13",
+    "kind": "kept",
+    "ok": true,
+    "note": "гладкий низкий, возможно ИИ"
+   },
+   {
+    "id": "ecb0289a-284e-4324-9ccc-f9537b90bee8",
+    "label": "S14",
+    "kind": "removed",
+    "ok": true,
+    "note": "верно: средний/высокий пучок"
+   },
+   {
+    "id": "587d1a22-4005-43ea-a636-0a74b3530f2f",
+    "label": "S15",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "4bd0be16-4419-483e-8251-5ba259ee8940",
+    "label": "S16",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "0cb22465-4435-4892-95c0-6a804e710a87",
+    "kind": "added",
+    "ok": false,
+    "note": "похоже на ИИ-рендер (волосы как нарисованные)",
+    "why": "добор до 16, оценка 88"
+   },
+   {
+    "id": "59907f58-c841-4db2-8c0c-00d0f9615139",
+    "kind": "added",
+    "ok": true,
+    "note": "гладкий низкий пучок, возможно ИИ",
+    "why": "добор до 16, оценка 86"
+   },
+   {
+    "id": "36b3c093-b128-43fd-b28f-1d8a9f41daac",
+    "kind": "added",
+    "ok": true,
+    "note": "гладкий низкий пучок",
+    "why": "добор до 16, оценка 85"
+   },
+   {
+    "id": "1104adb1-8c56-4969-ba47-2a35be3423c3",
+    "kind": "added",
+    "ok": false,
+    "note": "похоже на ИИ-рендер",
+    "why": "добор до 16, оценка 84"
+   },
+   {
+    "id": "df0349df-1051-4ef1-8d56-c2a9d5e0c3bc",
+    "kind": "added",
+    "ok": true,
+    "note": "гладкий низкий пучок, возможно ИИ",
+    "why": "добор до 16, оценка 83"
+   }
+  ]
+ },
+ {
+  "articleId": "e39cb510-e87f-48d1-bb81-27308591adb2",
+  "keyword": "bubble bob",
+  "status": "applied",
+  "before": 14,
+  "after": 16,
+  "target": 14,
+  "score": 6,
+  "verdict": "частично",
+  "summary": "Ничего не убрано, хотя правило ключа прямо исключает острое каре: пропущены угловатое каре S9 и гладкое каре S3 (похоже на ИИ). Добавлено 2 фото сверх нормы (в пределах +30%), сами фото хорошие, но не нужны.",
+  "photos": [
+   {
+    "id": "2094ab04-152f-4603-a62a-81bdf72cc6d0",
+    "label": "S1",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "e24f8154-38ef-4b85-a81f-c1a67c170bab",
+    "label": "S2",
+    "kind": "kept",
+    "ok": true,
+    "note": "рваный French bob, пограничный"
+   },
+   {
+    "id": "1a455d33-fde7-440a-84ae-bfa8e2261f1f",
+    "label": "S3",
+    "kind": "kept",
+    "ok": false,
+    "note": "пропущено: прямое гладкое каре, похоже на ИИ"
+   },
+   {
+    "id": "e5bfa776-32dd-442a-855b-f7a1cfe94461",
+    "label": "S4",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "3ba33505-e638-4b0c-9f20-02bd553151eb",
+    "label": "S5",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "6394c218-90b8-4f9e-9884-fa8d605cfa6d",
+    "label": "S6",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "8d633e7a-742e-4129-8385-8b7639b4fbea",
+    "label": "S7",
+    "kind": "kept",
+    "ok": true,
+    "note": "длинное каре с подкрученными концами, пограничный"
+   },
+   {
+    "id": "8f7d0954-5cd5-41be-af74-f3c9f912c3f5",
+    "label": "S8",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "5e26676a-d5a7-4af2-b1b8-978b82fe0efc",
+    "label": "S9",
+    "kind": "kept",
+    "ok": false,
+    "note": "пропущено: угловатое острое каре — правило ключа его исключает"
+   },
+   {
+    "id": "57d9b1fc-b7fa-4cde-a7cc-e206083a15cb",
+    "label": "S10",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "294ed1cd-90e7-45df-9e79-fd6878f77dd7",
+    "label": "S11",
+    "kind": "kept",
+    "ok": true,
+    "note": "волнистый лоб, пограничный"
+   },
+   {
+    "id": "e8a11f74-e252-4091-a8fe-f4d9bc7620fb",
+    "label": "S12",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "cd7955d9-9603-4ac1-8009-04272b6551fb",
+    "label": "S13",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "7be98ee5-021a-4368-aa65-e1a47d353331",
+    "label": "S14",
+    "kind": "kept",
+    "ok": true,
+    "note": "по теме"
+   },
+   {
+    "id": "098f10f0-beb3-4863-839c-7ad8f8689fce",
+    "kind": "added",
+    "ok": true,
+    "note": "сверх нормы: настоящий bubble bob, сильный",
+    "why": "сверх нормы: оценка 89 ≥ 85"
+   },
+   {
+    "id": "add6200c-cd99-4b33-af51-9649cb8a21bc",
+    "kind": "added",
+    "ok": true,
+    "note": "сверх нормы: округлое каре, хорошее, но не обязательно",
+    "why": "сверх нормы: оценка 86 ≥ 85"
+   }
+  ]
+ }
+]
