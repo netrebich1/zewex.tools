@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { pollWhileVisible } from "@/lib/poll";
 import { fmtInt } from "@/lib/analytics/format";
 
 /** «Сейчас на сайте»: активные за последние 30 минут, обновляется раз в минуту. */
@@ -10,8 +11,8 @@ export function Realtime({ ids }: { ids: string[] }) {
     const ctrl = new AbortController();
     const load = () => fetch(`/api/analytics/realtime?ids=${ids.join(",")}`, { signal: ctrl.signal }).then((r) => (r.ok ? r.json() : {})).then((m: Record<string, number | null>) => setValue(Object.values(m).reduce<number>((s, v) => s + (v ?? 0), 0))).catch(() => {});
     load();
-    const t = setInterval(load, 60_000);
-    return () => { clearInterval(t); ctrl.abort(); };
+    const stop = pollWhileVisible(load, 60_000);
+    return () => { stop(); ctrl.abort(); };
   }, [ids]);
   if (value == null) return null;
   return (

@@ -1,6 +1,7 @@
 "use client";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { pollWhileVisible } from "@/lib/poll";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Alert, Badge, Card } from "@/components/ui";
@@ -31,7 +32,7 @@ export function RunView({ jobId, initialStatus, initialItems, publishDefaults }:
   useEffect(() => {
     const live = LIVE.has(status) || items.some((i) => i.status === "pending" || i.status === "processing");
     if (!live) return;
-    const t = setInterval(async () => {
+    return pollWhileVisible(async () => {
       try {
         const res = await fetch(`/api/deepl/jobs/${jobId}`, { cache: "no-store" });
         if (!res.ok) return;
@@ -44,7 +45,6 @@ export function RunView({ jobId, initialStatus, initialItems, publishDefaults }:
         /* показываем прошлое */
       }
     }, 4_000);
-    return () => clearInterval(t);
   }, [status, items, jobId, router]);
 
   const by = (s: string) => items.filter((i) => i.status === s).length;

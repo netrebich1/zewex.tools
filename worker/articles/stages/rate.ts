@@ -341,7 +341,7 @@ export const rate: ArtStageHandler = async (ctx) => {
 
   const rejectCandidate = async (c: ArtPhotoCandidate, reason: string, cls: AiBreakdown["reject_class"], extra: Partial<AiBreakdown> = {}) => {
     const ex = readBreakdown(c);
-    await prisma.artPhotoCandidate.update({
+    await prisma.artPhotoCandidate.updateMany({
       where: { id: c.id },
       data: {
         status: "rejected",
@@ -362,7 +362,7 @@ export const rate: ArtStageHandler = async (ctx) => {
       if (attempts >= MAX_BATCH_ATTEMPTS) {
         await rejectCandidate(c, reason, "model_failed", { attempts });
       } else {
-        await prisma.artPhotoCandidate.update({ where: { id: c.id }, data: { aiBreakdown: { ...ex, attempts } as object } });
+        await prisma.artPhotoCandidate.updateMany({ where: { id: c.id }, data: { aiBreakdown: { ...ex, attempts } as object } });
       }
     }
   };
@@ -460,7 +460,7 @@ export const rate: ArtStageHandler = async (ctx) => {
         ...(ex.prev ? { prev: ex.prev } : {}),
         ...(ex.rescue || rescueActive ? { rescue: true } : {}),
       };
-      await prisma.artPhotoCandidate.update({
+      await prisma.artPhotoCandidate.updateMany({
         where: { id: row.c.id },
         data: {
           status: j.verdict === "keep" ? "keep" : "rejected",
@@ -517,7 +517,7 @@ export const rate: ArtStageHandler = async (ctx) => {
     for (const r of rows) {
       const b = readBreakdown(r);
       if (isHardReject(b)) continue;
-      await prisma.artPhotoCandidate.update({
+      await prisma.artPhotoCandidate.updateMany({
         where: { id: r.id },
         data: {
           status: "keep",
@@ -545,7 +545,7 @@ export const rate: ArtStageHandler = async (ctx) => {
       const b = readBreakdown(r);
       const rest: AiBreakdown = { ...b };
       delete rest.prev;
-      await prisma.artPhotoCandidate.update({
+      await prisma.artPhotoCandidate.updateMany({
         where: { id: r.id },
         data: {
           status: "downloaded",

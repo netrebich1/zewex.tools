@@ -59,7 +59,7 @@ export const filter: ArtStageHandler = async (ctx) => {
   const reject = async (c: ArtPhotoCandidate, reason: string, extra: { sha256?: string | null; phash?: string | null; details?: TechDetails } = {}) => {
     batchRejected++;
     bump(reason);
-    await prisma.artPhotoCandidate.update({
+    await prisma.artPhotoCandidate.updateMany({
       where: { id: c.id },
       data: { status: "rejected", rejectStage: "filter", rejectReason: reason.slice(0, 1000), sha256: extra.sha256 ?? c.sha256, phash: extra.phash ?? c.phash, ...(extra.details ? { techDetails: extra.details as object } : {}) },
     });
@@ -76,7 +76,7 @@ export const filter: ArtStageHandler = async (ctx) => {
       return;
     }
     // Счётчик попыток пишем ДО загрузки файла: если воркер умрёт на медленном источнике, кадр не зациклится.
-    await prisma.artPhotoCandidate.update({ where: { id: c.id }, data: { techDetails: { ...prev, attempt, retryAfter: undefined } as object } });
+    await prisma.artPhotoCandidate.updateMany({ where: { id: c.id }, data: { techDetails: { ...prev, attempt, retryAfter: undefined } as object } });
 
     // 1) бесплатные проверки: категория источника, каталог, релевантность по тексту (оригинал :391-409)
     const domain = c.domain || hostOf(c.pageUrl) || hostOf(c.url) || "";
@@ -99,7 +99,7 @@ export const filter: ArtStageHandler = async (ctx) => {
       // Источник не отдал файл (429/403/5xx/HTML) — не брак кадра: откладываем и пробуем ещё (всего MAX_ATTEMPTS раз).
       if (isSoftFailure(dl.reason) && attempt < MAX_ATTEMPTS) {
         postponed++;
-        await prisma.artPhotoCandidate.update({
+        await prisma.artPhotoCandidate.updateMany({
           where: { id: c.id },
           data: { rejectReason: `отложено: ${dl.reason.slice(0, 60)} (попытка ${attempt})`, techDetails: { ...prev, attempt, retryAfter: Date.now() + POSTPONE_MS } as object },
         });
@@ -154,7 +154,7 @@ export const filter: ArtStageHandler = async (ctx) => {
       colorfulness: vision.stats?.colorfulness ?? null, brightness: vision.stats?.brightness ?? null,
       domain,
     });
-    await prisma.artPhotoCandidate.update({
+    await prisma.artPhotoCandidate.updateMany({
       where: { id: c.id },
       data: {
         status: "downloaded",

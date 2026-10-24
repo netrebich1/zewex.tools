@@ -208,7 +208,7 @@ export async function publishArticle(ctx: PublishCtx): Promise<PublishOutcome> {
     const filename = mediaFilename(slug, photo);
     const mediaSlug = filename.replace(/\.jpg$/, "");
     const save = async (id: number, url: string) => {
-      await prisma.artPhoto.update({ where: { id: photo.id }, data: { wpMediaId: id, wpUrl: url, fileName: filename } });
+      await prisma.artPhoto.updateMany({ where: { id: photo.id }, data: { wpMediaId: id, wpUrl: url, fileName: filename } });
       photo.wpMediaId = id;
       photo.wpUrl = url;
     };

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { pollWhileVisible } from "@/lib/poll";
 
 /** Счётчики модерации (как на Обзоре и в списке «Модерации фото»): `moderationCounts` в src/lib/articles/queries.ts. */
 export type NavCounts = { photos: number; insufficient: number; articles: number };
@@ -35,11 +36,11 @@ export function ArticlesNav({ counts: initial }: { counts?: NavCounts | null }) 
         })
         .catch(() => {});
     const t = window.setTimeout(load, 300);
-    const i = window.setInterval(load, 60_000);
+    const stop = pollWhileVisible(load, 60_000);
     return () => {
       alive = false;
       window.clearTimeout(t);
-      window.clearInterval(i);
+      stop();
     };
   }, [pathname]);
 

@@ -58,7 +58,7 @@ export async function describeLatePhotos(ctx: LateDescribeCtx, photos: ArtPhoto[
     // Тонкие факты оценки дополняют полные там, где модель описания оставила поле пустым.
     const prev = (sanitizeFacts(p.facts) ?? {}) as Record<string, string>;
     const facts: Record<string, unknown> = { ...prev, ...d.facts };
-    await prisma.artPhoto.update({ where: { id: p.id }, data: { facts: facts as object, description: d.description } });
+    await prisma.artPhoto.updateMany({ where: { id: p.id }, data: { facts: facts as object, description: d.description } });
     res.described++;
   };
   for (const [id, d] of batch.described) {

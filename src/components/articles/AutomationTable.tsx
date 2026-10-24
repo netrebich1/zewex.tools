@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { pollWhileVisible } from "@/lib/poll";
 import { Alert } from "@/components/ui";
 import { WorkerPill } from "./ArticlesBoard";
 import { Fold, More } from "@/components/ui/Fold";
@@ -35,8 +36,7 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
   }, []);
 
   useEffect(() => {
-    const t = setInterval(refresh, 30_000);
-    return () => clearInterval(t);
+    return pollWhileVisible(refresh, 30_000);
   }, [refresh]);
 
   useEffect(() => {

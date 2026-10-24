@@ -587,6 +587,7 @@ model PinRunPage {
   items             PinRunItem[]
 
   @@index([runId, sortOrder])
+  @@index([runId, status])
 }
 
 model PinRunItem {
@@ -664,6 +665,8 @@ model PinJob {
   @@index([status, priority, createdAt])
   @@index([runId, status])
   @@index([teamId, status])
+  // Последняя задача прогона (статус прогона, автовозобновление).
+  @@index([runId, createdAt])
 }
 
 model PinExportLog {
@@ -1052,6 +1055,9 @@ model Article {
   @@index([siteId, keyword])
   @@index([claimedById])
   @@index([siteId, sheetRow])
+  // Фоновые задачи: неудачные ключи (format + updatedAt) и очистка опубликованных (status + purgedAt + updatedAt).
+  @@index([format, updatedAt])
+  @@index([status, purgedAt, updatedAt])
 }
 
 /// Кандидат фото (все найденные, включая отбракованные с причиной)
@@ -1099,6 +1105,8 @@ model ArtPhotoCandidate {
   @@index([articleId, status])
   @@index([articleId, rankScore])
   @@index([sha256])
+  // Кэш поиска фото: те же запросы из других статей (worker/articles/stages/search.ts) — без индекса шёл полный перебор 1,2 млн строк.
+  @@index([searchQuery])
 }
 
 /// Фото статьи (отобранные, по позициям; одна секция = одно фото)
@@ -1172,6 +1180,9 @@ model ArtPhotoFingerprint {
   @@index([sha256])
   @@index([phash])
   @@index([teamId, createdAt])
+  // Проверка повторов фото по адресу и по статьям того же ключа (src/lib/articles/photo/fingerprints.ts).
+  @@index([sourceUrl(length: 191)])
+  @@index([articleId])
 }
 
 /// Действия модерации (человек или ИИ) — для статистики сотрудников и undo
@@ -1188,6 +1199,7 @@ model ArtModerationEvent {
 
   @@index([articleId, createdAt])
   @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 /// Журнал этапов статьи: таймлайн карточки статьи
@@ -1315,6 +1327,7 @@ model ArtAiModerationResult {
   @@unique([runId, articleId])
   @@index([articleId, createdAt])
   @@index([runId, status])
+  @@index([updatedAt])
 }
 
 /// Неудачные ключи сервиса статей: по ключу не нашли фото / набрали мало / после модерации осталось < 10 / модерация убрала много.
@@ -2063,6 +2076,8 @@ model BlogPhotoCandidate {
   @@index([postId, status])
   @@index([slotId, status])
   @@index([sha256])
+  // Кэш поиска фото инфо-статей по тому же запросу (worker/blog/stages/photoSearch.ts).
+  @@index([searchQuery])
 }
 
 /// Фото статьи (выбранное для слота; position — порядок в статье)
@@ -2124,6 +2139,8 @@ model BlogPhotoFingerprint {
   @@index([teamId, sha256])
   @@index([postId])
   @@index([teamId, createdAt])
+  // Проверка повторов фото инфо-статей по адресу (worker/blog/stages/photoSelect.ts).
+  @@index([sourceUrl(length: 191)])
 }
 
 /// Журнал этапов поста

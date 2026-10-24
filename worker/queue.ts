@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import type { PinJob } from "@prisma/client";
+import { Prisma, type PinJob } from "@prisma/client";
 import { log } from "./log";
 
 /**
@@ -18,6 +18,9 @@ export const MAX_ATTEMPTS = 5;
  */
 export async function claimNextJob(workerId: string, opts: { skipStages?: readonly string[] } = {}): Promise<PinJob | null> {
   const skip = new Set(opts.skipStages ?? []);
+  // Дешёвая проверка без транзакции: то же условие, что у выборки кандидатов ниже — пустая очередь не открывает транзакцию.
+  const any = await prisma.$queryRaw<Array<{ id: string }>>`SELECT id FROM PinJob WHERE status = 'PENDING' AND (nextRunAt IS NULL OR nextRunAt <= NOW(3)) LIMIT 1`;
+  if (!any.length) return null;
   return prisma.$transaction(
     async (tx) => {
       const cand = await tx.$queryRaw<Array<{ id: string; teamId: string; stage: string }>>`
@@ -25,9 +28,15 @@ export async function claimNextJob(workerId: string, opts: { skipStages?: readon
         WHERE status = 'PENDING' AND (nextRunAt IS NULL OR nextRunAt <= NOW(3))
         ORDER BY priority DESC, createdAt ASC
         LIMIT 50 FOR UPDATE SKIP LOCKED`;
+      // Бегущие задачи команд — одним запросом: цикл выходит на первом удачном захвате, поэтому счётчики внутри него не меняются.
+      const teams = [...new Set(cand.filter((j) => !skip.has(j.stage)).map((j) => j.teamId))];
+      const runningRows = teams.length
+        ? await tx.pinJob.groupBy({ by: ["teamId"], where: { teamId: { in: teams }, status: { in: ["RUNNING", "STOPPING"] }, leaseUntil: { gt: new Date() } }, _count: { _all: true } })
+        : [];
+      const runningByTeam = new Map(runningRows.map((r) => [r.teamId, r._count._all]));
       for (const j of cand) {
         if (skip.has(j.stage)) continue;
-        const running = await tx.pinJob.count({ where: { teamId: j.teamId, status: { in: ["RUNNING", "STOPPING"] }, leaseUntil: { gt: new Date() } } });
+        const running = runningByTeam.get(j.teamId) ?? 0;
         if (running >= TEAM_CAP) continue;
         const r = await tx.$executeRaw`
           UPDATE PinJob SET status = 'RUNNING', workerId = ${workerId}, startedAt = NOW(3),
@@ -46,8 +55,14 @@ export async function renewLease(jobId: string, patch: { done?: number; total?: 
   const status = rows[0]?.status;
   // Аренду продлевает только тот воркер, который держит задачу: после истечения lease её мог забрать другой.
   if (workerId && rows[0] && rows[0].workerId !== workerId) return { stopping: true, lost: true };
-  await prisma.$executeRaw`UPDATE PinJob SET leaseUntil = DATE_ADD(NOW(3), INTERVAL ${LEASE_SECONDS} SECOND) WHERE id = ${jobId}`;
-  if (Object.keys(patch).length) await prisma.pinJob.update({ where: { id: jobId }, data: patch });
+  // Аренда и прогресс — одним UPDATE.
+  const sets = [Prisma.sql`leaseUntil = DATE_ADD(NOW(3), INTERVAL ${LEASE_SECONDS} SECOND)`];
+  if (patch.done !== undefined) sets.push(Prisma.sql`done = ${patch.done}`);
+  if (patch.total !== undefined) sets.push(Prisma.sql`total = ${patch.total}`);
+  if (patch.label !== undefined) sets.push(Prisma.sql`label = ${patch.label}`);
+  const n = await prisma.$executeRaw`UPDATE PinJob SET ${Prisma.join(sets, ", ")} WHERE id = ${jobId}`;
+  // Строки нет (или ничего не изменилось) — прежний путь: update бросит P2025, как раньше.
+  if (!n && Object.keys(patch).length) await prisma.pinJob.update({ where: { id: jobId }, data: patch });
   return { stopping: status === "STOPPING" };
 }
 

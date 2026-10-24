@@ -219,7 +219,7 @@ where the FIRST element is the best pin and the LAST is the weakest.`;
     if (!row) continue;
     const note = notes.get(id);
     const b = readBreakdown(row);
-    await prisma.artPhotoCandidate.update({
+    await prisma.artPhotoCandidate.updateMany({
       where: { id },
       data: { beautyRank: Math.round(score), aiBreakdown: { ...b, ...(note ? { beauty_note: note } : {}) } as object, rankScore: rankScoreOf(row, Math.round(score)) },
     });
@@ -231,7 +231,7 @@ where the FIRST element is the best pin and the LAST is the weakest.`;
   for (const g of stillFailed) {
     for (const row of g) {
       if (finalScore.has(row.id)) continue;
-      await prisma.artPhotoCandidate.update({
+      await prisma.artPhotoCandidate.updateMany({
         where: { id: row.id },
         data: { beautyRank: RANK_FALLBACK, aiBreakdown: { ...readBreakdown(row), beauty_note: "не удалось сравнить" } as object, rankScore: rankScoreOf(row, RANK_FALLBACK) },
       });
@@ -241,7 +241,7 @@ where the FIRST element is the best pin and the LAST is the weakest.`;
   // Кадры без миниатюры/файла (не попали ни в одну группу) — тоже средний балл, чтобы оценка их увидела.
   for (const row of pending) {
     if (finalScore.has(row.id) || stillFailed.some((g) => g.includes(row))) continue;
-    await prisma.artPhotoCandidate.update({
+    await prisma.artPhotoCandidate.updateMany({
       where: { id: row.id },
       data: { beautyRank: RANK_FALLBACK, aiBreakdown: { ...readBreakdown(row), beauty_note: "не удалось сравнить" } as object, rankScore: rankScoreOf(row, RANK_FALLBACK) },
     });

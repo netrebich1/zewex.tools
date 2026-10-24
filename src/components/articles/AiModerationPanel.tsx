@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, Badge, Card, Empty } from "@/components/ui";
 import { More } from "@/components/ui/Fold";
+import { pollWhileVisible } from "@/lib/poll";
 import { ShowMore, ShowMoreRows } from "@/components/ui/ShowMore";
 import type { AiOverview, AiResultRow, AiRunRow, InsufficientRow } from "@/lib/articles/aiModeration";
 
@@ -78,8 +79,7 @@ export function AiModerationPanel({ initial }: { initial: AiOverview }) {
 
   const anyRunning = data.runs.some((r) => r.status === "running");
   useEffect(() => {
-    const t = setInterval(refresh, anyRunning ? 8_000 : 30_000);
-    return () => clearInterval(t);
+    return pollWhileVisible(refresh, anyRunning ? 8_000 : 30_000);
   }, [refresh, anyRunning]);
 
   useEffect(() => {

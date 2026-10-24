@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { pollWhileVisible } from "@/lib/poll";
 import { Alert, Badge, Card } from "@/components/ui";
 import { STATUS_TONE } from "./DomainsNav";
 import { computeStats, formatCounts, itemsByGeo, rowsByGeo } from "@/lib/domains/selection";
@@ -67,8 +68,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
   }
   useEffect(() => {
     if (!live) return;
-    const t = setInterval(reload, 5_000);
-    return () => clearInterval(t);
+    return pollWhileVisible(reload, 5_000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live, run.id]);
 

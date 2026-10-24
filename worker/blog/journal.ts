@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { failureSignature, type RetryKind } from "@/lib/articles/errors";
 
 export async function finishLog(id: string, status: "done" | "error" | "skipped", summary?: string | null, error?: string | null, details?: unknown, costUsd?: number) {
-  await prisma.blogStageLog.update({
+  await prisma.blogStageLog.updateMany({
     where: { id },
     data: { status, finishedAt: new Date(), summary: summary?.slice(0, 2000), error: error?.slice(0, 4000), details: details === undefined ? undefined : (details as object), costUsd: costUsd ?? undefined },
   });

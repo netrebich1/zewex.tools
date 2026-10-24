@@ -48,7 +48,7 @@ export const photoRate: StageHandler = async (ctx) => {
 
   const rejectOne = async (c: BlogPhotoCandidate, reason: string, extra: Rated = {}) => {
     rejected++;
-    await prisma.blogPhotoCandidate.update({ where: { id: c.id }, data: { status: "rejected", rejectStage: "rate", rejectReason: reason.slice(0, 500), aiScore: 0, aiBreakdown: { ...extra, verdict: "reject", reason } as object } });
+    await prisma.blogPhotoCandidate.updateMany({ where: { id: c.id }, data: { status: "rejected", rejectStage: "rate", rejectReason: reason.slice(0, 500), aiScore: 0, aiBreakdown: { ...extra, verdict: "reject", reason } as object } });
   };
 
   const runBatch = async (slot: BlogImageSlot, rows: BlogPhotoCandidate[], system: string, lead: string, userTpl: string) => {
@@ -80,7 +80,7 @@ export const photoRate: StageHandler = async (ctx) => {
         const ex = (b.c.aiBreakdown ?? {}) as Rated;
         const attempts = Number(ex.attempts ?? 0) + 1;
         if (attempts >= MAX_BATCH_ATTEMPTS) await rejectOne(b.c, "модель не оценила фото", { attempts });
-        else await prisma.blogPhotoCandidate.update({ where: { id: b.c.id }, data: { aiBreakdown: { ...ex, attempts } as object } });
+        else await prisma.blogPhotoCandidate.updateMany({ where: { id: b.c.id }, data: { aiBreakdown: { ...ex, attempts } as object } });
       }
       return;
     }
@@ -105,7 +105,7 @@ export const photoRate: StageHandler = async (ctx) => {
       const keep = verdictKeep && real && !unpleasant && appealOk && relevance >= 6 && quality >= 4 && score >= minScore;
       const reason = unpleasant ?? (!appealOk && verdictKeep ? `не вызывает желания сохранить (appeal ${appeal})` : String(it.reason ?? "").slice(0, 200));
       if (keep) kept++; else rejected++;
-      await prisma.blogPhotoCandidate.update({
+      await prisma.blogPhotoCandidate.updateMany({
         where: { id: row.c.id },
         data: {
           status: keep ? "keep" : "rejected",
@@ -122,7 +122,7 @@ export const photoRate: StageHandler = async (ctx) => {
       const ex = (b.c.aiBreakdown ?? {}) as Rated;
       const attempts = Number(ex.attempts ?? 0) + 1;
       if (attempts >= MAX_BATCH_ATTEMPTS) await rejectOne(b.c, "модель пропустила фото", { attempts });
-      else await prisma.blogPhotoCandidate.update({ where: { id: b.c.id }, data: { aiBreakdown: { ...ex, attempts } as object } });
+      else await prisma.blogPhotoCandidate.updateMany({ where: { id: b.c.id }, data: { aiBreakdown: { ...ex, attempts } as object } });
     }
   };
 

@@ -55,7 +55,7 @@ export const photoFilter: StageHandler = async (ctx) => {
   const reject = async (c: BlogPhotoCandidate, reason: string, extra: { sha256?: string | null; phash?: string | null; details?: TechDetails } = {}) => {
     batchRejected++;
     bump(reason);
-    await prisma.blogPhotoCandidate.update({
+    await prisma.blogPhotoCandidate.updateMany({
       where: { id: c.id },
       data: { status: "rejected", rejectStage: "filter", rejectReason: reason.slice(0, 1000), sha256: extra.sha256 ?? c.sha256, phash: extra.phash ?? c.phash, ...(extra.details ? { techDetails: extra.details as object } : {}) },
     });
@@ -69,7 +69,7 @@ export const photoFilter: StageHandler = async (ctx) => {
     const prev = detailsOf(c);
     const attempt = (prev.attempt ?? 0) + 1;
     if (attempt > MAX_ATTEMPTS) return reject(c, `источник не отдал файл после ${MAX_ATTEMPTS} попыток`);
-    await prisma.blogPhotoCandidate.update({ where: { id: c.id }, data: { techDetails: { ...prev, attempt, retryAfter: undefined } as object } });
+    await prisma.blogPhotoCandidate.updateMany({ where: { id: c.id }, data: { techDetails: { ...prev, attempt, retryAfter: undefined } as object } });
 
     const domain = c.domain || hostOf(c.pageUrl) || hostOf(c.url) || "";
     const blocked = isBlockedDomain(domain, cfg.exclude_domains);
@@ -89,7 +89,7 @@ export const photoFilter: StageHandler = async (ctx) => {
     if (!dl.ok) {
       if (isSoftFailure(dl.reason) && attempt < MAX_ATTEMPTS) {
         postponed++;
-        await prisma.blogPhotoCandidate.update({ where: { id: c.id }, data: { rejectReason: `отложено: ${dl.reason.slice(0, 60)} (попытка ${attempt})`, techDetails: { ...prev, attempt, retryAfter: Date.now() + POSTPONE_MS } as object } });
+        await prisma.blogPhotoCandidate.updateMany({ where: { id: c.id }, data: { rejectReason: `отложено: ${dl.reason.slice(0, 60)} (попытка ${attempt})`, techDetails: { ...prev, attempt, retryAfter: Date.now() + POSTPONE_MS } as object } });
         return;
       }
       return reject(c, dl.reason);
@@ -120,7 +120,7 @@ export const photoFilter: StageHandler = async (ctx) => {
     await writeFileAtomic(fileRel, bytes);
     try { await writeFileAtomic(thumbRel, await makeThumb(bytes)); } catch (e) { ctx.log(`thumb failed for ${c.id}: ${(e as Error).message}`); }
     const techScore = techQualityScore({ width: dims?.width ?? c.width, height: dims?.height ?? c.height, sharpness: vision.sharpness ?? null, contrast: vision.stats?.contrast ?? null, colorfulness: vision.stats?.colorfulness ?? null, brightness: vision.stats?.brightness ?? null, domain });
-    await prisma.blogPhotoCandidate.update({
+    await prisma.blogPhotoCandidate.updateMany({
       where: { id: c.id },
       data: { status: "downloaded", rejectStage: null, rejectReason: dl.usedThumbnail ? "миниатюра Google" : null, width: dims?.width ?? c.width, height: dims?.height ?? c.height, bytes: bytes.length, sha256: fp, phash: vision.phash ?? null, path: fileRel, thumbPath: thumbRel, techScore: Math.round(techScore), techDetails: details as object },
     });

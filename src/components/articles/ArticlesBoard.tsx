@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { pollWhileVisible } from "@/lib/poll";
 import { Badge } from "@/components/ui";
 import { ShowMore } from "@/components/ui/ShowMore";
 import type { ArticleBrief, WorkerState } from "@/lib/articles/queries";
@@ -20,13 +21,12 @@ export function ArticlesBoard({ initial, worker: initialWorker, errorsHour = 0, 
   const anyLive = rows.some((r) => r.status === "RUNNING" || r.status === "PUBLISHING") || worker.pending > 0;
   useEffect(() => {
     if (!anyLive) return;
-    const t = setInterval(async () => {
+    return pollWhileVisible(async () => {
       try {
         const res = await fetch("/api/articles/overview", { cache: "no-store" });
         if (res.ok) { const j = (await res.json()) as Payload; setRows(j.rows); setWorker(j.worker); setErr(""); }
       } catch { setErr("Нет связи с сервером, показаны последние данные"); }
     }, 10_000);
-    return () => clearInterval(t);
   }, [anyLive]);
 
   // «N мин назад» считается после монтирования, чтобы серверная и клиентская разметка совпадали.

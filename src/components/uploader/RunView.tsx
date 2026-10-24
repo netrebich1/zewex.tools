@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { pollWhileVisible } from "@/lib/poll";
 import { Card } from "@/components/ui";
 import type { RunView as RunViewT, TaskView } from "@/lib/uploader/views";
 import { RUN_LIVE } from "@/lib/uploader/types";
@@ -46,13 +47,12 @@ export function RunView({ initial }: { initial: RunViewT }) {
   const live = RUN_LIVE.has(run.status);
   useEffect(() => {
     if (!live) return;
-    const t = setInterval(async () => {
+    return pollWhileVisible(async () => {
       try {
         const res = await fetch(`/api/uploader/runs/${run.id}`, { cache: "no-store" });
         if (res.ok) setRun(await res.json());
       } catch { /* показываем прошлое */ }
     }, 5_000);
-    return () => clearInterval(t);
   }, [live, run.id]);
   const uploads = run.tasks.filter((t) => t.phase === "upload");
   const verifies = run.tasks.filter((t) => t.phase === "verify");

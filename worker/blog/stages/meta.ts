@@ -191,7 +191,7 @@ Return ONLY JSON: {"pins":[{"n":1,"description":"..."}]}`;
       const ph = photos[Number(it.n) - 1];
       const d = fixDashesText(String(it.description ?? "").replace(/#\S+/g, "").replace(/\s+/g, " ").trim()).slice(0, 480);
       if (!ph || d.length < 60) continue;
-      await prisma.blogPhoto.update({ where: { id: ph.id }, data: { pinDescription: d } });
+      await prisma.blogPhoto.updateMany({ where: { id: ph.id }, data: { pinDescription: d } });
       written++;
     }
     return { written };

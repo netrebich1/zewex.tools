@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { pollWhileVisible } from "@/lib/poll";
 import { delta, fmtDuration, fmtInt, fmtPct } from "@/lib/analytics/format";
 import { Delta } from "./Delta";
 import { Sparkline } from "./Sparkline";
@@ -35,8 +36,8 @@ export function SitesTable({ rows, qs }: { rows: SiteRow[]; qs: string }) {
     const ctrl = new AbortController();
     const load = () => fetch(`/api/analytics/realtime?ids=${rows.map((r) => r.id).join(",")}`, { signal: ctrl.signal }).then((r) => (r.ok ? r.json() : {})).then(setOnline).catch(() => {});
     load();
-    const t = setInterval(load, 60_000);
-    return () => { clearInterval(t); ctrl.abort(); };
+    const stop = pollWhileVisible(load, 60_000);
+    return () => { stop(); ctrl.abort(); };
   }, [rows]);
 
   const list = useMemo(() => {

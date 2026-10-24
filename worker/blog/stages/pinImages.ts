@@ -66,7 +66,7 @@ Return ONLY JSON: {"items":[{"n":1,"title":"...","kicker":"..."}]}`;
         const t = normalizeOverlayText({ title: fixDashesText(String(it.title ?? "")), kicker: it.kicker });
         if (!ph || !t || ph.overlayText) continue;
         const text = { title: titleCase(t.title), kicker: t.kicker, source: "ai" };
-        await prisma.blogPhoto.update({ where: { id: ph.id }, data: { overlayText: text as Prisma.InputJsonValue } });
+        await prisma.blogPhoto.updateMany({ where: { id: ph.id }, data: { overlayText: text as Prisma.InputJsonValue } });
         ph.overlayText = text;
         aiTexts++;
       }
@@ -78,7 +78,7 @@ Return ONLY JSON: {"items":[{"n":1,"title":"...","kicker":"..."}]}`;
     for (const ph of needText.filter((p) => !p.overlayText)) {
       const heading = headingOf(ph.slotKey).replace(/:.*$/, "").slice(0, 60);
       const text = { title: titleCase(heading), kicker: ph.slotKey === "hero" ? "Complete guide" : ph.aiGenerated ? "Step by step" : KICKER_BY_KIND[sectionOf(ph.slotKey)?.kind ?? ""] ?? "", source: "fallback" };
-      await prisma.blogPhoto.update({ where: { id: ph.id }, data: { overlayText: text as Prisma.InputJsonValue } });
+      await prisma.blogPhoto.updateMany({ where: { id: ph.id }, data: { overlayText: text as Prisma.InputJsonValue } });
       ph.overlayText = text;
       fallbackTexts++;
     }
@@ -97,7 +97,7 @@ Return ONLY JSON: {"items":[{"n":1,"title":"...","kicker":"..."}]}`;
       const out = await renderPinOverlay(src, { title: t.title, kicker: t.kicker, domain }, p.id);
       const rel = pinOverlayRel(post.id, p.id);
       await writeFileAtomic(rel, out.bytes);
-      await prisma.blogPhoto.update({ where: { id: p.id }, data: { overlayPath: rel, overlayWidth: out.width, overlayHeight: out.height, overlayWpMediaId: null, overlayWpUrl: null, overlayText: { ...t, variant: out.variant } as Prisma.InputJsonValue } });
+      await prisma.blogPhoto.updateMany({ where: { id: p.id }, data: { overlayPath: rel, overlayWidth: out.width, overlayHeight: out.height, overlayWpMediaId: null, overlayWpUrl: null, overlayText: { ...t, variant: out.variant } as Prisma.InputJsonValue } });
       rendered++;
     } catch (e) {
       failed++;

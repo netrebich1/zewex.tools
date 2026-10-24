@@ -109,10 +109,10 @@ export async function publishPost(ctx: PublishCtx): Promise<PublishOutcome> {
     const label = `${photo.slotKey}${kind === "pin" ? " (с текстом)" : ""}`;
     const save = async (id: number, url: string) => {
       if (kind === "pin") {
-        await prisma.blogPhoto.update({ where: { id: photo.id }, data: { overlayWpMediaId: id, overlayWpUrl: url } });
+        await prisma.blogPhoto.updateMany({ where: { id: photo.id }, data: { overlayWpMediaId: id, overlayWpUrl: url } });
         photo.overlayWpMediaId = id; photo.overlayWpUrl = url;
       } else {
-        await prisma.blogPhoto.update({ where: { id: photo.id }, data: { wpMediaId: id, wpUrl: url, fileName: filename } });
+        await prisma.blogPhoto.updateMany({ where: { id: photo.id }, data: { wpMediaId: id, wpUrl: url, fileName: filename } });
         photo.wpMediaId = id; photo.wpUrl = url;
       }
     };

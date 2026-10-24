@@ -14,6 +14,7 @@ import { aiModerationInflight, aiModerationLoop } from "./articles/aiModeration"
 import { deeplInflight, deeplLoop, deeplRequeueStale } from "./deepl";
 import { analyticsInflight, analyticsLoop, analyticsRequeueStale } from "./analytics";
 import { blogInflight, blogLoop, blogStartup } from "./blog";
+import sharp from "sharp";
 
 /**
  * Воркер сервиса пинов: единственный процесс, который двигает прогоны.
@@ -21,6 +22,9 @@ import { blogInflight, blogLoop, blogStartup } from "./blog";
  */
 
 setDefaultResultOrder("ipv4first");
+// sharp явно: один поток libvips (как в images.ts); кэш операций выключен — входы Buffer, попаданий нет, только память.
+sharp.concurrency(1);
+sharp.cache(false);
 // Забытый .catch у фонового промиса не должен ронять весь воркер (пины, домены, статьи): пишем в журнал и работаем дальше.
 process.on("unhandledRejection", (e) => log.error("unhandled rejection", e));
 

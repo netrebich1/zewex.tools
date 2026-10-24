@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { pollWhileVisible } from "@/lib/poll";
 import { Alert, Badge, Card } from "@/components/ui";
 import type { RunStatusView } from "@/lib/pins/runs/status";
 import { ProblemsDetails } from "@/components/pins/ProblemsDetails";
@@ -15,7 +16,7 @@ export function RunStatus({ initial }: { initial: RunStatusView }) {
   useEffect(() => setV(initial), [initial]);
   useEffect(() => {
     if (!LIVE.has(v.run.status) && !v.run.stopRequested) return;
-    const t = setInterval(async () => {
+    return pollWhileVisible(async () => {
       try {
         const res = await fetch(`/api/pins/runs/${v.run.id}/status`, { cache: "no-store" });
         if (res.ok) {
@@ -26,7 +27,6 @@ export function RunStatus({ initial }: { initial: RunStatusView }) {
         setErr("Нет связи с сервером, показаны последние данные");
       }
     }, 8000);
-    return () => clearInterval(t);
   }, [v.run.id, v.run.status, v.run.stopRequested]);
 
   const pct = v.job && v.job.total > 0 ? Math.round((v.job.done / v.job.total) * 100) : 0;

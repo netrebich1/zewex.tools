@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type { PinRunStatus } from "@prisma/client";
 import { PIN_STAGES, type PinStage, type RunSettings } from "../types";
 import { explainBlocked, explainItemError, explainPageErrors, explainSchedule, healthOf, type Health, type Problem, type ScheduleReport } from "./problems";
@@ -33,6 +33,10 @@ export type RunStatusView = {
 type Row = { engine: string; planned: bigint; withPrompt: bigint; withImage: bigint; approved: bigint; rejected: bigint; withText: bigint; uploaded: bigint; scheduled: bigint; errors: bigint };
 const n = (v: bigint | number | null | undefined) => Number(v ?? 0);
 
+type JobRow = { stage: string; status: string; done: number; total: number; label: string; error: string | null };
+type RunRow = { id: string; name: string; status: PinRunStatus; stage: string; blockedReason: string | null; costUsd: number; settings: unknown; stopRequested: boolean; updatedAt: Date; stepByStep: boolean };
+type ProblemSqlRow = { errorStage: string | null; errorKind: string | null; error: string | null; cnt: bigint };
+
 export async function runStatus(runId: string): Promise<RunStatusView | null> {
   const run = await prisma.pinRun.findUnique({ where: { id: runId } });
   if (!run) return null;
@@ -54,13 +58,18 @@ export async function runStatus(runId: string): Promise<RunStatusView | null> {
     prisma.pinRunPage.count({ where: { runId, keyword: { not: "" } } }),
     prisma.pinRunPage.count({ where: { runId, status: "error" } }),
     // одна строка на вид ошибки и этап (тексты провайдера различаются номером запроса — берём образец)
-    prisma.$queryRaw<Array<{ errorStage: string | null; errorKind: string | null; error: string | null; cnt: bigint }>>`
+    prisma.$queryRaw<ProblemSqlRow[]>`
       SELECT errorStage, errorKind, SUBSTRING(MAX(error), 1, 300) AS error, COUNT(*) AS cnt
       FROM PinRunItem WHERE runId = ${runId} AND status = 'ERROR'
       GROUP BY errorStage, errorKind ORDER BY cnt DESC LIMIT 10`,
     // расход прогона — по журналу портала (воркер дублирует сумму в PinRun.costUsd после каждой задачи)
     prisma.usageLog.aggregate({ _sum: { costUsd: true }, where: { refId: runId } }),
   ]);
+  return buildView(run, rows, job, { total: pagesAgg, withKeyword: pagesKw, errors: pagesErr }, problemRows, cost._sum.costUsd);
+}
+
+/** Собирает вид прогона из уже загруженных данных (общий код для одной страницы и доски). */
+function buildView(run: RunRow, rows: Row[], job: JobRow | null, pages: RunStatusView["pages"], problemRows: ProblemSqlRow[], costSum: number | null): RunStatusView {
   const counters: KindCounters[] = rows.map((r) => ({
     engine: r.engine, planned: n(r.planned), withPrompt: n(r.withPrompt), withImage: n(r.withImage), approved: n(r.approved), rejected: n(r.rejected), withText: n(r.withText), uploaded: n(r.uploaded), scheduled: n(r.scheduled), errors: n(r.errors),
   }));
@@ -78,14 +87,14 @@ export async function runStatus(runId: string): Promise<RunStatusView | null> {
     return { key, state };
   });
 
-  const problems = buildProblems(run, problemRows.map((p) => ({ stage: p.errorStage ?? "", kind: p.errorKind ?? "", raw: p.error ?? "", count: n(p.cnt) })), pagesErr);
+  const problems = buildProblems(run, problemRows.map((p) => ({ stage: p.errorStage ?? "", kind: p.errorKind ?? "", raw: p.error ?? "", count: n(p.cnt) })), pages.errors);
 
   return {
-    run: { id: run.id, name: run.name, status: run.status, stage: run.stage, blockedReason: run.blockedReason, costUsd: cost._sum.costUsd ?? run.costUsd, estimateUsd: (run.settings as RunSettings | null)?.estimate?.totalUsd ?? null, stopRequested: run.stopRequested, updatedAt: run.updatedAt.toISOString(), stepByStep: run.stepByStep },
+    run: { id: run.id, name: run.name, status: run.status, stage: run.stage, blockedReason: run.blockedReason, costUsd: costSum ?? run.costUsd, estimateUsd: (run.settings as RunSettings | null)?.estimate?.totalUsd ?? null, stopRequested: run.stopRequested, updatedAt: run.updatedAt.toISOString(), stepByStep: run.stepByStep },
     job: job ? { stage: job.stage, status: job.status, done: job.done, total: job.total, label: job.label, error: job.error } : null,
     counters,
     total,
-    pages: { total: pagesAgg, withKeyword: pagesKw, errors: pagesErr },
+    pages,
     problems,
     health: healthOf(problems),
     stages,
@@ -137,13 +146,50 @@ export async function runsOverview(where: Prisma.PinRunWhereInput, limit = 20): 
     orderBy: { updatedAt: "desc" }, take: limit,
     include: { site: { select: { name: true } } },
   });
+  if (!runs.length) return [];
+  // всё одним набором запросов на весь список (раньше ~9 запросов на каждый прогон)
+  const ids = runs.map((r) => r.id);
+  const idList = Prisma.join(ids);
+  const [rows, lastJobAt, pagesAll, pagesErr, problemRows, costs, pending] = await Promise.all([
+    prisma.$queryRaw<Array<Row & { runId: string }>>`
+      SELECT runId, engine,
+        CAST(SUM(status NOT IN ('POOL','REMOVED')) AS SIGNED) AS planned,
+        CAST(SUM(status NOT IN ('POOL','REMOVED') AND prompt <> '') AS SIGNED) AS withPrompt,
+        CAST(SUM(status NOT IN ('POOL','REMOVED') AND (imagePath <> '' OR (engine = 'PHOTO' AND sourceImageUrl <> ''))) AS SIGNED) AS withImage,
+        CAST(SUM(status NOT IN ('POOL','REMOVED') AND moderation = 'APPROVED') AS SIGNED) AS approved,
+        CAST(SUM(status NOT IN ('POOL','REMOVED') AND moderation = 'REJECTED') AS SIGNED) AS rejected,
+        CAST(SUM(status NOT IN ('POOL','REMOVED') AND title <> '' AND description <> '' AND altText <> '') AS SIGNED) AS withText,
+        CAST(SUM(status NOT IN ('POOL','REMOVED') AND wpMediaUrl <> '') AS SIGNED) AS uploaded,
+        CAST(SUM(status NOT IN ('POOL','REMOVED') AND scheduledAt IS NOT NULL) AS SIGNED) AS scheduled,
+        CAST(SUM(status = 'ERROR') AS SIGNED) AS errors
+      FROM PinRunItem WHERE runId IN (${idList}) GROUP BY runId, engine`,
+    prisma.pinJob.groupBy({ by: ["runId"], where: { runId: { in: ids } }, _max: { createdAt: true } }),
+    prisma.pinRunPage.groupBy({ by: ["runId"], where: { runId: { in: ids } }, _count: { _all: true } }),
+    prisma.pinRunPage.groupBy({ by: ["runId"], where: { runId: { in: ids }, status: "error" }, _count: { _all: true } }),
+    // как в runStatus, но без LIMIT: топ-10 на прогон отбираем ниже
+    prisma.$queryRaw<Array<ProblemSqlRow & { runId: string }>>`
+      SELECT runId, errorStage, errorKind, SUBSTRING(MAX(error), 1, 300) AS error, COUNT(*) AS cnt
+      FROM PinRunItem WHERE runId IN (${idList}) AND status = 'ERROR'
+      GROUP BY runId, errorStage, errorKind ORDER BY cnt DESC`,
+    prisma.usageLog.groupBy({ by: ["refId"], where: { refId: { in: ids } }, _sum: { costUsd: true } }),
+    prisma.pinRunItem.groupBy({ by: ["runId"], where: { runId: { in: ids }, status: "READY", moderation: "NONE", kind: "pin" }, _count: { _all: true } }),
+  ]);
+  // последняя задача прогона: одна выборка по парам (runId, max createdAt)
+  const jobPairs = lastJobAt.flatMap((j) => (j._max.createdAt ? [{ runId: j.runId, createdAt: j._max.createdAt }] : []));
+  const jobs = jobPairs.length ? await prisma.pinJob.findMany({ where: { OR: jobPairs }, orderBy: { createdAt: "desc" } }) : [];
+
   const out: RunOverview[] = [];
   for (const run of runs) {
-    const [view, pendingModeration] = await Promise.all([
-      runStatus(run.id),
-      prisma.pinRunItem.count({ where: { runId: run.id, status: "READY", moderation: "NONE", kind: "pin" } }),
-    ]);
-    if (!view) continue;
+    const view = buildView(
+      run,
+      rows.filter((r) => r.runId === run.id),
+      jobs.find((j) => j.runId === run.id) ?? null,
+      // withKeyword на доске не используется
+      { total: pagesAll.find((p) => p.runId === run.id)?._count._all ?? 0, withKeyword: 0, errors: pagesErr.find((p) => p.runId === run.id)?._count._all ?? 0 },
+      problemRows.filter((p) => p.runId === run.id).slice(0, 10),
+      costs.find((c) => c.refId === run.id)?._sum.costUsd ?? null,
+    );
+    const pendingModeration = pending.find((p) => p.runId === run.id)?._count._all ?? 0;
     out.push({
       id: run.id, name: run.name, siteName: run.site?.name ?? "—", status: run.status, stage: run.stage, stepByStep: run.stepByStep, blockedReason: run.blockedReason,
       updatedAt: run.updatedAt.toISOString(), createdAt: run.createdAt.toISOString(), costUsd: view.run.costUsd,

@@ -20,13 +20,19 @@ import { MAX_ATTEMPTS, releasePost, renewLease } from "./queue";
 import { log } from "../log";
 
 const OUTER_RETRY_MS = 30_000;
+/** Аренда 180 с, heartbeat продлевает каждые 20 с — tick может не продлевать её чаще раза в 15 с. */
+const RENEW_EVERY_MS = 15_000;
 
 export async function processPost(post: BlogPost, workerId: string, shuttingDown: () => boolean): Promise<void> {
   const ac = new AbortController();
   let stopping = false;
+  /** Время (до запроса) последнего удачного продления аренды: tick продлевает не чаще раза в RENEW_EVERY_MS. */
+  let lastRenewAt = 0;
   const heartbeat = setInterval(async () => {
     try {
+      const at = Date.now();
       const r = await renewLease(post.id, workerId);
+      if (!r.lost) lastRenewAt = at;
       if (r.lost && !ac.signal.aborted) {
         log.warn(`blog post ${post.id}: lease lost; aborting local execution`);
         ac.abort(new Error("lease lost"));
@@ -84,12 +90,16 @@ export async function processPost(post: BlogPost, workerId: string, shuttingDown
         signal: ac.signal,
         tick: async (label) => {
           if (ac.signal.aborted) throw ac.signal.reason instanceof StopRequested ? ac.signal.reason : new Error("aborted");
-          const r = await renewLease(current.id, workerId);
+          // Проверка остановки — на каждом tick; UPDATE аренды — только если с прошлого продления прошло ≥ RENEW_EVERY_MS.
+          const at = Date.now();
+          const extend = at - lastRenewAt >= RENEW_EVERY_MS;
+          const r = await renewLease(current.id, workerId, { extend });
+          if (extend && !r.lost) lastRenewAt = at;
           if (r.lost) { ac.abort(new Error("lease lost")); throw new Error("lease lost"); }
           if (r.stopping) { stopping = true; ac.abort(new StopRequested()); throw new StopRequested(); }
           if (label && label !== lastLabel) {
             lastLabel = label;
-            await prisma.blogStageLog.update({ where: { id: started.id }, data: { summary: label } }).catch(() => {});
+            await prisma.blogStageLog.updateMany({ where: { id: started.id }, data: { summary: label } }).catch(() => {});
           }
         },
         log: (msg, extra) => log.info(`[blog ${stage} ${current.id.slice(0, 8)}] ${msg}`, extra),

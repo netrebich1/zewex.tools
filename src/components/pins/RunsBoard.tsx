@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { pollWhileVisible } from "@/lib/poll";
 import { Badge } from "@/components/ui";
 import type { RunOverview } from "@/lib/pins/runs/status";
 import { ProblemsDetails } from "@/components/pins/ProblemsDetails";
@@ -15,10 +16,9 @@ export function RunsBoard({ initial }: { initial: RunOverview[] }) {
   const anyLive = rows.some((r) => LIVE.has(r.status));
   useEffect(() => {
     if (!anyLive) return;
-    const t = setInterval(async () => {
+    return pollWhileVisible(async () => {
       try { const res = await fetch("/api/pins/runs/overview", { cache: "no-store" }); if (res.ok) setRows(await res.json()); } catch { /* показываем прошлое */ }
     }, 10_000);
-    return () => clearInterval(t);
   }, [anyLive]);
 
   const dot = (s: RunOverview["stages"][number]["state"]) =>

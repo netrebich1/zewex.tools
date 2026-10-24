@@ -97,14 +97,16 @@ export type WorkerState = {
   stuck: boolean;
 };
 
-export async function workerState(me: CurrentUser): Promise<WorkerState> {
-  const where = await articleWhere(me);
+/** preWhere — уже посчитанный articleWhere(me), чтобы не запрашивать доступы повторно. */
+export async function workerState(me: CurrentUser, preWhere?: Prisma.ArticleWhereInput): Promise<WorkerState> {
+  const where = preWhere ?? (await articleWhere(me));
   const now = new Date();
-  const [running, alive, pending] = await Promise.all([
-    prisma.article.count({ where: { ...where, status: "RUNNING" } }),
+  const [byStatus, alive] = await Promise.all([
+    prisma.article.groupBy({ by: ["status"], where: { ...where, status: { in: ["RUNNING", "PENDING"] } }, _count: { _all: true } }),
     prisma.article.count({ where: { ...where, status: "RUNNING", leaseUntil: { gt: now } } }),
-    prisma.article.count({ where: { ...where, status: "PENDING" } }),
   ]);
+  const running = byStatus.find((g) => g.status === "RUNNING")?._count._all ?? 0;
+  const pending = byStatus.find((g) => g.status === "PENDING")?._count._all ?? 0;
   return { running, alive, pending, stuck: running > 0 && alive === 0 };
 }
 
@@ -141,8 +143,8 @@ export type ArticleBrief = {
 
 const BOARD_STATUSES: ArtStatus[] = ["RUNNING", "PUBLISHING", "PUBLISH_QUEUED", "PENDING"];
 
-export async function articlesInWork(me: CurrentUser, limit = 80): Promise<ArticleBrief[]> {
-  const where = await articleWhere(me);
+export async function articlesInWork(me: CurrentUser, limit = 80, preWhere?: Prisma.ArticleWhereInput): Promise<ArticleBrief[]> {
+  const where = preWhere ?? (await articleWhere(me));
   const rows = await prisma.article.findMany({
     where: { ...where, status: { in: BOARD_STATUSES } },
     orderBy: [{ updatedAt: "desc" }], take: limit,

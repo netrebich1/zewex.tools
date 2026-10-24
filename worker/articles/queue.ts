@@ -80,6 +80,9 @@ export function orderCandidates(cand: Cand[], runningBySite: Map<string, number>
 }
 
 export async function claimArticle(workerId: string): Promise<Article | null> {
+  // Дешёвая проверка без транзакции: то же базовое условие, что у выборки кандидатов ниже (надмножество) — пустая очередь не открывает транзакцию.
+  const any = await prisma.$queryRaw<Array<{ id: string }>>`SELECT id FROM Article WHERE status = 'PENDING' AND (nextRunAt IS NULL OR nextRunAt <= NOW(3)) LIMIT 1`;
+  if (!any.length) return null;
   return prisma.$transaction(
     async (tx) => {
       const g = await globalRules(tx);
@@ -151,11 +154,12 @@ function rank(p: StagePhase): number {
 }
 
 /** Продлить аренду; сообщает, что статью просили остановить или её забрал другой воркер. */
-export async function renewLease(articleId: string, workerId: string): Promise<{ stopping: boolean; lost: boolean }> {
+export async function renewLease(articleId: string, workerId: string, opts: { extend?: boolean } = {}): Promise<{ stopping: boolean; lost: boolean }> {
   const rows = await prisma.$queryRaw<Array<{ workerId: string | null; stopRequested: number | boolean; status: string }>>`SELECT workerId, stopRequested, status FROM Article WHERE id = ${articleId}`;
   const row = rows[0];
   if (!row || row.workerId !== workerId || row.status !== "RUNNING") return { stopping: true, lost: true };
-  await prisma.$executeRaw`UPDATE Article SET leaseUntil = DATE_ADD(NOW(3), INTERVAL ${LEASE_SECONDS} SECOND) WHERE id = ${articleId} AND workerId = ${workerId}`;
+  // extend=false — только проверка остановки и владельца: аренду недавно продлили (троттлинг в tick раннера).
+  if (opts.extend !== false) await prisma.$executeRaw`UPDATE Article SET leaseUntil = DATE_ADD(NOW(3), INTERVAL ${LEASE_SECONDS} SECOND) WHERE id = ${articleId} AND workerId = ${workerId}`;
   return { stopping: !!row.stopRequested, lost: false };
 }
 
