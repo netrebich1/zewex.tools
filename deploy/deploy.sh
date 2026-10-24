@@ -7,7 +7,8 @@ KEY=~/.ssh/fastvps_ed25519
 APP=/var/www/zewex_tools_usr/data/app
 WEBROOT=/var/www/zewex_tools_usr/data/www/zewex.tools
 STAGE=/root/zewex-deploy-src
-SSH="ssh -i $KEY -o BatchMode=yes"
+LOCK=/var/lock/zewex-deploy.lock
+SSH="ssh -i $KEY -o BatchMode=yes -o ServerAliveInterval=30"
 EXCLUDES=(--exclude=node_modules --exclude=.next --exclude=.git --exclude=.env)
 cd "$(dirname "$0")/.."
 # CRLF from a Windows checkout breaks shell scripts and unit files on the server: stop before sending anything.
@@ -16,17 +17,30 @@ CRLF=$(git ls-files -co --exclude-standard --eol | awk '$2 == "w/crlf" || $2 == 
 if [ -n "$CRLF" ]; then
   echo "Files with CRLF line endings (need LF, see .gitattributes):"; echo "$CRLF"; exit 1
 fi
-# Two deploys at once break node_modules and .next (2026-10-22: a parallel npm ci + build ended in a dead portal). Refuse while another one runs.
-if $SSH $HOST 'ps -eo args | grep -E "npm (ci|install)|next build|rsync -a --delete" | grep -v grep -q'; then
-  echo "Another deploy/install/build is running on the server right now. Wait for it to finish and run again."; exit 2
+# Two deploys at once break node_modules and .next (2026-10-22, 2026-10-24: a parallel npm ci under another build ended in a dead portal).
+# So the whole server part (upload, rsync, install, build, restart) runs in ONE ssh session under one server-side lock,
+# shared with /root/zewex-rebuild.sh: a second deploy waits for the first one, or gives up with exit 2 after 15 min.
+# The script goes as a bash -c argument because stdin carries the tar stream.
+REMOTE_SCRIPT=$(cat <<REMOTE
+set -euo pipefail
+exec 9>$LOCK
+if ! flock -n 9; then
+  echo "[\$(date +%T)] Идёт другой деплой: жду окончания другого деплоя… (до 15 мин)"
+  flock -w 900 9 || { echo "Другой деплой не закончился за 15 мин, выхожу."; exit 2; }
+  echo "[\$(date +%T)] Другой деплой закончился, продолжаю."
 fi
-COPYFILE_DISABLE=1 tar -czf - "${EXCLUDES[@]}" . | $SSH $HOST "set -e
+# A deploy from an older deploy.sh (no lock) may still be running: wait for it too. bash -c lines are skipped: they hold this script's own text.
+waited=0
+while ps -eo args | grep -v -e '^bash -c' -e grep | grep -qE 'npm (ci|install)|next build|rsync -a --delete|zewex-backup-db'; do
+  [ \$waited -eq 0 ] && echo "[\$(date +%T)] На сервере идёт установка/сборка без блокировки: жду окончания другого деплоя…"
+  [ \$waited -ge 900 ] && { echo "Не закончилась за 15 мин, выхожу."; exit 2; }
+  sleep 10; waited=\$((waited + 10))
+done
 rm -rf $STAGE && mkdir -p $STAGE
 tar -xzf - -C $STAGE --no-same-owner
+exec </dev/null
 rsync -a --delete ${EXCLUDES[*]} $STAGE/ $APP/
-rm -rf $STAGE"
-$SSH $HOST bash -s <<REMOTE
-set -euo pipefail
+rm -rf $STAGE
 cd $APP
 chown -R zewex_tools_usr:zewex_tools_usr .
 # Backups: script + daily cron (03:30), and one dump right before any schema change.
@@ -74,6 +88,8 @@ systemctl is-active zewex-worker
 curl -s -o /dev/null -w "local: %{http_code}\n" http://127.0.0.1:3100/login
 curl -s -o /dev/null -w "http->https: %{http_code} %{redirect_url}\n" http://zewex.tools/login
 REMOTE
+)
+COPYFILE_DISABLE=1 tar -czf - "${EXCLUDES[@]}" . | $SSH $HOST "bash -c $(printf %q "$REMOTE_SCRIPT")"
 # Keep the server-generated lockfile in the repo so the next deploy uses npm ci.
 if [ ! -f package-lock.json ]; then
   $SSH $HOST "cat $APP/package-lock.json" > package-lock.json && echo "package-lock.json fetched from server: commit it"
