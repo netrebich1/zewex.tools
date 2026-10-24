@@ -123,6 +123,12 @@ export async function next(ctx: Ctx, b: Body) {
         await settleRun(run.id);
         continue;
       }
+      if (c.phase === "upload" && (await prisma.prjUpload.findUnique({ where: { pinSiteId_day: { pinSiteId: c.pinSiteId, day: c.day } }, select: { id: true } }))) {
+        // Уже залито (другим запуском или руками) — второй раз тот же файл не отправляем.
+        await prisma.uplTask.update({ where: { id: c.id }, data: { status: "SKIPPED", error: "уже отмечено залитым за этот день", finishedAt: now } });
+        await settleRun(run.id);
+        continue;
+      }
       const won = await prisma.uplTask.updateMany({ where: { id: c.id, status: c.status, updatedAt: c.updatedAt }, data: { status: "LEASED", leaseUntil: leaseUntil(now), attempts: { increment: 1 }, startedAt: c.startedAt ?? now, step: "выдано агенту" } });
       if (!won.count) continue;
       if (run.status === "QUEUED") await prisma.uplRun.update({ where: { id: run.id }, data: { status: "RUNNING", startedAt: run.startedAt ?? now } });

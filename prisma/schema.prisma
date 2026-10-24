@@ -2381,7 +2381,7 @@ model UplSettings {
   /// Через сколько минут после конца цикла идти проверять историю загрузок; повторы проверки, мин; число повторов
   verifyDelayMin  Int      @default(10)
   verifyRetryMin  Int      @default(30)
-  verifyRetries   Int      @default(3)
+  verifyRetries   Int      @default(5)
   /// Адрес страницы массовой загрузки Pinterest (если пусто — агент ищет сам)
   bulkUrl         String?  @db.VarChar(255)
   updatedAt       DateTime @updatedAt

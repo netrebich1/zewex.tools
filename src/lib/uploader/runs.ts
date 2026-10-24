@@ -81,8 +81,10 @@ export async function stopRun(runId: string): Promise<void> {
 export async function retryFailed(runId: string): Promise<number> {
   const run = await prisma.uplRun.findUnique({ where: { id: runId } });
   if (!run) return 0;
+  // Защита от дубля (2026-10-24): сайт, у которого за этот день уже стоит «залито» (другим запуском или руками), второй раз не заливаем.
+  const uploaded = new Set((await prisma.prjUpload.findMany({ where: { day: run.day }, select: { pinSiteId: true } })).map((u) => u.pinSiteId));
   const r = await prisma.uplTask.updateMany({
-    where: { runId, phase: "upload", status: { in: ["FAILED", "SKIPPED"] }, profileId: { not: "" }, errorKind: { notIn: ["no_file"] } },
+    where: { runId, phase: "upload", status: { in: ["FAILED", "SKIPPED"] }, profileId: { not: "" }, errorKind: { notIn: ["no_file"] }, pinSiteId: { notIn: [...uploaded] } },
     data: { status: "QUEUED", attempts: 0, leaseUntil: null, error: null, errorKind: null, step: null, finishedAt: null },
   });
   if (r.count) await prisma.uplRun.update({ where: { id: runId }, data: { status: "QUEUED", phase: "upload", stopRequested: false, finishedAt: null, error: null, total: { increment: 0 } } });
