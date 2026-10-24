@@ -17,6 +17,8 @@ import { postUsage } from "@/lib/blog/queries";
 import { StatusBadge } from "@/components/blog/StatusBadge";
 import { PostTimeline } from "@/components/blog/PostTimeline";
 import { AutoRefresh } from "@/components/blog/AutoRefresh";
+import { ClipReveal } from "@/components/blog/ClipReveal";
+import { More } from "@/components/ui/Fold";
 import { fmtDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -62,7 +64,8 @@ export default async function BlogPostPage({ params, searchParams }: { params: P
           {waiting && <div className="mt-3"><Alert tone="warn">Статья ждёт проверки. Посмотрите предпросмотр, при необходимости замените фото или поправьте текст, затем «Одобрить и опубликовать» или «В доработку» — кнопки ниже.</Alert></div>}
         </Card>
 
-        <Card title="Действия" description="«Повторить этап» ставит статью в очередь с выбранного этапа (сделанное раньше сохраняется). Пока статья выполняется, сначала нажмите «Остановить».">
+        <Card title="Действия">
+          <More short="«Повторить этап» — заново с выбранного этапа." className="-mt-2 mb-3">Статья встаёт в очередь с выбранного этапа, сделанное раньше сохраняется. Пока статья выполняется, сначала нажмите «Остановить».</More>
           <div className="flex flex-wrap items-end gap-2">
             {(waiting || a.status === "FAILED" || a.status === "PUBLISH_ERROR" || a.status === "STOPPED") && a.html && (
               <ActionForm action={approvePostAction} hidden={{ id }} className="inline"><SubmitButton className="btn-brand" pendingText="…">Одобрить и опубликовать</SubmitButton></ActionForm>
@@ -99,7 +102,7 @@ export default async function BlogPostPage({ params, searchParams }: { params: P
         {tab === "text" && <TextTab a={{ id, h1: a.h1, metaTitle: a.metaTitle, metaDescription: a.metaDescription, slug: a.slug, introHtml: a.introHtml, takeawaysHtml: a.takeawaysHtml, conclusionHtml: a.conclusionHtml, disclaimerHtml: a.disclaimerHtml, faq: a.faq, running }} />}
         {tab === "preview" && (
           <Card title="Предпросмотр" description="Так статья уходит в WordPress (стили темы сайта не учитываются).">
-            {a.html ? <article className="zx-preview prose max-w-none text-[15px] leading-relaxed [&_h2]:mt-7 [&_h2]:text-[1.35em] [&_h2]:font-semibold [&_h3]:mt-4 [&_h3]:font-semibold [&_p]:my-3 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_img]:my-3 [&_img]:max-w-full sm:[&_img]:max-w-[480px] [&_img]:h-auto [&_figure]:max-w-full [&_img]:rounded-xl [&_table]:my-4 [&_table]:block [&_table]:overflow-x-auto [&_script]:hidden" dangerouslySetInnerHTML={{ __html: previewHtml(a.html) }} /> : <p className="help">HTML ещё не собран: появится после этапа «Сборка HTML».</p>}
+            {a.html ? <ClipReveal label="Показать статью целиком"><article className="zx-preview prose max-w-none text-[15px] leading-relaxed [&_h2]:mt-7 [&_h2]:text-[1.35em] [&_h2]:font-semibold [&_h3]:mt-4 [&_h3]:font-semibold [&_p]:my-3 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_img]:my-3 [&_img]:max-w-full sm:[&_img]:max-w-[480px] [&_img]:h-auto [&_figure]:max-w-full [&_img]:rounded-xl [&_table]:my-4 [&_table]:block [&_table]:overflow-x-auto [&_script]:hidden" dangerouslySetInnerHTML={{ __html: previewHtml(a.html) }} /></ClipReveal> : <p className="help">HTML ещё не собран: появится после этапа «Сборка HTML».</p>}
             {a.html && <details className="mt-4"><summary className="help cursor-pointer">Показать HTML ({Math.round(a.html.length / 1024)} КБ)</summary><pre className="mono mt-2 max-h-[480px] overflow-auto rounded-lg bg-surface-2 p-3 text-[11.5px] whitespace-pre-wrap break-words">{a.html}</pre></details>}
           </Card>
         )}

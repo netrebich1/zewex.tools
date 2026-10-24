@@ -8,6 +8,7 @@ import { approvePostAction, reworkPostAction } from "@/actions/blog";
 import { canAccessBlogPost } from "@/lib/blog/access";
 import { reviewQueue } from "@/lib/blog/queries";
 import { StatusBadge } from "@/components/blog/StatusBadge";
+import { ShowMore } from "@/components/ui/ShowMore";
 import { fmtDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -21,17 +22,19 @@ export default async function BlogReviewPage({ searchParams }: { searchParams: P
   const currentId = wanted && items.some((i) => i.id === wanted) ? wanted : wanted && (await canAccessBlogPost(me, wanted)) ? wanted : items[0]?.id ?? null;
   const post = currentId ? await prisma.blogPost.findUnique({ where: { id: currentId }, include: { site: { select: { name: true } }, photos: { where: { excluded: false }, orderBy: { position: "asc" } } } }) : null;
   const next = post ? items.find((i) => i.id !== post.id) : null;
+  // выбранная статья должна попасть в видимую часть очереди
+  const selIdx = post ? items.findIndex((i) => i.id === post.id) : -1;
 
   return (
     <>
-      <PageHeader title="Проверка перед публикацией" subtitle="Статьи, собранные полностью: прочитайте, замените слабые фото или поправьте текст в карточке, затем одобрите или верните в доработку." />
+      <PageHeader title="Проверка перед публикацией" subtitle="Прочитайте собранную статью, затем одобрите или верните в доработку." />
       {items.length === 0 && !post ? <Empty title="Проверять нечего" hint="Статьи появятся здесь после сборки, если у сайта включена проверка перед публикацией." /> : (
         <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
           <Card className="lg:sticky lg:top-[4.5rem] self-start max-h-48 lg:max-h-[80vh] overflow-auto">
             <h3 className="h2 mb-2">Очередь · {items.length}</h3>
-            <ul className="space-y-1">{items.map((i) => (
+            <ShowMore as="ul" className="space-y-1" initial={Math.max(10, selIdx + 1)} step={20} items={items.map((i) => (
               <li key={i.id}><Link href={`/pinterest/blog/review?post=${i.id}#post`} className={`block rounded-lg px-3 py-2 text-[13px] ${i.id === post?.id ? "bg-ink text-bg" : "hover:bg-ink/5"}`}><div className="truncate font-medium">{i.keyword}</div><div className={`truncate text-[11.5px] ${i.id === post?.id ? "text-bg/70" : "text-muted"}`}>{i.siteName} · {i.wordCount} слов · {i.photos} фото{i.status === "NEEDS_REWORK" ? " · в доработку" : ""}</div></Link></li>
-            ))}</ul>
+            ))} />
           </Card>
           {post ? (
             <div id="post" className="space-y-4 min-w-0 scroll-mt-16">

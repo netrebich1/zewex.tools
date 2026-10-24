@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Alert } from "@/components/ui";
 import { WorkerPill } from "./ArticlesBoard";
+import { Fold, More } from "@/components/ui/Fold";
 import type { AutomationPayload, AutostartCounts, SiteAutomationPatch, SiteAutostartRow, ArtGlobalSettings } from "@/lib/articles/automation";
 import { SITE_LIMITS as L } from "@/lib/articles/types";
 
@@ -122,13 +123,14 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
       </div>
 
       {/* Легенда */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-xl border border-line bg-surface-2/60 px-3 py-2 text-[12.5px] text-muted">
-        <span className="font-medium text-ink">Как читать таблицу:</span>
+      <Fold className="bg-surface-2/60 text-[13px]" title="Как читать таблицу" summary="Ждут · Сейчас · Ждут проверки фото">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12.5px] text-muted">
         <span><b className="text-ink">Ждут</b> — этап ещё не начался</span>
         <span><b className="text-brand">Сейчас</b> — обрабатываются в данный момент</span>
         <span><b className="text-ink">Ждут проверки фото</b> — фото подобраны; проверяет ИИ (если включена ИИ-проверка) или сотрудник</span>
         <span>Этапы сами <b className="text-ink">не выключаются</b> — только переключателями</span>
       </div>
+      </Fold>
 
       {/* Воркер и мастер-выключатели */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line px-3 py-2">
@@ -245,10 +247,10 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
           </tbody>
         </table>
       </div>
-      <p className="help">
-        Этапы работают, пока включены: сами они не выключаются и не включаются. Мастер-выключатели сверху останавливают этап на всех сайтах сразу, не меняя настроек сайтов.
-        ИИ-проверка фото: включена на сайте и мастер-выключатель включён — фото каждой новой статьи ИИ берёт в течение ~20 секунд; сомнительные отдаёт сотруднику. Те же настройки — в настройках сайта. Обновлено: {new Date(data.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.
-      </p>
+      <More short={<>Этапы работают, пока включены: сами они не выключаются и не включаются. Обновлено: {new Date(data.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.</>}>
+        Мастер-выключатели сверху останавливают этап на всех сайтах сразу, не меняя настроек сайтов.
+        ИИ-проверка фото: включена на сайте и мастер-выключатель включён — фото каждой новой статьи ИИ берёт в течение ~20 секунд; сомнительные отдаёт сотруднику. Те же настройки — в настройках сайта.
+      </More>
     </div>
   );
 }

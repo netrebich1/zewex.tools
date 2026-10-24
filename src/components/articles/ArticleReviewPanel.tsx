@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { useRouter } from "next/navigation";
 import type { ArticleReviewState, ModPhoto, PhotoModerationState } from "@/lib/articles/moderation";
 import { moderationApi, PhotoModerationGrid } from "./PhotoModerationGrid";
+import { ShowMore } from "@/components/ui/ShowMore";
 
 /**
  * Модерация готовой статьи (REVIEW_PENDING; вкладка «В доработку» — NEEDS_REWORK): список слева, карточка справа.
@@ -253,6 +254,10 @@ export function ArticleReviewPanel({ userId, mode, items, initialId, initialStat
 
   const a = state?.article;
   const cur = list.find((x) => x.id === currentId);
+  // Список рендерится частями (первые 30 + «Показать ещё»); выбранная статья всегда видна: порог только растёт,
+  // при росте ShowMore пересоздаётся (key) с новым initial
+  const listNeed = useRef(30);
+  listNeed.current = Math.max(listNeed.current, list.findIndex((x) => x.id === currentId) + 1);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
@@ -261,8 +266,7 @@ export function ArticleReviewPanel({ userId, mode, items, initialId, initialStat
         {list.length === 0 ? (
           <p className="help p-3">Статей нет.</p>
         ) : (
-          <ul className="space-y-0.5">
-            {list.map((x) => {
+          <ShowMore key={listNeed.current} as="ul" className="space-y-0.5" controlsClassName="px-1 pb-1" initial={listNeed.current} step={30} noun="статей" items={list.map((x) => {
               const held = x.claimedFresh && x.claimedById && x.claimedById !== userId;
               return (
                 <li key={x.id}>
@@ -276,8 +280,7 @@ export function ArticleReviewPanel({ userId, mode, items, initialId, initialStat
                   </button>
                 </li>
               );
-            })}
-          </ul>
+            })} />
         )}
       </aside>
 

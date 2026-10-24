@@ -11,6 +11,8 @@ import { ErrorGroups, RetryGroups, errStageLabel } from "@/components/articles/E
 import { CostDays, CostMatrix, CostSummary } from "@/components/articles/CostBreakdown";
 import { fmtDate, fmtMoney } from "@/lib/utils";
 import { seesTeamCosts } from "@/lib/permissions";
+import { Fold, More } from "@/components/ui/Fold";
+import { ShowMoreRows } from "@/components/ui/ShowMore";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +46,12 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
     return `/pinterest/articles/journal${s ? `?${s}` : ""}`;
   };
   const periodText = days ? `за ${days === 1 ? "сутки" : `${days} дн.`}` : "за всё время";
+  // Фильтр сайтов: первые 6 и выбранный видны, остальные — под «Ещё N сайтов»
+  const chip = (s: { id: string; name: string }) => (
+    <Link key={s.id} href={qs({ site: s.id, run: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${siteId === s.id ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{s.name}</Link>
+  );
+  const sitesShown = sites.filter((s, i) => i < 6 || s.id === siteId);
+  const sitesRest = sites.filter((s) => !sitesShown.includes(s));
 
   const header = (
     <>
@@ -62,9 +70,12 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
         {sites.length > 1 && (
           <div className="mt-3 flex flex-wrap gap-2 items-center">
             <Link href={qs({ site: undefined, run: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${!siteId ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>Все сайты</Link>
-            {sites.map((s) => (
-              <Link key={s.id} href={qs({ site: s.id, run: undefined })} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${siteId === s.id ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{s.name}</Link>
-            ))}
+            {sitesShown.map(chip)}
+            {sitesRest.length > 0 && (
+              <Fold bare className="open:basis-full text-[13px]" title={<span className="help">Ещё {sitesRest.length} сайтов</span>}>
+                <div className="flex flex-wrap gap-2">{sitesRest.map(chip)}</div>
+              </Fold>
+            )}
           </div>
         )}
       </Card>
@@ -126,7 +137,8 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
             </p>
           </Card>
 
-          <Card title="Горит сейчас (последний час)" description="Сравнение с предыдущим часом: если ошибка растёт — это поломка, сообщите разработчику.">
+          <Card title="Горит сейчас (последний час)">
+            <More short="Сравнение с предыдущим часом." className="-mt-3 mb-4">Если ошибка растёт — это поломка, сообщите разработчику.</More>
             {hot.length === 0 ? (
               <p className="help">За последний час новых ошибок нет.</p>
             ) : (
@@ -146,12 +158,14 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
           {groups.length === 0 ? (
             <Empty title={state === "resolved" ? "Устранённых ошибок нет" : "Неустранённых ошибок нет"} hint={`${periodText[0].toUpperCase()}${periodText.slice(1)} по выбранным фильтрам.`} />
           ) : (
-            <Card title={`Группы ошибок · ${groups.length}`} description="Одна группа — одна сигнатура (текст без чисел и id). «Вернуть в работу» ставит статьи группы со статусом «Ошибка» обратно в очередь с того же этапа; «Устранено» скрывает группу из открытых (в рамках фильтра).">
+            <Card title={`Группы ошибок · ${groups.length}`}>
+              <More short="Одна группа — одна сигнатура (текст без чисел и id)." className="-mt-3 mb-4">«Вернуть в работу» ставит статьи группы со статусом «Ошибка» обратно в очередь с того же этапа; «Устранено» скрывает группу из открытых (в рамках фильтра).</More>
               <ErrorGroups groups={groups} scope={{ siteId, runId, stage, days: days || undefined }} showSites={!siteId} />
             </Card>
           )}
 
-          <Card title="Временные сбои — воркер повторил сам" description="Этап упал на временной ошибке (сеть, лимит, таймаут) и был повторён. В «Ошибки» не попадают, но много повторов — повод разобраться: это задержки и лишний расход.">
+          <Card title="Временные сбои — воркер повторил сам">
+            <More short="Этап упал на временной ошибке (сеть, лимит, таймаут) и был повторён." className="-mt-3 mb-4">В «Ошибки» не попадают, но много повторов — повод разобраться: это задержки и лишний расход.</More>
             <RetryGroups retries={retries} />
           </Card>
         </div>
@@ -203,7 +217,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
                   </tr>
                 </thead>
                 <tbody>
-                  {logs.map((l) => {
+                  <ShowMoreRows colSpan={8} initial={20} step={50} rows={logs.map((l) => {
                     const a = arts.find((x) => x.id === l.refId);
                     return (
                       <tr key={l.id}>
@@ -238,7 +252,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
                         </td>
                       </tr>
                     );
-                  })}
+                  })} />
                 </tbody>
               </table>
             </div>
@@ -269,7 +283,8 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
     <>
       {header}
       <div className="space-y-4">
-        <Card title={`Расходы ${periodText}`} description="Считаются по каждому платному вызову (журнал UsageLog, точная цена провайдера). Фаза определяется по времени вызова: окно этапа воркера или окно ИИ-модерации статьи. ИИ-модерация входит в общую сумму один раз.">
+        <Card title={`Расходы ${periodText}`}>
+          <More short="Считаются по каждому платному вызову (журнал UsageLog, точная цена провайдера)." className="-mt-3 mb-4">Фаза определяется по времени вызова: окно этапа воркера или окно ИИ-модерации статьи. ИИ-модерация входит в общую сумму один раз.</More>
           <CostSummary c={c} periodNote={periodText} />
         </Card>
         {days > 0 && c.total > 0 && days <= 90 && (
@@ -281,7 +296,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
           <CostMatrix firstCol="Сайт" rows={c.bySite.map((s) => ({ id: s.id, name: siteName.get(s.id) ?? s.id.slice(0, 8), href: `/pinterest/articles/sites/${s.id}?tab=stats`, articles: s.articles, total: s.total, phases: s.phases }))} empty="Расходов за период нет." />
         </Card>
         <Card title={`Запуски · ${c.byRun.length}`} description={`Расход статей каждого запуска ${periodText}.${noRun > 0.000_001 ? ` Статьи без запуска: ${fmtMoney(noRun)}.` : ""}`}>
-          <CostMatrix firstCol="Запуск" rows={c.byRun.map((r) => { const run = runMap.get(r.id); return { id: r.id, name: run?.name || `Запуск ${r.id.slice(0, 8)}`, sub: run ? `${siteName.get(run.siteId) ?? ""} · ${fmtDate(run.createdAt)}` : undefined, href: `/pinterest/articles/runs/${r.id}`, articles: r.articles, total: r.total, phases: r.phases }; })} empty="Запусков с расходом за период нет." />
+          <CostMatrix firstCol="Запуск" initial={20} rows={c.byRun.map((r) => { const run = runMap.get(r.id); return { id: r.id, name: run?.name || `Запуск ${r.id.slice(0, 8)}`, sub: run ? `${siteName.get(run.siteId) ?? ""} · ${fmtDate(run.createdAt)}` : undefined, href: `/pinterest/articles/runs/${r.id}`, articles: r.articles, total: r.total, phases: r.phases }; })} empty="Запусков с расходом за период нет." />
         </Card>
         {days > 0 && daySites.length > 0 && dayKeys.length > 0 && (
           <Card title="Сайты по дням" description="Расход каждого сайта за день (UTC).">
@@ -289,7 +304,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
               <table className="table">
                 <thead><tr><th>День</th>{daySites.map((id) => <th key={id} className="text-right whitespace-nowrap">{siteName.get(id) ?? id.slice(0, 8)}</th>)}<th className="text-right">Всего</th></tr></thead>
                 <tbody>
-                  {dayKeys.map((d) => {
+                  <ShowMoreRows colSpan={daySites.length + 2} initial={20} step={50} rows={dayKeys.map((d) => {
                     const row = c.bySiteDay.filter((x) => x.day === d);
                     return (
                       <tr key={d}>
@@ -298,7 +313,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
                         <td className="text-right tabular-nums font-semibold">{fmtMoney(row.reduce((s, x) => s + x.total, 0))}</td>
                       </tr>
                     );
-                  })}
+                  })} />
                 </tbody>
               </table>
             </div>

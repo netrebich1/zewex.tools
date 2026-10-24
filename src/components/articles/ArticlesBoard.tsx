@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui";
+import { ShowMore } from "@/components/ui/ShowMore";
 import type { ArticleBrief, WorkerState } from "@/lib/articles/queries";
 import { badgeTone } from "./StatusBadge";
 
@@ -41,6 +42,8 @@ export function ArticlesBoard({ initial, worker: initialWorker, errorsHour = 0, 
 
   const running = rows.filter((r) => r.status === "RUNNING" || r.status === "PUBLISHING");
   const queued = rows.filter((r) => r.status !== "RUNNING" && r.status !== "PUBLISHING");
+  // Сводка «в работе» по этапам, самые людные — первыми
+  const byStage = [...running.reduce((m, r) => m.set(r.stageLabel, (m.get(r.stageLabel) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="space-y-3">
@@ -53,8 +56,12 @@ export function ArticlesBoard({ initial, worker: initialWorker, errorsHour = 0, 
       {err && <p className="help text-danger">{err}</p>}
       {running.length === 0 && queued.length === 0 && <p className="help">Сейчас ничего не выполняется и очередь пуста. Нажмите «Новый запуск», чтобы поставить статьи в работу.</p>}
       {running.length > 0 && (
-        <ul className="grid gap-2 lg:grid-cols-2">
-          {running.map((r) => (
+        <p className="text-[13px] text-ink-2">
+          В работе <b className="tabular-nums">{running.length}</b>: {byStage.map(([st, n], i) => <span key={st}>{i ? " · " : ""}{st} <b className="tabular-nums">{n}</b></span>)}
+        </p>
+      )}
+      {running.length > 0 && (
+        <ShowMore as="ul" className="grid gap-2 lg:grid-cols-2" initial={6} step={20} items={running.map((r) => (
             <li key={r.id} className={`rounded-xl border p-3 space-y-1.5 ${r.leaseAlive || r.status !== "RUNNING" ? "border-line" : "border-danger/40"}`}>
               <div className="flex flex-wrap items-center gap-2">
                 <Link href={`/pinterest/articles/articles/${r.id}`} className="font-semibold hover:underline truncate max-w-[360px]" title={r.keyword}>{r.keyword}</Link>
@@ -70,14 +77,12 @@ export function ArticlesBoard({ initial, worker: initialWorker, errorsHour = 0, 
                 {r.runId && <Link href={`/pinterest/articles/runs/${r.runId}`} className="ml-auto help hover:underline">запуск: {r.runName || r.runId.slice(0, 8)}</Link>}
               </div>
             </li>
-          ))}
-        </ul>
+          ))} />
       )}
       {queued.length > 0 && (
         <details open={running.length === 0}>
           <summary className="help cursor-pointer">В очереди: {worker.pending > queued.length ? `${worker.pending} (показаны ${queued.length})` : queued.length}</summary>
-          <ul className="mt-2 divide-y divide-line rounded-xl border border-line">
-            {queued.slice(0, limit).map((r) => (
+          <ShowMore as="ul" className="mt-2 divide-y divide-line rounded-xl border border-line" initial={10} step={30} items={queued.slice(0, limit).map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-2 px-3 py-1.5 text-[13px]">
                 <Link href={`/pinterest/articles/articles/${r.id}`} className="font-medium hover:underline truncate max-w-[320px]" title={r.keyword}>{r.keyword}</Link>
                 <span className="help">{r.siteName}</span>
@@ -86,8 +91,7 @@ export function ArticlesBoard({ initial, worker: initialWorker, errorsHour = 0, 
                 {r.note && <span className="help truncate max-w-[300px]" title={r.note}>{r.note}</span>}
                 <span className="ml-auto help tabular-nums">{ago(r.updatedAt)}</span>
               </li>
-            ))}
-          </ul>
+            ))} />
         </details>
       )}
     </div>

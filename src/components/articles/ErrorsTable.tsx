@@ -7,6 +7,8 @@ import Link from "next/link";
 import { Badge } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { Fold } from "@/components/ui/Fold";
+import { ShowMore, ShowMoreRows } from "@/components/ui/ShowMore";
 import { badgeTone } from "@/components/articles/StatusBadge";
 import { requeueErrorsAction, resolveErrorsAction, unresolveErrorsAction } from "@/actions/articlesErrors";
 import { EXTRA_ERROR_STAGES, type ErrorGroupView, type RetryGroup } from "@/lib/articles/errorsView";
@@ -18,11 +20,12 @@ export const errStageLabel = (s: string) => EXTRA_ERROR_STAGES[s] ?? stageLabel(
 /** Контекст фильтра, который уходит в действия (чтобы кнопка меняла ровно то, что видно). */
 export type ErrorScope = { siteId?: string; runId?: string; stage?: string; days?: number };
 
-export function ErrorGroups({ groups, scope, showSites = true, articlesLimit = 12, actions = true }: { groups: ErrorGroupView[]; scope: ErrorScope; showSites?: boolean; articlesLimit?: number; actions?: boolean }) {
+export function ErrorGroups({ groups, scope, showSites = true, articlesLimit = 12, actions = true, initial = 5 }: { groups: ErrorGroupView[]; scope: ErrorScope; showSites?: boolean; articlesLimit?: number; actions?: boolean; initial?: number }) {
   const hidden = (signature: string) => ({ signature, siteId: scope.siteId ?? "", runId: scope.runId ?? "", stage: scope.stage ?? "", days: scope.days ? String(scope.days) : "" });
+  // Сверху открытые, внутри — самые частые: первые `initial` видны, остальные по «Показать ещё»
+  const sorted = [...groups].sort((x, y) => (y.open > 0 ? 1 : 0) - (x.open > 0 ? 1 : 0) || y.count - x.count || y.last.localeCompare(x.last));
   return (
-    <div className="space-y-3">
-      {groups.map((g) => (
+    <ShowMore className="space-y-3" initial={initial} step={20} noun="групп" items={sorted.map((g) => (
         <div key={g.signature} className={`rounded-xl border border-line p-3 ${g.open ? "" : "opacity-70"}`}>
           <div className="flex flex-wrap items-start gap-2">
             <div className="min-w-0 flex-1">
@@ -33,18 +36,23 @@ export function ErrorGroups({ groups, scope, showSites = true, articlesLimit = 1
                 {!g.open && <Badge tone="ok">устранено</Badge>}
                 <span className="font-medium min-w-0 [overflow-wrap:anywhere]">{g.title ?? g.signature.replace(/^[^:]+:\s*/, "").slice(0, 140)}</span>
               </div>
-              <div className="help mt-1 whitespace-pre-wrap break-words">{g.sample.slice(0, 600)}</div>
-              {g.hint && <div className="help mt-1"><b>Что делать:</b> {g.hint}</div>}
               <div className="help mt-1">
-                впервые {fmtDate(g.first)} · последний раз {fmtDate(g.last)} · статей {g.articles.length}
+                последний раз {fmtDate(g.last)} · статей {g.articles.length}
+                {showSites && g.sites.length > 0 && <> · сайтов {g.sites.length}</>}
                 {g.failedNow > 0 && <> · <span className="text-danger">сейчас с ошибкой {g.failedNow}</span></>}
                 {g.recovered > 0 && <> · <span className="text-ok">дошли до публикации {g.recovered}</span></>}
+              </div>
+              <Fold bare className="mt-1 text-[13px]" title={<span className="help">Подробности</span>}>
+              <div className="help whitespace-pre-wrap break-words">{g.sample.slice(0, 600)}</div>
+              {g.hint && <div className="help mt-1"><b>Что делать:</b> {g.hint}</div>}
+              <div className="help mt-1">
+                впервые {fmtDate(g.first)} · последний раз {fmtDate(g.last)}
                 {showSites && g.sites.length > 0 && <> · сайты: {g.sites.map((s, i) => <span key={s.id}>{i ? ", " : ""}<Link href={`/pinterest/articles/sites/${s.id}`} className="underline">{s.name}</Link></span>)}</>}
               </div>
               {g.articles.length > 0 && (
-                <details className="mt-2 text-[13px]">
-                  <summary className="help cursor-pointer">Затронутые статьи ({g.articles.length})</summary>
-                  <ul className="mt-2 space-y-1">
+                <div className="mt-2">
+                  <div className="help font-medium">Затронутые статьи ({g.articles.length})</div>
+                  <ul className="mt-1 space-y-1">
                     {g.articles.slice(0, articlesLimit).map((a) => (
                       <li key={a.id} className="flex flex-wrap items-center gap-2">
                         <Badge tone={badgeTone(a.tone)}>{a.statusLabel}</Badge>
@@ -56,8 +64,9 @@ export function ErrorGroups({ groups, scope, showSites = true, articlesLimit = 1
                     ))}
                   </ul>
                   {g.articles.length > articlesLimit && <p className="help mt-1">…и ещё {g.articles.length - articlesLimit}</p>}
-                </details>
+                </div>
               )}
+              </Fold>
             </div>
             {actions && (
               <div className="flex flex-wrap gap-2">
@@ -79,8 +88,7 @@ export function ErrorGroups({ groups, scope, showSites = true, articlesLimit = 1
             )}
           </div>
         </div>
-      ))}
-    </div>
+      ))} />
   );
 }
 
@@ -92,7 +100,7 @@ export function RetryGroups({ retries, limit = 20 }: { retries: RetryGroup[]; li
       <table className="table">
         <thead><tr><th className="text-right">Раз</th><th className="text-right">Статей</th><th>Этап</th><th>Что случилось</th><th className="hidden md:table-cell">Последний</th></tr></thead>
         <tbody>
-          {retries.slice(0, limit).map((r) => (
+          <ShowMoreRows colSpan={5} initial={limit} step={50} rows={retries.map((r) => (
             <tr key={r.key}>
               <td className="text-right tabular-nums"><Badge tone="warn">{r.count}</Badge></td>
               <td className="text-right tabular-nums">{r.articles}</td>
@@ -109,7 +117,7 @@ export function RetryGroups({ retries, limit = 20 }: { retries: RetryGroup[]; li
               </td>
               <td className="hidden md:table-cell help whitespace-nowrap">{fmtDate(r.last)}</td>
             </tr>
-          ))}
+          ))} />
         </tbody>
       </table>
     </div>

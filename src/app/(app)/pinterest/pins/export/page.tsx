@@ -7,6 +7,7 @@ import { exportOverview, futureReadyBySite } from "@/lib/pins/export/service";
 import { addDays, todayKey, formatRu } from "@/lib/pins/schedule/math";
 import { TZ } from "@/lib/pins/runs/stats";
 import { fmtDate } from "@/lib/utils";
+import { Fold } from "@/components/ui/Fold";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
   const todayPins = todayFiles.reduce((n, f) => n + f.count, 0);
   const ready = await futureReadyBySite(sites.map((s) => s.id));
   const readySites = sites.filter((s) => ready.has(s.id));
+  const allSelected = selected.length === sites.length;
   const quick = (f: string, t: string, label: string) => <Link href={`/pinterest/pins/export?from=${f}&to=${t}`} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${from === f && to === t ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{label}</Link>;
 
   return (
@@ -55,21 +57,25 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
           <form method="get" className="flex flex-wrap items-end gap-3">
             <Field label="С"><input type="date" name="from" className="input" defaultValue={from} /></Field>
             <Field label="По"><input type="date" name="to" className="input" defaultValue={to} /></Field>
-            <div className="min-w-[220px]"><span className="label">Сайты</span>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 max-h-32 overflow-auto">
+            {/* закрытый <details> не мешает отправке: галочки внутри всё равно уходят в GET */}
+            <Fold title="Сайты" summary={allSelected ? `все (${sites.length})` : `выбрано ${selected.length} из ${sites.length}`} defaultOpen={!allSelected} className="w-full sm:w-auto sm:min-w-[260px] sm:max-w-xl">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 max-h-48 overflow-auto">
                 {sites.map((s) => <label key={s.id} className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" name="site" value={s.id} defaultChecked={selected.includes(s.id)} /> {s.name}</label>)}
               </div>
-            </div>
+            </Fold>
             <button className="btn-primary">Показать</button>
           </form>
         </Card>
-        <Card title="Выгрузить все сформированные пины сайта" description="Один архив на сайт: по CSV на каждый день с сегодняшнего до последней даты. В конце имени каждого файла — сколько пинов в этом дне.">
+        <Card title="Выгрузить все сформированные пины сайта" description="Один архив на сайт: по CSV на каждый день с сегодняшнего до последней даты.">
           {readySites.length === 0 ? <p className="help">Готовых пинов с датами на сегодня и позже пока нет.</p> : (
-            <div className="flex flex-wrap gap-2">
+            <Fold title="Сайты с готовыми пинами" summary={`${readySites.length} ${plural(readySites.length, "сайт", "сайта", "сайтов")}`}>
+              <p className="help mb-2">В конце имени каждого файла — сколько пинов в этом дне.</p>
+              <div className="flex flex-wrap gap-2">
               {readySites.map((s) => { const r = ready.get(s.id)!; return (
                 <a key={s.id} href={`/api/pins/export/all?site=${s.id}`} className="btn-ghost !whitespace-normal text-left max-w-full" title={`до ${formatRu(r.lastDay)}`}>Выгрузить все для {s.name} <span className="help">· {r.pins} пинов, {r.days} дн.</span></a>
               ); })}
-            </div>
+              </div>
+            </Fold>
           )}
         </Card>
         {files.length === 0 ? (
@@ -97,4 +103,11 @@ export default async function ExportPage({ searchParams }: { searchParams: Promi
       </div>
     </>
   );
+}
+
+function plural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
 }

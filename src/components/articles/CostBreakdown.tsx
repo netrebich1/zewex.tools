@@ -9,6 +9,7 @@ import { badgeTone } from "@/components/articles/StatusBadge";
 import { COST_PHASES, activePhases, type CostBreakdown, type CostPhase, type PhaseSums } from "@/lib/articles/costs";
 import { STATUS_LABELS } from "@/lib/articles/labels";
 import { fmtMoney } from "@/lib/utils";
+import { ShowMoreRows } from "@/components/ui/ShowMore";
 
 const PHASE_COLOR: Record<CostPhase, string> = {
   search: "bg-info",
@@ -72,7 +73,7 @@ export function CostSummary({ c, periodNote }: { c: CostBreakdown; periodNote?: 
 export type CostMatrixRow = { id: string; name: string; href?: string; sub?: string; articles: number; total: number; phases: PhaseSums };
 
 /** Матрица «строка × фаза» с итоговой строкой. Итог = сумма строк = сумма по фазам. */
-export function CostMatrix({ rows, firstCol, empty = "Расходов нет." }: { rows: CostMatrixRow[]; firstCol: string; empty?: string }) {
+export function CostMatrix({ rows, firstCol, empty = "Расходов нет.", initial }: { rows: CostMatrixRow[]; firstCol: string; empty?: string; initial?: number }) {
   if (!rows.length) return <p className="help">{empty}</p>;
   const keys = activePhases(...rows.map((r) => r.phases));
   const sum = (k: CostPhase) => rows.reduce((s, r) => s + r.phases[k], 0);
@@ -88,7 +89,7 @@ export function CostMatrix({ rows, firstCol, empty = "Расходов нет." 
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          <ShowMoreRows colSpan={keys.length + 3} initial={initial ?? rows.length} step={50} rows={rows.map((r) => (
             <tr key={r.id}>
               <td className="max-w-xs">
                 {r.href ? <Link href={r.href} className="font-medium hover:underline">{r.name}</Link> : <span className="font-medium">{r.name}</span>}
@@ -98,7 +99,7 @@ export function CostMatrix({ rows, firstCol, empty = "Расходов нет." 
               {keys.map((k) => <td key={k} className="text-right tabular-nums whitespace-nowrap">{money(r.phases[k])}</td>)}
               <td className="text-right tabular-nums font-semibold whitespace-nowrap">{fmtMoney(r.total)}</td>
             </tr>
-          ))}
+          ))} />
           {rows.length > 1 && (
             <tr>
               <td className="font-semibold">Итого</td>

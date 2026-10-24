@@ -5,6 +5,7 @@ import type { ArtFormat } from "@prisma/client";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Field } from "@/components/ui";
+import { More } from "@/components/ui/Fold";
 import { saveArtSiteSettings } from "@/actions/articles";
 import { SITE_LIMITS, type ArtSiteSettings } from "@/lib/articles/types";
 import { RunParamsFields } from "./RunParamsFields";
@@ -117,7 +118,7 @@ export function SiteSettingsForm({ site, settings: s, categories, niches, recipe
 
       <section className={groupBox}>
         <div className="flex flex-wrap items-baseline gap-2"><div className="text-[13px] font-semibold">Автозапуск и лимиты</div><Link href="/pinterest/articles/automation" className="help underline">то же на экране «Автозапуск сайтов»</Link></div>
-        <p className="help">Воркер берёт статьи сайта по двум цепочкам: «фото» (поиск → отбор) и «написание» (план → публикация). Лимит — сколько статей сайта одновременно в цепочке ({L.photoLimit[0]}–{L.photoLimit[1]}). Цепочка работает, пока включена: сама она не выключается. Выключенная — статьи ждут в очереди.</p>
+        <More short="Воркер берёт статьи сайта по двум цепочкам: «фото» (поиск → отбор) и «написание» (план → публикация).">Лимит — сколько статей сайта одновременно в цепочке ({L.photoLimit[0]}–{L.photoLimit[1]}). Цепочка работает, пока включена: сама она не выключается. Выключенная — статьи ждут в очереди.</More>
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="space-y-2">{check("autoPhotoEnabled", "Цепочка «фото» включена", "Поиск, фильтр, оценка и отбор кадров.", s.autostart.photoEnabled, true)}<Field label="Одновременно статей в «фото»">{numField("autoPhotoLimit", s.autostart.photoLimit, L.photoLimit)}</Field></div>
           <div className="space-y-2">{check("autoWritingEnabled", "Цепочка «написание» включена", "План, тексты секций, мета, сборка.", s.autostart.writingEnabled, true)}<Field label="Одновременно статей в «написании»">{numField("autoWritingLimit", s.autostart.writingLimit, L.writingLimit)}</Field></div>
@@ -127,11 +128,15 @@ export function SiteSettingsForm({ site, settings: s, categories, niches, recipe
 
       <section className={groupBox}>
         <div className="text-[13px] font-semibold">ИИ-модерация фото</div>
-        <p className="help">Включено: у каждой статьи сайта (реальные фото) после отбора фото сначала проверяет ИИ — галочка «Модерация фото до текста» в запуске включается сама. ИИ берёт статью в течение ~20 секунд. Работает, если на экране «Автозапуск сайтов» включён мастер-выключатель «ИИ-проверка фото».</p>
+        <More short="Включено: после отбора фото каждой статьи сайта (реальные фото) сначала проверяет ИИ.">Галочка «Модерация фото до текста» в запуске включается сама. ИИ берёт статью в течение ~20 секунд. Работает, если на экране «Автозапуск сайтов» включён мастер-выключатель «ИИ-проверка фото».</More>
         <div className="grid gap-3 sm:grid-cols-2">
           {check("aiModEnabled", "ИИ проверяет отобранные фото", "Модель смотрит кадры, убирает неподходящие, добавляет из резерва и одобряет — статья уходит писать текст. Сомнительные отдаёт сотруднику.", s.aiModeration.enabled, true)}
           {check("aiModAutoApply", "Применять решения ИИ автоматически", "Выключено — решения ИИ показываются человеку как подсказка.", s.aiModeration.autoApply, true)}
-          <Field label="Запуск от (статей)" hint="1 — проверять каждую статью сразу. Больше — ждать, пока накопится столько (не дольше 30 мин). К уже идущей проверке новые статьи добавляются без ожидания.">{numField("aiModBatchFrom", s.aiModeration.batchFrom, L.batchFrom)}</Field>
+          {/* Длинная подсказка — вне <label> поля: <details> внутри label ведёт себя непредсказуемо */}
+          <div>
+            <Field label="Запуск от (статей)">{numField("aiModBatchFrom", s.aiModeration.batchFrom, L.batchFrom)}</Field>
+            <More short="1 — проверять каждую статью сразу." className="mt-1">Больше — ждать, пока накопится столько (не дольше 30 мин). К уже идущей проверке новые статьи добавляются без ожидания.</More>
+          </div>
           <Field label="Параллельно статей" hint={`${L.concurrency[0]}–${L.concurrency[1]}`}>{numField("aiModConcurrency", s.aiModeration.concurrency, L.concurrency)}</Field>
           <Field label="Ждать, если в публикации ≥ N" hint="0 — не ждать.">{numField("aiModBacklog", s.aiModeration.backlogThreshold, L.backlogThreshold)}</Field>
         </div>
@@ -139,9 +144,12 @@ export function SiteSettingsForm({ site, settings: s, categories, niches, recipe
 
       <section className={groupBox}>
         <div className="text-[13px] font-semibold">Прочее</div>
-        <Field label="Google Таблица (ссылка)" hint="Из неё берутся ключи на шаге «Ключи» нового запуска, и в неё же записываются статус, ссылка и дата статьи. Вкладка должна называться доменом сайта. Подключение и проверка — в блоке «Google Таблицы» ниже.">
-          <input name="sheetUrl" className="input" defaultValue={s.sheetUrl} placeholder="https://docs.google.com/spreadsheets/…" />
-        </Field>
+        <div>
+          <Field label="Google Таблица (ссылка)">
+            <input name="sheetUrl" className="input" defaultValue={s.sheetUrl} placeholder="https://docs.google.com/spreadsheets/…" />
+          </Field>
+          <More short="Из неё берутся ключи на шаге «Ключи» нового запуска." className="mt-1">В неё же записываются статус, ссылка и дата статьи. Вкладка должна называться доменом сайта. Подключение и проверка — в блоке «Google Таблицы» ниже.</More>
+        </div>
         <p className="help">Доступ по REST API WordPress, команды и видимость сайта сотрудникам — в общем разделе <Link href="/sites" className="underline">«Сайты»</Link>.</p>
       </section>
 

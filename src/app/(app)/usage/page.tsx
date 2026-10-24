@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { canViewUsage, usageScope, usageWhere } from "@/lib/permissions";
 import { Badge, Card, Empty, PageHeader, sp, type SearchParams } from "@/components/ui";
+import { ShowMore, ShowMoreRows } from "@/components/ui/ShowMore";
 import { fmtDate, fmtMoney, monthStart } from "@/lib/utils";
 import type { Prisma } from "@prisma/client";
 
@@ -49,26 +50,21 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
       {total._count === 0 ? <Empty title="За этот период вызовов не было" hint="Как только инструменты начнут ходить через /api/run, здесь появится статистика." /> : (
         <div className="grid gap-4 lg:grid-cols-3">
           <Card title="По ключам">
-            <ul className="divide-y divide-line text-[14px]">
-              {byKey.sort((a, b) => (b._sum.costUsd ?? 0) - (a._sum.costUsd ?? 0)).map((k) => (
+            {/* Топ-5 по стоимости, остальное — «Показать ещё» (раньше список на 15+ строк, включая нулевые). */}
+            <ShowMore as="ul" className="divide-y divide-line text-[14px]" initial={5} items={byKey.sort((a, b) => (b._sum.costUsd ?? 0) - (a._sum.costUsd ?? 0)).map((k) => (
                 <li key={k.apiKeyId ?? "none"} className="flex justify-between gap-2 py-2"><span>{name(keys, k.apiKeyId, (x) => `${x.label} · ${x.provider.name}`)} <span className="help">{k._count}</span></span><b>{fmtMoney(k._sum.costUsd ?? 0)}</b></li>
-              ))}
-            </ul>
+              ))} />
           </Card>
           <Card title="По инструментам">
-            <ul className="divide-y divide-line text-[14px]">
-              {byProject.sort((a, b) => (b._sum.costUsd ?? 0) - (a._sum.costUsd ?? 0)).map((p) => (
+            <ShowMore as="ul" className="divide-y divide-line text-[14px]" initial={5} items={byProject.sort((a, b) => (b._sum.costUsd ?? 0) - (a._sum.costUsd ?? 0)).map((p) => (
                 <li key={p.projectId ?? "none"} className="flex justify-between gap-2 py-2"><span>{name(projects, p.projectId, (x) => x.name)} <span className="help">{p._count}</span></span><b>{fmtMoney(p._sum.costUsd ?? 0)}</b></li>
-              ))}
-            </ul>
+              ))} />
           </Card>
           {!onlyMine && (
             <Card title="По людям">
-              <ul className="divide-y divide-line text-[14px]">
-                {byUser.sort((a, b) => (b._sum.costUsd ?? 0) - (a._sum.costUsd ?? 0)).map((u) => (
+              <ShowMore as="ul" className="divide-y divide-line text-[14px]" initial={5} items={byUser.sort((a, b) => (b._sum.costUsd ?? 0) - (a._sum.costUsd ?? 0)).map((u) => (
                   <li key={u.userId ?? "none"} className="flex justify-between gap-2 py-2"><span>{name(users, u.userId, (x) => x.name)} <span className="help">{u._count}</span></span><b>{fmtMoney(u._sum.costUsd ?? 0)}</b></li>
-                ))}
-              </ul>
+                ))} />
             </Card>
           )}
           <Card title="Последние вызовы" className="lg:col-span-3">
@@ -76,7 +72,8 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
               <table className="table">
                 <thead><tr><th>Когда</th>{!onlyMine && <th className="col-sm">Кто</th>}<th>Инструмент · слот</th><th className="col-sm">Провайдер · модель</th><th className="col-md">Ключ</th><th className="col-md">Токены</th><th>Цена</th><th className="col-md">Время</th><th>Статус</th></tr></thead>
                 <tbody>
-                  {recent.map((r) => (
+                  {/* 10 последних, остальные по «Показать ещё». */}
+                  <ShowMoreRows colSpan={onlyMine ? 8 : 9} initial={10} step={20} rows={recent.map((r) => (
                     <tr key={r.id}>
                       <td className="whitespace-nowrap text-muted">{fmtDate(r.createdAt)}</td>
                       {!onlyMine && <td className="col-sm">{r.user?.name ?? "—"}</td>}
@@ -91,7 +88,7 @@ export default async function UsagePage({ searchParams }: { searchParams: Promis
                       <td className="col-md text-muted">{(r.durationMs / 1000).toFixed(1)}с</td>
                       <td>{r.ok ? <Badge tone="ok">ok</Badge> : <Badge tone="danger" >{(r.error ?? "ошибка").slice(0, 40)}</Badge>}</td>
                     </tr>
-                  ))}
+                  ))} />
                 </tbody>
               </table>
             </div>

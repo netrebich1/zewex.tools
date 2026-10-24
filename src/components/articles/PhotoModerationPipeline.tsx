@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PhotoModerationState, PhotoQueueItem } from "@/lib/articles/moderation";
 import { moderationApi, PhotoModerationGrid } from "./PhotoModerationGrid";
+import { ShowMore } from "@/components/ui/ShowMore";
 
 /**
  * Конвейер модерации фото «следующая свободная статья» (режим «фото до текста»).
@@ -79,6 +80,10 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
 
   // Закрепление открытой статьи: пинг раз в минуту, release при уходе со страницы/смене статьи.
   const currentId = current?.id ?? null;
+  // Список рендерится частями (первые 30 + «Показать ещё»); выбранная статья всегда видна: порог только растёт,
+  // при росте ShowMore пересоздаётся (key) с новым initial
+  const listNeed = useRef(30);
+  listNeed.current = Math.max(listNeed.current, list.findIndex((x) => x.id === currentId) + 1);
   useEffect(() => {
     if (!currentId) return;
     const id = currentId;
@@ -454,8 +459,7 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
         {list.length === 0 ? (
           <p className="help p-3">Статей нет.</p>
         ) : (
-          <ul className="space-y-0.5">
-            {list.map((x) => {
+          <ShowMore key={listNeed.current} as="ul" className="space-y-0.5" controlsClassName="px-1 pb-1" initial={listNeed.current} step={30} noun="статей" items={list.map((x) => {
               const sel = x.id === currentId;
               const held = !!x.claimedByName && !x.claimedMine;
               return (
@@ -473,8 +477,7 @@ export function PhotoModerationPipeline({ userId, siteId, initialArticleId, init
                   </button>
                 </li>
               );
-            })}
-          </ul>
+            })} />
         )}
       </aside>
       {main}

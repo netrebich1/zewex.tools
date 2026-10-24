@@ -56,7 +56,7 @@ export default async function ArticlesSitePage({ params, searchParams }: { param
         <div className="space-y-4">
           {!site.accessId && <Alert tone="warn">Сайт не привязан к доступу WordPress: публикация и синхронизация категорий работать не будут. Привяжите доступ в разделе «Сайты».</Alert>}
           {site.access && site.access.lastCheckOk === false && <Alert tone="danger">Последняя проверка подключения к WordPress не прошла — проверьте доступ на <Link href={`/sites/${site.accessId}`} className="underline">странице сайта</Link>.</Alert>}
-          <Card title="Настройки сайта в сервисе «Статьи»" description="Что относится к сайту целиком и значения по умолчанию для новых запусков. Ключи и партии задаются при запуске.">
+          <Card title="Настройки сайта в сервисе «Статьи»" description="Что относится к сайту целиком и значения по умолчанию для новых запусков.">
             <SiteSettingsForm
               site={{ id: site.id, name: site.name, nicheCode: site.nicheCode, defaultRecipeId: site.defaultRecipeId }}
               settings={settings}

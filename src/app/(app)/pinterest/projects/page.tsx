@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { seesAllSites } from "@/lib/permissions";
 import { Badge, Card, Empty, PageHeader, type SearchParams, sp } from "@/components/ui";
+import { More } from "@/components/ui/Fold";
 import { canSeeFinance, siteAccessWhere } from "@/lib/projects/access";
 import { projectSummaries, stripFinance, type ProjectSummary } from "@/lib/projects/summary";
 import { alertsTone, projectAlerts, type Alert } from "@/lib/projects/alerts";
@@ -80,7 +81,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader title="Проекты" subtitle="Каждый сайт — проект: прогоны и запас пинов, выгрузки и заливка в Pinterest, статьи, этапы, задачи и история. Автоматика подтягивается сама, руками — только статусы, задачи и заметки." actions={<Link href="/sites/new" className="btn-ghost">Добавить сайт</Link>} />
+      <PageHeader title="Проекты" subtitle="Каждый сайт — проект: пины, выгрузки, статьи, задачи и история." actions={<Link href="/sites/new" className="btn-ghost">Добавить сайт</Link>} />
       {sites.length === 0 ? (
         <Empty title="Сайтов пока нет" hint="Проект появляется сам, как только сайт добавлен в «Сайты» и виден вам." action={<Link href="/sites/new" className="btn-primary">Добавить сайт</Link>} />
       ) : (
@@ -120,7 +121,10 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
                 </div>
               </details>
             )}
-            <p className="help mt-3">Сверху — сайты, где уже идёт работа; цвет точки — сигнал (красная — пинов нет или прогон упал, жёлтая — запас меньше недели или не отмечена заливка). «Пины до» — последний день с запланированными пинами, как в календаре запаса. Заливку отмечают в карточке на вкладке «Выгрузки».</p>
+            <More short="Цвет точки — сигнал: красная — пинов нет или прогон упал, жёлтая — запас меньше недели или не отмечена заливка." className="mt-3">
+              <p>Сверху — сайты, где уже идёт работа. «Пины до» — последний день с запланированными пинами, как в календаре запаса. Заливку отмечают в карточке на вкладке «Выгрузки».</p>
+              <p className="mt-1">Проект включает прогоны и запас пинов, выгрузки и заливку в Pinterest, статьи, этапы, задачи и историю. Автоматика подтягивается сама, руками — только статусы, задачи и заметки.</p>
+            </More>
           </Card>
         </div>
       )}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
+import { More } from "@/components/ui/Fold";
 import { aiRunsOverview } from "@/lib/articles/aiModeration";
 import { AiModerationPanel } from "@/components/articles/AiModerationPanel";
 
@@ -18,7 +19,7 @@ export default async function AiModerationPage() {
       <PageHeader
         back={{ href: "/pinterest/articles", label: "Статьи" }}
         title="ИИ-модерация фото"
-        subtitle="ИИ проверяет подобранные фото вместо сотрудника: тема и подлинность (дешёвая модель) + мнение редактора (средняя), спорные кадры — второй взгляд. «Тест» только предлагает, «Авто» применяет уверенные решения (≥75), сомнительные отдаёт людям."
+        subtitle="ИИ проверяет подобранные фото вместо сотрудника."
         actions={
           <>
             <Link href="/pinterest/articles/moderation/articles" className="btn-ghost">Модерация</Link>
@@ -26,6 +27,10 @@ export default async function AiModerationPage() {
           </>
         }
       />
+      {/* PageHeader кладёт subtitle в <p>, а <details> внутри <p> недопустим — пояснение отдельным блоком */}
+      <More short="Как проверяет ИИ и чем «Тест» отличается от «Авто»." className="-mt-4 mb-4 max-w-2xl">
+        Тема и подлинность (дешёвая модель) + мнение редактора (средняя), спорные кадры — второй взгляд. «Тест» только предлагает, «Авто» применяет уверенные решения (≥75), сомнительные отдаёт людям.
+      </More>
       <AiModerationPanel initial={initial} />
     </>
   );

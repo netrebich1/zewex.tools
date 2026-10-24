@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, Badge, Card, Empty } from "@/components/ui";
+import { More } from "@/components/ui/Fold";
+import { ShowMore, ShowMoreRows } from "@/components/ui/ShowMore";
 import type { AiOverview, AiResultRow, AiRunRow, InsufficientRow } from "@/lib/articles/aiModeration";
 
 /**
@@ -169,7 +171,8 @@ function ResultsTab({ data, busy, act, notify }: { data: AiOverview; busy: strin
 
   return (
     <div className="space-y-4">
-      <Card title="Новый запуск" description="Берутся свободные статьи «Ждут проверки фото» этого сайта, которые ИИ ещё не проверял. Статьи закрепляются за запуском — сотрудники их не увидят до решения.">
+      <Card title="Новый запуск">
+        <More short="Берутся свободные статьи «Ждут проверки фото» этого сайта, которые ИИ ещё не проверял." className="-mt-3 mb-4">Статьи закрепляются за запуском — сотрудники их не увидят до решения.</More>
         <div className="flex flex-wrap items-end gap-4">
           <label className="block min-w-56">
             <span className="label">Сайт</span>
@@ -208,10 +211,9 @@ function ResultsTab({ data, busy, act, notify }: { data: AiOverview; busy: strin
       </Card>
 
       {data.runs.length > 0 && (
-        <Card title="Запуски" description="8 последних. «Промодерировано X из Y» — сколько статей уже получили решение ИИ; $ — стоимость вызовов моделей.">
-          <ul className="space-y-1.5 text-[13.5px]">
-            {data.runs.slice(0, 8).map((r) => <RunLine key={r.id} r={r} canSeeCosts={data.canSeeCosts} busy={busy} onStop={() => void stop(r.id)} />)}
-          </ul>
+        <Card title="Запуски">
+          <More short="8 последних." className="-mt-3 mb-4">«Промодерировано X из Y» — сколько статей уже получили решение ИИ; $ — стоимость вызовов моделей.</More>
+          <ShowMore as="ul" className="space-y-1.5 text-[13.5px]" initial={3} step={5} noun="запусков" items={data.runs.slice(0, 8).map((r) => <RunLine key={r.id} r={r} canSeeCosts={data.canSeeCosts} busy={busy} onStop={() => void stop(r.id)} />)} />
         </Card>
       )}
 
@@ -261,7 +263,7 @@ function ResultsTab({ data, busy, act, notify }: { data: AiOverview; busy: strin
             </tr>
           </thead>
           <tbody>
-            {shown.map((r) => {
+            <ShowMoreRows colSpan={data.canSeeCosts ? 11 : 10} initial={50} step={50} rows={shown.map((r) => {
               const d = r.decision ? DECISION[r.decision] : null;
               return (
                 <tr key={r.id} className="cursor-pointer" onClick={() => setOpen(r)}>
@@ -283,7 +285,7 @@ function ResultsTab({ data, busy, act, notify }: { data: AiOverview; busy: strin
                   {data.canSeeCosts && <td className="col-sm tabular-nums text-muted">{r.costUsd ? usd(r.costUsd) : "—"}</td>}
                 </tr>
               );
-            })}
+            })} />
             {!shown.length && <tr><td colSpan={11}className="p-6 text-center help">Нет результатов</td></tr>}
           </tbody>
         </table>
@@ -491,7 +493,7 @@ function InsufficientTab({ rows, busy, act }: { rows: InsufficientRow[]; busy: s
           <table className="table">
             <thead><tr><th>Ключ</th><th>Сайт</th><th className="col-sm">Кто</th><th className="col-sm">Когда</th><th>Причина</th><th /></tr></thead>
             <tbody>
-              {shown.map((r) => (
+              <ShowMoreRows colSpan={6} initial={50} step={50} rows={shown.map((r) => (
                 <tr key={r.id}>
                   <td className="font-medium max-w-xs">
                     <Link href={`/pinterest/articles/articles/${r.id}`} className="block truncate hover:underline" title={r.keyword}>{r.keyword}</Link>
@@ -517,7 +519,7 @@ function InsufficientTab({ rows, busy, act }: { rows: InsufficientRow[]; busy: s
                     </div>
                   </td>
                 </tr>
-              ))}
+              ))} />
             </tbody>
           </table>
         </div>

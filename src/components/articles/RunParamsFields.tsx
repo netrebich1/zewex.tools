@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Field } from "@/components/ui";
+import { More } from "@/components/ui/Fold";
 import { PUBLISH_MODES, type ArtRunSettings, type ArtSiteSettings } from "@/lib/articles/types";
 
 export const FRESHNESS = [["", "любая"], ["y", "за год"], ["m", "за месяц"], ["w", "за неделю"]];
@@ -33,7 +34,7 @@ export function RunParamsFields({ s, siteLevel = false, aiModOn = false }: { s: 
           <Field label={mode === "exact" ? "Штук" : "От"}><input name="photoMin" type="number" min={1} max={60} className="input py-1.5" defaultValue={s.photoCount.min} /></Field>
           {mode === "range" ? <Field label="До"><input name="photoMax" type="number" min={1} max={60} className="input py-1.5" defaultValue={Math.max(s.photoCount.min, s.photoCount.max)} /></Field> : <div />}
         </div>
-        <p className="help">Одно фото = одна секция статьи. Минимум для публикации — 15 подходящих кадров; если найдётся меньше, статья встанет в «Не хватило фото». В строке ключа можно задать своё число (4-я колонка).</p>
+        <More short="Одно фото = одна секция статьи.">Минимум для публикации — 15 подходящих кадров; если найдётся меньше, статья встанет в «Не хватило фото». В строке ключа можно задать своё число (4-я колонка).</More>
         <label className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[13.5px] ${aiModOn ? "border-brand/40 bg-brand-soft/40" : "border-line"}`}>
           {/* key: при смене сайта в форме запуска галочка перерисовывается с новым состоянием */}
           <input key={forced ? "ai" : "manual"} type="checkbox" name="photoReview" defaultChecked={forced || s.photoReview} disabled={forced} className="mt-0.5 h-4 w-4" />
