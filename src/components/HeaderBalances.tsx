@@ -72,21 +72,21 @@ export function HeaderBalances({ mine = false, teamName = null }: { mine?: boole
   const total = mine && keys ? sumAccounts(keys) : null;
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative min-w-0" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 h-9 rounded-full border border-line bg-surface px-3 hover:border-line-2 transition text-[13px]"
+        className="flex max-w-full min-w-0 items-center gap-2 h-9 overflow-hidden rounded-full border border-line bg-surface px-3 hover:border-line-2 transition text-[13px]"
         aria-haspopup="dialog"
         aria-expanded={open}
         title={title}
       >
         <Icon.wallet width={15} height={15} className={`text-muted shrink-0 ${busy ? "animate-pulse" : ""}`} />
         {loaded ? (
-          <span className="hidden sm:flex items-center gap-2.5 tabular-nums">
+          <span className="hidden sm:flex min-w-0 items-center gap-2.5 overflow-hidden whitespace-nowrap tabular-nums">
             {chip.length === 0 && <span className="text-muted">нет данных</span>}
             {chip.map((c) => (
-              <span key={c.id} className="inline-flex items-baseline gap-1">
+              <span key={c.id} className="inline-flex shrink-0 items-baseline gap-1">
                 <span className="text-muted font-medium">{c.label}</span>
                 <span className={`font-semibold ${tone(c.remaining)}`}>{fmtMoney(c.remaining)}</span>
               </span>

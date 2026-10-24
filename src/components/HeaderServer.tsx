@@ -84,7 +84,7 @@ export function HeaderServer() {
       >
         <Icon.server width={15} height={15} className={`shrink-0 ${v ? v.cls : "text-muted"} ${busy && !s ? "animate-pulse" : ""}`} />
         {s ? (
-          <span className="hidden lg:flex items-center gap-2 tabular-nums whitespace-nowrap">
+          <span className="hidden xl:flex items-center gap-2 tabular-nums whitespace-nowrap">
             {[
               { k: "disk", label: "Диск", value: `${Math.round(s.disk.freeGb)} ГБ`, cls: diskTone(freePct) },
               { k: "cpu", label: "CPU", value: `${s.cpu.busyPct}%`, cls: tone(s.cpu.busyPct) },
@@ -98,7 +98,7 @@ export function HeaderServer() {
             ))}
           </span>
         ) : (
-          <span className="hidden lg:block text-muted">{error ? "ошибка" : "…"}</span>
+          <span className="hidden xl:block text-muted">{error ? "ошибка" : "…"}</span>
         )}
       </button>
 

@@ -71,8 +71,12 @@ export function Shell({ user, children }: { user: ShellUser; children: ReactNode
           <Link href="/" className="shrink-0" aria-label="Zewex Tools"><LogoFull className="h-6 w-auto hidden sm:block" /><LogoMark className="h-6 w-auto sm:hidden" /></Link>
           {/* На телефоне вкладку не показываем: логотип и так ведёт к инструментам, а места в шапке нет. */}
           <nav className="hidden sm:flex items-center gap-1 ml-2">
-            <Link href="/" className={`tab ${isTools ? "active" : ""}`}><Icon.grid width={15} height={15} /> Инструменты</Link>
+            <Link href="/" className={`tab ${isTools ? "active" : ""}`} title="Инструменты" aria-label="Инструменты"><Icon.grid width={15} height={15} /> <span className="hidden xl:inline">Инструменты</span></Link>
           </nav>
+          {/*
+            Правая группа может сжиматься, но уступают место только балансы (min-w-0 у их плашки: обрезаются целыми суммами),
+            остальные плашки не меньше своего содержимого. Раньше при нехватке места группа наезжала на аватар (2026-10-24).
+          */}
           <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
             {user.impersonator && <span className="view-chip hidden lg:inline-flex">Кабинет сотрудника</span>}
             <HeaderServer />
@@ -82,9 +86,9 @@ export function Shell({ user, children }: { user: ShellUser; children: ReactNode
             <ThemeSwitch />
           </div>
           <div className="relative flex shrink-0 items-center gap-2" ref={ref}>
-            <button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 h-9 rounded-full border border-line bg-surface pl-1 pr-2.5 hover:border-line-2 transition" aria-haspopup="menu" aria-expanded={open}>
+            {/* Имя в шапке не помещается рядом с сервером, балансами и переключателем — оно в меню и в подсказке. */}
+            <button type="button" onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 h-9 rounded-full border border-line bg-surface pl-1 pr-2.5 hover:border-line-2 transition" aria-haspopup="menu" aria-expanded={open} title={user.name} aria-label={`Меню: ${user.name}`}>
               <span className="view-avatar inline-flex h-7 w-7 items-center justify-center rounded-full bg-ink text-bg text-[12px] font-bold">{initials(user.name)}</span>
-              <span className="hidden sm:block text-[13.5px] font-medium max-w-[140px] truncate">{user.name}</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`text-muted transition ${open ? "rotate-180" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
             </button>
             {open && (
