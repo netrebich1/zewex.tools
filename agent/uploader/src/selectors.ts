@@ -6,11 +6,10 @@
 export const PINTEREST = {
   home: "https://www.pinterest.com/",
   settings: "https://www.pinterest.com/settings/",
-  /** Кандидаты адресов страницы массовой загрузки (первый отвечающий без редиректа на логин) */
+  /** Страница массовой загрузки (проверено 2026-10-24): Settings → Import content → Bulk create Pins, блок «Upload .csv file».
+   *  Страница /pin-creation-tool/ — создание ОДНОГО пина с картинкой, CSV туда класть нельзя (ответ «wrong format»). */
   bulkUrls: [
-    "https://www.pinterest.com/pin-creation-tool/bulk/",
-    "https://www.pinterest.com/business/bulk-pin-creation/",
-    "https://www.pinterest.com/pin-creation-tool/",
+    "https://www.pinterest.com/settings/bulk-create-pins/",
   ],
   /** Признаки «не вошли» */
   loginUrl: /\/login\/?(\?|$)/i,
@@ -20,14 +19,19 @@ export const PINTEREST = {
   /** Имя пользователя на странице настроек */
   usernameInput: ['input[name="username"]', '#username', 'input[id*="username"]'],
   /** Кнопки/ссылки «Bulk create» на странице создания */
-  bulkEntry: ['a:has-text("Bulk create")', 'button:has-text("Bulk create")', 'a:has-text("Create Pins in bulk")', 'button:has-text("Create Pins in bulk")', '[data-test-id*="bulk"]', 'a[href*="bulk"]'],
-  /** Поле выбора файла */
-  fileInput: ['input[type="file"][accept*="csv"]', 'input[type="file"][accept*="text"]', 'input[type="file"]'],
+  bulkEntry: ['a[href*="bulk-create-pins"]', 'a:has-text("Import content")', 'a:has-text("Bulk create")', 'button:has-text("Bulk create")'],
+  /** Поле выбора CSV: только такое, что принимает csv/текст; поле для картинок/видео не подходит никогда.
+   *  Если accept не задан — первое поле файла внутри блока с текстом «csv». */
+  fileInput: ['input[type="file"][accept*="csv"]', 'input[type="file"][accept*="text"]', 'input[type="file"]:not([accept*="image"]):not([accept*="video"]):not([accept*="mp4"]):not([accept*="jpg"]):not([accept*="png"])'],
+  /** Текст рядом с нужным полем — проверка, что мы на блоке CSV, а не TXT */
+  csvBlockText: /upload \.csv file|\.csv file/i,
   /** Кнопка отправки после выбора файла (если она есть) */
-  submit: ['button:has-text("Upload")', 'button:has-text("Publish")', 'button:has-text("Create")', 'button:has-text("Submit")', 'button[type="submit"]'],
+  /** На странице bulk-create-pins CSV уходит сразу после выбора файла; кнопка «Import» там относится к блоку TXT — не трогаем.
+   *  Нажимаем только явную кнопку отправки CSV, если она появится; «Create» в шапке — навигация, её тут нет намеренно. */
+  submit: ['button:has-text("Upload csv")', 'button:has-text("Upload .csv")', 'button:has-text("Submit")'],
   /** Тексты успеха / ошибки после загрузки */
-  success: /uploaded|processing|in progress|will be (published|created)|queued|received|success|being created|complete/i,
-  failure: /error|invalid|failed|couldn.t|could not|unable|not supported|too many|limit|try again/i,
+  success: /uploaded|processing|in progress|will be (published|created)|queued|received|success|being created|complete|imported|we.ll (create|publish)|scheduled/i,
+  failure: /error|invalid|failed|wrong format|couldn.t|could not|unable|not supported|too many|limit|try again/i,
   /** Вход в историю загрузок */
   historyEntry: ['a:has-text("History")', 'button:has-text("History")', 'a:has-text("Upload history")', 'a:has-text("Bulk upload history")', '[data-test-id*="history"]', 'a[href*="history"]'],
   historyRows: ['table tr', '[role="row"]', '[data-test-id*="history"] li'],

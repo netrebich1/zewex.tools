@@ -75,11 +75,9 @@ async function openBulkPage(page: Page, bulkUrl: string | null, h: UplHumanize):
     }
     await sleep(rand(2000, 4000));
     if (S.loginUrl.test(page.url())) throw new AgentError("not_logged_in", "Pinterest открыл страницу входа", await screenshot(page));
-    let input = await firstVisible(page, S.fileInput, 4000);
-    if (!input) {
-      // input[type=file] часто скрыт — ищем в DOM без видимости
-      for (const s of S.fileInput) { if ((await page.locator(s).count()) > 0) { input = s; break; } }
-    }
+    // input[type=file] почти всегда скрыт — ищем в DOM по приоритету (csv → text → не картинка/видео)
+    let input: string | null = null;
+    for (const s of S.fileInput) { if ((await page.locator(s).count()) > 0) { input = s; break; } }
     if (input) return input;
     const entry = await firstVisible(page, S.bulkEntry, 4000);
     if (entry) {
