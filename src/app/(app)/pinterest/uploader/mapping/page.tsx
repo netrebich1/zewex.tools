@@ -4,6 +4,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { AutoForm } from "@/components/projects/AutoForm";
 import { requireUploader, visiblePinSites } from "@/lib/uploader/access";
 import { suggestProfiles } from "@/lib/uploader/match";
+import { uplSettings } from "@/lib/uploader/runs";
 import { setAccountStatusAction, setProfileAction } from "@/actions/uploader";
 import { AccountBadge, dt } from "@/components/uploader/ui";
 import { ProfileSelect } from "@/components/uploader/ProfileSelect";
@@ -32,12 +33,14 @@ export default async function UploaderMappingPage() {
   const allAccounts = await prisma.uplAccount.findMany({ where: { profileId: { not: null } }, select: { pinSiteId: true, profileId: true } });
   const suggestions = suggestProfiles(sites, profiles, allAccounts);
   const sure = [...suggestions.values()].filter((l) => l[0]?.sure).length;
+  const settings = await uplSettings();
 
   return (
     <>
       <PageHeader title="Сопоставление сайтов и профилей" subtitle="Один сайт = один аккаунт Pinterest = один профиль Dolphin Anty. Называйте профиль в Dolphin доменом сайта (или впишите домен в тег/заметку) — тогда портал предложит пару сам. Список профилей присылает агент (раз в час)." />
       <div className="space-y-4">
-        {!profiles.length && <Card><p className="help">Профилей пока нет: запустите агент на ПК с открытым Dolphin Anty — он пришлёт список. <Link href="/pinterest/uploader/agents" className="underline">Агенты</Link>.</p></Card>}
+        {!settings.dolphinTokenEnc && <div className="rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-[13.5px]"><b>Не задан токен Dolphin API</b> — агент не может прочитать профили. Администратор вводит его в <Link href="/pinterest/uploader/settings" className="underline">Настройках</Link>; после этого перезапустите агент.</div>}
+        {settings.dolphinTokenEnc && !profiles.length && <Card><p className="help">Профилей пока нет: запустите (или перезапустите) агент на ПК с открытым Dolphin Anty — он пришлёт список при старте и затем раз в час. <Link href="/pinterest/uploader/agents" className="underline">Агенты</Link>.</p></Card>}
         <Card title={`Сайты · ${sites.length}`} description={unmapped ? `Без профиля: ${unmapped}${suggestions.size ? `, с предложением: ${suggestions.size}` : ""}. Выбор в строке сохраняется сразу.` : "Все сайты сопоставлены."} actions={<AcceptAllSure count={sure} />}>
           <div className="table-wrap"><table className="table">
             <thead><tr><th>Сайт</th><th>Профиль Dolphin</th><th>Предложение</th><th>Аккаунт Pinterest</th><th>Последняя заливка</th><th>Состояние</th><th></th></tr></thead>

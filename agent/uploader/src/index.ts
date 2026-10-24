@@ -18,6 +18,7 @@ async function main() {
   const dolphin = new Dolphin(null);
   let humanize: UplHumanize = DEFAULT_HUMANIZE;
   let bulkUrl: string | null = null;
+  let dolphinToken: string | null = null;
   let pollSec = 20;
   let lastProfilesAt = 0;
   let lastHelloAt = 0;
@@ -36,8 +37,11 @@ async function main() {
     humanize = h.humanize ?? DEFAULT_HUMANIZE;
     bulkUrl = h.bulkUrl ?? null;
     pollSec = h.pollSec || 20;
+    const hadToken = dolphinToken;
+    dolphinToken = h.dolphinToken;
     dolphin.setToken(h.dolphinToken);
-    if (!h.dolphinToken) log.warn("в настройках портала нет токена Dolphin API — профили открыть не получится");
+    if (!h.dolphinToken) log.warn("в настройках портала нет токена Dolphin API — профили открыть не получится. Админ: Заливка в Pinterest → Настройки");
+    else if (!hadToken) { log.info("получил токен Dolphin API — обновляю список профилей"); lastProfilesAt = 0; }
     lastHelloAt = Date.now();
     log.info(`на связи как «${h.agent.name}», портал ${cfg.portal}`);
   };
@@ -55,7 +59,7 @@ async function main() {
   log.info(`Zewex Uploader ${AGENT_VERSION} запускается…`);
   while (!shuttingDown) {
     try {
-      if (Date.now() - lastHelloAt > 10 * 60_000) await hello();
+      if (Date.now() - lastHelloAt > (dolphinToken ? 10 : 2) * 60_000) await hello();
       if (Date.now() - lastProfilesAt > 60 * 60_000) await syncProfiles().catch((e) => log.warn("список профилей не отправлен", e));
       const r = await api.next(running.size, log.state());
       for (const id of r.stop) stopRuns.add(id);
