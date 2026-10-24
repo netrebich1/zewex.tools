@@ -42,14 +42,14 @@ export function saveConfig(c: Config): void {
 }
 
 /** Первый запуск: спросить токен (и адрес портала, если задан через ZEWEX_PORTAL). */
-export async function askConfig(): Promise<Config> {
+export async function askConfig(opts: { portal?: string } = {}): Promise<Config> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ask = (q: string) => new Promise<string>((r) => rl.question(q, (a) => r(a.trim())));
-  console.log("Zewex Uploader — первый запуск. Токен выдаётся в портале: Pinterest → Заливка в Pinterest → Агенты → «Добавить агента».");
+  if (!opts.portal) console.log("Zewex Uploader — первый запуск. Токен выдаётся в портале: Pinterest → Заливка в Pinterest → Агенты → «Добавить агента».");
   let token = "";
   while (!/^zxu_[A-Za-z0-9_-]{20,}$/.test(token)) token = await ask("Вставьте токен агента (zxu_…): ");
   rl.close();
-  const c = { portal: (process.env.ZEWEX_PORTAL || DEFAULT_PORTAL).replace(/\/+$/, ""), token };
+  const c = { portal: (opts.portal || process.env.ZEWEX_PORTAL || DEFAULT_PORTAL).replace(/\/+$/, ""), token };
   saveConfig(c);
   console.log(`Сохранено в ${FILE()}.`);
   return c;

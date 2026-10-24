@@ -13,8 +13,8 @@ import { runTask } from "./task";
 import { startTray } from "./tray";
 
 async function main() {
-  const cfg = loadConfig() ?? (await askConfig());
-  const api = new PortalClient(cfg.portal, cfg.token);
+  let cfg = loadConfig() ?? (await askConfig());
+  let api = new PortalClient(cfg.portal, cfg.token);
   const dolphin = new Dolphin(null);
   let humanize: UplHumanize = DEFAULT_HUMANIZE;
   let bulkUrl: string | null = null;
@@ -86,7 +86,18 @@ async function main() {
       await sleep(Math.max(5, (r.wait ?? pollSec)) * 1000);
     } catch (e) {
       const err = e as Error & { code?: string; status?: number };
-      if (err.status === 401 || err.status === 403) { log.error(`портал отказал: ${err.message}. Выдайте новый токен на странице «Агенты» и перезапустите агент.`); await sleep(60_000); continue; }
+      if (err.status === 401 || err.status === 403) {
+        log.error(`портал отказал: ${err.message}`);
+        if (process.stdin.isTTY) {
+          // Токен отозван или выдан новый: спрашиваем прямо здесь, перезапуск не нужен.
+          console.log("Токен агента не принят. Выдайте новый на странице «Агенты» портала и вставьте его сюда.");
+          cfg = await askConfig({ portal: cfg.portal });
+          api = new PortalClient(cfg.portal, cfg.token);
+          lastHelloAt = 0; lastProfilesAt = 0;
+          continue;
+        }
+        await sleep(60_000); continue;
+      }
       log.warn("сбой цикла", e);
       log.setState("нет связи с порталом");
       await sleep(30_000);

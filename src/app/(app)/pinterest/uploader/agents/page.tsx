@@ -7,7 +7,8 @@ import { isAdmin, requireUploader } from "@/lib/uploader/access";
 import { agentRows } from "@/lib/uploader/views";
 import { agentLatestVersion, downloads, olderVersion } from "@/lib/uploader/release";
 import { setRows } from "@/lib/uploader/sets";
-import { saveAgentAction, uploadAgentBuildAction } from "@/actions/uploader";
+import { saveAgentAction, saveDolphinTokenAction, uploadAgentBuildAction } from "@/actions/uploader";
+import { uplSettings } from "@/lib/uploader/runs";
 import { AgentTokenForm, RevokeAgentButton } from "@/components/uploader/AgentControls";
 import { AgentBadge, ago } from "@/components/uploader/ui";
 
@@ -18,13 +19,24 @@ const TZS = ["Europe/Kyiv", "Europe/Warsaw", "Europe/Berlin", "Europe/Moscow", "
 /** Агенты: токены, состояние, параллельность, расписание; скачивание сборки; загрузка сборки (админ). */
 export default async function UploaderAgentsPage() {
   const me = await requireUploader();
-  const [agents, latest, dl, sets] = await Promise.all([agentRows(me), agentLatestVersion(), downloads(), setRows(me)]);
+  const [agents, latest, dl, sets, settings] = await Promise.all([agentRows(me), agentLatestVersion(), downloads(), setRows(me), uplSettings()]);
   const now = new Date();
   return (
     <>
       <PageHeader title="Агенты" subtitle="Агент — программа «Zewex Uploader» на ПК сотрудника рядом с Dolphin Anty. Он держит связь с порталом, получает задания и заливает файлы." />
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <div className="space-y-4">
+          {!settings.dolphinTokenEnc && (
+            <div className="rounded-xl border border-danger/40 bg-danger-soft p-4">
+              <p className="text-[13.5px]"><b>Шаг 0 — токен Dolphin API не задан.</b> Без него агент не может прочитать профили Dolphin и открыть их. Токен один на команду Dolphin (кабинет dolphin-anty.com → API), вводится один раз администратором.</p>
+              {isAdmin(me) ? (
+                <ActionForm action={saveDolphinTokenAction} className="mt-2 flex flex-wrap items-center gap-2">
+                  <input name="token" className="input font-mono text-[12.5px] min-w-[320px] flex-1" placeholder="вставьте токен Dolphin API" autoComplete="off" required />
+                  <SubmitButton className="btn-primary" pendingText="Сохраняю…">Сохранить токен Dolphin</SubmitButton>
+                </ActionForm>
+              ) : <p className="help mt-1">Попросите администратора ввести его в <Link href="/pinterest/uploader/settings" className="underline">Настройках</Link>.</p>}
+            </div>
+          )}
           <Card title={`Мои агенты · ${agents.length}`}>
             {agents.length === 0 ? <p className="help">Агентов нет. Добавьте справа, скачайте программу и вставьте в неё токен.</p> : (
               <div className="space-y-3">{agents.map((a) => (

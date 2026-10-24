@@ -1,6 +1,6 @@
 /** Копия протокола портала (src/lib/uploader/types.ts) — ровно то, что нужно агенту. При изменении протокола править оба файла. */
 
-export const AGENT_VERSION = "0.1.1";
+export const AGENT_VERSION = "0.1.2";
 export const PROTOCOL = 1;
 
 export type StepKind = "upload_csv" | "check_history" | "analytics";
