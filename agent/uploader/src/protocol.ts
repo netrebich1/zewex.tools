@@ -1,6 +1,6 @@
 /** Копия протокола портала (src/lib/uploader/types.ts) — ровно то, что нужно агенту. При изменении протокола править оба файла. */
 
-export const AGENT_VERSION = "0.1.3";
+export const AGENT_VERSION = "0.1.4";
 export const PROTOCOL = 1;
 
 export type StepKind = "upload_csv" | "check_history" | "analytics";
@@ -40,5 +40,5 @@ export type AgentTask = {
   expectFileName: string | null;
 };
 
-export type HelloResponse = { protocol: number; agent: { id: string; name: string }; dolphinToken: string | null; humanize: UplHumanize; bulkUrl: string | null; pollSec: number; latest?: string };
-export type NextResponse = { tasks: AgentTask[]; stop: string[]; wait?: number; reason?: string; latest?: string };
+export type HelloResponse = { protocol: number; agent: { id: string; name: string }; dolphinToken: string | null; humanize: UplHumanize; bulkUrl: string | null; pollSec: number; latest?: string; latestUrl?: string | null };
+export type NextResponse = { tasks: AgentTask[]; stop: string[]; wait?: number; reason?: string; latest?: string; latestUrl?: string | null };

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authAgent, UploaderError, fail, finish, hello, next, profiles, progress, state, type Ctx } from "@/lib/uploader/agent";
-import { agentLatestVersion } from "@/lib/uploader/release";
+import { agentLatestVersion, agentZipExists, agentZipRel } from "@/lib/uploader/release";
+import { publicUrl } from "@/lib/pins/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ action:
     const ctx = await authAgent(req);
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const res = await fn(ctx, body && typeof body === "object" ? body : {});
-    return NextResponse.json(res && typeof res === "object" ? { ...res, latest: await agentLatestVersion() } : res);
+    const latest = await agentLatestVersion();
+    const latestUrl = (await agentZipExists(latest)) ? publicUrl(agentZipRel(latest)) : null;
+    return NextResponse.json(res && typeof res === "object" ? { ...res, latest, latestUrl } : res);
   } catch (e) {
     if (e instanceof UploaderError) return NextResponse.json({ error: e.message, code: e.code }, { status: e.status });
     console.error(`[uploader] agent ${action} failed`, e);

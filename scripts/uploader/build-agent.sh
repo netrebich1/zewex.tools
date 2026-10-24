@@ -28,7 +28,23 @@ cp -r dist package.json README.md "$STAGE/zewex-uploader/"
 NODE_ZIP="$STORAGE/uploader/cache/node-v$NODE_VER-win-x64.zip"
 [ -f "$NODE_ZIP" ] || curl -fsSL -o "$NODE_ZIP" "https://nodejs.org/dist/v$NODE_VER/node-v$NODE_VER-win-x64.zip"
 unzip -p "$NODE_ZIP" "node-v$NODE_VER-win-x64/node.exe" > "$STAGE/zewex-uploader/node.exe"
-printf '@echo off\r\ncd /d "%%~dp0"\r\ntitle Zewex Uploader\r\nnode.exe dist\\index.js\r\npause\r\n' > "$STAGE/zewex-uploader/ZewexUploader.cmd"
+# Запускатель с автообновлением: код выхода 75 = агент скачал новую версию в %LOCALAPPDATA%\ZewexUploader\update и записал путь в pending.txt
+cat > "$STAGE/zewex-uploader/ZewexUploader.cmd" <<'CMD'
+@echo off
+cd /d "%~dp0"
+title Zewex Uploader
+:loop
+node.exe dist\index.js
+if "%errorlevel%"=="75" (
+  set /p UPD=<"%LOCALAPPDATA%\ZewexUploader\update\pending.txt"
+  echo Updating from "%UPD%" ...
+  xcopy "%UPD%\*" "%~dp0." /E /Y /Q >nul
+  del "%LOCALAPPDATA%\ZewexUploader\update\pending.txt"
+  goto loop
+)
+pause
+CMD
+sed -i 's/$/\r/' "$STAGE/zewex-uploader/ZewexUploader.cmd"
 python3 - "$STAGE" "$ZIP" <<'PY'
 import os, sys, zipfile
 root, out = sys.argv[1], sys.argv[2]

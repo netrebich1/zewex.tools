@@ -10,6 +10,7 @@ import { pause, sleep } from "./humanize";
 import { log } from "./log";
 import { AGENT_VERSION, DEFAULT_HUMANIZE, PROTOCOL, type AgentTask, type UplHumanize } from "./protocol";
 import { runTask } from "./task";
+import { maybeUpdate } from "./update";
 import { startTray } from "./tray";
 
 async function main() {
@@ -33,7 +34,7 @@ async function main() {
   const hello = async () => {
     const h = await api.hello(await hostInfo(), log.state());
     if (h.protocol > PROTOCOL) log.warn(`портал ждёт протокол ${h.protocol}, у агента ${PROTOCOL}: обновите агент`);
-    if (h.latest && h.latest !== "0" && h.latest !== AGENT_VERSION) log.warn(`есть новая версия агента ${h.latest} (у вас ${AGENT_VERSION}) — скачайте на странице «Агенты»`);
+    await maybeUpdate(h.latest, h.latestUrl, running.size);
     humanize = h.humanize ?? DEFAULT_HUMANIZE;
     bulkUrl = h.bulkUrl ?? null;
     pollSec = h.pollSec || 20;
@@ -62,6 +63,7 @@ async function main() {
       if (Date.now() - lastHelloAt > (dolphinToken ? 10 : 2) * 60_000) await hello();
       if (Date.now() - lastProfilesAt > 60 * 60_000) await syncProfiles().catch((e) => log.warn("список профилей не отправлен", e));
       const r = await api.next(running.size, log.state());
+      await maybeUpdate(r.latest, r.latestUrl, running.size);
       for (const id of r.stop) stopRuns.add(id);
       if (r.tasks.length) {
         if (!(await dolphin.alive())) {
