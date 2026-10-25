@@ -259,11 +259,11 @@ export async function launchArticlesAction(_p: FormState, f: FormData): Promise<
 
 /* ───────── Google Таблицы ───────── */
 
-export type SheetPreview = { tab: string; total: number; taken: number; ready: Array<{ row: number; keyword: string; recipe: string; photoReview: boolean; extras: string }>; skipped: SheetPlan["skipped"]; /** Ключи из «Неудачных ключей» сайта — только предупреждение */ failed?: FailedHint[] };
+export type SheetPreview = { tab: string; total: number; taken: number; ready: Array<{ row: number; keyword: string; recipe: string; photoReview: boolean; extras: string }>; skipped: SheetPlan["skipped"]; warnings?: string[]; /** Ключи из «Неудачных ключей» сайта — только предупреждение */ failed?: FailedHint[] };
 
 function previewOf(plan: SheetPlan): SheetPreview {
   return {
-    tab: plan.tab, total: plan.total, taken: plan.taken, skipped: plan.skipped,
+    tab: plan.tab, total: plan.total, taken: plan.taken, skipped: plan.skipped, warnings: plan.warnings,
     ready: plan.ready.map((r) => ({
       row: r.sheetRow, keyword: r.keyword, recipe: `№${r.recipeNumber} · ${r.recipeName}`, photoReview: !!r.photoReview,
       extras: [r.yearInUrlPercent != null && `год в URL ${r.yearInUrlPercent}%`, r.search?.country && `гео ${r.search.country}`, r.search?.language && `язык ${r.search.language}`, r.search?.freshness && `свежесть ${r.search.freshness}`].filter(Boolean).join(", "),

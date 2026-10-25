@@ -266,7 +266,7 @@ export type SheetRow = {
 };
 
 /** Чтение вкладки сайта: все строки с ключом. Ничего не пишет. */
-export async function readSheet(site: SheetSite, sheetUrl: string): Promise<{ spreadsheetId: string; tab: string; rows: SheetRow[] }> {
+export async function readSheet(site: SheetSite, sheetUrl: string): Promise<{ spreadsheetId: string; tab: string; rows: SheetRow[]; columns?: Partial<Record<ColKey, string>> }> {
   const spreadsheetId = spreadsheetIdOf(sheetUrl);
   const tab = await resolveTab(spreadsheetId, site);
   const values = await sheetsFetch<{ values?: unknown[][] }>(rangePath(spreadsheetId, `${quoteTab(tab)}!A1:${LAST_COL}${MAX_ROWS}`));
@@ -274,6 +274,9 @@ export async function readSheet(site: SheetSite, sheetUrl: string): Promise<{ sp
   if (rows.length < 2) return { spreadsheetId, tab, rows: [] };
   const idx = headerIndex(rows[0]);
   if (idx.keyword === undefined) throw new Error(`Во вкладке «${tab}» нет колонки Keyword: первая строка должна быть строкой заголовков`);
+  // Где какая колонка по заголовкам («J · Статус») — для подсказки, если заголовки разъехались с данными.
+  const columns: Partial<Record<ColKey, string>> = {};
+  for (const [k, at] of Object.entries(idx) as [ColKey, number][]) columns[k] = `${colLetter(at)} · ${String(rows[0][at] ?? "").trim()}`;
   const out = rows.slice(1).map((r, i): SheetRow => {
     const get = (k: ColKey) => { const at = idx[k]; return at === undefined ? "" : String(r[at] ?? "").trim(); };
     const mode = get("pipeline_mode");
@@ -293,8 +296,11 @@ export async function readSheet(site: SheetSite, sheetUrl: string): Promise<{ sp
       mode: /2/.test(mode) ? 2 : mode ? 1 : null,
     };
   }).filter((r) => r.keyword);
-  return { spreadsheetId, tab, rows: out };
+  return { spreadsheetId, tab, rows: out, columns };
 }
+
+/** Значения колонки «Статус», которые ставит сервис (и их английские варианты) — всё остальное там быть не должно. */
+const KNOWN_STATUS = new Set<string>([...Object.values(SHEET_STATUS), "queued", "in progress", "draft", "published", "error", "deleted", "done", "готово"].map((s) => s.toLowerCase()));
 
 /** Заголовки вкладки; при `ensureStatus` колонка «Статус» создаётся справа от последнего заголовка (оригинал :203-210). */
 async function tabHeader(spreadsheetId: string, tab: string, ensureStatus = false): Promise<Partial<Record<ColKey, number>>> {
@@ -423,6 +429,8 @@ export type SheetPlan = {
   taken: number;
   ready: SheetReadyRow[];
   skipped: Array<{ row: number; keyword: string; reason: string }>;
+  /** Похоже на ошибку в таблице (например, заголовки разъехались с данными) — показывается до запуска */
+  warnings: string[];
 };
 
 /**
@@ -430,7 +438,17 @@ export type SheetPlan = {
  * ArticleQueuePanel.importFromSheets :472-530). Причины пропуска — списком, чтобы показать до запуска.
  */
 export async function planSheetImport(site: SheetSite, sheetUrl: string): Promise<SheetPlan> {
-  const { spreadsheetId, tab, rows } = await readSheet(site, sheetUrl);
+  const { spreadsheetId, tab, rows, columns } = await readSheet(site, sheetUrl);
+  // В «Статусе» не статусы (qunex.online, 2026-10-25: заголовки H–J сдвинуты, в «Статусе» язык «en») — строки молча
+  // считались взятыми. Строки с таким значением всё равно не берём (гео/язык прочитаются не из тех колонок), но говорим почему.
+  const warnings: string[] = [];
+  const odd = new Map<string, number>();
+  for (const r of rows) if (r.status && !KNOWN_STATUS.has(r.status.toLowerCase())) odd.set(r.status, (odd.get(r.status) ?? 0) + 1);
+  if (odd.size) {
+    const sample = [...odd].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([v, n]) => `«${v}» — ${n}`).join(", ");
+    const map = (["status", "photo_geo", "photo_language"] as const).map((k) => columns?.[k] && `${k === "status" ? "Статус" : k === "photo_geo" ? "Гео" : "Язык"}: ${columns[k]}`).filter(Boolean).join("; ");
+    warnings.push(`В колонке «Статус» стоят не статусы (${sample} строк). Похоже, заголовки разъехались с данными: сервис читает колонки по первой строке (${map}). Такие строки считаются уже взятыми — поправьте заголовки, чтобы над каждой колонкой стояло её название, и нажмите «Прочитать заново».`);
+  }
   // Уже взятые в работу и опубликованные темы повторно не подтягиваются
   const fresh = rows.filter((r) => !r.publishUrl && !r.status);
   const [recipes, linked] = await Promise.all([
@@ -470,5 +488,5 @@ export async function planSheetImport(site: SheetSite, sheetUrl: string): Promis
       search: { country: r.geo?.toLowerCase() ?? undefined, language: r.language ?? undefined, freshness: r.freshness ?? undefined },
     });
   }
-  return { spreadsheetId, tab, total: rows.length, taken: rows.length - fresh.length + already, ready, skipped };
+  return { spreadsheetId, tab, total: rows.length, taken: rows.length - fresh.length + already, ready, skipped, warnings };
 }

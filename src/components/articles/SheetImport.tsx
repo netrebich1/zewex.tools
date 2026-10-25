@@ -72,6 +72,7 @@ export function SheetImport({ siteId, defaultUrl, domain, sheets, onCount }: Pro
             {preview.skipped.length > 0 && <span className="text-warn">пропустим: {preview.skipped.length}</span>}
           </div>
 
+          {(preview.warnings ?? []).map((w) => <Alert key={w} tone="danger">{w}</Alert>)}
           {preview.skipped.length > 0 && (
             <Alert tone="warn">
               <div className="font-medium">Эти строки не будут взяты — исправьте их в таблице и нажмите «Прочитать заново»:</div>
