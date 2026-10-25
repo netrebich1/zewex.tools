@@ -236,6 +236,8 @@ export function autostartDiagnostics(site: DiagSite, counts: AutostartCounts, se
     if (!settings.photoMaster) out.push({ bad: true, text: `Мастер-выключатель «Поиск фото» выключен — ждут ${counts.photoWait}` });
     else if (!a.photoEnabled) out.push({ bad: true, text: `Поиск фото на сайте выключен — ждут ${counts.photoWait}. Включите переключатель` });
     else if (counts.photoRun >= a.photoLimit) out.push({ text: `Поиск фото: занято ${counts.photoRun} из ${a.photoLimit}, ждут ${counts.photoWait}` });
+    // Автобаланс очереди (worker/articles/queue.ts): перед написанием больше статей, чем лимит написания, — новые подборы ждут.
+    else if (a.writingEnabled && settings.writingMaster && counts.writeWait > a.writingLimit) out.push({ text: `Новые подборы фото на паузе: перед написанием ждут ${counts.writeWait} (больше лимита написания ${a.writingLimit}) — места отданы написанию` });
     else {
       const miss = missingSlots(site.slots, "photos");
       if (miss.length) out.push({ bad: true, text: `Нет ключей для слота: ${miss.join(", ")} — назначьте ключ владельцу сайта` });

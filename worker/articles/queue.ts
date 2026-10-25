@@ -102,6 +102,15 @@ export async function claimArticle(workerId: string): Promise<Article | null> {
 
       // Открытые пары сайт × фаза: сайт активен, фаза включена (сайт и мастер-выключатель), лимит не занят.
       const sites = await tx.artSite.findMany({ where: { isActive: true }, select: { id: true, settings: true, isActive: true } });
+      // Автобаланс (2026-10-25, qunex.online: фото в 29 потоков обгоняли написание с лимитом 20, перед написанием копилось 65
+      // статей, а потолок воркера был занят фото): если перед написанием сайта ждёт больше статей, чем его лимит написания,
+      // новые подборы фото этого сайта не начинаются — места воркера уходят написанию. Начатые подборы доходят до конца.
+      const writeQueue = await tx.article.groupBy({
+        by: ["siteId"],
+        where: { status: "PENDING", stage: { in: stagesOfPhase("writing") }, OR: [{ nextRunAt: null }, { nextRunAt: { lte: new Date() } }] },
+        _count: { _all: true },
+      });
+      const writeWaiting = new Map(writeQueue.map((r) => [r.siteId, r._count._all]));
       const rulesBySite = new Map<string, SiteRules>();
       const open: Prisma.Sql[] = [];
       for (const site of sites) {
@@ -109,7 +118,10 @@ export async function claimArticle(workerId: string): Promise<Article | null> {
         rulesBySite.set(site.id, rules);
         for (const phase of PHASES) {
           if (!rules.enabled[phase] || (phaseRunning.get(`${site.id}:${phase}`) ?? 0) >= rules.limit[phase]) continue;
-          open.push(Prisma.sql`(siteId = ${site.id} AND stage IN (${Prisma.join(stagesOfPhase(phase))}))`);
+          const backpressure = phase === "photos" && rules.enabled.writing && (writeWaiting.get(site.id) ?? 0) > rules.limit.writing;
+          const stages = backpressure ? stagesOfPhase(phase).filter((s) => s !== "search" && s !== "concept") : stagesOfPhase(phase);
+          if (!stages.length) continue;
+          open.push(Prisma.sql`(siteId = ${site.id} AND stage IN (${Prisma.join(stages)}))`);
         }
       }
       if (!open.length) return null;
