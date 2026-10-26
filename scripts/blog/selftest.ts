@@ -12,7 +12,7 @@ import { shopPageSignal } from "../../worker/blog/stages/photoFilter";
 import { junkPhotoSignal, offPuttingSignal } from "../../src/lib/blog/photo/ratePrompt";
 import { applyScenario, deferredFormatOf, pickScenario } from "../../src/lib/blog/scenarios";
 import { enforceStructure, fixLeadingNumber, splitItems } from "../../src/lib/blog/structure";
-import { headerIndex as blogSheetHeaders } from "../../src/lib/blog/sheets";
+import { headerIndex as blogSheetHeaders, keywordAndTopic } from "../../src/lib/blog/sheets";
 import { inventedExperience } from "../../src/lib/blog/qualityCheck";
 import type { BlogBrief } from "../../src/lib/blog/types";
 import { isoDuration, judgeDecision, prefilterVideos, videoEmbedHtml, videoObject, type VideoCandidate } from "../../src/lib/blog/video";
@@ -256,6 +256,15 @@ function scenarioCheck() {
   assert.equal(h1.keyword, 2); assert.equal(h1.topic, 4); assert.equal(h1.article_type, undefined, "«Тип статьи в топ-10» — не колонка портала"); assert.equal(h1.status, 5);
   const h2 = blogSheetHeaders(["Keyword", "Тема статьи", "Focus Keyword", "Год в URL", "Тип статьи", "Статус", "URL Draft", "Data Draft", "Publish URL", "Data Publish"]);
   assert.deepEqual([h2.keyword, h2.topic, h2.focus_keyword, h2.year_in_url, h2.article_type, h2.status, h2.url_draft, h2.data_draft, h2.publish_url, h2.data_publish], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  // Формат ядер «Статей»: Keyword = заголовок, SEO Keyword = ключ; «Сценарий»/«Режим» не мешают
+  const h3 = blogSheetHeaders(["Keyword", "SEO Keyword", "Focus Keyword", "Сценарий", "Режим"]);
+  assert.deepEqual([h3.keyword, h3.seo_keyword, h3.focus_keyword, h3.topic], [0, 1, 2, undefined]);
+  assert.deepEqual(keywordAndTopic("How to Fall Asleep Fast: 12 Sleep Hygiene Tips", "sleep", ""), { keyword: "sleep", topic: "How to Fall Asleep Fast: 12 Sleep Hygiene Tips" });
+  assert.deepEqual(keywordAndTopic("How to Fall Asleep Fast: 12 Sleep Hygiene Tips", "", ""), { keyword: "How to Fall Asleep Fast: 12 Sleep Hygiene Tips", topic: "How to Fall Asleep Fast: 12 Sleep Hygiene Tips" });
+  assert.deepEqual(keywordAndTopic("clear skin", "", "25 Clear Skin Tips"), { keyword: "clear skin", topic: "25 Clear Skin Tips" });
+  assert.deepEqual(keywordAndTopic("clear skin", "", ""), { keyword: "clear skin", topic: null });
+  assert.equal(T("How to Make Sugar Wax at Home: 3 Easy Recipes", "sugaring").scenario.key, "recipe");
+  assert.equal(T("Shower Cleaning Hacks for a Spotless Bathroom", "showering").scenario.key, "numbered");
   ok("scenarios + guards");
 }
 

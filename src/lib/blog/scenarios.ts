@@ -63,7 +63,12 @@ export const DEFERRED_SCENARIOS: Scenario[] = [
     key: "roundup_recipes", label: "Подборка рецептов", structure: "roundup",
     description: "«31 Easy Soup Recipes»: N блюд, у каждого реальное фото, 2–3 фразы о блюде и ссылка на рецепт автора. До 25 пунктов.",
     // «31 Easy Soup Recipes», «15 Healthy No-Bake Protein Balls», «Easy Zucchini Recipes» (без числа — 15 пунктов)
-    match: ({ topic }) => (RECIPE_RE.test(topic) && !/^\s*how to make\b(?![^:]*:\s*\d)/i.test(topic)) || (listNumber(topic, FOOD) != null && FOOD.test(topic)),
+    // «How to Make Sugar Wax: 3 Easy Recipes» — не подборка, а рецепт с вариантами (подборка — от 6 блюд)
+    match: ({ topic }) => {
+      const n = listNumber(topic, RECIPE_RE) ?? listNumber(topic, FOOD);
+      if (n != null && n < 6) return false;
+      return (RECIPE_RE.test(topic) && !/^\s*how to make\b(?![^:]*:\s*\d)/i.test(topic)) || (listNumber(topic, FOOD) != null && FOOD.test(topic));
+    },
     overrides: { source: "research", video: { embed: "off" }, aiImages: { mode: "off" }, length: { min: 900, max: 2600 } },
     count: { def: 15, max: 25 }, example: "31 Easy Soup Recipes Even Picky Eaters Love",
   },
@@ -116,7 +121,7 @@ export const SCENARIOS: Scenario[] = [
     match: ({ topic, keyword }) => {
       const t = topic || keyword;
       if (/\brecipe\b/i.test(t) && !/\brecipes\b/i.test(t)) return true;
-      const DIY = /\b(lotion|scrub|body butter|cuticle oil|hair mask|face mask|cleaner|spray|shots?|latte|matcha|pudding|granola|broth|tea|golden milk|gel|serum|soap|candle|deodorant|toner|mouthwash|detergent|air freshener)\b/i;
+      const DIY = /\b(lotion|scrub|body butter|cuticle oil|hair mask|face mask|cleaner|spray|shots?|latte|matcha|pudding|granola|broth|tea|golden milk|gel|serum|soap|candle|deodorant|toner|mouthwash|detergent|air freshener|sugar wax|wax|lip balm|bath bombs?|hair oil|shampoo|conditioner)\b/i;
       return (/\bhow to make\b/i.test(t) && (FOOD.test(t) || DIY.test(t))) || (/\b(diy|homemade)\b/i.test(t) && DIY.test(t) && listNumber(t) == null)
         || (/\b(homemade|healthy|easy)\b/i.test(t) && FOOD.test(t) && listNumber(t) == null && !RECIPE_RE.test(t));
     },
@@ -127,7 +132,8 @@ export const SCENARIOS: Scenario[] = [
     key: "numbered", label: "Нумерованный список", structure: "numbered",
     description: "«25 Clear Skin Tips», «10 Signs You're Low in Vitamin D», «25 Best Foods for Gut Health», «How to Build Self-Discipline: 10 Proven Tips»: N пунктов, у каждого заголовок и абзац, фото на самых наглядных. До 50 пунктов.",
     // + списки без числа в заголовке: «Top High-Fiber Foods», «Foods That Lower Blood Pressure», «B12 Deficiency Signs and Foods»
-    match: ({ topic }) => (listNumber(topic) != null && NUMBERED_NOUNS.test(topic)) || (/\b(foods|drinks|remedies|signs|symptoms|cheat sheet)\b/i.test(topic) && !/^\s*how to\b/i.test(topic)),
+    // + без числа: «Shower Cleaning Hacks for a Spotless Bathroom», «Running Tips for Beginners», «Top High-Fiber Foods»
+    match: ({ topic }) => (listNumber(topic) != null && NUMBERED_NOUNS.test(topic)) || (/\b(foods|drinks|remedies|signs|symptoms|cheat sheet|hacks|tips|tricks|habits|secrets)\b/i.test(topic) && !/^\s*how to\b/i.test(topic)),
     overrides: { source: "research", video: { embed: "off" }, aiImages: { mode: "off" }, length: { min: 900, max: 4000 } },
     count: { def: 12, max: 50 }, example: "25 Clear Skin Tips That Actually Work",
   },

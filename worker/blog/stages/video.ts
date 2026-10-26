@@ -14,6 +14,7 @@ import { parseModelJsonSafe } from "@/lib/articles/text/jsonRepair";
 import { stageModel } from "@/lib/blog/prompts";
 import { SLOTS, type BlogBrief } from "@/lib/blog/types";
 import { candidatesFromDfs, judgeDecision, prefilterVideos, transcriptFromDfs, VIDEO_LIMITS, type BlogVideoState, type VideoBrief, type VideoCandidate, type VideoJudge } from "@/lib/blog/video";
+import { searchPhraseOf } from "@/lib/blog/text";
 import type { StageHandler } from "./index";
 
 const JUDGE_SYSTEM = `You check whether a YouTube video is good enough to embed in a blog article and would not embarrass it. You see the article topic, the research summary and the video transcript with timestamps.
@@ -46,7 +47,9 @@ export const videoStage: StageHandler = async (ctx) => {
 
   // 1) Выдача YouTube
   await ctx.tick("Видео: выдача YouTube");
-  const s = await dfsRequest(ctx.ai, "serp/youtube/organic/live/advanced", [{ keyword: post.keyword, location_code: 2840, language_code: "en", device: "desktop", block_depth: 20 }]);
+  // Запрос YouTube: по теме статьи (заголовку), если она есть — короткий SEO-ключ («showering») ищет слишком широко
+  const ytQuery = post.topic?.trim() ? searchPhraseOf(post.topic) : post.keyword;
+  const s = await dfsRequest(ctx.ai, "serp/youtube/organic/live/advanced", [{ keyword: ytQuery, location_code: 2840, language_code: "en", device: "desktop", block_depth: 20 }]);
   cost += s.costUsd ?? 0;
   if (!s.ok) {
     const st: BlogVideoState = { source, embed, videoFirst: false, note: `выдача YouTube не получена: ${s.error ?? s.status}`, candidates: [], chosen: null, costUsd: cost, at: new Date().toISOString() };
@@ -68,7 +71,7 @@ export const videoStage: StageHandler = async (ctx) => {
   }
 
   // 3) Субтитры + 4) оценка содержания
-  const topic = `Article topic: "${post.keyword}"\nResearch summary: ${brief?.summary?.slice(0, 600) ?? "-"}\nKey materials: ${(brief?.materials ?? []).slice(0, 8).join("; ") || "-"}\nKey dos: ${(brief?.dos ?? []).slice(0, 6).join("; ") || "-"}`;
+  const topic = `Article topic: "${post.topic?.trim() || post.keyword}" (keyword: "${post.keyword}")\nResearch summary: ${brief?.summary?.slice(0, 600) ?? "-"}\nKey materials: ${(brief?.materials ?? []).slice(0, 8).join("; ") || "-"}\nKey dos: ${(brief?.dos ?? []).slice(0, 6).join("; ") || "-"}`;
   const transcripts = new Map<string, string>();
   for (const v of picked) {
     await ctx.tick(`Видео: субтитры и оценка «${v.title.slice(0, 40)}»`);

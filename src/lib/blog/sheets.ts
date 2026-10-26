@@ -32,6 +32,8 @@ const MAX_ROWS = 5000;
 const COLUMNS: Record<string, { aliases: string[]; exact?: boolean }> = {
   keyword: { aliases: ["keyword", "ключ"] },
   topic: { aliases: ["тема статьи", "тема", "topic", "article title", "заголовок"] },
+  /** Формат ядер «Статей»: Keyword = заголовок статьи, SEO Keyword = короткий ключ Pinterest */
+  seo_keyword: { aliases: ["seo keyword", "seo"] },
   focus_keyword: { aliases: ["focus keyword", "фокус-ключ", "фокус ключ"] },
   year_in_url: { aliases: ["год в url", "year in url"] },
   status: { aliases: ["статус", "status"] },
@@ -44,9 +46,15 @@ const COLUMNS: Record<string, { aliases: string[]; exact?: boolean }> = {
 type ColKey = keyof typeof COLUMNS;
 
 /** Подсказка в интерфейсе и пример таблицы: какие колонки нужны. */
+/**
+ * Два понятных импорту вида таблицы:
+ *  - ядра (как у «Статей»): Keyword = заголовок статьи, SEO Keyword = короткий ключ Pinterest, Focus Keyword; колонки
+ *    «Сценарий» и «Режим» допускаются и не используются (формат определяет система, проверка — в настройках сайта);
+ *  - явный: Keyword = ключ, «Тема статьи» = заголовок.
+ */
 export const BLOG_SHEET_COLUMNS: Array<{ title: string; note: string; required?: boolean; report?: boolean; example?: string }> = [
-  { title: "Keyword", note: "ключ — как его ищут в Pinterest", required: true, example: "Clear skin" },
-  { title: "Тема статьи", note: "заголовок статьи; по нему система определяет формат (список, рецепт, инструкция…) и число пунктов. Пусто — по ключу", example: "25 Clear Skin Tips That Actually Work" },
+  { title: "Keyword", note: "заголовок статьи (как в ядрах) — по нему система определяет формат и число пунктов; или просто ключ, если есть колонка «Тема статьи»", required: true, example: "How to Fall Asleep Fast: 12 Sleep Hygiene Tips" },
+  { title: "SEO Keyword", note: "короткий ключ Pinterest (по нему SEO-проверки и поиск видео); пусто — ключ берётся из заголовка", example: "sleep" },
   { title: "Focus Keyword", note: "необязательно: фокус-ключ для Yoast; пусто — ключ", example: "" },
   { title: "Год в URL", note: "необязательно: да / нет / процент 0–100; пусто — как в сценарии", example: "" },
   { title: "Тип статьи", note: "заполняет портал: какой формат определила система", report: true, example: "Нумерованный список · 25 пунктов" },
@@ -56,6 +64,19 @@ export const BLOG_SHEET_COLUMNS: Array<{ title: string; note: string; required?:
 ];
 
 const normHeader = (v: unknown) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+
+/** Похоже на заголовок статьи, а не на ключ: от 4 слов или с двоеточием / числом в начале. */
+const looksLikeTitle = (s: string) => s.split(/\s+/).filter(Boolean).length >= 4 || /:|^\d+\s/.test(s);
+
+/**
+ * Ключ и тема строки. «Тема статьи» есть — Keyword это ключ. Нет — формат ядер: Keyword это заголовок статьи (тема),
+ * ключ — SEO Keyword, а если он пуст — поисковая фраза из заголовка (это сделает запуск: searchPhraseOf).
+ */
+export function keywordAndTopic(keywordCell: string, seoCell: string, topicCell: string): { keyword: string; topic: string | null } {
+  if (topicCell) return { keyword: keywordCell || seoCell, topic: topicCell };
+  if (looksLikeTitle(keywordCell)) return { keyword: seoCell || keywordCell, topic: keywordCell };
+  return { keyword: keywordCell || seoCell, topic: null };
+}
 
 export function headerIndex(headerRow: unknown[]): Partial<Record<ColKey, number>> {
   const out: Partial<Record<ColKey, number>> = {};
@@ -110,8 +131,9 @@ export async function readBlogSheet(site: SheetSite, sheetUrl: string): Promise<
   for (const [k, at] of Object.entries(idx) as [ColKey, number][]) columns[k] = `${colLetter(at)} · ${String(rows[0][at] ?? "").trim()}`;
   const out = rows.slice(1).map((r, i): BlogSheetRow => {
     const get = (k: ColKey) => { const at = idx[k]; return at === undefined ? "" : String(r[at] ?? "").trim(); };
+    const { keyword, topic } = keywordAndTopic(get("keyword"), get("seo_keyword"), get("topic"));
     return {
-      row: i + 2, keyword: get("keyword"), topic: get("topic") || null, focusKeyword: get("focus_keyword") || null,
+      row: i + 2, keyword, topic, focusKeyword: get("focus_keyword") || null,
       yearInUrl: parseYearInUrl(get("year_in_url")), status: get("status") || null, publishUrl: get("publish_url") || null,
     };
   }).filter((r) => r.keyword);
@@ -134,7 +156,7 @@ export async function planBlogSheetImport(site: SheetSite, sheetUrl: string): Pr
     const sample = [...odd].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([v, n]) => `«${v}» — ${n}`).join(", ");
     warnings.push(`В колонке «Статус» (${columns.status ?? "?"}) стоят не статусы (${sample} строк). Похоже, заголовки разъехались с данными. Такие строки считаются уже взятыми — поправьте заголовки и нажмите «Прочитать заново».`);
   }
-  if (columns.topic === undefined) warnings.push("Во вкладке нет колонки «Тема статьи»: формат будет определяться только по ключу. Добавьте колонку с заголовками статей — так система точнее выберет формат и число пунктов.");
+  if (columns.topic === undefined && !rows.some((r) => r.topic)) warnings.push("Во вкладке нет колонки «Тема статьи»: формат будет определяться только по ключу. Добавьте колонку с заголовками статей — так система точнее выберет формат и число пунктов.");
   const fresh = rows.filter((r) => !r.publishUrl && !r.status);
   const linked = await prisma.blogPost.findMany({ where: { siteId: site.id, sheetTab: tab, sheetRow: { in: fresh.map((r) => r.row) }, status: { notIn: ["FAILED", "STOPPED"] } }, select: { sheetRow: true } });
   const inQueue = new Set(linked.map((a) => a.sheetRow));

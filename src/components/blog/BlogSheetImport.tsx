@@ -51,7 +51,7 @@ export function BlogSheetImport({ siteId, defaultUrl, domain, sheets, onCount }:
           <button type="button" className="btn-primary" onClick={read} disabled={loading || !url.trim()}>{loading ? "Читаю…" : preview ? "Прочитать заново" : "Прочитать таблицу"}</button>
         </div>
       </Field>
-      <p className="help">Колонки: <b>Keyword</b> (обязательно) и <b>Тема статьи</b> (заголовок — по нему система сама выберет формат), по желанию Focus Keyword и Год в URL. Сценарий, режим, гео и язык фото в таблице не нужны. Берутся строки без «Статуса» и без Publish URL.</p>
+      <p className="help">Подходит формат ядер, как у «Статей»: <b>Keyword</b> — заголовок статьи (по нему система сама выберет формат), <b>SEO Keyword</b> — короткий ключ Pinterest, <b>Focus Keyword</b>. Колонки «Сценарий» и «Режим» можно оставить — они не используются. Можно и так: Keyword = ключ + отдельная колонка «Тема статьи». По желанию — «Год в URL». Берутся строки без «Статуса» и без Publish URL.</p>
       {error && <Alert tone="danger">{error}</Alert>}
       {preview && (
         <>
