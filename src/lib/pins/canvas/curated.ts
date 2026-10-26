@@ -37,6 +37,8 @@ const fonts = (main: string, ...alts: string[]) => {
 
 const base = { rev: 4, tags: ["zewex"], domain: "dom-plain", shadow: "none" as const };
 const base27 = { rev: 4, tags: ["zewex", "2027"], domain: "dom-plain", shadow: "none" as const };
+/** Блоговые стили: тег `blog` + типы статей `k:<тип>`, к которым стиль подходит (src/lib/pins/articleKind.ts). */
+const baseBlog = (...kinds: string[]) => ({ rev: 4, tags: ["zewex", "blog", ...kinds.map((k) => `k:${k}`)], domain: "dom-plain", shadow: "none" as const });
 
 export const CURATED_STYLES: Array<{ id: string; category: string; spec: StyleSpec }> = [
   /* ======================================================================
@@ -559,6 +561,194 @@ export const CURATED_STYLES: Array<{ id: string; category: string; spec: StyleSp
       title: { font: "display", case: "upper", weight: 800, align: "center", maxLines: 3, minSize: 80, maxSize: 130, leading: 0.92 },
       plate: { kit: "plate-tape-flat" }, overlay: 0.4, domain: "dom-corner",
       cta: { kit: "cta-skew-solid", arrow: "none", case: "upper" }, grid: { gutter: 8, radius: 0 },
+    },
+  },
+  /* ======================================================================
+   * Блоговые статьи (zxb:*, категория blog) — 2026-10-26
+   * Для информационных статей (как сделать, советы, чек-лист, проблема и решение, почему, какой выбрать,
+   * рецепт, план). Тег `blog` убирает стиль из подборок идей; теги `k:<тип>` говорят, к каким статьям он идёт
+   * (src/lib/pins/articleKind.ts). Надзаголовок ставится по типу статьи («Step-by-step guide», «Checklist»…),
+   * цифра — число шагов / пунктов статьи.
+   * ==================================================================== */
+  {
+    // Крупная цифра шагов над заголовком: «7» + «Steps to Curl Hair with a Flat Iron».
+    id: "zxb:steps-hero", category: "blog",
+    spec: {
+      ...baseBlog("how_to", "plan", "tips"), name: "Блог · Крупная цифра шагов", counts: [1, 2, 3], layout: "lay-hero-number",
+      ...fonts("zx-montserrat", "zx-inter-tight", "zx-onest", "zx-madefor"),
+      palettes: pal("zx-cloud-cobalt", "zx-mint-ink", "zx-lavender-ink", "zx-cloud-coral"), color: "palette",
+      title: { font: "sans", case: "title", weight: 800, align: "center", maxLines: 3, maxSize: 92 },
+      number: { kit: "num-plain", place: "np-above", mode: "required" },
+      cta: { kit: "cta-pill-solid", arrow: "none", case: "upper" }, domain: "dom-tick", grid: { gutter: 10, radius: 14 },
+    },
+  },
+  {
+    // Спокойный гайд: фото сверху, плотная лента с заголовком снизу, без цифры.
+    id: "zxb:guide-band", category: "blog",
+    spec: {
+      ...baseBlog("how_to", "explain", "fix"), name: "Блог · Лента «гайд»", counts: [1, 2, 3], layout: "lay-band-bottom",
+      ...fonts("zx-lora-inter", "zx-spectral-onest", "zx-playfair-montserrat", "zx-notoserif-golos"),
+      palettes: pal("zx-forest-cream", "zx-paper-ink", "zx-navy-peach", "zx-sage-paper"), color: "palette",
+      title: { font: "display", case: "title", weight: 700, align: "center", maxLines: 3, maxSize: 90 },
+      domain: "dom-rule",
+      cta: { kit: "cta-text-solid", arrow: "none", case: "upper" }, grid: { gutter: 0, radius: 0 },
+    },
+  },
+  {
+    // Редакционный заголовок сверху, антиква, цифра мелко над заголовком (если есть).
+    id: "zxb:editorial-top", category: "blog",
+    spec: {
+      ...baseBlog("how_to", "tips", "explain"), name: "Блог · Редакционный верх", counts: [2, 3, 4], layout: "lay-top-editorial",
+      ...fonts("zx-playfair-montserrat", "zx-prata-manrope", "zx-cormorant-jost", "zx-forum-tenor"),
+      palettes: pal("zx-rust-cream", "zx-cloud-cobalt", "zx-choco-cream", "zx-forest-cream"), color: "palette",
+      title: { font: "display", case: "title", weight: 700, align: "center", maxLines: 3, maxSize: 88 },
+      number: { kit: "num-plain", place: "np-above", mode: "optional" },
+      domain: "dom-spaced",
+      cta: { kit: "cta-pill-outline", arrow: "none", case: "upper" }, grid: { gutter: 12, radius: 10 },
+    },
+  },
+  {
+    // Список советов: крупная цифра в круге сверху, жирный гротеск, фото снизу.
+    id: "zxb:tips-circle", category: "blog",
+    spec: {
+      ...baseBlog("tips", "checklist"), name: "Блог · Советы с цифрой в круге", counts: [2, 3, 4], layout: "lay-hero-number-top",
+      ...fonts("zx-unbounded-manrope", "zx-montserrat", "zx-bricolage-inter", "zx-onest"),
+      palettes: pal("zx-mustard-ink", "zx-royal-blue", "zx-hotpink-cream", "zx-emerald-bold"), color: "palette",
+      title: { font: "sans", case: "upper", weight: 800, align: "center", maxLines: 3, maxSize: 84 },
+      number: { kit: "num-circle-solid", place: "np-above", mode: "required" },
+      cta: { kit: "cta-block-solid", arrow: "none", case: "upper" }, domain: "dom-plain", grid: { gutter: 10, radius: 12 },
+    },
+  },
+  {
+    // Чек-лист: текстовая плитка среди фото, «сохрани себе» кнопкой.
+    id: "zxb:checklist-tile", category: "blog",
+    spec: {
+      ...baseBlog("checklist", "plan", "tips"), name: "Блог · Чек-лист плиткой", counts: [2, 3, 4], layout: "lay-tile",
+      ...fonts("zx-jost", "zx-geologica", "zx-raleway", "zx-inter-tight"),
+      palettes: pal("zx-mint-ink", "zx-lemon-black", "zx-cloud-lime", "zx-lavender-ink"), color: "palette",
+      title: { font: "sans", case: "title", weight: 800, align: "left", maxLines: 3, maxSize: 82 },
+      number: { kit: "num-plain", place: "np-inline", mode: "optional" },
+      cta: { kit: "cta-pill-solid", arrow: "none", case: "title" }, domain: "dom-tick", grid: { gutter: 12, radius: 18 },
+    },
+  },
+  {
+    // Проблема и решение: тёмная плашка поверх фото, контрастный капс.
+    id: "zxb:fix-contrast", category: "blog",
+    spec: {
+      ...baseBlog("fix", "explain"), name: "Блог · Быстрое решение (контраст)", counts: [1, 2], layout: "lay-contrast",
+      ...fonts("zx-oswald-madefor", "zx-fjalla-inter", "zx-sofia-cond", "zx-alumni-golos"),
+      palettes: pal("zx-cherry-black", "zx-midnight-lime", "zx-navy-peach", "zx-black-neon-lime"), color: "palette",
+      title: { font: "display", case: "upper", weight: 700, align: "center", maxLines: 3, minSize: 70, maxSize: 120, leading: 0.95, shadow: true },
+      overlay: 0.5, domain: "dom-spaced",
+      cta: { kit: "cta-pill-solid", arrow: "none", case: "upper" }, grid: { gutter: 0, radius: 0 },
+    },
+  },
+  {
+    // Объяснение: два фото рядом, заголовок снизу на цветном поле.
+    id: "zxb:explain-split", category: "blog",
+    spec: {
+      ...baseBlog("explain", "fix", "compare"), name: "Блог · Объяснение (раздел)", counts: [2, 3, 4], layout: "lay-split",
+      ...fonts("zx-inter-tight", "zx-onest", "zx-geologica", "zx-jost"),
+      palettes: pal("zx-teal-tangerine", "zx-plum-velvet", "zx-ocean-sun", "zx-royal-blue"), color: "palette",
+      title: { font: "sans", case: "sentence", weight: 800, align: "center", maxLines: 3, maxSize: 86 },
+      domain: "dom-dots",
+      cta: { kit: "cta-text-outline", arrow: "none", case: "upper" }, grid: { gutter: 10, radius: 12 },
+    },
+  },
+  {
+    // Почему так: одно большое фото, антиква снизу, тихая подача.
+    id: "zxb:why-serif", category: "blog",
+    spec: {
+      ...baseBlog("explain", "how_to"), name: "Блог · «Почему» антиквой", counts: [1, 2], layout: "lay-bottom-editorial",
+      ...fonts("zx-instrument-inter", "zx-cormorant-jost", "zx-prata-manrope", "zx-spectral-onest"),
+      palettes: pal("zx-paper-ink", "zx-sage-paper", "zx-choco-cream", "zx-winter-ice"), color: "palette",
+      title: { font: "display", case: "sentence", weight: 400, align: "center", maxLines: 3, maxSize: 96 },
+      domain: "dom-rule",
+      cta: { kit: "cta-text-solid", arrow: "none", case: "upper" }, grid: { gutter: 14, radius: 16 },
+    },
+  },
+  {
+    // Сравнение «X vs Y»: два фото сверху друг против друга, заголовок сверху.
+    id: "zxb:compare-top", category: "blog",
+    spec: {
+      ...baseBlog("compare"), name: "Блог · Сравнение (два фото)", counts: [2, 4], layout: "lay-split-top",
+      ...fonts("zx-montserrat", "zx-unbounded-onest", "zx-inter-tight", "zx-madefor"),
+      palettes: pal("zx-cloud-coral", "zx-cloud-cobalt", "zx-graphite-butter", "zx-hotpink-cream"), color: "palette",
+      title: { font: "sans", case: "upper", weight: 800, align: "center", maxLines: 3, maxSize: 86 },
+      domain: "dom-pill",
+      cta: { kit: "cta-block-solid", arrow: "none", case: "upper" }, grid: { gutter: 10, radius: 10 },
+    },
+  },
+  {
+    // Гид покупателя: товар на чистом фоне сбоку, заголовок рядом.
+    id: "zxb:buyers-side", category: "blog",
+    spec: {
+      ...baseBlog("compare", "tips"), name: "Блог · Гид покупателя (сбоку)", counts: [1, 2], layout: "lay-side-clean",
+      ...fonts("zx-geologica", "zx-jost", "zx-raleway", "zx-ysabeau"),
+      palettes: pal("zx-forest-cream", "zx-cloud-cobalt", "zx-rust-cream", "zx-mint-ink"), color: "palette",
+      title: { font: "sans", case: "title", weight: 800, align: "left", maxLines: 3, maxSize: 78 },
+      domain: "dom-plain",
+      cta: { kit: "cta-pill-solid", arrow: "none", case: "title" }, grid: { gutter: 12, radius: 14 },
+    },
+  },
+  {
+    // Рецепт: мягкий округлый шрифт, арка с фото, тёплые палитры.
+    id: "zxb:recipe-arch", category: "blog",
+    spec: {
+      ...baseBlog("recipe"), name: "Блог · Рецепт (арка)", counts: [2, 3], layout: "lay-arch-bottom",
+      ...fonts("zx-nunito", "zx-comfortaa-mulish", "zx-shantell-nunito", "zx-yeseva-raleway"),
+      palettes: pal("zx-choco-cream", "zx-rust-cream", "zx-olive-pistachio", "zx-cherry-rose"), color: "palette",
+      title: { font: "display", case: "title", weight: 800, align: "center", maxLines: 3, maxSize: 88 },
+      photo: { tone: "warm" }, domain: "dom-dots",
+      cta: { kit: "cta-pill-soft", arrow: "none", case: "upper" }, grid: { gutter: 14, radius: 22 },
+    },
+  },
+  {
+    // Рецепт-постер: фото на весь пин, лента с названием блюда.
+    id: "zxb:recipe-band", category: "blog",
+    spec: {
+      ...baseBlog("recipe"), name: "Блог · Рецепт (лента на фото)", counts: [1, 2], layout: "lay-overlay-band",
+      ...fonts("zx-playfair-montserrat", "zx-yeseva-raleway", "zx-lora-inter", "zx-bona-vibes"),
+      palettes: pal("zx-espresso-gold", "zx-terracotta", "zx-wine-blush", "zx-olive-sand"), color: "palette",
+      title: { font: "display", case: "title", weight: 700, align: "center", maxLines: 3, maxSize: 92 },
+      overlay: 0.35, domain: "dom-spaced",
+      cta: { kit: "cta-text-solid", arrow: "none", case: "upper" }, grid: { gutter: 0, radius: 0 },
+    },
+  },
+  {
+    // План на N дней / тренировка: цифра-стикер, бодрые палитры.
+    id: "zxb:plan-sticker", category: "blog",
+    spec: {
+      ...baseBlog("plan", "checklist"), name: "Блог · План со стикером", counts: [3, 4], layout: "lay-sticker-bottom",
+      ...fonts("zx-unbounded-onest", "zx-montserrat", "zx-syne-space", "zx-bricolage-inter"),
+      palettes: pal("zx-summer-azure", "zx-emerald-bold", "zx-violet-neon", "zx-cobalt-pop"), color: "palette",
+      title: { font: "sans", case: "upper", weight: 900, align: "center", maxLines: 3, maxSize: 80 },
+      number: { kit: "num-circle-solid", place: "np-above", mode: "required" },
+      cta: { kit: "cta-pill-solid", arrow: "none", case: "upper" }, domain: "dom-plain", grid: { gutter: 10, radius: 16 },
+    },
+  },
+  {
+    // Ошибки и советы громко: жёлто-чёрный постер по центру фото.
+    id: "zxb:mistakes-poster", category: "blog",
+    spec: {
+      ...baseBlog("tips", "fix"), name: "Блог · Громкий постер (ошибки, советы)", counts: [1, 2, 3], layout: "lay-overlay-center",
+      ...fonts("zx-sofia-xcond", "zx-anton-manrope", "zx-oswald-inter", "zx-alumni-golos"),
+      palettes: pal("zx-lemon-black", "zx-mustard-ink", "zx-black-neon-lime", "zx-brick-punch"), color: "palette",
+      title: { font: "display", case: "upper", weight: 900, align: "center", maxLines: 3, minSize: 110, maxSize: 170, leading: 0.92, shadow: true },
+      overlay: 0.5, domain: "dom-spaced",
+      cta: { kit: "cta-block-solid", arrow: "none", case: "upper" }, grid: { gutter: 0, radius: 0 },
+    },
+  },
+  {
+    // Универсальный «сохрани себе»: светлая полоса домена снизу, подходит любой блоговой статье.
+    id: "zxb:save-bar", category: "blog",
+    spec: {
+      ...baseBlog("how_to", "tips", "checklist", "fix", "explain", "compare", "recipe", "plan"), name: "Блог · Универсальный с полосой домена", counts: [2, 3, 4], layout: "lay-domain-bar",
+      ...fonts("zx-onest", "zx-inter-tight", "zx-geologica", "zx-madefor"),
+      palettes: pal("zx-cloud-cobalt", "zx-cloud-coral", "zx-forest-cream", "zx-navy-peach"), color: "palette",
+      title: { font: "sans", case: "title", weight: 800, align: "center", maxLines: 3, maxSize: 84 },
+      domain: "dom-bar",
+      cta: { kit: "cta-pill-outline", arrow: "none", case: "upper" }, grid: { gutter: 10, radius: 12 },
     },
   },
 ];

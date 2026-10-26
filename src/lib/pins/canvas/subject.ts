@@ -91,3 +91,55 @@ export async function subjectBoxFor(ai: AiCtx, url: string, photo: Buffer, accen
   await writeFileAtomic(rel, Buffer.from(JSON.stringify({ box, at: new Date().toISOString() }))).catch(() => {});
   return box;
 }
+
+/* ---------- v2: сравнительная оценка фото статьи для выбора на Canvas-пины ---------- */
+
+export type PhotoRank = { score: number; flags: string[] };
+
+/** Флаги, при которых фото на пин не берём, если есть из чего выбрать. */
+export const BAD_PHOTO_FLAGS: ReadonlySet<string> = new Set(["text", "collage", "blurry", "offtopic", "cut", "dark"]);
+
+/**
+ * Один вызов модели со зрением на статью: все кандидаты сразу, модель сравнивает их между собой и ставит
+ * оценки 1–10 + флаги. Рамки объектов здесь НЕ просим — совмещённый запрос портит детекцию;
+ * рамки ищет subjectBoxFor только для выбранных фото. Кэш: pins/photos/rank-<sha1(тема|ниша|адреса)>.json.
+ * null — модель не ответила (сбой не кэшируется, выбор пойдёт без оценок).
+ */
+export async function rankPhotos(ai: AiCtx, items: Array<{ url: string; photo: Buffer }>, accent: AccentType, topic: string, log?: (msg: string) => void): Promise<Map<string, PhotoRank> | null> {
+  if (!items.length) return new Map();
+  const rel = `pins/photos/rank-${sha1(`${topic}|${accent}|${items.map((i) => i.url).join("|")}`)}.json`;
+  try {
+    if (await exists(rel)) {
+      const cached = JSON.parse(await readFile(absPath(rel), "utf8")) as Record<string, PhotoRank>;
+      return new Map(Object.entries(cached));
+    }
+  } catch { /* битый кэш — пересчитаем */ }
+  try {
+    const parts: Array<Record<string, unknown>> = [{ type: "text", text: `You are a strict photo editor choosing tiles for a Pinterest collage about "${topic.slice(0, 120)}". The main subject should be ${SUBJECT_HINT[accent] ?? SUBJECT_HINT.auto}.
+Compare the ${items.length} photos below WITH EACH OTHER and score each 1-10 as a collage tile. Use the full range and spread the scores: the best photo of the set gets 9-10, an ordinary one 5-6, poor ones 1-4. Reward: sharp, well lit, attractive, clearly on-topic, subject fully visible, clean background. Penalize: blurry, dark, screenshots, big text/watermarks/logos, collages or grids, diagrams, packshots without the subject, subject cut off, off-topic, near-duplicate of a better photo in the set.
+Return JSON: {"photos":[{"n":1,"score":7,"flags":[]}, ...]} with one entry per photo in order; flags only from "blurry","dark","text","collage","cut","offtopic","duplicate".` }];
+    for (const [k, it] of items.entries()) {
+      const small = await toCleanJpeg(it.photo, { maxSide: 512, quality: 75 });
+      parts.push({ type: "text", text: `Photo ${k + 1}:` });
+      parts.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${small.data.toString("base64")}` } });
+    }
+    const res = await aiChat(ai, SLOT_TEXT_FAST, { user: parts, json: true, temperature: 0, maxTokens: 900, timeoutMs: 60_000 });
+    const list = (res.json as { photos?: Array<{ n?: unknown; score?: unknown; flags?: unknown }> } | null)?.photos;
+    if (!Array.isArray(list) || !list.length) { log?.(`photo rank: unparsed answer: ${res.text.replace(/\s+/g, " ").slice(0, 120)}`); return null; }
+    const out: Record<string, PhotoRank> = {};
+    list.forEach((e, k) => {
+      const n = Number(e?.n) || k + 1;
+      const it = items[n - 1];
+      if (!it) return;
+      out[it.url] = {
+        score: Math.max(1, Math.min(10, Number(e?.score) || 5)),
+        flags: Array.isArray(e?.flags) ? e.flags.map((f) => String(f).toLowerCase()).filter(Boolean).slice(0, 6) : [],
+      };
+    });
+    await writeFileAtomic(rel, Buffer.from(JSON.stringify(out))).catch(() => {});
+    return new Map(Object.entries(out));
+  } catch (e) {
+    log?.(`photo rank failed: ${(e as Error).message}`);
+    return null;
+  }
+}
