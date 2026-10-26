@@ -1918,6 +1918,11 @@ model BlogPost {
   /// Тема статьи от редактора (заголовок, например «25 Clear Skin Tips») — по ней определяется формат и строится H1
   topic           String      @default("") @db.VarChar(300)
   focusKeyword    String      @default("")
+  /// Строка и вкладка Google Таблицы, из которой взят ключ (src/lib/blog/sheets.ts); итог обратной записи отчёта
+  sheetRow        Int?
+  sheetTab        String?
+  sheetSyncState  String?
+  sheetSyncError  String?     @db.Text
   /// Снимок рецепта и настроек запуска (BlogRecipeSnapshot) — его исполняет воркер
   recipe          Json
   status          BlogStatus  @default(PENDING)

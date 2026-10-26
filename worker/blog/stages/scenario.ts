@@ -6,6 +6,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { YMYL_HINT, applyScenario, deferredFormatOf, pickScenario, scenarioReason, type AppliedScenario } from "@/lib/blog/scenarios";
+import { markBlogType } from "@/lib/blog/sheets";
 import type { StageHandler } from "./index";
 
 export const scenarioStage: StageHandler = async (ctx) => {
@@ -30,5 +31,7 @@ export const scenarioStage: StageHandler = async (ctx) => {
   await prisma.blogPost.update({ where: { id: post.id }, data: { recipe: { ...recipe, params, scenario: applied } as unknown as Prisma.InputJsonValue } });
   const what = [`основа: ${params.source === "video" ? "лучшее видео" : "исследование"}`, `видео: ${params.video.embed === "auto" ? "если найдётся" : "нет"}`, `ИИ-картинки: ${params.aiImages.mode === "steps" ? "да" : "нет"}`];
   if (n) what.unshift(`пунктов: ${n}`);
+  // Строка из Google Таблицы: что определила система — в колонку «Тип статьи» (не влияет на статью)
+  if (post.sheetRow) void markBlogType(post.id, `${applied.label}${n ? ` · ${n} пунктов` : ""}`).catch(() => {});
   return { summary: `Тип статьи «${applied.label}» (${applied.reason}) · ${what.join(", ")}`, details: { scenario: scenario.key, structure: scenario.structure, n, ymyl, auto, reason: applied.reason, params: { source: params.source, video: params.video, aiImages: params.aiImages.mode } } };
 };

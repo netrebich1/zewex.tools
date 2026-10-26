@@ -41,6 +41,7 @@ export function BlogSiteSettingsForm({ site, settings: s, categories, recipes }:
           </Field>
           <Field label="Год в адресе статьи, %" hint="Пусто — как в сценарии."><input name="yearInUrlPercent" type="number" min={0} max={100} className="input" defaultValue={s.yearInUrlPercent ?? ""} placeholder="как в сценарии" /></Field>
         </div>
+        <Field label="Google Таблица с ключами и темами" hint="Вкладка с названием = домен сайта. Колонки: Keyword, Тема статьи, по желанию Focus Keyword и Год в URL. Портал пишет туда тип статьи, статус, ссылку и дату."><input name="sheetUrl" className="input" defaultValue={s.sheetUrl} placeholder="https://docs.google.com/spreadsheets/d/…" /></Field>
         <p className="help">{REVIEW_MODES.find((m) => m.value === s.review)?.help}</p>
       </section>
       <section className={box}>

@@ -2,6 +2,7 @@
  * Цикл очереди инфо-статей (сервис «Pin Blog Article»). Живёт в том же процессе воркера, что очереди пинов и статей.
  * Одновременно ведётся не больше BLOG_WORKER_CONCURRENCY постов; лимиты сайтов и общий потолок — в claimPost.
  */
+import { resyncBlogSheets } from "@/lib/blog/sheets";
 import { prisma } from "@/lib/db";
 import { claimPost, requeueOrphanPosts, requeueStalePosts } from "./queue";
 import { processPost } from "./runner";
@@ -41,7 +42,11 @@ export async function blogLoop(workerId: string, shouldStop: () => boolean): Pro
   }
 }
 
+let sheetsTimer: ReturnType<typeof setInterval> | null = null;
+
 export async function blogStartup(hostPrefix: string): Promise<void> {
+  // Досылка отчёта в Google Таблицы (опубликованные статьи, у которых запись не прошла) — раз в 5 минут
+  if (!sheetsTimer) sheetsTimer = setInterval(() => resyncBlogSheets(10).then((r) => { if (r.tried) log.info(`blog sheets resync: ${r.ok}/${r.tried}`); }).catch((e) => log.warn("blog resyncBlogSheets failed", e)), 5 * 60_000);
   await prisma.blogSettings.upsert({ where: { id: "main" }, update: { workerCap: CONCURRENCY }, create: { id: "main", workerCap: CONCURRENCY } }).catch((e) => log.warn("blog: save workerCap failed", e));
   await requeueOrphanPosts(hostPrefix).catch((e) => log.warn("blog: requeue orphans failed", e));
   await requeueStalePosts().catch((e) => log.warn("blog: requeue stale failed", e));

@@ -4,6 +4,7 @@
  * потолок (BlogSettings.maxConcurrent, мастер-выключатель) считаются в той же транзакции, UPDATE … WHERE status='PENDING'
  * гарантирует одного владельца. Round-robin по сайтам: первый кандидат каждого сайта раньше вторых.
  */
+import { markBlogStatus } from "@/lib/blog/sheets";
 import { prisma } from "@/lib/db";
 import { Prisma, type BlogPost } from "@prisma/client";
 import { mergeSiteSettings } from "@/lib/blog/types";
@@ -115,6 +116,7 @@ async function giveUpInterrupted(a: { id: string; teamId: string; siteId: string
   await prisma.blogPost.update({ where: { id: a.id }, data: { status, workerId: null, leaseUntil: null, error, errorStage: a.stage, note: null } });
   await recordError({ teamId: a.teamId, siteId: a.siteId, postId: a.id, stage: a.stage, message: error, code: "interrupted", human: "воркер прерывался" });
   log.warn(`blog post ${a.id} given up after ${a.attempts} interruptions`);
+  void markBlogStatus(a.id, "error").catch(() => {});
 }
 
 const STALE_SELECT = { id: true, teamId: true, siteId: true, attempts: true, stage: true, stopRequested: true } as const;

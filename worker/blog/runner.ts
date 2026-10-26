@@ -7,6 +7,7 @@
  * кроме повторной сборки после одобрения (cursor.reviewApproved).
  */
 import { eventText, logEventByBlogSite } from "@/lib/projects/events";
+import { markBlogStatus } from "@/lib/blog/sheets";
 import { prisma } from "@/lib/db";
 import type { BlogPost, BlogStatus } from "@prisma/client";
 import { decryptSecret } from "@/lib/crypto";
@@ -286,4 +287,5 @@ async function fail(a: BlogPost, reason: string, stage?: string, c?: { code: str
   await prisma.blogPost.update({ where: { id: a.id }, data: { status, workerId: null, leaseUntil: null, error: text, errorStage: st, note: null, costUsd: await postCost(a.id).catch(() => a.costUsd) } });
   await recordError({ teamId: a.teamId, siteId: a.siteId, postId: a.id, stage: st, message: text, code: c?.code, human: c?.human });
   log.warn(`blog post ${a.id} ${status === "PUBLISH_ERROR" ? "publish error" : "failed"} at ${st}: ${text.slice(0, 200)}`);
+  if (a.sheetRow) void markBlogStatus(a.id, "error").catch(() => {});
 }

@@ -144,7 +144,7 @@ function explain(status: number, text: string, email: string): string {
   return `Google Таблицы ответили ${status}: ${text.slice(0, 300)}`;
 }
 
-async function sheetsFetch<T = unknown>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+export async function sheetsFetch<T = unknown>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   // Google: 60 чтений в минуту на пользователя. При 429/5xx ждём и пробуем снова (оригинал :55-78).
   const maxAttempts = 5;
   let relogin = false;
@@ -203,7 +203,7 @@ function headerIndex(headerRow: unknown[]): Partial<Record<ColKey, number>> {
   return out;
 }
 
-function colLetter(index: number): string {
+export function colLetter(index: number): string {
   let n = index + 1;
   let s = "";
   while (n > 0) {
@@ -235,8 +235,8 @@ function parseFreshness(raw: string): string | null {
   return null;
 }
 
-const quoteTab = (tab: string) => (/^[A-Za-z0-9_]+$/.test(tab) ? tab : `'${tab.replace(/'/g, "''")}'`);
-const rangePath = (id: string, range: string) => `/spreadsheets/${id}/values/${encodeURIComponent(range)}`;
+export const quoteTab = (tab: string) => (/^[A-Za-z0-9_]+$/.test(tab) ? tab : `'${tab.replace(/'/g, "''")}'`);
+export const rangePath = (id: string, range: string) => `/spreadsheets/${id}/values/${encodeURIComponent(range)}`;
 
 /** Что нужно знать о сайте, чтобы найти его вкладку. */
 export type SheetSite = { id: string; name: string; settings: unknown; access?: { baseUrl: string; linkDomain?: string | null; name?: string | null } | null };
@@ -247,7 +247,7 @@ export function siteDomains(site: SheetSite): string[] {
 }
 
 /** Вкладка сайта: имя вкладки = домен сайта. */
-async function resolveTab(spreadsheetId: string, site: SheetSite): Promise<string> {
+export async function resolveTab(spreadsheetId: string, site: SheetSite): Promise<string> {
   const meta = await sheetsFetch<{ sheets?: Array<{ properties?: { title?: string } }> }>(`/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`);
   const titles = (meta?.sheets ?? []).map((s) => s.properties?.title ?? "").filter(Boolean);
   const wanted = siteDomains(site);
@@ -300,7 +300,7 @@ export async function readSheet(site: SheetSite, sheetUrl: string): Promise<{ sp
 }
 
 /** Значения колонки «Статус», которые ставит сервис (и их английские варианты) — всё остальное там быть не должно. */
-const KNOWN_STATUS = new Set<string>([...Object.values(SHEET_STATUS), "queued", "in progress", "draft", "published", "error", "deleted", "done", "готово"].map((s) => s.toLowerCase()));
+export const KNOWN_STATUS = new Set<string>([...Object.values(SHEET_STATUS), "queued", "in progress", "draft", "published", "error", "deleted", "done", "готово"].map((s) => s.toLowerCase()));
 
 /** Заголовки вкладки; при `ensureStatus` колонка «Статус» создаётся справа от последнего заголовка (оригинал :203-210). */
 async function tabHeader(spreadsheetId: string, tab: string, ensureStatus = false): Promise<Partial<Record<ColKey, number>>> {
@@ -315,7 +315,7 @@ async function tabHeader(spreadsheetId: string, tab: string, ensureStatus = fals
   return idx;
 }
 
-async function batchWrite(spreadsheetId: string, data: Array<{ range: string; values: string[][] }>): Promise<void> {
+export async function batchWrite(spreadsheetId: string, data: Array<{ range: string; values: string[][] }>): Promise<void> {
   if (!data.length) return;
   await sheetsFetch(`/spreadsheets/${spreadsheetId}/values:batchUpdate`, { method: "POST", body: { valueInputOption: "USER_ENTERED", data } });
 }
@@ -332,7 +332,7 @@ export async function markRows(spreadsheetId: string, tab: string, rows: number[
 }
 
 /** Дата для колонок Data Draft / Data Publish: YYYY-MM-DD HH:MM. */
-function stamp(d = new Date()): string {
+export function stamp(d = new Date()): string {
   const p = new Intl.DateTimeFormat("sv-SE", { timeZone: STAMP_TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
   return p.replace(",", "").slice(0, 16);
 }

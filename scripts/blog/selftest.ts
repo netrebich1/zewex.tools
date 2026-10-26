@@ -12,6 +12,7 @@ import { shopPageSignal } from "../../worker/blog/stages/photoFilter";
 import { junkPhotoSignal, offPuttingSignal } from "../../src/lib/blog/photo/ratePrompt";
 import { applyScenario, deferredFormatOf, pickScenario } from "../../src/lib/blog/scenarios";
 import { enforceStructure, fixLeadingNumber, splitItems } from "../../src/lib/blog/structure";
+import { headerIndex as blogSheetHeaders } from "../../src/lib/blog/sheets";
 import { inventedExperience } from "../../src/lib/blog/qualityCheck";
 import type { BlogBrief } from "../../src/lib/blog/types";
 import { isoDuration, judgeDecision, prefilterVideos, videoEmbedHtml, videoObject, type VideoCandidate } from "../../src/lib/blog/video";
@@ -250,6 +251,11 @@ function scenarioCheck() {
     sections: [{ position: 1, kind: "steps", heading: "Steps", html: "<p>Before you start.</p><ol><li>A</li><li>B</li><li>C</li></ol><p>After.</p>", photo: null, stepsPhoto: { url: "https://x.test/ai.jpg", width: 1024, height: 1536, altText: "steps" } }],
     faq: [], conclusionHtml: "<p>End.</p>", disclaimerHtml: null, closing: null, keyword: "how to curl hair", caption: { mode: "none", template: "" } as never, jsonLd: null });
   assert.ok(built.html.indexOf("ai.jpg") < built.html.indexOf("<ol"), "step image before the list when text precedes it");
+  // Google Таблица: заголовки реальной вкладки исследования и вкладки сайта
+  const h1 = blogSheetHeaders(["№", "Направление", "Ключ (запрос в Pinterest)", "Тип статьи в топ-10", "ТЕМА СТАТЬИ (что писать)", "Статус"]);
+  assert.equal(h1.keyword, 2); assert.equal(h1.topic, 4); assert.equal(h1.article_type, undefined, "«Тип статьи в топ-10» — не колонка портала"); assert.equal(h1.status, 5);
+  const h2 = blogSheetHeaders(["Keyword", "Тема статьи", "Focus Keyword", "Год в URL", "Тип статьи", "Статус", "URL Draft", "Data Draft", "Publish URL", "Data Publish"]);
+  assert.deepEqual([h2.keyword, h2.topic, h2.focus_keyword, h2.year_in_url, h2.article_type, h2.status, h2.url_draft, h2.data_draft, h2.publish_url, h2.data_publish], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
   ok("scenarios + guards");
 }
 

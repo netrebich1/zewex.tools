@@ -167,6 +167,8 @@ export type BlogSiteSettings = {
   categories: { defaultId: number | null; rules: Array<{ pattern: string; categoryId: number }>; useAi: boolean };
   search: { country: string; language: string };
   yearInUrlPercent: number | null;
+  /** Google Таблица с ключами и темами (вкладка = домен сайта); туда же пишется отчёт */
+  sheetUrl: string;
 };
 
 export const DEFAULT_SITE_SETTINGS: BlogSiteSettings = {
@@ -176,6 +178,7 @@ export const DEFAULT_SITE_SETTINGS: BlogSiteSettings = {
   categories: { defaultId: null, rules: [], useAi: true },
   search: { country: "", language: "" },
   yearInUrlPercent: null,
+  sheetUrl: "",
 };
 
 export const SITE_LIMITS = { concurrency: [1, 30] } as const satisfies Record<string, readonly [number, number]>;
@@ -195,6 +198,7 @@ export function mergeSiteSettings(raw: unknown): BlogSiteSettings {
     categories: { ...d.categories, ...(r.categories ?? {}), rules: r.categories?.rules ?? [] },
     search: { ...d.search, ...(r.search ?? {}) },
     yearInUrlPercent: r.yearInUrlPercent ?? d.yearInUrlPercent,
+    sheetUrl: typeof r.sheetUrl === "string" ? r.sheetUrl.trim().slice(0, 1000) : d.sheetUrl,
   };
 }
 
@@ -212,7 +216,7 @@ export type BlogRunSettings = {
 };
 
 /** Ключ для запуска: поисковый ключ, тема статьи (заголовок от редактора — по нему определяется формат), фокус-ключ SEO. */
-export type KeywordInput = { keyword: string; topic?: string; focusKeyword?: string };
+export type KeywordInput = { keyword: string; topic?: string; focusKeyword?: string; /** строка Google Таблицы */ sheetRow?: number; /** «Год в URL» из строки таблицы */ yearInUrlPercent?: number };
 
 /** Снимок сценария и настроек запуска, который сохраняется в BlogPost.recipe и исполняется воркером. */
 export type BlogRecipeSnapshot = BlogRecipeShape & {

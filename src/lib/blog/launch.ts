@@ -13,8 +13,8 @@ import { firstStage } from "./stages";
 import { deferredFormatOf } from "./scenarios";
 import type { BlogRunSettings, KeywordInput } from "./types";
 
-export type LaunchInput = { siteId: string; settings: BlogRunSettings; keywords: KeywordInput[]; name?: string };
-export type LaunchResult = { runId: string; created: number; skipped: string[]; invalid: string[] };
+export type LaunchInput = { siteId: string; settings: BlogRunSettings; keywords: KeywordInput[]; name?: string; /** запуск из Google Таблицы: вкладка */ sheet?: { tab: string } };
+export type LaunchResult = { runId: string; created: number; skipped: string[]; invalid: string[]; /** строки Google Таблицы, ставшие статьями */ sheetRows: number[] };
 
 export async function launchPosts(me: CurrentUser, input: LaunchInput): Promise<LaunchResult> {
   const site = await prisma.blogSite.findUnique({ where: { id: input.siteId }, select: { id: true, teamId: true, accessId: true, isActive: true, name: true, settings: true } });
@@ -31,7 +31,7 @@ export async function launchPosts(me: CurrentUser, input: LaunchInput): Promise<
     // Вставили готовый заголовок («How to X: The Ultimate Guide») — ключом становится поисковая фраза до двоеточия.
     const keyword = searchPhraseOf(sanitizeTopic(k.keyword));
     if (!keyword || keyword.length < 3) { invalid.push(k.keyword); continue; }
-    cleaned.push({ keyword, topic: sanitizeTopic(k.topic ?? "").slice(0, 300) || undefined, focusKeyword: k.focusKeyword?.trim() || undefined });
+    cleaned.push({ ...k, keyword, topic: sanitizeTopic(k.topic ?? "").slice(0, 300) || undefined, focusKeyword: k.focusKeyword?.trim() || undefined });
   }
   const seen = new Set<string>();
   const inner: string[] = [];
@@ -52,8 +52,11 @@ export async function launchPosts(me: CurrentUser, input: LaunchInput): Promise<
   const data: Prisma.BlogPostCreateManyInput[] = fresh.map((k) => ({
     teamId: site.teamId, siteId: site.id, runId: run.id, recipeId: recipe.id, createdById: me.id,
     keyword: k.keyword, topic: k.topic ?? "", focusKeyword: k.focusKeyword ?? "",
-    recipe: snapshot as unknown as Prisma.InputJsonValue, status: "PENDING", stage: firstStage(), attempts: 0, priority: 0,
+    // «Год в URL» из строки таблицы важнее настроек запуска
+    recipe: (k.yearInUrlPercent != null ? { ...snapshot, run: { ...snapshot.run, yearInUrlPercent: k.yearInUrlPercent } } : snapshot) as unknown as Prisma.InputJsonValue,
+    status: "PENDING", stage: firstStage(), attempts: 0, priority: 0,
+    ...(input.sheet && k.sheetRow ? { sheetRow: k.sheetRow, sheetTab: input.sheet.tab } : {}),
   }));
   for (let i = 0; i < data.length; i += 50) await prisma.blogPost.createMany({ data: data.slice(i, i + 50) });
-  return { runId: run.id, created: fresh.length, skipped, invalid };
+  return { runId: run.id, created: fresh.length, skipped, invalid, sheetRows: fresh.map((k) => k.sheetRow).filter((r): r is number => typeof r === "number") };
 }

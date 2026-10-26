@@ -3,6 +3,7 @@
  * как у статей: 401/403/4xx — fatal; 5xx/429/сеть — повтор 1/3/5/10/15 мин (окно ~1 ч); медиатека сломана — раз в 20 мин;
  * часть фото не загрузилась — догрузка с растущей паузой. Окончательная ошибка — PUBLISH_ERROR (раннер).
  */
+import { writeBlogResult } from "@/lib/blog/sheets";
 import { WpError } from "@/lib/pins/wp/client";
 import { AiError } from "@/lib/pins/ai/errors";
 import { prisma } from "@/lib/db";
@@ -53,6 +54,11 @@ export const publish: StageHandler = async (ctx) => {
     await prisma.blogPost.update({ where: { id: post.id }, data: { publishAttempts: attempt } });
     const minutes = PUBLISH_BACKOFF_MIN[Math.min(ctx.retries.transient, PUBLISH_BACKOFF_MIN.length - 1)];
     return { retryInMs: minutes * 60_000, retryKind: "transient", summary: `Попытка публикации ${attempt} не удалась, повтор через ${minutes} мин: ${v.message.slice(0, 300)}`, giveUp: `Публикация не удалась после ${attempt} попыток примерно за час: ${v.message}`, details: { publishAttempts: attempt, error: v.message } };
+  }
+  // Строка из Google Таблицы: ссылка, дата, статус (на публикацию не влияет; несохранённое дошлёт resyncBlogSheets)
+  if (post.sheetRow) {
+    const r = await writeBlogResult(post.id, outcome.status === "draft" ? "draft" : "publish", outcome.url).catch((e) => ({ ok: false, error: String(e) }));
+    if (!r.ok) ctx.log(`отчёт в Google Таблицу не записан: ${"error" in r ? r.error : ""}`);
   }
   const summary = `${outcome.created ? "Создана" : "Обновлена"} запись ${outcome.status === "draft" ? "(черновик)" : ""} ${outcome.url} — фото на сайте ${outcome.photosTotal - outcome.failedUploads}/${outcome.photosTotal}`.replace(/\s+/g, " ");
   return {

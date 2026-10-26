@@ -18,6 +18,8 @@ import { canAccessBlogPost, canAccessBlogSite } from "@/lib/blog/access";
 import { BLOG, DEFAULT_SITE_SETTINGS, PROJECT_SLUG, PUBLISH_MODES, SITE_LIMITS, mergeSiteSettings, type BlogRunSettings, type BlogSiteSettings, type KeywordInput, type PublishMode, type ReviewMode } from "@/lib/blog/types";
 import { findDuplicateKeywords } from "@/lib/blog/recipes";
 import { launchPosts } from "@/lib/blog/launch";
+import { markBlogRows, planBlogSheetImport, type BlogSheetPlan } from "@/lib/blog/sheets";
+import type { SheetSite } from "@/lib/articles/sheets";
 import { absPath, makeThumb, photoRel, photoThumbRel, publicUrl, purgePostFiles, removePath, toWpJpeg, writeFileAtomic } from "@/lib/blog/storage";
 import { firstStage, isStage, stageLabel, type StageKey } from "@/lib/blog/stages";
 import { syncBlogCategories } from "@/lib/blog/wp/categories";
@@ -81,6 +83,7 @@ function settingsFromForm(f: FormData, prev: BlogSiteSettings): BlogSiteSettings
     categories: { defaultId: str(f, "catDefaultId") ? num(f, "catDefaultId", 0, 0) || null : null, rules, useAi: flag(f, "catUseAi") },
     search: { country: str(f, "searchCountry").toLowerCase().slice(0, 8), language: str(f, "searchLanguage").toLowerCase().slice(0, 8) },
     yearInUrlPercent: yearRaw === "" ? null : num(f, "yearInUrlPercent", 0, 0, 100),
+    sheetUrl: has(f, "sheetUrl") ? str(f, "sheetUrl").slice(0, 1000) : prev.sheetUrl,
   };
 }
 
@@ -163,25 +166,67 @@ function parseKeywordsJson(raw: string): KeywordInput[] {
   return arr.map((x) => x as Record<string, unknown>).filter((x) => typeof x.keyword === "string").map((x) => ({ keyword: String(x.keyword), topic: typeof x.topic === "string" ? x.topic : undefined, focusKeyword: typeof x.focusKeyword === "string" ? x.focusKeyword : undefined }));
 }
 
+/** Сайт сервиса в форме, нужной модулю таблиц: домены из доступа WordPress (вкладка = домен). */
+async function sheetSiteOf(site: { id: string; name: string; settings: unknown; accessId: string | null }): Promise<SheetSite> {
+  const access = site.accessId ? await prisma.siteAccess.findUnique({ where: { id: site.accessId }, select: { baseUrl: true, linkDomain: true, name: true } }) : null;
+  return { id: site.id, name: site.name, settings: site.settings, access };
+}
+
+/**
+ * Запуск. source=sheet — ключи и темы из Google Таблицы: вкладка читается заново на сервере, взятые строки получают
+ * «в работе», ссылка на таблицу сохраняется в настройках сайта (lib/blog/sheets.ts).
+ */
 export async function launchBlogAction(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   let runId = "";
   let skipped: string[] = [];
+  let sheetWarn = "";
   try {
     const siteId = str(f, "siteId");
     const site = await siteForUser(me, siteId);
-    const settings = runSettingsFromForm(f, mergeSiteSettings(site.settings));
+    const siteSettings = mergeSiteSettings(site.settings);
+    const settings = runSettingsFromForm(f, siteSettings);
     if (!settings.recipeId) throw new Error("Выберите сценарий");
-    const keywords = parseKeywordsJson(str(f, "keywords"));
-    if (!keywords.length) throw new Error("Добавьте хотя бы один ключ");
-    const r = await launchPosts(me, { siteId, settings, keywords, name: str(f, "name") });
-    runId = r.runId; skipped = r.skipped;
+    if (str(f, "source") === "sheet") {
+      const sheetUrl = str(f, "sheetUrl").slice(0, 1000) || siteSettings.sheetUrl;
+      if (!sheetUrl) throw new Error("Укажите ссылку на Google Таблицу");
+      const plan = await planBlogSheetImport(await sheetSiteOf(site), sheetUrl);
+      if (!plan.ready.length) throw new Error(plan.skipped.length ? `Нечего запускать: ${plan.skipped.slice(0, 5).map((s) => `строка ${s.row} — ${s.reason}`).join("; ")}` : "Новых строк к запуску нет: у всех строк вкладки уже есть статус или ссылка на публикацию");
+      if (sheetUrl !== siteSettings.sheetUrl) {
+        const fresh = await prisma.blogSite.findUniqueOrThrow({ where: { id: site.id }, select: { settings: true } });
+        await prisma.blogSite.update({ where: { id: site.id }, data: { settings: { ...(fresh.settings as object ?? {}), sheetUrl } as Prisma.InputJsonValue } });
+      }
+      const r = await launchPosts(me, { siteId, settings, keywords: plan.ready, name: str(f, "name") || `${new Date().toLocaleDateString("ru-RU")} · таблица «${plan.tab}» · ${plan.ready.length}`, sheet: { tab: plan.tab } });
+      runId = r.runId; skipped = [...r.skipped, ...plan.skipped.map((s) => `строка ${s.row}: ${s.keyword} — ${s.reason}`)];
+      try { await markBlogRows(plan.spreadsheetId, plan.tab, r.sheetRows, "queued"); }
+      catch (e) { sheetWarn = `Статьи поставлены в очередь, но статус «в работе» в таблицу не записался: ${e instanceof Error ? e.message : String(e)}`.slice(0, 500); }
+    } else {
+      const keywords = parseKeywordsJson(str(f, "keywords"));
+      if (!keywords.length) throw new Error("Добавьте хотя бы один ключ");
+      const r = await launchPosts(me, { siteId, settings, keywords, name: str(f, "name") });
+      runId = r.runId; skipped = r.skipped;
+    }
   } catch (e) { return fail(e); }
   revalidatePath(BLOG);
   const q = new URLSearchParams();
+  if (sheetWarn) q.set("sheetWarn", sheetWarn);
   if (skipped.length) q.set("skipped", skipped.slice(0, 50).map((x) => x.slice(0, 160)).join("\n"));
   const qs = q.toString();
   redirect(`${BLOG}/runs/${runId}${qs ? `?${qs}` : ""}`);
+}
+
+export type BlogSheetPreview = { tab: string; total: number; taken: number; ready: Array<{ row: number; keyword: string; topic: string; expectedType: string }>; skipped: BlogSheetPlan["skipped"]; warnings: string[] };
+
+/** Предпросмотр импорта из Google Таблицы (вызывается из BlogSheetImport напрямую): что пойдёт в работу. Ничего не пишет. */
+export async function previewBlogSheet(siteId: string, sheetUrl: string): Promise<{ preview?: BlogSheetPreview; error?: string }> {
+  const me = await requireUser();
+  try {
+    const site = await siteForUser(me, siteId);
+    const url = String(sheetUrl ?? "").trim().slice(0, 1000) || mergeSiteSettings(site.settings).sheetUrl;
+    if (!url) throw new Error("Укажите ссылку на Google Таблицу");
+    const plan = await planBlogSheetImport(await sheetSiteOf(site), url);
+    return { preview: { tab: plan.tab, total: plan.total, taken: plan.taken, ready: plan.ready.map((r) => ({ row: r.sheetRow, keyword: r.keyword, topic: r.topic ?? "", expectedType: r.expectedType })), skipped: plan.skipped, warnings: plan.warnings } };
+  } catch (e) { return { error: e instanceof Error ? e.message : String(e) }; }
 }
 
 /** Проверка дубликатов ключей по сайту до запуска (вызывается из формы напрямую). */

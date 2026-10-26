@@ -19,6 +19,7 @@ export default async function BlogRunPage({ params, searchParams }: { params: Pr
   const { id } = await params;
   const query = await searchParams;
   const skipped = (sp(query, "skipped") ?? "").split("\n").filter(Boolean);
+  const sheetWarn = sp(query, "sheetWarn") ?? "";
   const run = await prisma.blogRun.findUnique({ where: { id }, include: { site: { select: { id: true, name: true, teamId: true, accessId: true } }, recipe: { select: { id: true, name: true } } } });
   if (!run || !(await canAccessBlogSite(me, run.site))) notFound();
   const s = run.settings as unknown as BlogRunSettings;
@@ -28,7 +29,8 @@ export default async function BlogRunPage({ params, searchParams }: { params: Pr
     <>
       <AutoRefresh enabled={progress.live > 0} everyMs={20_000} />
       <PageHeader back={{ href: `/pinterest/blog/sites/${run.site.id}`, label: run.site.name }} title={run.name || `Запуск ${id.slice(0, 8)}`} subtitle={`${run.site.name} · ${run.recipe?.name ?? "сценарий удалён"} · ${fmtDate(run.createdAt)}${author ? ` · ${author.name || author.email}` : ""}`} actions={<Link href={`/pinterest/blog/runs/new?site=${run.site.id}`} className="btn-ghost">Ещё запуск для сайта</Link>} />
-      {skipped.length > 0 && <div className="mb-4"><Alert tone="warn"><div className="font-medium">Пропущены ключи, которые уже есть у сайта ({skipped.length}):</div><ul className="mt-1 list-disc pl-5 text-[13px]">{skipped.map((k) => <li key={k}>{k}</li>)}</ul></Alert></div>}
+      {sheetWarn && <div className="mb-4"><Alert tone="warn">{sheetWarn}</Alert></div>}
+      {skipped.length > 0 && <div className="mb-4"><Alert tone="warn"><div className="font-medium">Пропущены ({skipped.length}):</div><ul className="mt-1 list-disc pl-5 text-[13px]">{skipped.map((k) => <li key={k}>{k}</li>)}</ul></Alert></div>}
       <div className="space-y-4">
         <Card>
           <div className="flex flex-wrap items-center gap-3">

@@ -8,12 +8,14 @@ import { launchBlogAction } from "@/actions/blog";
 import type { RecipeReadiness } from "@/lib/blog/recipes";
 import { PUBLISH_MODES, REVIEW_MODES, type BlogSiteSettings } from "@/lib/blog/types";
 import { KeywordsInput } from "./KeywordsInput";
+import { BlogSheetImport } from "./BlogSheetImport";
 
-export type RunFormSite = { id: string; name: string; defaultRecipeId: string | null; hasAccess: boolean; categoriesCount: number; settings: BlogSiteSettings };
+export type RunFormSite = { id: string; name: string; defaultRecipeId: string | null; hasAccess: boolean; categoriesCount: number; settings: BlogSiteSettings; domain: string };
 export type RunFormRecipe = { id: string; name: string; description: string | null; isDefault: boolean; length: { min: number; max: number }; images: { min: number; max: number }; readiness: RecipeReadiness };
 
 /** Новый запуск: сайт → сценарий (готовность промтов и ключей) → ключи → параметры этого запуска. */
-export function NewBlogRunForm({ sites, recipes, presetSiteId }: { sites: RunFormSite[]; recipes: RunFormRecipe[]; presetSiteId?: string }) {
+export function NewBlogRunForm({ sites, recipes, presetSiteId, sheets }: { sites: RunFormSite[]; recipes: RunFormRecipe[]; presetSiteId?: string; sheets: { connected: boolean; email: string | null } }) {
+  const [source, setSource] = useState<"list" | "sheet">("list");
   const [siteId, setSiteId] = useState(presetSiteId && sites.some((s) => s.id === presetSiteId) ? presetSiteId : sites[0]?.id ?? "");
   const site = sites.find((s) => s.id === siteId);
   const pickDefault = (s?: RunFormSite) => (s?.defaultRecipeId && recipes.some((r) => r.id === s.defaultRecipeId) ? s.defaultRecipeId : recipes.find((r) => r.readiness.ok)?.id ?? recipes[0]?.id ?? "");
@@ -71,8 +73,14 @@ export function NewBlogRunForm({ sites, recipes, presetSiteId }: { sites: RunFor
       </section>
 
       <section className="space-y-2">
-        <div className="font-medium">3. Ключи</div>
-        {site && <KeywordsInput key={site.id} siteId={site.id} onCount={setCount} />}
+        <div className="flex flex-wrap items-center gap-3"><div className="font-medium">3. Ключи и темы</div>
+          <div className="inline-flex rounded-lg border border-line p-0.5 text-[13px]">
+            <button type="button" className={`rounded-md px-3 py-1 ${source === "list" ? "bg-ink/10 font-medium" : ""}`} onClick={() => { setSource("list"); setCount(0); }}>Списком</button>
+            <button type="button" className={`rounded-md px-3 py-1 ${source === "sheet" ? "bg-ink/10 font-medium" : ""}`} onClick={() => { setSource("sheet"); setCount(0); }}>Из Google Таблицы</button>
+          </div>
+        </div>
+        {site && source === "list" && <KeywordsInput key={site.id} siteId={site.id} onCount={setCount} />}
+        {site && source === "sheet" && <BlogSheetImport key={site.id} siteId={site.id} defaultUrl={site.settings.sheetUrl} domain={site.domain} sheets={sheets} onCount={setCount} />}
       </section>
 
       <section className="space-y-2">
