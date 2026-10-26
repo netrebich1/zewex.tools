@@ -15,7 +15,41 @@ import { prisma } from "@/lib/db";
 
 export const ARTICLE_KINDS = ["how_to", "tips", "checklist", "fix", "explain", "compare", "recipe", "plan"] as const;
 export type ArticleKind = (typeof ARTICLE_KINDS)[number];
-export type ArticleInfo = { kind: ArticleKind | null; count: number | null; source: "blog" | "title" | "none" };
+export type ArticleInfo = {
+  kind: ArticleKind | null;
+  count: number | null;
+  source: "blog" | "title" | "none";
+  /** Заголовок статьи (H1 нашей статьи или страницы) — основа заголовка пина. */
+  title?: string;
+  /** Короткие пункты статьи (шаги, ошибки, советы, что понадобится) — только у статей нашего блога. */
+  points?: string[];
+  /** Пункты по разделам статьи нашего блога (steps, mistakes, tips, what_you_need, …) и полный размер каждого раздела. */
+  pointsBy?: Record<string, string[]>;
+  sizes?: Record<string, number>;
+};
+
+/** Раздел статьи, который «считает» тип статьи: его размер — число на пине («7 Steps», «24 Tips»). */
+export const PRIMARY_SECTION: Record<ArticleKind, string[]> = {
+  how_to: ["steps"], tips: ["tips", "list_item", "list_group"], checklist: ["list_group", "list_item"], fix: ["methods"],
+  explain: [], compare: [], recipe: ["steps"], plan: ["plan_table", "list_item"],
+};
+
+/**
+ * Пункты и число для конкретного блогового стиля: первый раздел из `pointsFrom` стиля, где есть хотя бы 2 пункта.
+ * Число — только у «считающих» стилей: размер показанного раздела, а для главного раздела типа — число статьи.
+ */
+export function pointsForStyle(info: ArticleInfo, style: { pointsFrom?: string[]; countable?: boolean }): { points: string[]; count: number | null; section: string | null } {
+  for (const sec of style.pointsFrom ?? []) {
+    const pts = info.pointsBy?.[sec] ?? [];
+    if (pts.length >= 2) {
+      const primary = !!info.kind && PRIMARY_SECTION[info.kind].includes(sec);
+      const size = (primary ? info.count : null) ?? info.sizes?.[sec] ?? null;
+      return { points: pts.slice(0, 5), count: style.countable && size && size >= 3 ? size : null, section: sec };
+    }
+  }
+  // Пунктов нет (статья не нашего блога): число из заголовка — только «считающим» стилям.
+  return { points: [], count: style.countable ? info.count : null, section: null };
+}
 
 export const ARTICLE_KIND_LABELS: Record<ArticleKind, string> = {
   how_to: "Как сделать (шаги)", tips: "Советы / список", checklist: "Чек-лист", fix: "Проблема и решение",
@@ -87,7 +121,28 @@ export function kindFromTitle(title?: string | null, h1?: string | null, keyword
 
 /* ------------------------------ по нашей статье ------------------------------ */
 
-type BlogLike = { recipe?: unknown; brief?: unknown; outline?: unknown };
+type BlogLike = { recipe?: unknown; brief?: unknown; outline?: unknown; h1?: string | null };
+
+/** Пункт для пина: без **разметки**, до двоеточия или первой запятой, не длиннее 6 слов. */
+function shortPoint(raw: unknown): string {
+  let t = String(raw ?? "").replace(/[*_`#]/g, "").replace(/\s+/g, " ").trim();
+  const colon = t.indexOf(":");
+  if (colon > 2 && colon < 60) t = t.slice(0, colon);
+  else t = t.split(/[.;,(]/)[0];
+  const words = t.split(" ").filter(Boolean).slice(0, 6);
+  // Обрезка по словам не должна кончаться служебным словом («…heat setting for»).
+  const TAIL = new Set(["a", "an", "the", "for", "of", "to", "and", "or", "with", "in", "on", "is", "are", "your", "you", "that", "by", "from", "but"]);
+  while (words.length > 2 && TAIL.has(words[words.length - 1].toLowerCase().replace(/[^a-z]/g, ""))) words.pop();
+  return words.join(" ").replace(/[.,;:]+$/, "");
+}
+
+/** Какие разделы статьи дают пункты для пина каждого типа (по порядку предпочтения). */
+const POINT_SECTIONS: Record<ArticleKind, string[]> = {
+  how_to: ["steps", "methods", "what_you_need", "tips"], tips: ["tips", "list_item", "mistakes", "methods"],
+  checklist: ["list_group", "list_item", "steps"], fix: ["methods", "steps", "prevention", "tips"],
+  explain: ["why_it_happens", "myths", "tips", "methods"], compare: ["comparison_table", "what_you_need", "tips"],
+  recipe: ["recipe_card", "steps", "what_you_need"], plan: ["plan_table", "steps", "list_item"],
+};
 
 /** Тип и число пунктов статьи Pin Blog Article по её сценарию и исследованию. */
 export function kindFromBlogPost(p: BlogLike): ArticleInfo {
@@ -102,11 +157,34 @@ export function kindFromBlogPost(p: BlogLike): ArticleInfo {
     how_to: "how_to", why: "explain", what_is: "explain", which: "compare", comparison: "compare", list: "tips", problem_fix: "fix", other: "how_to",
   };
   const kind = byScenario[scen.key ?? ""] ?? byIntent[intent] ?? "how_to";
-  const steps = (outline.sections ?? []).find((s) => s.kind === "steps");
-  const stepCount = Array.isArray(steps?.items) ? steps!.items!.length : 0;
-  const raw = scen.n ?? outline.listCount ?? (kind === "how_to" && stepCount ? stepCount : null);
+  const sections = (outline.sections ?? []) as Array<{ kind?: string; items?: unknown[]; keyPoints?: unknown[]; heading?: string }>;
+  const steps = sections.find((s) => s.kind === "steps");
+  const stepList = (Array.isArray(steps?.keyPoints) ? steps!.keyPoints : Array.isArray(steps?.items) ? steps!.items : []) as unknown[];
+  const raw = scen.n ?? outline.listCount ?? (kind === "how_to" && stepList.length >= 3 ? stepList.length : null);
   const count = typeof raw === "number" && raw >= 3 ? Math.floor(raw) : null;
-  return { kind, count, source: "blog" };
+  // Пункты для пина: из первого подходящего раздела; для списков — заголовки пунктов.
+  let points: string[] = [];
+  for (const k of POINT_SECTIONS[kind]) {
+    const secs = sections.filter((s) => s.kind === k);
+    const list = k === "list_item" || k === "list_group" ? secs.map((s) => s.heading) : (secs[0]?.keyPoints ?? []) as unknown[];
+    points = list.map(shortPoint).filter((p) => p.length >= 3);
+    if (points.length >= 3) break;
+  }
+  const pointsBy: Record<string, string[]> = {};
+  const sizes: Record<string, number> = {};
+  for (const s of sections) {
+    if (!s.kind) continue;
+    if (s.kind === "list_item" || s.kind === "list_group") {
+      const h = shortPoint(s.heading);
+      if (h.length >= 3) { (pointsBy[s.kind] ??= []).push(h); sizes[s.kind] = (sizes[s.kind] ?? 0) + 1; }
+      continue;
+    }
+    if (pointsBy[s.kind]) continue;
+    const kp = (Array.isArray(s.keyPoints) ? s.keyPoints : []) as unknown[];
+    const list = kp.map(shortPoint).filter((x) => x.length >= 3);
+    if (list.length) { pointsBy[s.kind] = list.slice(0, 6); sizes[s.kind] = kp.length; }
+  }
+  return { kind, count, source: "blog", title: (p.h1 ?? "").trim() || undefined, points: points.slice(0, 5), pointsBy, sizes };
 }
 
 /** Нормализованный адрес для сравнения: без протокола, www, хвостового «/», параметров и якоря. */
@@ -126,13 +204,14 @@ export async function articleKindsFor(wpConnectionId: string | null | undefined,
   if (wpConnectionId && pages.length) {
     const posts = await prisma.blogPost.findMany({
       where: { site: { accessId: wpConnectionId }, wpUrl: { not: null } },
-      select: { wpUrl: true, recipe: true, brief: true, outline: true },
+      select: { wpUrl: true, recipe: true, brief: true, outline: true, h1: true },
     }).catch(() => []);
     for (const p of posts) blogByUrl.set(normUrl(p.wpUrl), kindFromBlogPost(p));
   }
   for (const p of pages) {
     const hit = blogByUrl.get(normUrl(p.finalUrl || p.url)) ?? blogByUrl.get(normUrl(p.url));
-    out.set(p.id, hit ?? kindFromTitle(p.pageTitle, p.h1, p.keyword));
+    const info = hit ?? kindFromTitle(p.pageTitle, p.h1, p.keyword);
+    out.set(p.id, { ...info, title: info.title || (p.h1 || p.pageTitle || "").trim() || undefined });
   }
   return out;
 }

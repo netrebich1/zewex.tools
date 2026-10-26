@@ -4,6 +4,8 @@ import { generateAiPrompts } from "@/lib/pins/prompts/aiPrompt";
 import { generatePinoraPrompts, type PinoraParams } from "@/lib/pins/prompts/pinora";
 import { decideElements, pinYearFor, pinSiteName } from "@/lib/pins/prompts/elements";
 import { ideaCountFor } from "@/lib/pins/types";
+import { ARTICLE_KIND_LABELS, articleKindsFor, kindKicker, pointsForStyle } from "@/lib/pins/articleKind";
+import { getAiStyle, isBlogAiStyle } from "@/lib/pins/prompts/aiStyles";
 import { AiError } from "@/lib/pins/ai/errors";
 import type { StageHandler } from "./index";
 import { chunk, failItem, loadRunCtx, notRetryYet, okPatch, runQueue, type ItemOutcome } from "./_shared";
@@ -35,6 +37,8 @@ export const prompts: StageHandler = async (ctx) => {
     await ctx.tick({ done, total: items.length, label: `Промты ${done}/${items.length}` });
   };
 
+  // Блоговые стили получают сведения о статье: тип, надзаголовок, число пунктов, пункты из нашей статьи.
+  const kinds = items.some((i) => isBlogAiStyle(i.styleId)) ? await articleKindsFor(rc.site.wpConnectionId, rc.pages) : new Map();
   const byPage = new Map<string, PinRunItem[]>();
   for (const it of items) byPage.set(it.pageId, [...(byPage.get(it.pageId) || []), it]);
 
@@ -59,7 +63,16 @@ export const prompts: StageHandler = async (ctx) => {
           season: page.season || undefined,
           seasonWord: page.seasonWord || undefined,
           year: pinYearFor(rc.recipe.text, page),
-          styles: group.map((it) => ({ id: it.styleId || "", overrideInstruction: overrideFor(it.styleId), tags: decideElements(it.id, rc.recipe.text) })),
+          styles: group.map((it) => {
+            const k = kinds.get(page.id);
+            const style = it.styleId && isBlogAiStyle(it.styleId) ? getAiStyle(it.styleId) : undefined;
+            // Блоговый стиль: свои пункты статьи и своё число («6 Steps», «5 Mistakes»), надзаголовок по типу статьи.
+            const article = k?.kind && style ? (() => {
+              const p = pointsForStyle(k, style);
+              return { kind: k.kind, label: ARTICLE_KIND_LABELS[k.kind as keyof typeof ARTICLE_KIND_LABELS], kicker: kindKicker(k.kind, rc.recipe.text.language), count: p.count, title: k.title, points: p.points, section: p.section };
+            })() : undefined;
+            return { id: it.styleId || "", overrideInstruction: overrideFor(it.styleId), tags: decideElements(it.id, rc.recipe.text), article };
+          }),
         }, { signal: ctx.signal });
         const byStyle = new Map(res.map((r) => [r.styleId, r.prompt]));
         for (const it of group) {

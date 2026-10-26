@@ -7,6 +7,8 @@ import { allowedPinoraTypes } from "@/lib/pins/recipeForm";
 import { nicheLabel } from "@/lib/pins/prompts/pinoraTypes";
 import { ideaCountFor } from "@/lib/pins/types";
 import { hash32 } from "@/lib/pins/plan/seed";
+import { articleKindsFor } from "@/lib/pins/articleKind";
+import { blogAiStylesFor, isBlogAiStyle } from "@/lib/pins/prompts/aiStyles";
 import type { StageHandler } from "./index";
 import { loadRunCtx } from "./_shared";
 
@@ -22,7 +24,12 @@ export const plan: StageHandler = async (ctx) => {
 
   const { ai: perPageAi, pinora: perPagePinora } = rc.recipe.mix;
   const sets = await prisma.pinSet.findMany({ where: { siteId: rc.site.id, setKind: "ai", id: { in: rc.recipe.sets.aiSetIds } } });
-  if (perPageAi > 0 && !sets.length) return { fatal: "В рецепте включены ИИ-пины, но не выбран ни один набор стилей. Откройте настройки сайта → Стили." };
+  // Блоговые статьи (2026-10-26, lib/pins/articleKind.ts) получают ИИ-пины из блоговых стилей своего типа
+  // (категория blog в ai-styles.json) независимо от наборов сайта; подборки — из наборов сайта без блоговых стилей.
+  const kinds = await articleKindsFor(rc.site.wpConnectionId, todo);
+  const blogTodo = todo.filter((p) => kinds.get(p.id)?.kind);
+  const ideaTodo = todo.filter((p) => !kinds.get(p.id)?.kind);
+  if (perPageAi > 0 && !sets.length && ideaTodo.length) return { fatal: "В рецепте включены ИИ-пины, но не выбран ни один набор стилей. Откройте настройки сайта → Стили." };
   // Ниша Pinora: заданная в прогоне для всех статей, либо «авто» — по каждой статье; типы — только допустимые для ниши.
   const pinoraNiche = rc.recipe.sets.pinoraNiche && rc.recipe.sets.pinoraNiche !== "auto" ? rc.recipe.sets.pinoraNiche : "";
   const pinoraTypes = rc.recipe.sets.pinoraTypes.filter((t) => allowedPinoraTypes(pinoraNiche || "auto").includes(t));
@@ -36,16 +43,35 @@ export const plan: StageHandler = async (ctx) => {
   const prior = await prisma.pinRunItem.groupBy({ by: ["styleId"], where: { runId: rc.run.id, engine: "OPENAI" }, _count: { _all: true } });
   for (const p of prior) if (p.styleId) usedCounts.set(p.styleId, p._count._all);
 
+  const ideaSets = sets.map((s) => {
+    const ids = s.styleIds as string[];
+    const noBlog = ids.filter((id) => !isBlogAiStyle(id));
+    return { id: s.id, name: s.name, topic: s.topic, styleIds: noBlog.length ? noBlog : ids };
+  });
   const aiRows = perPageAi > 0
     ? planAiPins({
-        pages: todo.map((p) => ({ id: p.id, topic: p.topic, existingAiCount: countOf(p.id, "OPENAI"), quota: p.pinQuota })),
-        sets: sets.map((s) => ({ id: s.id, name: s.name, topic: s.topic, styleIds: (s.styleIds as string[]) })),
+        pages: ideaTodo.map((p) => ({ id: p.id, topic: p.topic, existingAiCount: countOf(p.id, "OPENAI"), quota: p.pinQuota })),
+        sets: ideaSets,
         exclusions,
         perPage: perPageAi,
         seed: rc.settings.seed,
         usedCounts,
       })
     : [];
+  if (perPageAi > 0 && blogTodo.length) {
+    const byKind = new Map<string, typeof blogTodo>();
+    for (const p of blogTodo) { const k = kinds.get(p.id)!.kind!; byKind.set(k, [...(byKind.get(k) ?? []), p]); }
+    for (const [kind, list] of byKind) {
+      aiRows.push(...planAiPins({
+        pages: list.map((p) => ({ id: p.id, topic: "", existingAiCount: countOf(p.id, "OPENAI"), quota: p.pinQuota })),
+        sets: [{ id: "blog", name: "Blog", topic: "", styleIds: blogAiStylesFor(kind).map((s) => s.id) }],
+        exclusions,
+        perPage: perPageAi,
+        seed: hash32(`${rc.settings.seed}|blog|${kind}`),
+        usedCounts,
+      }));
+    }
+  }
   const pinoraRows = perPagePinora > 0
     ? planPinoraPins({ pages: todo.map((p) => ({ id: p.id, niche: pinoraNiche || p.niche || rc.site.niche, existingPinoraCount: countOf(p.id, "PINORA") })), types: pinoraTypes, perPage: perPagePinora, seed: rc.settings.seed })
     : [];
@@ -63,9 +89,10 @@ export const plan: StageHandler = async (ctx) => {
   ];
   if (data.length) await prisma.pinRunItem.createMany({ data });
   for (const p of todo) {
-    const set = aiRows.find((r) => r.pageId === p.id);
+    const set = aiRows.find((r) => r.pageId === p.id && r.setId !== "blog");
     await prisma.pinRunPage.update({ where: { id: p.id }, data: { plannedAt: new Date(), pinSetId: set?.setId ?? p.pinSetId } });
   }
   await ctx.tick({ done: todo.length, total: todo.length, label: "План построен" });
-  return { summary: `план: ${aiRows.length} ИИ, ${pinoraRows.length} Pinora` };
+  const blogAi = aiRows.filter((r) => r.setId === "blog").length;
+  return { summary: `план: ${aiRows.length} ИИ${blogAi ? ` (из них блоговых ${blogAi} для ${blogTodo.length} статей)` : ""}, ${pinoraRows.length} Pinora` };
 };

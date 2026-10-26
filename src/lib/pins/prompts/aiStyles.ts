@@ -28,6 +28,12 @@ export type AiStyle = {
   examples?: string[];
   /** Ниши, под которые стиль сделан (decor, interior, …) — фильтр «только декор» в галерее. Пусто — универсальный. */
   niches?: string[];
+  /** Блоговые стили (категория blog): типы статей, к которым стиль подходит (src/lib/pins/articleKind.ts). */
+  articleKinds?: string[];
+  /** Блоговые стили: разделы статьи, пункты которых стиль показывает (steps, mistakes, tips, what_you_need…), по порядку. */
+  pointsFrom?: string[];
+  /** Блоговые стили: цифра на пине — число пунктов показанного раздела («6 Steps», «5 Mistakes»). */
+  countable?: boolean;
 };
 
 /** Подписи ниш стилей для фильтра. */
@@ -65,6 +71,9 @@ function normalizeStyle(s: RawStyle): AiStyle | null {
     gold: str(s.gold),
     examples: examples && examples.length ? examples : undefined,
     niches: Array.isArray(s.niches) ? s.niches.filter((n): n is string => typeof n === "string" && n !== "") : undefined,
+    articleKinds: Array.isArray(s.articleKinds) ? s.articleKinds.filter((n): n is string => typeof n === "string" && n !== "") : undefined,
+    pointsFrom: Array.isArray(s.pointsFrom) ? s.pointsFrom.filter((n): n is string => typeof n === "string" && n !== "") : undefined,
+    countable: s.countable === true,
   };
 }
 
@@ -93,6 +102,17 @@ export const styleTypes: AiStyleType[] = (Array.isArray(raw.types) ? (raw.types 
 /** Порядок категорий при сортировке результатов (как в generate-pin-prompt). */
 export const CATEGORY_ORDER: Record<string, number> = { magazine: 0, soft: 1, ctr: 2, traffic: 3, modern2027: 4, newyear: 5 };
 export const CATEGORY_ORDER_FALLBACK = 50;
+
+/** Категория ИИ-стилей для блоговых / информационных статей. */
+export const BLOG_AI_CATEGORY = "blog";
+export const isBlogAiStyle = (id: string | null | undefined): boolean => !!id && BY_ID.get(id)?.category === BLOG_AI_CATEGORY;
+
+/** Блоговые ИИ-стили под тип статьи; нет подходящих — все блоговые. */
+export function blogAiStylesFor(kind: string | null | undefined): AiStyle[] {
+  const all = STYLES.filter((s) => s.category === BLOG_AI_CATEGORY);
+  const fit = kind ? all.filter((s) => (s.articleKinds ?? []).includes(kind)) : [];
+  return fit.length ? fit : all;
+}
 
 export function getAiStyle(id: string): AiStyle | undefined {
   return BY_ID.get(id);

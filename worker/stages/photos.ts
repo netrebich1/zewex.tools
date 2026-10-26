@@ -5,6 +5,7 @@ import { hash32 } from "@/lib/pins/plan/seed";
 import { decryptSecret } from "@/lib/crypto";
 import { featuredImageByUrl, type WpCreds } from "@/lib/pins/wp/client";
 import { featuredOnlyFor } from "@/lib/pins/types";
+import { articleKindsFor } from "@/lib/pins/articleKind";
 import type { StageHandler } from "./index";
 import { loadRunCtx, runQueue } from "./_shared";
 
@@ -33,6 +34,11 @@ export const photos: StageHandler = async (ctx) => {
     try { creds = { baseUrl: conn.baseUrl, username: conn.username, appPassword: decryptSecret(conn.appPasswordEnc) }; } catch { creds = null; }
   }
 
+  // Блоговые статьи (lib/pins/articleKind.ts): все фото тела статьи, а не только первое фото каждого H2,
+  // и без режима «только миниатюра» (рецепт из нашего блога тоже отдаёт все свои фото).
+  const kinds = await articleKindsFor(rc.site.wpConnectionId, todo);
+  const isBlogPage = (id: string) => !!kinds.get(id)?.kind;
+  let blogPages = 0;
   const found = new Map<string, ArticleImage[]>();
   const featuredPages = new Set<string>();
   let done = 0;
@@ -41,9 +47,11 @@ export const photos: StageHandler = async (ctx) => {
   await runQueue(todo, 4, async (p) => {
     try {
       const url = p.finalUrl || p.url;
-      const featuredOnly = featuredOnlyFor(rc.recipe.photosMode, p.niche, rc.site.niche);
-      const r = await extractArticleImages(url, { featuredOnly, signal: ctx.signal });
-      const imgs = r.images.filter((i) => i.indexInSection === 0 && !isLikelyAuthorPhoto(i.url));
+      const blog = isBlogPage(p.id) && rc.recipe.photosMode !== "featured_only";
+      if (blog) blogPages++;
+      const featuredOnly = !blog && featuredOnlyFor(rc.recipe.photosMode, p.niche, rc.site.niche);
+      const r = await extractArticleImages(url, { featuredOnly, signal: ctx.signal, all: blog });
+      const imgs = r.images.filter((i) => (blog || i.indexInSection === 0) && !isLikelyAuthorPhoto(i.url));
       if (featuredOnly) {
         // Миниатюра: сначала из WordPress (featured image записи), затем og:image страницы, затем первое фото статьи.
         let featured = "";
@@ -94,5 +102,5 @@ export const photos: StageHandler = async (ctx) => {
     }
     await prisma.pinRunPage.update({ where: { id: p.id }, data: { photosAt: new Date(), imageCount: Math.max(p.imageCount, imgs.length) } });
   }
-  return { summary: `фото: ${created} к публикации, страниц без фото: ${failed}${featuredPages.size ? `; только миниатюра: ${featuredPages.size} стр. (из WordPress: ${fromWp})` : ""}` };
+  return { summary: `фото: ${created} к публикации, страниц без фото: ${failed}${blogPages ? `; блоговых статей (все фото): ${blogPages}` : ""}${featuredPages.size ? `; только миниатюра: ${featuredPages.size} стр. (из WordPress: ${fromWp})` : ""}` };
 };

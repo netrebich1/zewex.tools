@@ -26,7 +26,12 @@ export type AiPromptStyleInput = {
   /** Личная правка стиля («зелёный вместо синего») — блок USER STYLE OVERRIDE. */
   overrideInstruction?: string;
   tags: ElementTags;
+  /** Блоговая статья (только для стилей категории blog) — свои пункты и число на каждый стиль. */
+  article?: AiArticle;
 };
+
+/** Сведения о статье для блогового ИИ-пина: тип, надзаголовок, число пунктов, заголовок, пункты из статьи. */
+export type AiArticle = { kind: string; label: string; kicker: string; count?: number | null; title?: string; points?: string[]; section?: string | null };
 
 export type AiPromptInput = {
   /** Ключевая фраза страницы — становится TOPIC (заголовок пина строится из неё). */
@@ -45,6 +50,10 @@ export type AiPromptInput = {
   /** Слово сезона на языке заголовков — именно оно попадает в промт. */
   seasonWord?: string;
   year?: string;
+  /**
+   * Блоговая / информационная статья (только для стилей категории blog): тип, надзаголовок, число пунктов,
+   * заголовок статьи и короткие пункты из самой статьи — пин показывает их, а не выдуманные «идеи».
+   */
   styles: AiPromptStyleInput[];
 };
 
@@ -244,6 +253,12 @@ function tagValues(input: AiPromptInput, rs: ResolvedStyle): { season: string; y
   const numValue = input.ideaCount && input.ideaCount > 0 ? String(input.ideaCount) : "";
   const siteValue = (input.siteName || "").trim();
   // Listicle-стили всегда получают число идей, если оно известно (как в оригинале).
+  // Блоговый стиль: число — шаги / пункты статьи, если оно известно; иначе цифр нет.
+  if (rs.style.category === "blog") {
+    const a = rs.input.article;
+    const n = a?.count && a.count >= 3 ? String(a.count) : "";
+    return { season: t.season ? seasonValue : "", year: t.year ? yearValue : "", num: n, siteName: t.siteName ? siteValue : "", cta: !!t.cta };
+  }
   const forceNumber = rs.style.type === "listicle" && numValue !== "";
   return {
     season: t.season ? seasonValue : "",
@@ -266,7 +281,13 @@ function buildStyleBlock(input: AiPromptInput, rs: ResolvedStyle): string {
   const yearLine = year
     ? `YEAR TAG TO WEAVE IN (required for this prompt): "${year}". Place it ONCE in the headline or a small accent label/badge. IMPORTANT: if the TOPIC already contains this year (or a close variant like "'26"), do NOT add a second mention — the topic's year counts. Never write the year twice (e.g. "2026 2026" is forbidden).`
     : `YEAR TAG: (skip for this prompt — do not mention any year)`;
-  const numberLine = num
+  const blog = s.category === "blog" ? rs.input.article : undefined;
+  const noun = blog ? COUNT_NOUN[blog.section ?? ""] ?? (blog.kind === "how_to" ? "Steps" : blog.kind === "plan" ? "Days" : "Tips") : "";
+  const numberLine = blog
+    ? (num
+      ? `NUMBER TAG (required): "${num}" — how many ${noun.toLowerCase()} the article has. Use it ONCE inside the HEADLINE as "${num} ${noun}" (e.g. "${num} ${noun} to …"). Never put it in the kicker and never invent any other count.`
+      : `NUMBER TAG: (skip — do NOT invent any count in the headline or kicker; small panel numbers 1–4 for steps are allowed only if the style shows numbered steps)`)
+    : num
     ? `NUMBER TAG TO WEAVE IN (required for this prompt): "${num}". Use it as a count prefix in the HEADLINE, e.g. "${num} <topic noun>" — typical listicle/idea-count framing. IMPORTANT: if the TOPIC already starts with this exact number (digits OR spelled-out form), do NOT add a second one — the existing one counts. Never repeat the number twice in the same prompt.`
     : `NUMBER TAG: (skip for this prompt — do NOT invent any numeral, count, digit or quantity in the headline, badges, labels, or anywhere else. No "8 Ideas", no "Top 5", no numbered grid labels like "1./2./3.". The pin must read without any leading count.)`;
   const siteNameLine = siteName
@@ -278,7 +299,8 @@ function buildStyleBlock(input: AiPromptInput, rs: ResolvedStyle): string {
   const examples = Array.isArray(s.examples) && s.examples.length
     ? `\nFEW-SHOT EXAMPLES (structure & quality reference — adapt to TOPIC, do NOT copy wording):\n${s.examples.map((ex, i) => `Example ${i + 1}: ${ex}`).join("\n")}`
     : "";
-  return `### styleId: ${s.id} | ${s.name} | category: ${s.category}
+  const articleBlock = blog ? `\n${buildArticleBlock(blog)}` : "";
+  return `### styleId: ${s.id} | ${s.name} | category: ${s.category}${articleBlock}
 CONCEPT (invariant): ${s.concept}
 LAYOUT (archetype): ${s.layout}
 TYPOGRAPHY (behavior): ${s.typography}
@@ -293,6 +315,18 @@ ${siteNameLine}
 ${ctaLine}
 USER STYLE OVERRIDE (this account — highest creative priority, faithfully apply): ${overrideLine}
 GOLD EXAMPLE (flavor only — do NOT copy): ${s.gold}${examples}`;
+}
+
+/** Блок «информационная статья» для блоговых стилей: что за статья, надзаголовок, пункты из неё. */
+const COUNT_NOUN: Record<string, string> = { steps: "Steps", mistakes: "Mistakes", tips: "Tips", list_item: "Tips", list_group: "Items", plan_table: "Days", methods: "Ways", recipe_card: "Steps" };
+
+function buildArticleBlock(a: AiArticle): string {
+  const points = (a.points ?? []).filter(Boolean).slice(0, 5);
+  return `ARTICLE MODE (this pin promotes an INFORMATIONAL blog article, type: ${a.label}) — overrides "ideas / inspiration" framing:
+- HEADLINE: a SHORT, benefit-led rewrite of the article title${a.title ? ` "${a.title}"` : ""} — at most 7 words, drop filler like "for Beautiful …", keep "How to" / "Why" / "vs" wording if present. Never write "ideas", "inspo" or "looks" unless the title has them.
+- SMALL LABEL / KICKER: exactly "${a.kicker}" — no number, no other words, once, small, above or below the headline.
+- ${points.length ? `CONTENT LABELS — use THESE points from the article (shorten to 2–4 words each, keep their meaning, same order, no other facts): ${points.map((p) => `"${p}"`).join(", ")}. Use as many as the style has slots (usually 3–4).` : "CONTENT LABELS: keep them generic and safe (e.g. step names derived from the headline) — no invented numbers, brands or claims."}
+- The image must look useful and trustworthy (real process photos, tools, results), not like a fashion moodboard.`;
 }
 
 export function buildUserMessage(input: AiPromptInput, styles: ResolvedStyle[]): string {

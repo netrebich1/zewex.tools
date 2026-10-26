@@ -151,6 +151,33 @@ export function extractSectionImages(html: string, pageUrl: string, maxSections 
   return out;
 }
 
+/**
+ * Все фото тела статьи (для блоговых статей, 2026-10-26): от H1 (или начала <article>) до подвала / похожих записей /
+ * комментариев, включая главное фото и фото под H3-подзаголовками шагов. Секция — ближайший заголовок H2–H4 выше фото.
+ */
+export function extractBodyImages(html: string, pageUrl: string): ArticleImage[] {
+  const clean = stripScripts(html);
+  const startIdx = (() => {
+    const h1 = clean.search(/<h1[\s>]/i);
+    if (h1 >= 0) return h1;
+    const art = clean.search(/<article[\s>]/i);
+    return art >= 0 ? art : 0;
+  })();
+  let body = clean.slice(startIdx);
+  const stop = body.search(/<footer[\s>]|<aside[\s>]|class="[^"]*(jp-relatedposts|yarpp|related-posts|wp-block-latest-posts|comments-area|comment-respond)/i);
+  if (stop > 0) body = body.slice(0, stop);
+  body = body.replace(/<div[^>]*class="[^"]*stl-block[^"]*"[\s\S]*?(?=<(?:h[1-6]|section|article|footer|header)\b|$)/gi, "");
+  const out: ArticleImage[] = [];
+  const parts = body.split(/(?=<h[2-4][^>]*>)/i);
+  let heading = "";
+  for (const part of parts) {
+    const m = part.match(/^<h[2-4][^>]*>([\s\S]*?)<\/h[2-4]>/i);
+    if (m) heading = decodeEntities(m[1].replace(/<[^>]+>/g, "")).trim().slice(0, 200);
+    out.push(...imagesIn(part, pageUrl, heading));
+  }
+  return out;
+}
+
 /** Запасной сбор: все фото после первого H2 без разбивки по секциям (скрипты не вырезаем — WP прячет тело в JSON). */
 export function extractAllImages(html: string, pageUrl: string, section: string): ArticleImage[] {
   const clean = html.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "");
@@ -180,12 +207,15 @@ export function featuredFromHtml(raw: string, pageUrl: string): string {
 }
 
 /** Разбор уже загруженного HTML (чистая функция для тестов и REST-варианта). */
-export function parseArticleImages(raw: string, pageUrl: string, opts: { featuredOnly: boolean; maxSections?: number }): ArticleImagesResult {
+export function parseArticleImages(raw: string, pageUrl: string, opts: { featuredOnly: boolean; maxSections?: number; all?: boolean }): ArticleImagesResult {
   const html = stripAuthorBox(normalizeHtml(raw));
   const featured = featuredFromHtml(raw, pageUrl);
   const title = decodeEntities(html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] ?? "").trim() || "Untitled Article";
   const max = Math.min(Math.max(1, opts.maxSections ?? MAX_SECTIONS), MAX_SECTIONS);
-  let images = dedupeImages(extractSectionImages(html, pageUrl, max));
+  // «Все фото статьи» = фото тела статьи + всё, что нашёл обычный разбор по H2 (если тело обрезалось раньше времени
+  // на боковой колонке или блоке похожих записей, фото не теряются).
+  const sectionImgs = extractSectionImages(html, pageUrl, max);
+  let images = opts.all ? dedupeImages([...extractBodyImages(html, pageUrl), ...sectionImgs]) : dedupeImages(sectionImgs);
   if (!images.length) images = dedupeImages(extractAllImages(afterFirstH2(html), pageUrl, title));
 
   if (opts.featuredOnly) {
@@ -238,7 +268,7 @@ export async function fetchArticleHtml(url: string, signal?: AbortSignal): Promi
 /** Загружает статью и возвращает её фото по секциям (или одну миниатюру при featuredOnly); ошибки — в поле error. */
 export async function extractArticleImages(
   url: string,
-  opts: { featuredOnly: boolean; maxSections?: number; signal?: AbortSignal },
+  opts: { featuredOnly: boolean; maxSections?: number; signal?: AbortSignal; all?: boolean },
 ): Promise<ArticleImagesResult> {
   try {
     const raw = await fetchArticleHtml(url, opts.signal);
