@@ -134,7 +134,8 @@ export const SCENARIOS: Scenario[] = [
   {
     key: "how_to_video", label: "Инструкция по лучшему видео", structure: "sections",
     description: "How-to и «как исправить»: метод, порядок и цифры из лучшего видео YouTube, исследование дополняет; видео встроено. Нет годного видео — статья по исследованию.",
-    match: ({ topic, keyword, brief }) => /^\s*how to\b|\bstep[- ]by[- ]step\b|\bguide\b|\broutine\b/i.test(topic || keyword) || ["how_to", "problem_fix"].includes(brief.intent),
+    // «How to …» в любом месте заголовка («When and How to Use Toner»), но не объяснение («… Explained (and How to Use Them)»)
+    match: ({ topic, keyword, brief }) => (/\bhow to\b|\bstep[- ]by[- ]step\b|\bguide\b|\broutine\b/i.test(topic || keyword) && !/\bexplained\b/i.test(topic || keyword)) || ["how_to", "problem_fix"].includes(brief.intent),
     overrides: { source: "video", video: { embed: "auto" } },
     example: "How to Use Hair Rollers for Bouncy Curls",
   },
