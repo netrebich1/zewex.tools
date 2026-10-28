@@ -32,6 +32,25 @@ async function call(ctx: AiCtx, slotKey: string, payload: Record<string, unknown
   return res.data;
 }
 
+/** Чат с ответом JSON (слот и модель — по задаче). Ответ не JSON — ошибка, которую можно повторить. */
+export async function chatJson(ctx: AiCtx, slotKey: string, system: string, user: string, model: string | undefined, maxTokens = 3000, timeoutMs = 120_000): Promise<Record<string, unknown>> {
+  const data = (await call(
+    ctx,
+    slotKey,
+    { messages: [{ role: "system", content: system }, { role: "user", content: user }], temperature: 0.4, response_format: { type: "json_object" }, reasoning: { effort: "none" }, max_tokens: maxTokens },
+    model,
+    timeoutMs,
+  )) as { choices?: { message?: { content?: string } }[] };
+  const text = data?.choices?.[0]?.message?.content ?? "";
+  try {
+    const v = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, ""));
+    if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+  } catch {
+    /* ниже */
+  }
+  throw new NewsAiError("ответ модели не JSON — попробуйте ещё раз", false);
+}
+
 /** Эмбеддинги пачками по 64 текста; векторы нормированы. */
 export async function embedTexts(ctx: AiCtx, texts: string[]): Promise<Float32Array[]> {
   const out: Float32Array[] = [];

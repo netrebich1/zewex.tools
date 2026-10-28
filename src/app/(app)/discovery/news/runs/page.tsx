@@ -9,6 +9,7 @@ import { fmtMoney } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+const KIND: Record<string, string> = { scheduled: "плановый", manual: "ручной", angles: "углы по кнопке", brief: "ТЗ по кнопке" };
 const TONE: Record<string, "neutral" | "ok" | "warn" | "danger" | "brand"> = { queued: "neutral", running: "brand", done: "ok", failed: "danger" };
 const scopeLabel = (s: string) => RUN_SCOPES.find((x) => x.value === s)?.label ?? (s.startsWith("source:") ? "один источник" : s);
 const dur = (a: Date | null, b: Date | null) => (a && b ? `${Math.max(1, Math.round((b.getTime() - a.getTime()) / 1000))} с` : "—");
@@ -68,7 +69,7 @@ export default async function NewsRunsPage({ searchParams }: { searchParams: Pro
                     <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-[14px] [&::-webkit-details-marker]:hidden">
                       <span className="w-24 tabular-nums">{fmtKyiv(r.createdAt)}</span>
                       <Badge tone={TONE[r.status] ?? "neutral"}>{RUN_STATUS_LABELS[r.status] ?? r.status}{r.step ? ` · ${r.step}` : ""}</Badge>
-                      <span className="help">{r.kind === "manual" ? `ручной${r.userName ? ` · ${r.userName}` : ""}` : "плановый"} · {scopeLabel(r.scope)} · {dur(r.startedAt, r.finishedAt)}</span>
+                      <span className="help">{KIND[r.kind] ?? r.kind}{r.userName && r.kind !== "scheduled" ? ` · ${r.userName}` : ""} · {r.scope.startsWith("cluster:") ? "одна карточка" : scopeLabel(r.scope)} · {dur(r.startedAt, r.finishedAt)}</span>
                       <span className="help">
                         собрано {st.fetched ?? 0} → новых {st.fresh ?? 0} → отсеяно {cut}{st.cutEmbed ? ` + ${st.cutEmbed} эмб.` : ""} → LLM {st.classified ?? 0} (не наше {st.cutLlm ?? 0}) → кластеров +{st.clustersNew ?? 0}
                       </span>

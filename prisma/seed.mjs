@@ -348,6 +348,7 @@ if (discoveryNews) {
   const newsSlots = [
     { key: "text_main", name: "Классификация материалов", capability: "CHAT", description: "Категория, сущности, визуальность, чувствительность — пачками по 10 (deepseek-v4-flash)", preferProviders: "openrouter" },
     { key: "embed", name: "Эмбеддинги заголовков", capability: "EMBEDDING", description: "Склейка дублей в кластеры и фильтр «наше / не наше» (baai/bge-m3)", preferProviders: "openrouter" },
+    { key: "brief", name: "Углы и ТЗ", capability: "CHAT", description: "Три угла по кнопке «В работу» и ТЗ для Claude в стиле редакции (google/gemini-2.5-flash)", preferProviders: "openrouter" },
   ];
   for (const s of newsSlots) {
     await prisma.slot.upsert({ where: { projectId_key: { projectId: newsProject.id, key: s.key } }, update: { preferProviders: s.preferProviders }, create: { projectId: newsProject.id, ...s } });
@@ -362,6 +363,7 @@ if (discoveryNews) {
     const models = {
       text_main: await prisma.model.findUnique({ where: { providerId_modelId: { providerId: orNews.id, modelId: "deepseek/deepseek-v4-flash" } } }),
       embed: await prisma.model.findUnique({ where: { providerId_modelId: { providerId: orNews.id, modelId: "baai/bge-m3" } } }),
+      brief: await prisma.model.findUnique({ where: { providerId_modelId: { providerId: orNews.id, modelId: "google/gemini-2.5-flash" } } }),
     };
     if (key) {
       for (const s of newsSlots) {

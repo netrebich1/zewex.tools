@@ -2719,6 +2719,22 @@ model NewsCluster {
   /// Баллы по времени [{at, score}] (последние 48)
   scoreHistory     Json?
   urgent           Boolean   @default(false)
+  /// must (обязательно) | should (стоит взять) | maybe (по желанию) и причины [строки]
+  priority         String?
+  priorityWhy      Json?
+  /// Карточка по-украински (ИИ в прогоне): заголовок, суть, почему зайдёт у нас; при росте источников пересчитывается
+  titleUk          String?   @db.Text
+  summaryUk        String?   @db.Text
+  whyUs            String?   @db.Text
+  aiSourceCount    Int       @default(0)
+  aiAt             DateTime?
+  /// «В работу»: 2–3 угла [{title, angle, why, novelty, usefulness}], выбранный угол, ТЗ для Claude (markdown)
+  angles           Json?
+  anglesAt         DateTime?
+  angleIdx         Int?
+  brief            String?   @db.MediumText
+  briefAt          DateTime?
+  workById         String?
   /// new | in_work | published | rejected
   status           String    @default("new")
   alertedAt        DateTime?

@@ -9,7 +9,7 @@ import { parseSettings } from "./types";
 const ACTIVE = ["queued", "running"];
 
 export async function activeRun(projectId: string) {
-  return prisma.newsRun.findFirst({ where: { projectId, status: { in: ACTIVE } }, orderBy: { createdAt: "desc" } });
+  return prisma.newsRun.findFirst({ where: { projectId, status: { in: ACTIVE }, kind: { in: ["scheduled", "manual"] } }, orderBy: { createdAt: "desc" } });
 }
 
 /** Ручной прогон. Сотрудник — не чаще раза в 5 минут, админ и лидер — без ограничения. */

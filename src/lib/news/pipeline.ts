@@ -5,7 +5,8 @@ import { activeProxies, fetchSource, type SourceLike } from "./sources";
 import { canonicalUrl, filterText, hostOf, jaccard, keyTokens, makeEntityMatcher, makeMatcher, normText, normTitle, rubricTokens, sha1, tokens, type EntityHit, type EntityRow } from "./text";
 import { classifyBatch, embedTexts, NewsAiError, type AiCtx } from "./llm";
 import { addToCentroid, centroid, cos, pack, unpack } from "./vec";
-import { scoreCluster } from "./score";
+import { priorityOf, scoreCluster } from "./score";
+import { summaryStep } from "./work";
 import { projectSpend } from "./runs";
 import { alertText, sendTelegram } from "./telegram";
 import { BASE_PATH, emptyStats, parseSettings, parseState, type NewsSettings, type ProjectState, type RunStats, type ScorePart } from "./types";
@@ -262,6 +263,10 @@ export async function runPipeline(runId: string, shouldStop: () => boolean = () 
     await clusterStep(project.id, s, stats);
     await step("Балл");
     await scoreStep(project, s, stats, entities);
+    if (paid && !shouldStop()) {
+      await step("Суть карточек");
+      await summaryStep(project, ctx, s, stats, log);
+    }
 
     await prisma.newsRun.update({ where: { id: runId }, data: { status: "done", step: null, finishedAt: new Date(), stats: stats as unknown as Prisma.InputJsonValue, costUsd: cost } });
   } catch (e) {
@@ -582,17 +587,21 @@ async function scoreStep(project: ProjectRow, s: NewsSettings, stats: RunStats, 
     const titleToks = [...new Set([...keyTokens(c.title), ...[...names].flatMap((n) => n.split(" "))])];
     const trend = trends.find((t) => names.has(t.normTitle) || trendInTitle(t.normTitle, titleToks));
     const category = c.category ?? list.find((x) => x.category)?.category ?? null;
-    const { score, parts } = scoreCluster({
-      category, isTarget: !!category && s.targetCategories.includes(category), recentWeighted: recent.reduce((a, x) => a + x.weight, 0), recentCount: recent.length, sourceCount: all.length,
+    const facts = {
+      category, isTarget: !!category && s.targetCategories.includes(category), recentWeighted: recent.reduce((a, x) => a + x.weight, 0), recentCount: recent.length,
+      recentUa: recent.filter((x) => now.getTime() - x.at <= 3600_000 && x.tier !== "world").length, sourceCount: all.length,
       uaCount: all.filter((x) => x.tier !== "world").length, worldCount: all.filter((x) => x.tier === "world").length, entityName: best?.name ?? null, entityWeight: best?.weight ?? 0,
       trend: trend ? { title: trend.title, traffic: trend.traffic } : null, visual: Math.max(0, ...list.map((x) => x.visual ?? 0)) || null, hasImage: list.some((x) => !!x.imageUrl) || !!c.imageUrl,
       hasPrice: list.some((x) => x.hasPrice), sensitive: list.some((x) => x.sensitive), firstPublishedAt: c.firstPublishedAt, now,
-    });
+    };
+    const { score, parts } = scoreCluster(facts);
+    const pr = priorityOf(facts, score, s.urgentScore, s.topEntityWeight);
     const hist = (Array.isArray(c.scoreHistory) ? (c.scoreHistory as { at: string; score: number }[]) : []).concat({ at: now.toISOString(), score }).slice(-48);
     const urgent = score >= s.urgentScore;
     await prisma.newsCluster.update({
       where: { id: c.id },
       data: {
+        priority: pr.priority, priorityWhy: pr.why as unknown as Prisma.InputJsonValue,
         score, scoreParts: parts as unknown as Prisma.InputJsonValue, scoreHistory: hist as unknown as Prisma.InputJsonValue, urgent, sourceCount: all.length, itemCount: list.length,
         uaCount: all.filter((x) => x.tier !== "world").length, worldCount: all.filter((x) => x.tier === "world").length, mainEntityName: c.mainEntityName ?? best?.name ?? null,
         visual: Math.max(0, ...list.map((x) => x.visual ?? 0)) || null, hasPrice: list.some((x) => x.hasPrice), sensitive: list.some((x) => x.sensitive), category,

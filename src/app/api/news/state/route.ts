@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   try {
     const p = await loadProjectFor(me, id);
     const [active, lastDone, lastCluster] = await Promise.all([
-      prisma.newsRun.findFirst({ where: { projectId: p.id, status: { in: ["queued", "running"] } }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, step: true, kind: true, startedAt: true, stats: true } }),
+      prisma.newsRun.findFirst({ where: { projectId: p.id, status: { in: ["queued", "running"] }, kind: { in: ["scheduled", "manual"] } }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, step: true, kind: true, startedAt: true, stats: true } }),
       prisma.newsRun.findFirst({ where: { projectId: p.id, status: { in: ["done", "failed"] } }, orderBy: { finishedAt: "desc" }, select: { id: true, finishedAt: true } }),
       prisma.newsCluster.findFirst({ where: { projectId: p.id }, orderBy: { updatedAt: "desc" }, select: { updatedAt: true } }),
     ]);

@@ -128,6 +128,21 @@ export default async function NewsSettingsPage({ searchParams }: { searchParams:
             </div>
           </Card>
 
+          <Card title="Стиль редакции, суть и ТЗ" description="Стиль и описание сайта подставляются в «почему зайдёт у нас», в углы и в ТЗ для Claude. Пишите так, как объяснили бы новому автору. Пустое поле — вернуть текст по умолчанию.">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <label className="block lg:col-span-2"><span className="label">Стиль редакции (тон, язык, что делаем и чего не делаем)</span>
+                <textarea name="houseStyle" className="input min-h-[220px] text-[13.5px] leading-relaxed" defaultValue={s.houseStyle} />
+              </label>
+              <label className="block"><span className="label">О сайте и аудитории (1–2 фразы)</span>
+                <textarea name="siteAbout" className="input min-h-[90px] text-[13.5px]" defaultValue={s.siteAbout} />
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block"><span className="label">Модель углов и ТЗ</span><input name="briefModel" className="input" defaultValue={s.briefModel} /><span className="help mt-0.5 block">Слот «Углы и ТЗ» инструмента</span></label>
+                <Num name="autoSummaryPerDay" label="Суть карточек в сутки" value={s.autoSummaryPerDay} hint="Украинская суть и «почему зайдёт» для топа ленты" />
+              </div>
+            </div>
+          </Card>
+
           <Card title="Telegram" description="Срочные кластеры (балл от порога «Срочно») и предупреждение о 80% бюджета. Бота создайте в @BotFather, добавьте в чат или канал и впишите его id или @имя канала.">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <label className="block"><span className="label">Токен бота {project.tgTokenEnc ? <Badge tone="ok">сохранён</Badge> : null}</span><input name="tgToken" type="password" className="input" autoComplete="off" placeholder={project.tgTokenEnc ? "оставьте пустым, чтобы не менять" : "123456:ABC…"} /></label>

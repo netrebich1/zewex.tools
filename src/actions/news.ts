@@ -8,6 +8,7 @@ import { encryptSecret } from "@/lib/crypto";
 import { canManageProject, loadProjectFor } from "@/lib/news/access";
 import { requestRun } from "@/lib/news/runs";
 import { testTelegram } from "@/lib/news/pipeline";
+import { buildBrief, startWork } from "@/lib/news/work";
 import { fetchText } from "@/lib/news/fetch";
 import { BASE_PATH, CATEGORIES, DEFAULT_SETTINGS, parseSettings, SOURCE_KINDS, TIERS, type NewsSettings } from "@/lib/news/types";
 
@@ -29,6 +30,34 @@ export async function runNow(_p: FormState, f: FormData): Promise<FormState> {
     if (!r.ok) return { error: r.error };
     done();
     return { ok: "Прогон поставлен в очередь — новые карточки появятся в ленте сами, страницу можно не обновлять" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** «В работу»: модель предлагает 3 угла (op=again — другие углы). */
+export async function takeToWork(_p: FormState, f: FormData): Promise<FormState> {
+  try {
+    const me = await requireUser();
+    const c = await prisma.newsCluster.findUniqueOrThrow({ where: { id: str(f, "id") } });
+    await loadProjectFor(me, c.projectId);
+    await startWork(me.id, c.id, str(f, "op") === "again");
+    done();
+    return { ok: "Углы готовы — выберите один, и модуль соберёт ТЗ" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** ТЗ по выбранному углу. */
+export async function makeBriefAction(_p: FormState, f: FormData): Promise<FormState> {
+  try {
+    const me = await requireUser();
+    const c = await prisma.newsCluster.findUniqueOrThrow({ where: { id: str(f, "id") } });
+    await loadProjectFor(me, c.projectId);
+    await buildBrief(me.id, c.id, Number(str(f, "idx")));
+    done();
+    return { ok: "ТЗ готово — скопируйте его и отдайте Claude" };
   } catch (e) {
     return fail(e);
   }
@@ -76,7 +105,7 @@ export async function createProject(_p: FormState, f: FormData): Promise<FormSta
 
 const SETTING_NUMBERS: (keyof NewsSettings)[] = [
   "intervalMin", "maxAgeHours", "topN", "urgentScore", "minScore", "clusterSim", "clusterSimEntity", "clusterWindowHours", "embedMargin", "classifyPerDay", "monthlyBudgetUsd",
-  "gnewsEntitiesPerQuery", "gnewsGroupsPerRun", "topEntityWeight",
+  "gnewsEntitiesPerQuery", "gnewsGroupsPerRun", "topEntityWeight", "autoSummaryPerDay",
 ];
 
 export async function saveSettings(_p: FormState, f: FormData): Promise<FormState> {
@@ -86,7 +115,7 @@ export async function saveSettings(_p: FormState, f: FormData): Promise<FormStat
     const cur = parseSettings(p.settings);
     const next: Record<string, unknown> = { ...cur };
     for (const k of SETTING_NUMBERS) next[k] = numOr(str(f, k), cur[k] as number);
-    for (const k of ["classifyModel", "embedModel", "hl", "gl", "ceid"] as const) next[k] = str(f, k);
+    for (const k of ["classifyModel", "embedModel", "briefModel", "hl", "gl", "ceid", "houseStyle", "siteAbout"] as const) next[k] = str(f, k);
     for (const k of ["embedFilter", "autoProxy", "telegramAlerts"] as const) next[k] = f.get(k) === "on";
     next.targetCategories = f.getAll("targetCategories").map(String).filter((c) => (CATEGORIES as readonly string[]).includes(c) && c !== "other");
     for (const k of ["stopWords", "stopExceptions", "stopRubrics", "nicheWords", "gnewsQueries"] as const) {

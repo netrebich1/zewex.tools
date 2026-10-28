@@ -4,7 +4,7 @@ import { projectSpend } from "./runs";
 
 /** Выборки для экранов модуля: лента, сводка, прогоны и расход. */
 
-export type FeedFilter = { cat?: string; urgent?: boolean; notUa?: boolean; all?: boolean; status?: string };
+export type FeedFilter = { cat?: string; urgent?: boolean; notUa?: boolean; all?: boolean; status?: string; priority?: string };
 
 export type FeedSource = { domain: string; title: string; url: string; at: Date; tier: string };
 export type FeedCard = {
@@ -27,6 +27,15 @@ export type FeedCard = {
   history: { at: string; score: number }[];
   sources: FeedSource[];
   entities: { name: string; orig?: string; type?: string; role?: string }[];
+  titleUk: string | null;
+  summaryUk: string | null;
+  whyUs: string | null;
+  priority: string | null;
+  priorityWhy: string[];
+  angles: { angles: { title: string; angle: string; why: string; novelty: number; usefulness: number; kind: string }[]; competitorsAngle?: string; gaps?: string[]; ours?: { title: string; url: string }[] } | null;
+  angleIdx: number | null;
+  brief: string | null;
+  briefAt: Date | null;
 };
 
 export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: FeedCard[]; hidden: number; total: number }> {
@@ -35,7 +44,7 @@ export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: F
   const since = new Date(Date.now() - 24 * 3600_000);
   const rows = await prisma.newsCluster.findMany({
     where: {
-      projectId, lastItemAt: { gte: since }, score: { gte: s.minScore }, category: f.cat ? f.cat : { in: s.targetCategories },
+      projectId, lastItemAt: { gte: f.status ? new Date(Date.now() - 7 * 86_400_000) : since }, score: { gte: f.status ? 0 : s.minScore }, category: f.cat ? f.cat : { in: s.targetCategories }, ...(f.priority ? { priority: f.priority } : {}),
       status: f.status ? f.status : { not: "rejected" }, ...(f.urgent ? { urgent: true } : {}), ...(f.notUa ? { uaCount: 0, worldCount: { gt: 0 } } : {}),
     },
     orderBy: [{ score: "desc" }, { lastItemAt: "desc" }],
@@ -66,6 +75,8 @@ export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: F
       sensitive: c.sensitive, sourceCount: c.sourceCount, uaCount: c.uaCount, worldCount: c.worldCount, firstPublishedAt: c.firstPublishedAt, lastItemAt: c.lastItemAt,
       parts: Array.isArray(c.scoreParts) ? (c.scoreParts as ScorePart[]) : [], history: Array.isArray(c.scoreHistory) ? (c.scoreHistory as { at: string; score: number }[]) : [],
       sources, entities: Array.isArray(c.entities) ? (c.entities as FeedCard["entities"]) : [],
+      titleUk: c.titleUk, summaryUk: c.summaryUk, whyUs: c.whyUs, priority: c.priority, priorityWhy: Array.isArray(c.priorityWhy) ? (c.priorityWhy as string[]) : [],
+      angles: (c.angles as FeedCard["angles"]) ?? null, angleIdx: c.angleIdx, brief: c.brief, briefAt: c.briefAt,
     };
   });
   return { cards, hidden: Math.max(0, total - shown.length), total };
@@ -81,8 +92,8 @@ export async function summary(projectId: string) {
     prisma.newsItem.count({ where: { projectId, status: "queued" } }),
     prisma.newsCluster.count({ where: { projectId, lastItemAt: { gte: since }, urgent: true, status: { not: "rejected" } } }),
     prisma.newsCluster.count({ where: { projectId, lastItemAt: { gte: since }, score: { gte: s.minScore }, category: { in: s.targetCategories }, status: { not: "rejected" } } }),
-    prisma.newsRun.findFirst({ where: { projectId, status: { in: ["done", "failed"] } }, orderBy: { createdAt: "desc" } }),
-    prisma.newsRun.findFirst({ where: { projectId, status: { in: ["queued", "running"] } }, orderBy: { createdAt: "desc" } }),
+    prisma.newsRun.findFirst({ where: { projectId, status: { in: ["done", "failed"] }, kind: { in: ["scheduled", "manual"] } }, orderBy: { createdAt: "desc" } }),
+    prisma.newsRun.findFirst({ where: { projectId, status: { in: ["queued", "running"] }, kind: { in: ["scheduled", "manual"] } }, orderBy: { createdAt: "desc" } }),
   ]);
   const sum = (k: keyof RunStats) => runs.reduce((a, r) => a + (Number((r.stats as RunStats | null)?.[k]) || 0), 0);
   return {

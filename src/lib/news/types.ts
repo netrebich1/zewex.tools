@@ -8,8 +8,23 @@ export const PROJECT_SLUG = "news";
 /** Слоты проекта `news`: классификация пачками (CHAT) и эмбеддинги заголовков (EMBEDDING). */
 export const SLOT_CLASSIFY = "text_main";
 export const SLOT_EMBED = "embed";
+/** Слот углов и ТЗ (CHAT): по кнопке «В работу» и «Сделать ТЗ». */
+export const SLOT_BRIEF = "brief";
 export const DEFAULT_EMBED_MODEL = "baai/bge-m3";
 export const DEFAULT_CLASSIFY_MODEL = "deepseek/deepseek-v4-flash";
+export const DEFAULT_BRIEF_MODEL = "google/gemini-2.5-flash";
+
+export const PRIORITY_LABELS: Record<string, string> = { must: "Обязательно", should: "Стоит взять", maybe: "По желанию" };
+
+/** Стиль редакции по умолчанию (beautydaily): подставляется в углы и ТЗ, правится в настройках проекта. */
+export const DEFAULT_HOUSE_STYLE = `Мова — українська, жива й природна, без кальок з російської та англійської.
+Тон — «подруга-експертка»: тепло, по-домашньому, з легкою іронією, але без пліток заради пліток і без зверхності. Звертаємося до читачки на «ви».
+Ми невелике домашнє медіа про зірок, моду й красу: пишемо не переказ новини, а що вона означає для читачки — що повторити, що купити, як це носити, чому про це говорять.
+Перший абзац — суть новини в 2–3 реченнях (хто, що, де, коли), далі — наш кут і практична користь: поради, підбірка, порівняння, ціни в Україні, де купити.
+Короткі абзаци по 2–4 речення, підзаголовки H2 — змістовні, не клікбейтні. Цифри, назви брендів, ціни — точно.
+Без: «шок», «сенсація», «ви не повірите», оцінок зовнішності й тіла, медичних обіцянок, непідтверджених чуток (лише з позначкою, що це чутки, і з посиланням на джерело).
+Посилаємося на першоджерело (офіційний Instagram, пресреліз, інтерв'ю) і на 2–3 наші матеріали за темою.
+Для іноземних новин — не перекладаємо статтю, а пояснюємо українській читачці, чому це цікаво саме їй, і додаємо український контекст (ціни в гривнях, де купити в Україні, схожі українські бренди чи зірки).`;
 
 export const CATEGORIES = ["celebrity", "fashion", "beauty", "brands", "selfcare", "events", "relationships", "other"] as const;
 export type Category = (typeof CATEGORIES)[number];
@@ -94,6 +109,14 @@ export type NewsSettings = {
   autoProxy: boolean;
   /** Алерт в Telegram о срочных кластерах. */
   telegramAlerts: boolean;
+  /** Стиль редакции для углов и ТЗ. */
+  houseStyle: string;
+  /** Кто мы и наша аудитория — одной-двумя фразами (для «почему зайдёт у нас»). */
+  siteAbout: string;
+  /** Модель углов и ТЗ (слот brief); пусто — модель правила. */
+  briefModel: string;
+  /** Украинская суть и «почему зайдёт» в прогоне — для топа ленты, не больше N кластеров в сутки. */
+  autoSummaryPerDay: number;
 };
 
 export const DEFAULT_STOP_WORDS = [
@@ -172,6 +195,10 @@ export const DEFAULT_SETTINGS: NewsSettings = {
   ceid: "UA:uk",
   autoProxy: true,
   telegramAlerts: true,
+  houseStyle: DEFAULT_HOUSE_STYLE,
+  siteAbout: "beautydaily.com.ua — українське жіноче медіа про зірок, моду й красу; аудиторія — жінки 22–45 років, які стежать за українськими зірками, трендами й новинками косметики.",
+  briefModel: DEFAULT_BRIEF_MODEL,
+  autoSummaryPerDay: 150,
 };
 
 const num = (v: unknown, d: number, min: number, max: number) => {
@@ -215,6 +242,10 @@ export function parseSettings(raw: unknown): NewsSettings {
     ceid: str(r.ceid, d.ceid) || d.ceid,
     autoProxy: bool(r.autoProxy, d.autoProxy),
     telegramAlerts: bool(r.telegramAlerts, d.telegramAlerts),
+    houseStyle: typeof r.houseStyle === "string" && r.houseStyle.trim() ? r.houseStyle.trim() : d.houseStyle,
+    siteAbout: typeof r.siteAbout === "string" && r.siteAbout.trim() ? r.siteAbout.trim() : d.siteAbout,
+    briefModel: str(r.briefModel, d.briefModel),
+    autoSummaryPerDay: num(r.autoSummaryPerDay, d.autoSummaryPerDay, 0, 2000),
   };
 }
 
@@ -246,6 +277,7 @@ export type RunStats = {
   trends: number;
   proxied: number;
   budgetStop?: string;
+  summarized?: number;
   embedFilterOn?: boolean;
   log?: string[];
 };

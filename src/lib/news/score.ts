@@ -11,6 +11,8 @@ export type ClusterFacts = {
   /** Источники, присоединившиеся за последние ~2 прогона: вес источника суммируется. */
   recentWeighted: number;
   recentCount: number;
+  /** Украинских сайтов за последний час. */
+  recentUa: number;
   sourceCount: number;
   uaCount: number;
   worldCount: number;
@@ -56,7 +58,9 @@ export function scoreCluster(f: ClusterFacts): { score: number; parts: ScorePart
   if (W.trend) {
     parts.push({
       key: "trend", label: "Трендовость", max: W.trend, points: f.trend ? W.trend : 0,
-      why: f.trend ? `В Google Trends Украины: «${f.trend.title}»${f.trend.traffic ? `, ${f.trend.traffic} запросов` : ""}` : "в трендах Украины нет",
+      why: f.trend
+        ? `люди сейчас это ищут: «${f.trend.title}» в топе Google Trends Украины${f.trend.traffic ? `, ${f.trend.traffic} запросов` : ""}`
+        : "в топ-20 Google Trends Украины этого нет — для шоубиза это обычно: интерес видно по скорости публикаций",
     });
   }
 
@@ -90,4 +94,45 @@ export function scoreCluster(f: ClusterFacts): { score: number; parts: ScorePart
 
   const score = Math.max(0, Math.min(100, Math.round(parts.reduce((a, p) => a + p.points, 0))));
   return { score: f.isTarget ? score : 0, parts };
+}
+
+/**
+ * Важность для редактора: «Обязательно» / «Стоит взять» / «По желанию» — по тем же сигналам, с причинами словами.
+ * Обязательно: балл срочности, или 3+ украинских сайта за час, или тренд Google, или звезда первого ряда пишется прямо сейчас,
+ * или мировое событие о нашей звезде ещё не вышло в Украине.
+ */
+export function priorityOf(f: ClusterFacts, score: number, urgentScore: number, topWeight: number): { priority: string; why: string[] } {
+  const why: string[] = [];
+  const top = !!f.entityName && f.entityWeight >= topWeight;
+  const ageH = (f.now.getTime() - f.firstPublishedAt.getTime()) / 3600_000;
+  let must = false;
+  if (score >= urgentScore) {
+    must = true;
+    why.push(`балл ${score} — выше порога срочности ${urgentScore}`);
+  }
+  if (f.recentUa >= 3) {
+    must = true;
+    why.push(`${f.recentUa} украинских сайтов написали за последний час — тема разгоняется, конкуренты уже в выдаче`);
+  }
+  if (f.trend) {
+    must = true;
+    why.push(`запрос «${f.trend.title}» в топе Google Trends Украины — люди ищут прямо сейчас`);
+  }
+  if (top && f.uaCount >= 2 && ageH <= 6) {
+    must = true;
+    why.push(`${f.entityName} — звезда первого ряда для сайта, о ней пишут ${f.uaCount} сайта в первые часы`);
+  }
+  if (f.uaCount === 0 && f.worldCount >= 2 && f.entityWeight >= 1.2) {
+    must = true;
+    why.push(`о ${f.entityName} пишут ${f.worldCount} мировых медиа, в Украине ещё никто — можно выйти первыми`);
+  }
+  if (must) return { priority: "must", why };
+  if (score >= 45 || top) {
+    if (top) why.push(`${f.entityName} стабильно собирает трафик у сайта`);
+    if (score >= 45) why.push(`балл ${score}: тема в нише и свежая, но без признаков взрыва интереса`);
+    return { priority: "should", why };
+  }
+  why.push(f.sourceCount <= 1 ? "пока одна публикация и нет сущности первого ряда — может не взлететь" : `балл ${score}: интерес умеренный`);
+  if (!f.entityName) why.push("героя нет в списке сущностей сайта — Discover слабее связывает такую статью с интересами читателей");
+  return { priority: "maybe", why };
 }
