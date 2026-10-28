@@ -122,7 +122,7 @@ export function priorityOf(f: ClusterFacts, score: number, urgentScore: number, 
     must = true;
     why.push(`${f.entityName} — звезда первого ряда для сайта, о ней пишут ${f.uaCount} сайта в первые часы`);
   }
-  if (f.uaCount === 0 && f.worldCount >= 2 && f.entityWeight >= 1.2) {
+  if (f.uaCount === 0 && f.worldCount >= 3 && f.entityWeight >= 1.2) {
     must = true;
     why.push(`о ${f.entityName} пишут ${f.worldCount} мировых медиа, в Украине ещё никто — можно выйти первыми`);
   }

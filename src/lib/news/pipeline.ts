@@ -547,7 +547,7 @@ async function scoreStep(project: ProjectRow, s: NewsSettings, stats: RunStats, 
   const clusters = await prisma.newsCluster.findMany({ where: { projectId: project.id, lastItemAt: { gte: new Date(now.getTime() - 26 * HOUR) } } });
   if (!clusters.length) return;
   const [items, sources, trends] = await Promise.all([
-    prisma.newsItem.findMany({ where: { clusterId: { in: clusters.map((c) => c.id) } }, orderBy: { foundAt: "asc" }, select: { clusterId: true, sourceId: true, url: true, domain: true, tier: true, foundAt: true, imageUrl: true, matched: true, visual: true, hasPrice: true, sensitive: true, category: true, entities: true, extraSources: true } }),
+    prisma.newsItem.findMany({ where: { clusterId: { in: clusters.map((c) => c.id) } }, orderBy: { foundAt: "asc" }, select: { clusterId: true, sourceId: true, url: true, domain: true, tier: true, foundAt: true, publishedAt: true, imageUrl: true, matched: true, visual: true, hasPrice: true, sensitive: true, category: true, entities: true, extraSources: true } }),
     prisma.newsSource.findMany({ where: { projectId: project.id }, select: { id: true, weight: true } }),
     prisma.newsTrend.findMany({ where: { projectId: project.id, relevant: true, lastSeenAt: { gte: new Date(now.getTime() - 6 * HOUR) } } }),
   ]);
@@ -564,7 +564,9 @@ async function scoreStep(project: ProjectRow, s: NewsSettings, stats: RunStats, 
     for (const it of list) {
       const w = (it.sourceId && weightOf.get(it.sourceId)) || 1;
       const prev = srcs.get(it.domain);
-      if (!prev || it.foundAt.getTime() < prev.at) srcs.set(it.domain, { domain: it.domain, tier: it.tier, weight: w, at: it.foundAt.getTime() });
+      // Время источника — публикация (не позже, чем мы её нашли): иначе первый прогон считает всё «за последний час».
+      const at = Math.min(it.foundAt.getTime(), it.publishedAt?.getTime() ?? Infinity);
+      if (!prev || at < prev.at) srcs.set(it.domain, { domain: it.domain, tier: it.tier, weight: w, at });
       for (const x of Array.isArray(it.extraSources) ? (it.extraSources as { domain: string; tier: string; weight?: number; at: string }[]) : []) {
         const t = Date.parse(x.at);
         const p2 = srcs.get(x.domain);
