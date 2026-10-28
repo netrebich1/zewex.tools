@@ -19,16 +19,17 @@ const n15 = (v: unknown) => Math.max(1, Math.min(5, Math.round(Number(v) || 3)))
 const srcText = (c: ClusterForAi, perLead = 500) =>
   c.sources.slice(0, 8).map((x, i) => `${i + 1}. [${x.tier === "world" ? "світове медіа" : "українське медіа"}] ${x.domain}: ${x.title}${x.lead ? ` — ${x.lead.slice(0, perLead)}` : ""}`).join("\n");
 
-/** Суть по-украински для пачки до 5 кластеров (дешёвая модель классификации). */
+/** Суть по-украински для пачки до 5 кластеров (модель углов и ТЗ: дешёвая давала суржик). */
 export async function summarizeClusters(ctx: AiCtx, st: NewsSettings, list: ClusterForAi[]): Promise<Summary[]> {
   const system = `Ти редактор українського медіа. Про сайт: ${st.siteAbout}
+Пиши лише літературною українською (жодних русизмів і суржику: не «зачоска», «соцсетях», «старыми» — а «зачіска», «соцмережах», «старими»). Імена — як прийнято в українських медіа (Періс Гілтон, Кім Кардаш'ян, Зендея).
 Для кожної новини (id) дай:
-- title_uk: нейтральний заголовок українською до 90 символів (якщо джерела англійською — переклади суть, не дослівно; імена — як прийнято в українських медіа);
+- title_uk: нейтральний заголовок українською до 90 символів (якщо джерела англійською — переклади суть, не дослівно);
 - summary_uk: 2–3 речення українською — хто, що, де, коли; лише факти з джерел, спірне познач «за даними …»;
 - why_us: 1–2 речення українською — чому це зайде саме нашій аудиторії і на чому зробити акцент (практична користь, впізнаваний герой, образ, ціна, тренд). Якщо тема слабка для нас — чесно скажи чому.
 Поверни лише JSON: {"items":[{"id":"…","title_uk":"…","summary_uk":"…","why_us":"…"}]}`;
   const user = list.map((c) => `### id: ${c.id}\nКатегорія: ${c.category ? CATEGORY_LABELS[c.category] ?? c.category : "—"}${c.entity ? `; герой: ${c.entity}` : ""}\nСигнали: ${c.signals.join("; ") || "—"}\nДжерела:\n${srcText(c, 400)}`).join("\n\n");
-  const j = await chatJson(ctx, SLOT_CLASSIFY, system, user, ctx.classifyModel, 2500);
+  const j = await chatJson(ctx, SLOT_BRIEF, system, user, st.briefModel, 2500);
   const items = Array.isArray(j.items) ? (j.items as Record<string, unknown>[]) : [];
   return items
     .map((r) => ({ id: s(r.id, 64), titleUk: s(r.title_uk, 300), summaryUk: s(r.summary_uk, 1500), whyUs: s(r.why_us, 1000) }))
@@ -91,6 +92,7 @@ ${FORMAT_KEYS.map((k) => `- ${k} (${FORMATS[k].label}, ${FORMATS[k].words}): ${F
 
 type BriefJson = {
   hook: string;
+  summary: string;
   whyNow: string;
   lead: string;
   facts: { fact: string; source: string }[];
@@ -109,7 +111,8 @@ type BriefJson = {
 };
 
 /** ТЗ по выбранному углу: короткое, под формат, с вариантами заголовков, title, description, slug и именами файлов. */
-export async function makeBrief(ctx: AiCtx, st: NewsSettings, site: string, c: ClusterForAi, angle: Angle, ours: OurArticle[], summaryUk: string | null, research?: ClusterResearch | null): Promise<string> {
+export async function makeBrief(ctx: AiCtx, st: NewsSettings, site: string, cIn: ClusterForAi, angle: Angle, ours: OurArticle[], summaryUk: string | null, research?: ClusterResearch | null): Promise<string> {
+  let c = cIn;
   const fmt = FORMATS[angle.format ?? "news"] ?? FORMATS.news;
   const system = `Ти шеф-редактор українського жіночого медіа ${site} для Google Discover. Про сайт: ${st.siteAbout}
 ${DISCOVER_RULES}
@@ -118,7 +121,8 @@ ${DISCOVER_RULES}
 Склади коротке ТЗ для автора. Формат: ${fmt.label} (${fmt.words}) — ${fmt.when}. Пиши українською. Факти лише з публікацій (номер джерела). Нічого не вигадуй: чого нема в джерелах — у todo як завдання автору перевірити.${c.entity ? `\nІм'я героя пиши саме так, як у нашому списку: «${c.entity}» — у заголовках, Title, alt і тегах.` : ""}
 Головне фото (перше в photos) НЕ може бути embed-постом: його where — пресматеріали бренду/організатора, фотобанк за редакційною ліцензією або Wikimedia Commons; embed поста героя — лише для 2-го чи 3-го фото.
 Поверни лише JSON:
-{"hook":"одне речення — що нового і чому читачка клікне",
+{"summary":"суть новини 2–3 речення чистою українською: хто, що, де, коли + деталь; імена як прийнято в українських медіа",
+"hook":"одне речення — що нового і чому читачка клікне",
 "why_now":"одне речення — чому писати сьогодні",
 "lead":"готовий лід, 2 речення: хто, що, де, коли + деталь",
 "facts":[{"fact":"…","source":1}] — 3–6 фактів,
@@ -132,19 +136,28 @@ ${DISCOVER_RULES}
 "slugs":["3 варіанти slug транслітом, 3–6 слів, з героєм, без дат"],
 "tags":["сутності: герой, бренд, подія"],"rubric":"одна рубрика","og":"сюжет OG 1200×630",
 "dont":["2–4 пункти чого не робити саме в цій статті"]}`;
-  const user = `Тема: ${c.title}${summaryUk ? `\nСуть: ${summaryUk}` : ""}\nОбраний кут (${angle.kind}): ${angle.title} — ${angle.angle}\nЧому клікнуть: ${angle.why}\n\nПублікації (номер — джерело):\n${c.sources.slice(0, 8).map((x, i) => `${i + 1}. ${x.domain} — ${x.title}${x.lead ? `: ${x.lead.slice(0, 900)}` : ""}`).join("\n")}\n\nНаші статті для посилань:\n${ours.map((o) => `- ${o.title} (${o.url})`).join("\n") || "— немає"}`;
+  // Страницы из глубокого ресёрча (поиск по герою) — дополнительные публикации с заголовком и описанием.
+  const extraPages = (research?.pages ?? []).filter((p) => p.ok && p.title && !c.sources.some((x) => x.url === p.url)).slice(0, 6);
+  const allSources = [...c.sources.slice(0, 8), ...extraPages.map((p) => ({ domain: p.url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0], title: p.title ?? "", lead: p.lead ?? "", url: p.url, tier: "search", at: new Date() }))];
+  c = { ...c, sources: allSources };
+  const user = `Тема: ${c.title}${summaryUk ? `\nСуть (чернетка, перепиши чистою українською): ${summaryUk}` : ""}\nОбраний кут (${angle.kind}): ${angle.title} — ${angle.angle}\nЧому клікнуть: ${angle.why}\n\nПублікації (номер — джерело):\n${allSources.map((x, i) => `${i + 1}. ${x.domain}${x.tier === "search" ? " (знайдено пошуком)" : ""} — ${x.title}${x.lead ? `: ${x.lead.slice(0, 900)}` : ""}`).join("\n")}\n\nНаші статті для посилань:\n${ours.map((o) => `- ${o.title} (${o.url})`).join("\n") || "— немає"}`;
   const j = await chatJson(ctx, SLOT_BRIEF, system, user, st.briefModel, 4000, 150_000);
   const list = (v: unknown, max = 300) => (Array.isArray(v) ? v.map((x) => s(x, max)).filter(Boolean) : []);
   const arr = <T>(v: unknown, f: (x: Record<string, unknown>) => T) => (Array.isArray(v) ? (v as Record<string, unknown>[]).map(f) : []);
   const b: BriefJson = {
     hook: s(j.hook, 300),
+    summary: s(j.summary, 700),
     whyNow: s(j.why_now, 300),
     lead: s(j.lead, 700),
     facts: arr(j.facts, (x) => ({ fact: s(x.fact, 400), source: s(x.source, 10) })).filter((x) => x.fact).slice(0, 8),
     blocks: arr(j.blocks, (x) => ({ h2: s(x.h2, 160), note: s(x.note, 300) })).filter((x) => x.h2).slice(0, 7),
     ourTouch: list(j.our_touch, 400).slice(0, 3),
     todo: list(j.todo, 300).slice(0, 5),
-    photos: arr(j.photos, (x) => ({ shot: s(x.shot, 200), file: s(x.file, 80).toLowerCase().replace(/[^a-z0-9.-]+/g, "-"), alt: s(x.alt, 160), where: s(x.where, 200) })).filter((x) => x.shot).slice(0, 4),
+    photos: arr(j.photos, (x) => ({ shot: s(x.shot, 200), file: s(x.file, 80).toLowerCase().replace(/[^a-z0-9.-]+/g, "-"), alt: s(x.alt, 160), where: s(x.where, 200) }))
+      .filter((x) => x.shot)
+      .slice(0, 4)
+      // Главное фото не может быть embed-постом: правило повторяем кодом, модель его иногда игнорирует.
+      .map((p, i) => (i === 0 && /embed|вбудов|пост героя|instagram|facebook|threads/i.test(p.where) ? { ...p, where: "пресматеріали бренду/організатора, фотобанк за редакційною ліцензією або Wikimedia Commons (embed поста — лише як вставка в тексті, не головне фото)" } : p)),
     headlines: arr(j.headlines, (x) => ({ text: s(x.text, 120), type: s(x.type, 20) })).filter((x) => x.text).slice(0, 6),
     titles: list(j.titles, 120).slice(0, 4),
     descriptions: list(j.descriptions, 220).slice(0, 4),
@@ -198,7 +211,7 @@ function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Ang
     `> Напиши статтю для ${site} за цим ТЗ. Це матеріал для Google Discover: легкий, короткий, з героєм у заголовку. Лише факти з розділу «Факти»; що в «Автору перевірити» — знайди і підтверди або прибери. Відповідь — за розділом «Формат відповіді» в кінці: чистий HTML для WordPress + метатеги, після постредактури.`,
     "",
     "## Суть",
-    summaryUk || c.title,
+    b.summary || summaryUk || c.title,
     "",
     "## Гачок і чому зараз",
     `- Гачок: ${b.hook || angle.why}`,

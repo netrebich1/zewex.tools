@@ -12,7 +12,8 @@ import { fetchText } from "./fetch";
 
 export type ResearchImage = { url: string; from: string; w?: number; h?: number; kind: "og" | "img" | "feed" };
 export type ResearchEmbed = { kind: "instagram" | "x" | "youtube" | "tiktok" | "facebook" | "threads" | "telegram" | "pinterest"; url: string; from: string };
-export type ClusterResearch = { images: ResearchImage[]; embeds: ResearchEmbed[]; pages: { url: string; ok: boolean; note?: string }[]; at: string; deep?: boolean; queries?: string[] };
+export type ResearchPage = { url: string; ok: boolean; note?: string; title?: string; lead?: string };
+export type ClusterResearch = { images: ResearchImage[]; embeds: ResearchEmbed[]; pages: ResearchPage[]; at: string; deep?: boolean; queries?: string[] };
 
 const attr = (tag: string, name: string) => decodeEntities(tag.match(new RegExp(`\\b${name}\\s*=\\s*["']([^"']+)["']`, "i"))?.[1] ?? "");
 const metaContent = (html: string, prop: string) => {
@@ -32,7 +33,7 @@ const abs = (u: string, base: string) => {
 const isPhoto = (u: string) => /\.(jpe?g|png|webp|avif)(\?|$)/i.test(u) || /\/wp-content\/uploads\/|images\.|img\.|cdn\./i.test(u);
 const junk = (u: string) => /logo|icon|avatar|sprite|placeholder|blank|pixel|badge|button|banner|ads?\.|\.svg|\.gif|emoji|1x1|spacer|channelheader|\/pix\/|\/static\/|\/assets\/|share-|social/i.test(u);
 
-export function extractFromHtml(html: string, pageUrl: string, from: string): { images: ResearchImage[]; embeds: ResearchEmbed[] } {
+export function extractFromHtml(html: string, pageUrl: string, from: string): { images: ResearchImage[]; embeds: ResearchEmbed[]; title: string; lead: string } {
   const images: ResearchImage[] = [];
   const embeds: ResearchEmbed[] = [];
   const seen = new Set<string>();
@@ -81,7 +82,9 @@ export function extractFromHtml(html: string, pageUrl: string, from: string): { 
   for (const m of html.matchAll(/https?:\/\/(?:www\.)?threads\.(?:net|com)\/@[A-Za-z0-9_.]+\/post\/[A-Za-z0-9_-]+/gi)) addEmbed("threads", m[0]);
   for (const m of html.matchAll(/https?:\/\/t\.me\/(?!s\/)[A-Za-z0-9_]{4,}\/\d+/gi)) addEmbed("telegram", m[0]);
   for (const m of html.matchAll(/https?:\/\/(?:[a-z]{2}\.)?pinterest\.com\/pin\/\d+/gi)) addEmbed("pinterest", m[0]);
-  return { images, embeds: embeds.slice(0, 16) };
+  const title = (metaContent(html, "og:title") || decodeEntities(html.match(/<title[^>]*>([^<]{3,200})/i)?.[1] ?? "")).replace(/s+/g, " ").trim();
+  const lead = (metaContent(html, "og:description") || metaContent(html, "description")).replace(/s+/g, " ").trim().slice(0, 500);
+  return { images, embeds: embeds.slice(0, 16), title, lead };
 }
 
 const SOCIAL_HOST = /instagram\.com|twitter\.com|x\.com|youtube\.com|youtu\.be|tiktok\.com|facebook\.com|threads\.(net|com)|t\.me|pinterest\.com|google\.|bing\.|duckduckgo\.|wikipedia\.org|yandex\./i;
@@ -134,7 +137,7 @@ export async function deepResearch(clusterId: string): Promise<ClusterResearch> 
     const got = extractFromHtml(r.text, r.finalUrl || u, from);
     for (const im of got.images) if (!base.images.some((x) => x.url === im.url)) base.images.push(im);
     for (const e of got.embeds) if (!base.embeds.some((x) => x.url === e.url)) base.embeds.push(e);
-    extra.push({ url: u, ok: true, note: `пошук: ${got.images.length} фото, ${got.embeds.length} вставок` });
+    extra.push({ url: u, ok: true, note: `пошук: ${got.images.length} фото, ${got.embeds.length} вставок`, title: got.title, lead: got.lead });
   }));
   const out: ClusterResearch = { ...base, pages: [...base.pages, ...extra], images: base.images.slice(0, 20), embeds: base.embeds.slice(0, 16), deep: true, queries };
   await prisma.newsCluster.update({ where: { id: clusterId }, data: { research: out as unknown as Prisma.InputJsonValue, researchAt: new Date() } });
