@@ -478,12 +478,21 @@ async function classifyStep(project: ProjectRow, ctx: AiCtx, s: NewsSettings, st
 
 const entKey = (e: { name: string; orig?: string }) => normText(e.orig && /[a-z]/i.test(e.orig) ? e.orig : e.name);
 
+/** Герой кластера: персона/бренд, которую модель отметила главной (с привязкой к нашему списку, если имя совпало); иначе первое совпадение со списком. */
 function mainEntityOf(it: { matched: unknown; entities: unknown }): { key: string; name: string } | null {
   const m = Array.isArray(it.matched) ? (it.matched as EntityHit[]) : [];
+  const ents = Array.isArray(it.entities) ? (it.entities as { name: string; orig: string; role: string; type?: string }[]) : [];
+  const main = ents.find((e) => e.role === "main" && (e.name || e.orig)) ?? ents.find((e) => e.name || e.orig);
+  if (main) {
+    const nm = normText(main.name || main.orig);
+    const inList = m.find((x) => {
+      const a = normText(x.name);
+      return a === nm || nm.includes(a.split(" ").pop() ?? "\u0000") || a.includes(nm.split(" ").pop() ?? "\u0000");
+    });
+    return inList ? { key: `e:${inList.id}`, name: inList.name } : { key: `n:${entKey(main)}`, name: main.name || main.orig };
+  }
   if (m.length) return { key: `e:${m[0].id}`, name: m[0].name };
-  const ents = Array.isArray(it.entities) ? (it.entities as { name: string; orig: string; role: string }[]) : [];
-  const main = ents.find((e) => e.role === "main") ?? ents[0];
-  return main ? { key: `n:${entKey(main)}`, name: main.name || main.orig } : null;
+  return null;
 }
 
 async function clusterStep(projectId: string, s: NewsSettings, stats: RunStats) {
@@ -611,7 +620,7 @@ async function scoreStep(project: ProjectRow, s: NewsSettings, stats: RunStats, 
       data: {
         priority: pr.priority, priorityWhy: pr.why as unknown as Prisma.InputJsonValue,
         score, scoreParts: parts as unknown as Prisma.InputJsonValue, scoreHistory: hist as unknown as Prisma.InputJsonValue, urgent, sourceCount: all.length, itemCount: list.length,
-        uaCount: all.filter((x) => x.tier !== "world").length, worldCount: all.filter((x) => x.tier === "world").length, mainEntityName: c.mainEntityName ?? best?.name ?? null,
+        uaCount: all.filter((x) => x.tier !== "world").length, worldCount: all.filter((x) => x.tier === "world").length, mainEntityName: (list.map((x) => mainEntityOf(x)?.name).find(Boolean) as string | undefined) ?? c.mainEntityName ?? best?.name ?? null,
         visual: Math.max(0, ...list.map((x) => x.visual ?? 0)) || null, hasPrice: list.some((x) => x.hasPrice), sensitive: list.some((x) => x.sensitive), category,
       },
     });
