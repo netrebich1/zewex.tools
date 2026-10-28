@@ -32,7 +32,7 @@ export type FeedCard = {
   whyUs: string | null;
   priority: string | null;
   priorityWhy: string[];
-  angles: { angles: { title: string; angle: string; why: string; novelty: number; usefulness: number; kind: string }[]; competitorsAngle?: string; gaps?: string[]; ours?: { title: string; url: string }[] } | null;
+  angles: { angles: { title: string; angle: string; why: string; novelty: number; usefulness: number; kind: string; format?: string }[]; competitorsAngle?: string; gaps?: string[]; ours?: { title: string; url: string }[] } | null;
   angleIdx: number | null;
   brief: string | null;
   briefAt: Date | null;

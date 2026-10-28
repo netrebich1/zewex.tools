@@ -10,7 +10,7 @@ import { CATEGORY_LABELS, SLOT_BRIEF, SLOT_CLASSIFY, type NewsSettings } from ".
 export type SourceForAi = { domain: string; title: string; lead: string; url: string; tier: string; at: Date };
 export type ClusterForAi = { id: string; title: string; category: string | null; subcategory: string | null; entity: string | null; signals: string[]; sources: SourceForAi[] };
 export type Summary = { id: string; titleUk: string; summaryUk: string; whyUs: string };
-export type Angle = { title: string; angle: string; why: string; novelty: number; usefulness: number; kind: string };
+export type Angle = { title: string; angle: string; why: string; novelty: number; usefulness: number; kind: string; format?: string };
 export type OurArticle = { title: string; url: string };
 
 const s = (v: unknown, max = 2000) => String(v ?? "").trim().slice(0, max);
@@ -34,146 +34,198 @@ export async function summarizeClusters(ctx: AiCtx, st: NewsSettings, list: Clus
     .filter((x) => list.some((c) => c.id === x.id) && x.summaryUk);
 }
 
-const ANGLE_KINDS = "як повторити | контекст і еволюція | практика й інструкція | експертний розбір | підбірка й порівняння | особиста історія | розбір обговорення | що всередині й де купити в Україні";
 
-/** 3 угла для кластера (кнопка «В работу»). */
+/**
+ * Формат статьи под Discover. Discover показывает материал по интересу к герою и картинке, а не по запросу:
+ * побеждает момент + одна наша мысль, а не справочник. Формат выбирается по типу повода, объём — по формату.
+ */
+export const FORMATS: Record<string, { label: string; words: string; when: string }> = {
+  moment: { label: "Момент", words: "250–400 слів", when: "фото/образ/вихід зірки, одна подія, 1–3 факти: новина + що це за образ або стрижка + одна наша ремарка" },
+  news: { label: "Новина", words: "300–450 слів", when: "подія з кількома фактами: заручини, прем'єра, запуск, скандал — що сталося, що відомо, що далі" },
+  look: { label: "Розбір образу", words: "350–500 слів", when: "образ варто розібрати по речах: бренд, ціна, де схоже купити в Україні — коротко, по пунктах" },
+  howto: { label: "Як повторити", words: "450–650 слів", when: "лише якщо тренд справді масовий і читачка захоче повторити: 5–7 кроків, без енциклопедії" },
+  list: { label: "Підбірка", words: "400–600 слів", when: "премія, тиждень моди, Геловін — 5–10 образів, по 1–2 речення на кожен, фото головне" },
+  context: { label: "Що за цим стоїть", words: "400–550 слів", when: "новина має передісторію, яку читачка не знає: що було раніше, чому зараз, що буде" },
+};
+const FORMAT_KEYS = Object.keys(FORMATS);
+
+const DISCOVER_RULES = `Правила Discover (Україна):
+- Discover — стрічка за інтересами, не пошук. Читачка побачить картинку і заголовок; клікне, якщо впізнає героя і зрозуміє, що нового. Жодних «гайдів під запит».
+- Заголовок: герой у перших 2–3 словах, конкретна нова деталь (стрижка, сукня, подія), 45–65 символів, без «як повторити», «гайд», «все що треба знати», без «шок/сенсація/не повірите», без трикрапки й капсу. Можна легке питання або інтригу, якщо текст її чесно закриває.
+- Текст легкий: короткий лід у 2 речення, далі 3–5 коротких блоків, по 2–4 речення. Одна наша думка або порада, а не чотири розділи. Жодних списків «для круглого обличчя», цін по містах, історії стрижки з 1953 року.
+- Факти лише з джерел. Деталі, яких нема в джерелах (ціни в салонах, назви засобів), не вигадувати — або прибрати, або позначити як завдання автору знайти.
+- Фото вирішує: велике (1200 px+), герой або річ у центрі, без колажів із логотипами. Під кожне фото — ім'я файлу та alt з героєм.
+- Теги = сутності (герой, бренд, подія); рубрика — одна.`;
+
+/** 3 угла с форматом (кнопка «В работу»). */
 export async function makeAngles(ctx: AiCtx, st: NewsSettings, c: ClusterForAi, ours: OurArticle[]): Promise<{ angles: Angle[]; competitorsAngle: string; gaps: string[] }> {
-  const system = `Ти шеф-редактор українського жіночого медіа. Про сайт: ${st.siteAbout}
-Стиль редакції:
-${st.houseStyle}
+  const system = `Ти шеф-редактор українського жіночого медіа для Google Discover. Про сайт: ${st.siteAbout}
+${DISCOVER_RULES}
 
-Перед тобою публікації про одну подію (українські та світові) і наші схожі статті. Завдання — не переказ новини, а свій кут, який дасть читачці користь і виділить нас серед конкурентів у Google Discover.
-1. competitors_angle: одним реченням — під яким кутом уже написали інші.
-2. gaps: 2–4 пункти — чого немає ні в кого (практика, контекст, порівняння, ціни в Україні, експерт, візуал).
-3. angles: рівно 3 різні кути, тип кожного — один із: ${ANGLE_KINDS}. Для кожного:
-   kind — тип; title — робочий заголовок українською до 70 символів, без клікбейту, герой у перших трьох словах; angle — одним-двома реченнями, що саме пишемо; why — чому це спрацює в Discover і для нашої аудиторії; novelty і usefulness — оцінки 1–5.
-Для іноземної новини обов'язково — український контекст (ціни в гривнях, де купити в Україні, схожі українські зірки чи бренди).
-Поверни лише JSON: {"competitors_angle":"…","gaps":["…"],"angles":[{"kind":"…","title":"…","angle":"…","why":"…","novelty":4,"usefulness":5}]}`;
+Формати статті (format → коли доречний, обсяг):
+${FORMAT_KEYS.map((k) => `- ${k} (${FORMATS[k].label}, ${FORMATS[k].words}): ${FORMATS[k].when}`).join("\n")}
+
+Перед тобою публікації про одну подію (українські та світові) і наші схожі статті.
+1. competitors_angle: одним реченням — як подали інші.
+2. gaps: 2–3 пункти — що можна додати від себе одним абзацом (не розділом).
+3. angles: рівно 3 кути, перший — найлегший і найближчий до самої події; кути мають різні формати. Для кожного:
+   format — один із ${FORMAT_KEYS.join(" | ")}; title — заголовок українською за правилами Discover; angle — 1–2 речення, що саме пишемо і яка одна наша думка; why — чому клікнуть у Discover (герой, деталь, картинка), одним реченням; novelty і usefulness — 1–5.
+Якщо інформаційний привід слабкий для нашої читачки (другорядна подія, герой маловідомий в Україні), скажи це в fit: «слабкий привід: …», інакше fit: «ok».
+Поверни лише JSON: {"fit":"…","competitors_angle":"…","gaps":["…"],"angles":[{"format":"moment","title":"…","angle":"…","why":"…","novelty":4,"usefulness":4}]}`;
   const user = `Тема: ${c.title}\nКатегорія: ${c.category ? CATEGORY_LABELS[c.category] ?? c.category : "—"}${c.subcategory ? ` (${c.subcategory})` : ""}${c.entity ? `\nГерой: ${c.entity}` : ""}\nСигнали: ${c.signals.join("; ") || "—"}\n\nПублікації:\n${srcText(c, 700)}\n\nНаші схожі статті:\n${ours.map((o) => `- ${o.title} (${o.url})`).join("\n") || "— немає"}`;
   const j = await chatJson(ctx, SLOT_BRIEF, system, user, st.briefModel, 2500);
-  const angles = (Array.isArray(j.angles) ? (j.angles as Record<string, unknown>[]) : []).slice(0, 3).map((a) => ({
-    kind: s(a.kind, 60), title: s(a.title, 160), angle: s(a.angle, 600), why: s(a.why, 600), novelty: n15(a.novelty), usefulness: n15(a.usefulness),
-  })).filter((a) => a.title && a.angle);
+  const angles = (Array.isArray(j.angles) ? (j.angles as Record<string, unknown>[]) : []).slice(0, 3).map((a) => {
+    const f = s(a.format, 20).toLowerCase();
+    const format = FORMAT_KEYS.includes(f) ? f : "news";
+    return { kind: FORMATS[format].label, format, title: s(a.title, 160), angle: s(a.angle, 600), why: s(a.why, 400), novelty: n15(a.novelty), usefulness: n15(a.usefulness) };
+  }).filter((a) => a.title && a.angle);
   if (!angles.length) throw new Error("Модель не предложила углы — нажмите ещё раз");
-  return { angles, competitorsAngle: s(j.competitors_angle, 400), gaps: (Array.isArray(j.gaps) ? j.gaps : []).map((g) => s(g, 300)).filter(Boolean).slice(0, 5) };
+  const fit = s(j.fit, 300);
+  const gaps = (Array.isArray(j.gaps) ? j.gaps : []).map((g) => s(g, 300)).filter(Boolean).slice(0, 4);
+  if (fit && !/^ok\b/i.test(fit)) gaps.unshift(`⚠ ${fit}`);
+  return { angles, competitorsAngle: s(j.competitors_angle, 400), gaps };
 }
 
 type BriefJson = {
-  headline: string;
-  alt: string[];
-  angleSentence: string;
-  better: string;
+  hook: string;
+  whyNow: string;
+  lead: string;
   facts: { fact: string; source: string }[];
-  outline: { h2: string; note: string; h3: string[] }[];
-  mustAdd: string[];
-  images: { count: number; main: string; ideas: string[] };
+  blocks: { h2: string; note: string }[];
+  ourTouch: string[];
+  todo: string[];
+  photos: { shot: string; file: string; alt: string }[];
+  headlines: { text: string; type: string }[];
+  titles: string[];
+  descriptions: string[];
+  slugs: string[];
+  tags: string[];
+  rubric: string;
+  og: string;
   dont: string[];
-  words: string;
-  meta: { title: string; titleWhy: string; description: string; descriptionWhy: string; slug: string; tags: string[]; rubric: string; og: string };
 };
 
-/** ТЗ по выбранному углу: JSON модели → markdown-задание для Claude с проверкой длины метатегов. */
+/** ТЗ по выбранному углу: короткое, под формат, с вариантами заголовков, title, description, slug и именами файлов. */
 export async function makeBrief(ctx: AiCtx, st: NewsSettings, site: string, c: ClusterForAi, angle: Angle, ours: OurArticle[], summaryUk: string | null): Promise<string> {
-  const system = `Ти шеф-редактор українського жіночого медіа ${site}. Про сайт: ${st.siteAbout}
-Стиль редакції:
-${st.houseStyle}
+  const fmt = FORMATS[angle.format ?? "news"] ?? FORMATS.news;
+  const system = `Ти шеф-редактор українського жіночого медіа ${site} для Google Discover. Про сайт: ${st.siteAbout}
+${DISCOVER_RULES}
+Стиль редакції (коротко): ${st.houseStyle.split("\n").slice(0, 3).join(" ")}
 
-Склади ТЗ для автора за обраним кутом. Пиши українською. Факти — лише ті, що є в публікаціях (вкажи номер джерела), нічого не вигадуй.
+Склади коротке ТЗ для автора. Формат: ${fmt.label} (${fmt.words}) — ${fmt.when}. Пиши українською. Факти лише з публікацій (номер джерела). Нічого не вигадуй: чого нема в джерелах — у todo як завдання автору перевірити.
 Поверни лише JSON:
-{"headline":"робочий H1 до 70 символів, герой у перших 3 словах","alt":["ще 2 варіанти заголовка"],"angle_sentence":"кут одним реченням","better":"чому наш кут кращий за конкурентів",
-"facts":[{"fact":"факт","source":номер джерела}],
-"outline":[{"h2":"підзаголовок","h3":["…"],"note":"що в цьому блоці одним реченням"}] — 5–8 блоків,
-"must_add":["мінімум 3 речі, яких немає в конкурентів: порада, підбірка, ціни в Україні, де купити, експерт, наш старий матеріал"],
-"images":{"count":3,"main":"сюжет головного кадру 1200 px і ширше","ideas":["інші кадри"]},
-"dont":["чого не писати"],"words":"обсяг, напр. 500–700 слів",
-"meta":{"title":"до 60 символів, герой у перших 3 словах + суть + користь/число, без «шок»","title_why":"чому так","description":"140–160 символів: що отримає читачка + 1 конкретна деталь","description_why":"чому так","slug":"транслітом 3–6 слів, з іменем героя, без дат","tags":["сутності"],"rubric":"рубрика","og":"сюжет OG-картинки 1200×630"}}`;
-  const user = `Тема: ${c.title}${summaryUk ? `\nСуть: ${summaryUk}` : ""}\nОбраний кут (${angle.kind}): ${angle.title} — ${angle.angle}\nЧому цей кут: ${angle.why}\n\nПублікації (номер — джерело):\n${c.sources.slice(0, 8).map((x, i) => `${i + 1}. ${x.domain} — ${x.title}${x.lead ? `: ${x.lead.slice(0, 900)}` : ""}`).join("\n")}\n\nНаші статті для внутрішніх посилань:\n${ours.map((o) => `- ${o.title} (${o.url})`).join("\n") || "— немає"}`;
+{"hook":"одне речення — що нового і чому читачка клікне",
+"why_now":"одне речення — чому писати сьогодні",
+"lead":"готовий лід, 2 речення: хто, що, де, коли + деталь",
+"facts":[{"fact":"…","source":1}] — 3–6 фактів,
+"blocks":[{"h2":"підзаголовок без клікбейту","note":"що в блоці, 1 речення"}] — рівно стільки, скільки потрібно формату (момент: 2–3; новина: 3–4; розбір/підбірка: 4–6), без H3,
+"our_touch":["1–2 речі від себе одним абзацом кожна: порада, контекст, український аналог"],
+"todo":["що автору перевірити або знайти самому, бо в джерелах цього немає"],
+"photos":[{"shot":"що в кадрі","file":"ім'я файлу латиницею через дефіс з героєм і деталлю, напр. zendaya-pixie-wnba-finals.jpg","alt":"alt українською з героєм, до 110 символів"}] — 2–3 фото, перше головне 1200 px+,
+"headlines":[{"text":"…","type":"новина|деталь|питання|емоція|користь"}] — 5 різних заголовків 45–65 символів, герой у перших словах,
+"titles":["3 варіанти Title до 60 символів"],
+"descriptions":["3 варіанти Description 110–155 символів: що побачить читачка + конкретна деталь"],
+"slugs":["3 варіанти slug транслітом, 3–6 слів, з героєм, без дат"],
+"tags":["сутності: герой, бренд, подія"],"rubric":"одна рубрика","og":"сюжет OG 1200×630",
+"dont":["2–4 пункти чого не робити саме в цій статті"]}`;
+  const user = `Тема: ${c.title}${summaryUk ? `\nСуть: ${summaryUk}` : ""}\nОбраний кут (${angle.kind}): ${angle.title} — ${angle.angle}\nЧому клікнуть: ${angle.why}\n\nПублікації (номер — джерело):\n${c.sources.slice(0, 8).map((x, i) => `${i + 1}. ${x.domain} — ${x.title}${x.lead ? `: ${x.lead.slice(0, 900)}` : ""}`).join("\n")}\n\nНаші статті для посилань:\n${ours.map((o) => `- ${o.title} (${o.url})`).join("\n") || "— немає"}`;
   const j = await chatJson(ctx, SLOT_BRIEF, system, user, st.briefModel, 4000, 150_000);
+  const list = (v: unknown, max = 300) => (Array.isArray(v) ? v.map((x) => s(x, max)).filter(Boolean) : []);
   const arr = <T>(v: unknown, f: (x: Record<string, unknown>) => T) => (Array.isArray(v) ? (v as Record<string, unknown>[]).map(f) : []);
-  const m = (j.meta ?? {}) as Record<string, unknown>;
-  const im = (j.images ?? {}) as Record<string, unknown>;
   const b: BriefJson = {
-    headline: s(j.headline, 200) || angle.title,
-    alt: (Array.isArray(j.alt) ? j.alt : []).map((x) => s(x, 200)).filter(Boolean).slice(0, 3),
-    angleSentence: s(j.angle_sentence, 500) || angle.angle,
-    better: s(j.better, 500),
-    facts: arr(j.facts, (x) => ({ fact: s(x.fact, 500), source: s(x.source, 10) })).filter((x) => x.fact),
-    outline: arr(j.outline, (x) => ({ h2: s(x.h2, 200), note: s(x.note, 400), h3: (Array.isArray(x.h3) ? x.h3 : []).map((h) => s(h, 200)).filter(Boolean) })).filter((x) => x.h2),
-    mustAdd: (Array.isArray(j.must_add) ? j.must_add : []).map((x) => s(x, 400)).filter(Boolean),
-    images: { count: Math.max(1, Math.min(10, Number(im.count) || 3)), main: s(im.main, 400), ideas: (Array.isArray(im.ideas) ? im.ideas : []).map((x) => s(x, 300)).filter(Boolean) },
-    dont: (Array.isArray(j.dont) ? j.dont : []).map((x) => s(x, 300)).filter(Boolean),
-    words: s(j.words, 60) || "500–700 слів",
-    meta: { title: s(m.title, 120), titleWhy: s(m.title_why, 300), description: s(m.description, 300), descriptionWhy: s(m.description_why, 300), slug: s(m.slug, 120), tags: (Array.isArray(m.tags) ? m.tags : []).map((x) => s(x, 80)).filter(Boolean), rubric: s(m.rubric, 80), og: s(m.og, 300) },
+    hook: s(j.hook, 300),
+    whyNow: s(j.why_now, 300),
+    lead: s(j.lead, 700),
+    facts: arr(j.facts, (x) => ({ fact: s(x.fact, 400), source: s(x.source, 10) })).filter((x) => x.fact).slice(0, 8),
+    blocks: arr(j.blocks, (x) => ({ h2: s(x.h2, 160), note: s(x.note, 300) })).filter((x) => x.h2).slice(0, 7),
+    ourTouch: list(j.our_touch, 400).slice(0, 3),
+    todo: list(j.todo, 300).slice(0, 5),
+    photos: arr(j.photos, (x) => ({ shot: s(x.shot, 200), file: s(x.file, 80).toLowerCase().replace(/[^a-z0-9.-]+/g, "-"), alt: s(x.alt, 160) })).filter((x) => x.shot).slice(0, 4),
+    headlines: arr(j.headlines, (x) => ({ text: s(x.text, 120), type: s(x.type, 20) })).filter((x) => x.text).slice(0, 6),
+    titles: list(j.titles, 120).slice(0, 4),
+    descriptions: list(j.descriptions, 220).slice(0, 4),
+    slugs: list(j.slugs, 100).map((x) => x.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "")).filter(Boolean).slice(0, 4),
+    tags: list(j.tags, 60).slice(0, 10),
+    rubric: s(j.rubric, 60),
+    og: s(j.og, 300),
+    dont: list(j.dont, 300).slice(0, 5),
   };
-  return renderBrief(site, st, c, angle, b, ours, summaryUk);
+  return renderBrief(site, st, c, angle, fmt, b, ours, summaryUk);
 }
 
-function srcRef(c: ClusterForAi, ref: string): string {
-  const i = Number(ref) - 1;
-  const x = c.sources[i];
-  return x ? ` — джерело ${i + 1}, ${x.domain}` : "";
-}
+const srcRef = (c: ClusterForAi, ref: string) => {
+  const x = c.sources[Number(ref) - 1];
+  return x ? ` (джерело ${ref}, ${x.domain})` : "";
+};
+const check = (text: string, min: number, max: number) => (text.length < min ? `⚠ ${text.length}, замало` : text.length > max ? `⚠ ${text.length}, забагато` : `${text.length}`);
+const clickbait = (t: string) => /шок|сенсац|не повірит|\.\.\.|…|!{2,}/i.test(t);
 
-function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Angle, b: BriefJson, ours: OurArticle[], summaryUk: string | null): string {
-  const warn: string[] = [];
-  if (b.meta.title.length > 60) warn.push(`Title ${b.meta.title.length} символів — скоротіть до 60`);
-  if (b.meta.description && (b.meta.description.length < 140 || b.meta.description.length > 160)) warn.push(`Description ${b.meta.description.length} символів — потрібно 140–160`);
-  if (/шок|сенсац|не повірите|\.\.\.|…/i.test(b.meta.title + b.headline)) warn.push("У заголовку клікбейт-слова або трикрапка — приберіть");
-  if (c.entity && !b.meta.title.toLowerCase().includes(c.entity.split(" ").pop()!.toLowerCase().slice(0, 5))) warn.push(`Героя «${c.entity}» немає в Title — Discover гірше зв'яже статтю з сутністю`);
+function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Angle, fmt: { label: string; words: string }, b: BriefJson, ours: OurArticle[], summaryUk: string | null): string {
+  const hero = c.entity ? c.entity.split(" ").filter((w) => w.length > 2).map((w) => w.toLowerCase().slice(0, 5)) : [];
+  const heroIn = (t: string) => !hero.length || hero.some((h) => t.toLowerCase().includes(h));
+  const hl = (t: string) => `${t} — ${check(t, 45, 65)}${clickbait(t) ? " ⚠ клікбейт" : ""}${heroIn(t) ? "" : " ⚠ без героя"}`;
   const lines: string[] = [
-    `# ТЗ: ${b.headline}`,
+    `# ТЗ (${fmt.label}, ${fmt.words}): ${b.headlines[0]?.text || angle.title}`,
     "",
-    `> Напиши статтю для ${site} за цим ТЗ. Дотримуйся стилю редакції, використовуй лише факти з розділу «Факти» і джерел, нічого не вигадуй. Поверни: заголовок H1, лід, текст з підзаголовками H2/H3, метатеги з розділу «Метатеги».`,
+    `> Напиши статтю для ${site} за цим ТЗ. Це матеріал для Google Discover: легкий, короткий, з героєм у заголовку. Лише факти з розділу «Факти»; що в «Автору перевірити» — знайди і підтверди або прибери. Поверни: H1, лід, текст із H2, підписи до фото, Title, Description, slug, теги.`,
     "",
-    "## Стиль редакції",
-    st.houseStyle,
-    "",
-    "## Новина коротко",
+    "## Суть",
     summaryUk || c.title,
     "",
-    "## Кут подачі",
-    `**${angle.kind ? `${angle.kind}: ` : ""}${b.angleSentence}**`,
-    b.better ? `Чому краще, ніж у конкурентів: ${b.better}` : "",
+    "## Гачок і чому зараз",
+    `- Гачок: ${b.hook || angle.why}`,
+    `- Чому зараз: ${b.whyNow || "подія свіжа, конкуренти вже пишуть"}`,
+    `- Кут (${angle.kind}): ${angle.angle}`,
     "",
-    "## Заголовок",
-    `- H1: ${b.headline}`,
-    ...b.alt.map((a) => `- Варіант: ${a}`),
+    "## Лід (готовий, можна правити)",
+    b.lead || "—",
     "",
-    "## Факти (лише підтверджені, з джерелом)",
+    "## Факти",
     ...(b.facts.length ? b.facts.map((f) => `- ${f.fact}${srcRef(c, f.source)}`) : ["- Беріть факти лише з джерел нижче."]),
     "",
-    "## План статті",
-    ...b.outline.flatMap((o) => [`### ${o.h2}`, o.note, ...o.h3.map((h) => `- H3: ${h}`), ""]),
-    "## Обов'язково додати від себе",
-    ...b.mustAdd.map((x) => `- ${x}`),
+    `## Структура (${b.blocks.length} блоки, ${fmt.words})`,
+    ...b.blocks.map((o, i) => `${i + 1}. **${o.h2}** — ${o.note}`),
     "",
-    "## Фото",
-    `- Кількість: ${b.images.count}. Головне: ${b.images.main || "герой або предмет у центрі кадру, 1200 px і ширше"}.`,
-    ...b.images.ideas.map((x) => `- ${x}`),
-    "- Звідки брати: офіційні пресфото й пресрелізи брендів, вбудований пост Instagram героя (кодом вбудовування, з підписом автора), редакційні фотобанки за ліцензією, Wikimedia Commons з ліцензією CC і підписом автора, власна зйомка чи колаж із власних фото.",
-    "- Не копіювати фото з сайтів-джерел і з чужих статей: права на них належать агенціям і фотографам.",
+    "## Наш штрих (один абзац на пункт, не розділ)",
+    ...(b.ourTouch.length ? b.ourTouch.map((x) => `- ${x}`) : ["- Одна порада або український контекст від редакції."]),
+    "",
+  ];
+  if (b.todo.length) lines.push("## Автору перевірити (у джерелах цього немає)", ...b.todo.map((x) => `- ${x}`), "");
+  lines.push(
+    "## Фото (вирішує, чи покажуть у Discover)",
+    ...b.photos.map((p, i) => `${i + 1}. ${p.shot}${i === 0 ? " — головне, 1200 px і ширше, герой у центрі" : ""}\n   файл: \`${p.file || "hero-detail.jpg"}\` · alt: ${p.alt}`),
+    "- Звідки: офіційні пресфото, пресрелізи брендів, вбудований пост Instagram героя (кодом, з автором), фотобанк за ліцензією, Wikimedia Commons (CC, з автором). Не брати фото з сайтів-джерел: права належать агенціям.",
+    "",
+    "## Заголовки (оберіть один)",
+    ...b.headlines.map((h) => `- [${h.type || "варіант"}] ${hl(h.text)}`),
+    "",
+    "## Title (до 60)",
+    ...b.titles.map((t) => `- ${t} — ${check(t, 35, 60)}${clickbait(t) ? " ⚠ клікбейт" : ""}${heroIn(t) ? "" : " ⚠ без героя"}`),
+    "",
+    "## Description (110–155)",
+    ...b.descriptions.map((d) => `- ${d} — ${check(d, 110, 155)}`),
+    "",
+    "## Slug",
+    ...b.slugs.map((x) => `- ${x}${x.split("-").length > 7 ? " ⚠ довгий" : ""}`),
+    "",
+    `## Теги, рубрика, OG`,
+    `- Теги: ${b.tags.join(", ") || "герой, бренд, подія"}`,
+    `- Рубрика: ${b.rubric || "—"}`,
+    `- OG 1200×630: ${b.og || "те саме, що головне фото"}`,
+    "- Технічно: robots max-image-preview:large; schema NewsArticle (headline, image 16:9 / 4:3 / 1:1, datePublished, dateModified, author); article:published_time з таймзоною.",
+    "",
+    "## Чого не робити",
+    ...(b.dont.length ? b.dont : ["не перетворювати на довідник", "не оцінювати зовнішність", "не вигадувати ціни й назви засобів"]).map((x) => `- ${x}`),
     "",
     "## Внутрішні посилання",
-    ...(ours.length ? ours.map((o) => `- [${o.title}](${o.url})`) : ["- Додайте 2–3 наші статті про цього героя чи тему."]),
-    "",
-    "## Чого не писати",
-    ...(b.dont.length ? b.dont : ["клікбейт", "непідтверджені чутки", "оцінки зовнішності", "медичні обіцянки"]).map((x) => `- ${x}`),
-    "",
-    "## Метатеги",
-    `- Title (${b.meta.title.length}/60): ${b.meta.title}${b.meta.titleWhy ? ` — ${b.meta.titleWhy}` : ""}`,
-    `- Description (${b.meta.description.length}, треба 140–160): ${b.meta.description}${b.meta.descriptionWhy ? ` — ${b.meta.descriptionWhy}` : ""}`,
-    `- Slug: ${b.meta.slug}`,
-    `- Теги: ${b.meta.tags.join(", ")}`,
-    `- Рубрика: ${b.meta.rubric}`,
-    `- OG-картинка 1200×630: ${b.meta.og}`,
-    "- robots: max-image-preview:large; schema NewsArticle з датами публікації й оновлення та автором.",
-    "",
-    `## Обсяг: ${b.words}`,
+    ...(ours.length ? ours.map((o) => `- [${o.title}](${o.url})`) : ["- Підберіть 1–2 наші статті про героя чи тему (на сайті поки не знайдено)."]),
     "",
     "## Джерела",
     ...c.sources.slice(0, 8).map((x, i) => `${i + 1}. [${x.domain}: ${x.title}](${x.url})`),
-  ];
-  if (warn.length) lines.splice(2, 0, `> ⚠ Перевірка: ${warn.join("; ")}`, "");
+    "",
+    "## Довідково: стиль редакції",
+    st.houseStyle,
+  );
   return lines.filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n");
 }
 

@@ -592,7 +592,7 @@ async function scoreStep(project: ProjectRow, s: NewsSettings, stats: RunStats, 
     const facts = {
       category, isTarget: !!category && s.targetCategories.includes(category), recentWeighted: recent.reduce((a, x) => a + x.weight, 0), recentCount: recent.length,
       recentUa: recent.filter((x) => now.getTime() - x.at <= 3600_000 && x.tier !== "world").length, sourceCount: all.length,
-      uaCount: all.filter((x) => x.tier !== "world").length, worldCount: all.filter((x) => x.tier === "world").length, entityName: best?.name ?? null, entityWeight: best?.weight ?? 0,
+      uaCount: all.filter((x) => x.tier !== "world").length, worldCount: all.filter((x) => x.tier === "world").length, worldStrong: all.filter((x) => x.tier === "world" && x.weight >= 0.7).length, entityName: best?.name ?? null, entityWeight: best?.weight ?? 0,
       trend: trend ? { title: trend.title, traffic: trend.traffic } : null, visual: Math.max(0, ...list.map((x) => x.visual ?? 0)) || null, hasImage: list.some((x) => !!x.imageUrl) || !!c.imageUrl,
       hasPrice: list.some((x) => x.hasPrice), sensitive: list.some((x) => x.sensitive), firstPublishedAt: c.firstPublishedAt, now,
     };

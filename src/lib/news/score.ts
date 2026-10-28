@@ -16,6 +16,8 @@ export type ClusterFacts = {
   sourceCount: number;
   uaCount: number;
   worldCount: number;
+  /** Мировых медиа не-таблоидов (вес источника от 0.7: Vogue, Bazaar, WWD, People). */
+  worldStrong: number;
   /** Лучшая сущность из нашего списка. */
   entityName: string | null;
   entityWeight: number;
@@ -84,7 +86,7 @@ export function scoreCluster(f: ClusterFacts): { score: number; parts: ScorePart
 
   // Мировые звёзды интересны, когда о них пишут в Украине. Ранний сигнал «ещё нет в UA» — только если событие
   // подтвердили два и больше мировых медиа; одиночная заметка таблоида без украинских публикаций идёт ниже.
-  if (f.uaCount === 0 && f.worldCount >= 2 && f.entityName) {
+  if (f.uaCount === 0 && f.worldStrong >= 2 && f.entityName) {
     parts.push({ key: "not_ua", label: "Ещё нет в UA", max: 15, points: 15, why: `пишут ${f.worldCount} мировых медиа, украинских публикаций пока нет — шанс выйти первыми` });
   } else if (f.uaCount === 0 && f.worldCount > 0) {
     parts.push({ key: "world_only", label: "Только мировые медиа", max: 0, points: -10, why: "одна мировая публикация, в Украине не пишут — ждём подтверждения" });
@@ -122,7 +124,7 @@ export function priorityOf(f: ClusterFacts, score: number, urgentScore: number, 
     must = true;
     why.push(`${f.entityName} — звезда первого ряда для сайта, о ней пишут ${f.uaCount} сайта в первые часы`);
   }
-  if (f.uaCount === 0 && f.worldCount >= 3 && f.entityWeight >= 1.2) {
+  if (f.uaCount === 0 && f.worldStrong >= 3 && f.entityWeight >= 1.2) {
     must = true;
     why.push(`о ${f.entityName} пишут ${f.worldCount} мировых медиа, в Украине ещё никто — можно выйти первыми`);
   }

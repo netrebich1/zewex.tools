@@ -7,6 +7,7 @@ import { NewsNav } from "@/components/news/NewsNav";
 import { LiveRefresh } from "@/components/news/LiveRefresh";
 import { makeBriefAction, runNow, setClusterStatus, takeToWork } from "@/actions/news";
 import { CopyButton } from "@/components/news/CopyButton";
+import { FORMATS } from "@/lib/news/brief";
 import { requireProject } from "@/lib/news/access";
 import { agoText, feed, fmtKyiv, spendByDay, summary, trendsOf, type FeedCard } from "@/lib/news/query";
 import { BASE_PATH, CATEGORY_LABELS, CLUSTER_STATUS_LABELS, PRIORITY_LABELS, RUN_SCOPES } from "@/lib/news/types";
@@ -241,7 +242,7 @@ function ClusterCard({ c, rank }: { c: FeedCard; rank: number }) {
               <ol className="space-y-2">
                 {angles.map((a, i) => (
                   <li key={i} className={`rounded-lg border p-3 ${c.angleIdx === i ? "border-brand bg-brand-soft/40" : "border-line bg-surface"}`}>
-                    <div className="mb-0.5 text-[12px] text-muted">Угол {i + 1}{a.kind ? ` · ${a.kind}` : ""} · новизна {a.novelty}/5 · польза {a.usefulness}/5</div>
+                    <div className="mb-0.5 text-[12px] text-muted">Угол {i + 1}{a.kind ? ` · ${a.kind}` : ""}{a.format && FORMATS[a.format] ? ` · ${FORMATS[a.format].words}` : ""} · новизна {a.novelty}/5 · польза {a.usefulness}/5</div>
                     <div className="font-semibold">{a.title}</div>
                     <p className="mt-1 text-[14px]">{a.angle}</p>
                     <p className="mt-1 text-[13px] text-ink-2">Почему сработает: {a.why}</p>

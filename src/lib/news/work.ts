@@ -108,6 +108,16 @@ export async function buildBrief(userId: string, clusterId: string, idx: number)
   if (!angle) throw new Error("Сначала нажмите «В работу» — модуль предложит углы");
   const ours = data.ours ?? (await ourFor(project, c));
   const site = hostOf(project.siteUrl) || project.name;
-  const md = await withCostRun(project.id, userId, "brief", clusterId, project.teamId, (ctx) => makeBrief(ctx, s, site, c, angle, ours, row.summaryUk), s);
+  let summaryUk = row.summaryUk;
+  if (!summaryUk) {
+    // Суть ещё не сгенерирована прогоном (мировая новость, низкий балл) — делаем её сейчас, иначе в ТЗ попадёт английский заголовок.
+    const sum = await withCostRun(project.id, userId, "brief", clusterId, project.teamId, (ctx) => summarizeClusters(ctx, s, [c]), s);
+    if (sum[0]) {
+      summaryUk = sum[0].summaryUk;
+      await prisma.newsCluster.update({ where: { id: clusterId }, data: { titleUk: sum[0].titleUk || null, summaryUk, whyUs: sum[0].whyUs || null, aiAt: new Date(), aiSourceCount: row.sourceCount } });
+      c.title = sum[0].titleUk || c.title;
+    }
+  }
+  const md = await withCostRun(project.id, userId, "brief", clusterId, project.teamId, (ctx) => makeBrief(ctx, s, site, c, angle, ours, summaryUk), s);
   await prisma.newsCluster.update({ where: { id: clusterId }, data: { angleIdx: idx, brief: md, briefAt: new Date(), status: "in_work", workById: userId } });
 }

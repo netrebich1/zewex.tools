@@ -10,6 +10,7 @@ import { hostOf } from "@/lib/news/text";
 
 async function main() {
   const id = process.argv[2] ?? (await prisma.newsCluster.findFirst({ where: { uaCount: { gte: 2 } }, orderBy: { score: "desc" }, select: { id: true } }))?.id;
+  const skipSummary = process.argv[3] === "nosum";
   if (!id) throw new Error("нет кластера");
   const { c, row } = await clusterForAi(id);
   const p = await prisma.newsProject.findUniqueOrThrow({ where: { id: row.projectId } });
@@ -18,7 +19,7 @@ async function main() {
   const ctx = { userId: p.createdById!, teamId: p.teamId, runId: "news-brief-test", classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u: number) => (cost += u) };
   console.log("КЛАСТЕР:", c.title, "| источников", c.sources.length, "| сигналы:", c.signals.slice(0, 3).join(" / "));
   const t0 = Date.now();
-  const sum = await summarizeClusters(ctx, s, [c]);
+  const sum = skipSummary && row.summaryUk ? [{ id, titleUk: row.titleUk ?? "", summaryUk: row.summaryUk, whyUs: row.whyUs ?? "" }] : await summarizeClusters(ctx, s, [c]);
   console.log(`\n== СУТЬ (${Math.round((Date.now() - t0) / 1000)} с)\n`, JSON.stringify(sum, null, 1));
   const ours = await ourArticles(p.siteUrl, c.entity || c.title);
   console.log("\n== НАШИ СТАТЬИ\n", ours);
