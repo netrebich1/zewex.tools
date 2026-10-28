@@ -29,7 +29,7 @@ const abs = (u: string, base: string) => {
   }
 };
 const isPhoto = (u: string) => /\.(jpe?g|png|webp|avif)(\?|$)/i.test(u) || /\/wp-content\/uploads\/|images\.|img\.|cdn\./i.test(u);
-const junk = (u: string) => /logo|icon|avatar|sprite|placeholder|blank|pixel|badge|button|banner|ads?\.|\.svg|\.gif|emoji|1x1|spacer/i.test(u);
+const junk = (u: string) => /logo|icon|avatar|sprite|placeholder|blank|pixel|badge|button|banner|ads?\.|\.svg|\.gif|emoji|1x1|spacer|channelheader|\/pix\/|\/static\/|\/assets\/|share-|social/i.test(u);
 
 export function extractFromHtml(html: string, pageUrl: string, from: string): { images: ResearchImage[]; embeds: ResearchEmbed[] } {
   const images: ResearchImage[] = [];
@@ -63,11 +63,12 @@ export function extractFromHtml(html: string, pageUrl: string, from: string): { 
     if (!best || !isPhoto(best)) continue;
     const h = Number(attr(t, "height")) || 0;
     if (bestW && bestW < 600) continue;
+    if (!bestW && /\.png(\?|$)/i.test(best)) continue;
     if (images.length >= 12) break;
     addImg(best, "img", bestW || undefined, h || undefined);
   }
   const addEmbed = (kind: ResearchEmbed["kind"], u: string) => {
-    const full = abs(u, pageUrl).replace(/[?#].*$/, "");
+    const full = kind === "youtube" ? abs(u, pageUrl).replace(/&.*$/, "") : abs(u, pageUrl).replace(/[?#].*$/, "");
     if (!full || embeds.some((e) => e.url === full)) return;
     embeds.push({ kind, url: full, from });
   };
