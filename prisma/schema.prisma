@@ -2742,6 +2742,9 @@ model NewsCluster {
   /// Ресёрч по источникам: кандидаты главных картинок (ориентир), вставки Instagram / X / YouTube — ClusterResearch
   research         Json?
   researchAt       DateTime?
+  /// Статья про это событие уже есть на сайте проекта (поиск WordPress по герою): { url, title, at }
+  onSite           Json?
+  onSiteAt         DateTime?
   /// new | in_work | published | rejected
   status           String    @default("new")
   alertedAt        DateTime?

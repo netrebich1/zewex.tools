@@ -41,6 +41,7 @@ export type FeedCard = {
   starred: boolean;
   research: ClusterResearch | null;
   newSources: number;
+  onSite: { url: string; title: string; at: string } | null;
 };
 
 export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: FeedCard[]; hidden: number; total: number; lastRunAt: Date | null }> {
@@ -89,7 +90,7 @@ export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: F
       angles: (c.angles as FeedCard["angles"]) ?? null, angleIdx: c.angleIdx, brief: c.brief, briefAt: c.briefAt,
       // Что изменилось в последнем прогоне: кластер новый или к нему добавились источники.
       isNew: !!runStart && c.createdAt >= runStart,
-      starred: c.starred, research: (c.research as ClusterResearch | null) ?? null,
+      starred: c.starred, research: (c.research as ClusterResearch | null) ?? null, onSite: (c.onSite as FeedCard["onSite"]) ?? null,
       newSources: runStart && c.createdAt < runStart ? sources.filter((x) => x.at >= runStart).length : 0,
     };
   });

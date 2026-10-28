@@ -111,9 +111,9 @@ export function extractFromHtml(html: string, pageUrl: string, from: string): Ex
 
 // ───────── Релевантность: герой + тема ─────────
 
-const fold = (s: string) => s.toLowerCase().replace(/[’'ʼ]/g, "").replace(/ё/g, "е").replace(/[іїи]/g, "и").replace(/[єе]/g, "е").replace(/[гґх]/g, "х");
+const fold = (s: string) => s.toLowerCase().replace(/[’'ʼ]/g, "").replace(/ё/g, "е").replace(/[іїи]/g, "и").replace(/[єе]/g, "е").replace(/[гґх]/g, "х").replace(/оу/g, "о").replace(/(.)\1/g, "$1");
 const stem = (w: string) => (/[a-z]/.test(w) ? w.toLowerCase().replace(/'s$/, "") : fold(w).slice(0, Math.max(4, w.length - 2)));
-const GENERIC = new Set(["зірка", "зірки", "зірку", "зіркою", "звезда", "показала", "показав", "здивувала", "мережу", "мережа", "фото", "відео", "новий", "нова", "нову", "образ", "образі", "стала", "став", "вперше", "вразила", "сімейне", "сімейні", "star", "shows", "photos", "news", "about", "with", "after", "their", "this", "that", "from", "look", "looks"]);
+const GENERIC = new Set(["зірка", "зірки", "зірку", "зіркою", "звезда", "показала", "показав", "здивувала", "мережу", "мережа", "фото", "відео", "новий", "нова", "нову", "образ", "образі", "стала", "став", "вперше", "вразила", "сімейне", "сімейні", "сукня", "сукні", "сукню", "сукнею", "образом", "образи", "образів", "образу", "вбранні", "вбрання", "стильний", "стильному", "стильним", "показали", "показали", "зявилася", "вийшла", "вийшов", "star", "shows", "photos", "news", "about", "with", "after", "their", "this", "that", "from", "look", "looks"]);
 
 export type Topic = { heroStems: string[]; topicStems: string[]; hero: string; heroEn: string; since: Date; eventAt: Date };
 
@@ -134,18 +134,39 @@ const hasHero = (t: Topic, text: string) => {
   const last = t.heroStems.filter((s) => s.length >= 4);
   return last.some((s) => f.includes(s));
 };
+/** Расстояние Левенштейна — для правописных вариантов (Хеллоуін / Геловін, Кардаш'ян / Кардашьян). */
+function lev(a: string, b: string): number {
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j];
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = tmp;
+    }
+  }
+  return prev[b.length];
+}
 const topicHits = (t: Topic, text: string) => {
   const f = fold(text) + " " + text.toLowerCase();
-  return t.topicStems.filter((s) => s.length >= 4 && f.includes(s)).length;
+  const words = f.split(/[^a-zа-яіїєґ0-9]+/i).filter((w) => w.length >= 5);
+  return t.topicStems.filter((s) => s.length >= 4 && (f.includes(s) || (s.length >= 5 && words.some((w) => Math.min(lev(s, w.slice(0, s.length - 1)), lev(s, w.slice(0, s.length)), lev(s, w.slice(0, s.length + 1))) <= (s.length >= 8 ? 2 : 1))))).length;
 };
 const fresh = (t: Topic, iso?: string) => !iso || new Date(iso) >= t.since;
 
 /** Страница про это событие: герой есть в заголовке или описании, плюс хотя бы одно слово темы, и не старше окна. */
-export function pageRelevant(t: Topic, p: { title: string; lead: string; publishedAt?: string; text?: string }): { ok: boolean; why: string } {
+export function pageRelevant(t: Topic, p: { title: string; lead: string; publishedAt?: string; text?: string }, strict = false): { ok: boolean; why: string } {
   if (!fresh(t, p.publishedAt)) return { ok: false, why: `стара публікація (${p.publishedAt?.slice(0, 10)})` };
   const head = `${p.title} ${p.lead}`;
   if (!hasHero(t, head)) return { ok: false, why: "герой не в заголовку" };
   const hits = topicHits(t, head) || Math.min(1, topicHits(t, (p.text ?? "").slice(0, 1500)));
+  // Строго (пошук статті на сайті): у героя за ці дні може бути кілька новин — потрібно 2 слова теми (або 1, якщо тема коротка).
+  if (strict) {
+    // Одно слово темы достаточно, если статья вышла в ±3 дня от события (Геловін / Хеллоуін — те же дни).
+    const near = p.publishedAt ? Math.abs(new Date(p.publishedAt).getTime() - t.eventAt.getTime()) <= 3 * 86_400_000 : false;
+    return hits >= 2 || (hits >= 1 && (near || t.topicStems.length <= 3)) || !t.topicStems.length ? { ok: true, why: `герой + тема (${hits})` } : { ok: false, why: "тема не збігається" };
+  }
   if (hits || !t.topicStems.length) return { ok: true, why: `герой + тема (${hits})` };
   // Слова теми можуть не збігтися через правопис (Геловін / Хеллоуін): публікація про героя в ±3 дні від події — та сама новина.
   const dt = p.publishedAt ? Math.abs(new Date(p.publishedAt).getTime() - t.eventAt.getTime()) : Infinity;

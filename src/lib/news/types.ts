@@ -282,6 +282,7 @@ export type RunStats = {
   proxied: number;
   budgetStop?: string;
   summarized?: number;
+  onSite?: number;
   embedFilterOn?: boolean;
   log?: string[];
 };

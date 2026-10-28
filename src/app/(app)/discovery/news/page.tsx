@@ -182,6 +182,7 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
             <span className="text-[12px] text-muted">#{rank}</span>
             {c.starred && <span className="badge bg-brand-soft text-warn">★ в избранном</span>}
+            {c.onSite && <a href={c.onSite.url} target="_blank" rel="noopener noreferrer" className="badge bg-ok-soft text-ok hover:underline" title={c.onSite.title}>✓ есть на сайте</a>}
             {c.isNew && <span className="badge bg-info-soft text-info">нове</span>}
             {!c.isNew && c.newSources > 0 && <span className="badge bg-info-soft text-info">+{c.newSources} {c.newSources === 1 ? "источник" : "источника"}</span>}
             {fresh && <span className="text-[12px] text-muted">последняя публикация {agoText(c.lastItemAt)}</span>}

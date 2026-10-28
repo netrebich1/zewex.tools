@@ -4,6 +4,7 @@ import { hostOf } from "./text";
 import { makeAngles, makeBrief, ourArticles, summarizeClusters, type Angle, type ClusterForAi } from "./brief";
 import type { AiCtx } from "./llm";
 import { deepResearch, type ClusterResearch } from "./research";
+import { checkOnSite } from "./onsite";
 import { parseSettings, type NewsSettings, type RunStats, type ScorePart } from "./types";
 
 /** Кластер для ИИ: источники (украинские первыми), сигналы балла и причины важности словами. */
@@ -91,6 +92,8 @@ export async function startWork(userId: string, clusterId: string, regenerate: b
   const project = await prisma.newsProject.findUniqueOrThrow({ where: { id: row.projectId } });
   const s = parseSettings(project.settings);
   await prisma.newsCluster.update({ where: { id: clusterId }, data: { status: "in_work", workById: userId } });
+  // Перед углами — свежая проверка, не вышла ли статья на сайте (метка «є на сайті» в карточке).
+  await checkOnSite(clusterId).catch(() => null);
   if (row.angles && !regenerate) return;
   const ours = await ourFor(project, c);
   const res = await withCostRun(project.id, userId, "angles", clusterId, project.teamId, (ctx) => makeAngles(ctx, s, c, ours), s);
