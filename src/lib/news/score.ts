@@ -78,8 +78,12 @@ export function scoreCluster(f: ClusterFacts): { score: number; parts: ScorePart
 
   if (W.price) parts.push({ key: "price", label: "Цена и продажи в Украине", max: W.price, points: f.hasPrice ? W.price : 0, why: f.hasPrice ? "есть цена в гривнах или дата продаж" : "цены и даты продаж нет" });
 
-  if (f.worldCount > 0 && f.uaCount === 0 && f.entityName) {
-    parts.push({ key: "not_ua", label: "Ещё нет в UA", max: 15, points: 15, why: `пишут ${f.worldCount} ${plural(f.worldCount, "мировое медиа", "мировых медиа", "мировых медиа")}, украинских публикаций нет` });
+  // Мировые звёзды интересны, когда о них пишут в Украине. Ранний сигнал «ещё нет в UA» — только если событие
+  // подтвердили два и больше мировых медиа; одиночная заметка таблоида без украинских публикаций идёт ниже.
+  if (f.uaCount === 0 && f.worldCount >= 2 && f.entityName) {
+    parts.push({ key: "not_ua", label: "Ещё нет в UA", max: 15, points: 15, why: `пишут ${f.worldCount} мировых медиа, украинских публикаций пока нет — шанс выйти первыми` });
+  } else if (f.uaCount === 0 && f.worldCount > 0) {
+    parts.push({ key: "world_only", label: "Только мировые медиа", max: 0, points: -10, why: "одна мировая публикация, в Украине не пишут — ждём подтверждения" });
   }
   if (f.sensitive) parts.push({ key: "sensitive", label: "Чувствительная тема", max: 0, points: -30, why: "проверь уместность для бьюти-сайта" });
   if (f.sourceCount > 15) parts.push({ key: "saturated", label: "Насыщенность", max: 0, points: -10, why: `уже ${f.sourceCount} источников — нужен сильный угол` });

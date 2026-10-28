@@ -55,7 +55,28 @@ export type ClassifyOutput = {
   visual: number;
   isNews: boolean;
   hasPriceUa: boolean;
+  /** Что вернула модель до приведения к списку (для журнала причины). */
+  rawCategory: string;
 };
+
+const CAT_SYNONYMS: [RegExp, string][] = [
+  [/^celeb|^звезд|^зірк|^знаменит|^шоу/, "celebrity"],
+  [/^fashion|^мод|^стил|^образ/, "fashion"],
+  [/^beaut|^красот|^краса|^б['’]?ю?ті|^бьюти|^макия|^макія/, "beauty"],
+  [/^brand|^бренд|^новин|^product/, "brands"],
+  [/^self|^уход|^догляд|^здоров/, "selfcare"],
+  [/^event|^собы|^поді|^преми|^премі/, "events"],
+  [/^relation|^отнош|^стосун|^love|^wedding/, "relationships"],
+  [/^other|^друг|^інш|^не наш/, "other"],
+];
+
+/** Категория модели → одна из списка; нераспознанная — "unknown" (материал классифицируется повторно). */
+export function normalizeCategory(raw: string): string {
+  const c = raw.toLowerCase().trim();
+  if ((CATEGORIES as readonly string[]).includes(c)) return c;
+  for (const [re, cat] of CAT_SYNONYMS) if (re.test(c)) return cat;
+  return "unknown";
+}
 
 const SYSTEM = `Ты редактор украинского женского медиа о знаменитостях, моде и красоте ({site}).
 Для каждого материала по его id определи:
@@ -63,6 +84,8 @@ const SYSTEM = `Ты редактор украинского женского м
    celebrity — новости о людях шоу-бизнеса; fashion — одежда, образы, показы; beauty — макияж, волосы, ногти, уход; brands — коллекции, дропы, коллаборации, новинки косметики и парфюмерии, выход бренда в Украину;
    selfcare — здоровье и уход за собой без медицинских обещаний; events — премии, фестивали, недели моды; relationships — отношения, свадьбы, дети звёзд;
    other — всё остальное: война, политика, экономика, спорт, криминал, происшествия, быт, сад, рецепты, гороскопы, техника.
+   Правила: образ, наряд, цена вещей звезды → fashion; цвет волос, стрижка, макияж, процедуры звезды → beauty; любой материал о конкретной знаменитости шоу-бизнеса → celebrity (а не other);
+   спортсмен — other, кроме его жены/подруги и светской жизни. Поле category пиши строго одним английским словом из списка.
 2. subcategory: короткая фраза по-русски («образ на красной дорожке», «маникюр», «развод»).
 3. entities: [{name, orig, type: person|brand|event|trend|product, role: main|secondary}] — name по-украински, orig — оригинальное написание (латиница для иностранных), не больше 5.
 4. sensitive: true, если тема про смерть, тяжёлую болезнь, насилие, войну, криминал, детей.
@@ -94,10 +117,11 @@ export async function classifyBatch(ctx: AiCtx, site: string, items: ClassifyInp
     const r = (raw ?? {}) as Record<string, unknown>;
     const id = String(r.id ?? "");
     if (!items.some((it) => it.id === id)) continue;
-    const cat = String(r.category ?? "other").toLowerCase();
+    const rawCat = String(r.category ?? "").trim();
     out.push({
       id,
-      category: (CATEGORIES as readonly string[]).includes(cat) ? cat : "other",
+      category: normalizeCategory(rawCat),
+      rawCategory: rawCat,
       subcategory: String(r.subcategory ?? "").slice(0, 120),
       entities: (Array.isArray(r.entities) ? r.entities : []).slice(0, 6).map((e) => {
         const x = (e ?? {}) as Record<string, unknown>;

@@ -423,25 +423,32 @@ async function classifyStep(project: ProjectRow, ctx: AiCtx, s: NewsSettings, st
     log(`дневной лимит классификаций ${s.classifyPerDay} исчерпан — материалы ждут завтра`);
     return;
   }
-  const queue = await prisma.newsItem.findMany({ where: { projectId: project.id, status: "queued" }, orderBy: { foundAt: "desc" }, take: 400, select: { id: true, title: true, lead: true, domain: true, matched: true, tier: true, foundAt: true } });
+  const queue = await prisma.newsItem.findMany({ where: { projectId: project.id, status: "queued" }, orderBy: { foundAt: "desc" }, take: 400, select: { id: true, title: true, lead: true, domain: true, matched: true, tier: true, foundAt: true, cutReason: true } });
   const prio = (x: (typeof queue)[number]) => (Array.isArray(x.matched) ? Math.max(0, ...(x.matched as { weight?: number }[]).map((m) => m.weight ?? 0)) : 0) + (x.tier === "primary" ? 1 : 0);
   queue.sort((a, b) => prio(b) - prio(a) || b.foundAt.getTime() - a.foundAt.getTime());
   const pick = queue.slice(0, allowed);
   const site = project.siteUrl ? hostOf(project.siteUrl) || project.name : project.name;
-  for (let i = 0; i < pick.length; i += 10) {
-    const batch = pick.slice(i, i + 10);
+  const RETRY = "повторная классификация";
+  const batches: (typeof pick)[] = [];
+  for (let i = 0; i < pick.length; i += 10) batches.push(pick.slice(i, i + 10));
+  let fatal = false;
+  // Пачки идут по 4 одновременно: прогон с бэклогом не растягивается на 10 минут.
+  await mapLimit(batches, 4, async (batch) => {
+    if (fatal) return;
     let res;
     try {
       res = await classifyBatch(ctx, site, batch.map((b) => ({ id: b.id, title: b.title, lead: b.lead ?? "", domain: b.domain })));
     } catch (e) {
       log(`классификация: ${e instanceof Error ? e.message : e}`);
-      if (e instanceof NewsAiError && e.fatal) break;
-      continue;
+      if (e instanceof NewsAiError && e.fatal) fatal = true;
+      return;
     }
     for (const b of batch) {
       const r = res.find((x) => x.id === b.id);
-      if (!r) {
-        await prisma.newsItem.update({ where: { id: b.id }, data: { status: "error", cutReason: "модель не вернула ответ по материалу" } });
+      // Нет ответа или категория не из списка — один повтор в следующем прогоне, потом ошибка.
+      if (!r || r.category === "unknown") {
+        const again = b.cutReason !== RETRY;
+        await prisma.newsItem.update({ where: { id: b.id }, data: again ? { cutReason: RETRY } : { status: "error", cutReason: r ? `модель вернула категорию «${r.rawCategory}»` : "модель не вернула ответ по материалу" } });
         continue;
       }
       stats.classified++;
@@ -450,12 +457,12 @@ async function classifyStep(project: ProjectRow, ctx: AiCtx, s: NewsSettings, st
       await prisma.newsItem.update({
         where: { id: b.id },
         data: {
-          status: target ? "classified" : "cut", cutStep: target ? null : "llm", cutReason: target ? null : `категория ${r.category}${r.subcategory ? ` (${r.subcategory})` : ""}`,
+          status: target ? "classified" : "cut", cutStep: target ? null : "llm", cutReason: target ? null : `категория ${r.rawCategory || r.category}${r.subcategory ? ` (${r.subcategory})` : ""}`,
           category: r.category, subcategory: r.subcategory || null, entities: r.entities as unknown as Prisma.InputJsonValue, sensitive: r.sensitive, visual: r.visual, isNews: r.isNews, hasPrice: r.hasPriceUa,
         },
       });
     }
-  }
+  });
 }
 
 const entKey = (e: { name: string; orig?: string }) => normText(e.orig && /[a-z]/i.test(e.orig) ? e.orig : e.name);
