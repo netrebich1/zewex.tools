@@ -29,11 +29,11 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
       </>
     );
   }
-  const filter = { cat: sp(q, "cat") || undefined, urgent: sp(q, "urgent") === "1", notUa: sp(q, "notua") === "1", all: sp(q, "all") === "1", status: sp(q, "status") || undefined, priority: sp(q, "pr") || undefined };
-  const [{ cards, hidden, total }, sum, trends, spend] = await Promise.all([feed(project.id, filter), summary(project.id), trendsOf(project.id), spendByDay(project.id)]);
+  const filter = { cat: sp(q, "cat") || undefined, urgent: sp(q, "urgent") === "1", notUa: sp(q, "notua") === "1", all: sp(q, "all") === "1", status: sp(q, "status") || undefined, priority: sp(q, "pr") || undefined, sort: (sp(q, "sort") === "fresh" ? "fresh" : "score") as "fresh" | "score", hours: Number(sp(q, "h")) || 6 };
+  const [{ cards, hidden, total, lastRunAt }, sum, trends, spend] = await Promise.all([feed(project.id, filter), summary(project.id), trendsOf(project.id), spendByDay(project.id)]);
   const link = (patch: Record<string, string | undefined>) => {
     const u = new URLSearchParams({ project: project.id });
-    const merged = { cat: filter.cat, urgent: filter.urgent ? "1" : undefined, notua: filter.notUa ? "1" : undefined, all: filter.all ? "1" : undefined, status: filter.status, pr: filter.priority, ...patch };
+    const merged = { cat: filter.cat, urgent: filter.urgent ? "1" : undefined, notua: filter.notUa ? "1" : undefined, all: filter.all ? "1" : undefined, status: filter.status, pr: filter.priority, sort: filter.sort === "fresh" ? "fresh" : undefined, h: filter.sort === "fresh" && filter.hours !== 6 ? String(filter.hours) : undefined, ...patch };
     for (const [k, v] of Object.entries(merged)) if (v) u.set(k, v);
     return `${BASE_PATH}?${u.toString()}`;
   };
@@ -87,17 +87,33 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
         <Link href={link({ status: filter.status === "in_work" ? undefined : "in_work" })} className={`tab ${filter.status === "in_work" ? "active" : ""}`}>В работе</Link>
       </div>
 
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-[14px]">
+        <span className="help">Показывать:</span>
+        <Link href={link({ sort: undefined, h: undefined, all: undefined })} className={`tab ${filter.sort !== "fresh" ? "active" : ""}`}>Топ по баллу за сутки</Link>
+        <Link href={link({ sort: "fresh", h: undefined, all: undefined })} className={`tab ${filter.sort === "fresh" ? "active" : ""}`}>Свежее, новые сверху</Link>
+        {filter.sort === "fresh" && (
+          <span className="flex items-center gap-1">
+            <span className="help ml-2">за</span>
+            {[2, 6, 12, 24].map((h) => <Link key={h} href={link({ sort: "fresh", h: String(h) })} className={`tab ${filter.hours === h ? "active" : ""}`}>{h} ч</Link>)}
+          </span>
+        )}
+        <span className="help ml-auto">
+          {lastRunAt ? `Последний прогон начался ${fmtKyiv(lastRunAt, false)}: метки «нове» и «+источники» — что он добавил` : ""}
+        </span>
+      </div>
+
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-3">
           {cards.length === 0 ? (
             <Empty title={sum.lastRun ? "За сутки подходящих новостей нет" : "Лента появится после первого прогона"} hint={sum.lastRun ? "Снимите фильтры или проверьте источники и сущности." : "Нажмите «Прогнать сейчас» — первый прогон займёт несколько минут."} />
           ) : (
-            cards.map((c, i) => <ClusterCard key={c.id} c={c} rank={i + 1} />)
+            cards.map((c, i) => <ClusterCard key={c.id} c={c} rank={i + 1} fresh={filter.sort === "fresh"} />)
           )}
           {hidden > 0 && !filter.all && (
             <div className="text-center"><Link href={link({ all: "1" })} className="btn-ghost">Показать ещё {hidden} ниже топ-{sum.settings.topN}</Link></div>
           )}
-          {filter.all && total > sum.settings.topN && <p className="help text-center">Показаны все {total} кластеров за сутки.</p>}
+          {filter.all && filter.sort !== "fresh" && total > sum.settings.topN && <p className="help text-center">Показаны все {total} кластеров за сутки.</p>}
+          {filter.sort === "fresh" && cards.length > 0 && <p className="help text-center">Показаны все {total} кластеров с публикациями за последние {filter.hours} ч, новые сверху.</p>}
         </div>
 
         <div className="space-y-4">
@@ -133,7 +149,7 @@ function StatusButton({ id, status, label, tone = "btn-ghost" }: { id: string; s
   );
 }
 
-function ClusterCard({ c, rank }: { c: FeedCard; rank: number }) {
+function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: boolean }) {
   const notUa = c.worldCount > 0 && c.uaCount === 0;
   const title = c.titleUk || c.title;
   const showOriginal = !!c.titleUk && c.titleUk.trim() !== c.title.trim();
@@ -153,6 +169,9 @@ function ClusterCard({ c, rank }: { c: FeedCard; rank: number }) {
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
             <span className="text-[12px] text-muted">#{rank}</span>
+            {c.isNew && <span className="badge bg-info-soft text-info">нове</span>}
+            {!c.isNew && c.newSources > 0 && <span className="badge bg-info-soft text-info">+{c.newSources} {c.newSources === 1 ? "источник" : "источника"}</span>}
+            {fresh && <span className="text-[12px] text-muted">последняя публикация {agoText(c.lastItemAt)}</span>}
             {c.priority && <span className={`badge ${PRIORITY_TONE[c.priority] ?? ""}`}>{PRIORITY_LABELS[c.priority] ?? c.priority}</span>}
             {notUa && <Badge tone="brand">Ещё нет в UA</Badge>}
             {c.category && <Badge>{CATEGORY_LABELS[c.category] ?? c.category}</Badge>}
