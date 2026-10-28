@@ -29,7 +29,7 @@ export async function activeProxies(): Promise<ProxyRow[]> {
   });
 }
 
-export type SourceLike = { id: string; kind: string; url: string; viaProxy: boolean };
+export type SourceLike = { id: string; kind: string; url: string; viaProxy: boolean; lang?: string };
 export type SourceFetch = { items: FeedItem[]; trends: TrendItem[]; error?: string; status: number; viaProxy: boolean; proxyId?: string };
 
 const blocked = (r: FetchResult) => r.status === 403 || r.status === 429 || r.status === 451 || r.status === 503;
@@ -49,9 +49,23 @@ export async function fetchWithProxy(url: string, wantProxy: boolean, autoProxy:
   return r;
 }
 
+/** Редакция Google News по языку источника: мировые запросы (site:people.com) — в американской, иначе выдача пустая. */
+const GNEWS_EDITIONS: Record<string, Pick<NewsSettings, "hl" | "gl" | "ceid">> = {
+  en: { hl: "en-US", gl: "US", ceid: "US:en" },
+  fr: { hl: "fr", gl: "FR", ceid: "FR:fr" },
+  it: { hl: "it", gl: "IT", ceid: "IT:it" },
+  de: { hl: "de", gl: "DE", ceid: "DE:de" },
+  pl: { hl: "pl", gl: "PL", ceid: "PL:pl" },
+};
+export function gnewsEdition(lang: string | undefined, s: NewsSettings): Pick<NewsSettings, "hl" | "gl" | "ceid"> {
+  const own = s.hl.split("-")[0].toLowerCase();
+  return lang && lang.toLowerCase() !== own && GNEWS_EDITIONS[lang.toLowerCase()] ? GNEWS_EDITIONS[lang.toLowerCase()] : s;
+}
+
 export function sourceUrl(src: SourceLike, s: NewsSettings): string {
-  if (src.kind === "gnews_query") return gnewsSearchUrl(src.url, s);
-  if (src.kind === "gnews_topic") return /^https?:/.test(src.url) ? src.url : gnewsTopicUrl(src.url, s);
+  const ed = gnewsEdition(src.lang, s);
+  if (src.kind === "gnews_query") return gnewsSearchUrl(src.url, ed);
+  if (src.kind === "gnews_topic") return /^https?:/.test(src.url) ? src.url : gnewsTopicUrl(src.url, ed);
   if (src.kind === "trends") return /^https?:/.test(src.url) ? src.url : trendsUrl(src.url || s.gl);
   return src.url;
 }

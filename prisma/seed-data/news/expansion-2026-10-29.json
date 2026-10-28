@@ -1,0 +1,3636 @@
+{
+ "about": "Расширение источников и сущностей beautydaily, 2026-10-29. Каждая лента проверена с сервера (scripts/news/check-candidates.ts). Загрузка: npx tsx scripts/news/import-expansion.ts <этот файл> [siteUrl].",
+ "settings": {
+  "gnewsGroupsPerRun": 8,
+  "classifyPerDay": 5000
+ },
+ "deactivate": [
+  {
+   "url": "https://people.com/news-sitemap.xml",
+   "why": "402/403 для сервера; заменено запросом Google News site:people.com"
+  },
+  {
+   "url": "https://hypebeast.com/news-sitemap.xml",
+   "why": "403; заменено site:hypebeast.com"
+  },
+  {
+   "url": "https://www.businessoffashion.com/feed/",
+   "why": "403; заменено site:businessoffashion.com"
+  },
+  {
+   "url": "https://www.obozrevatel.com/ukr/api/media/out/rss/lastnews.xml",
+   "why": "403; остаётся Google News site:obozrevatel.com"
+  },
+  {
+   "url": "site:fakty.ictv.ua",
+   "why": "домен переехал на fakty.com.ua, выдача пустая"
+  },
+  {
+   "url": "site:telegraf.com.ua",
+   "why": "лента telegraf.com.ua/ukr/rss теперь открывается с сервера"
+  },
+  {
+   "url": "site:businessoffashion.com",
+   "why": "деловые новости индустрии: 43 из 46 материалов отсекла модель"
+  },
+  {
+   "url": "https://sneakernews.com/feed/",
+   "why": "релизы кроссовок для сникерхедов, не аудитория сайта"
+  },
+  {
+   "url": "https://footwearnews.com/feed/",
+   "why": "релизы кроссовок и обувная индустрия, не аудитория сайта"
+  }
+ ],
+ "sources": [
+  {
+   "kind": "rss",
+   "name": "HM Studio: мода і зірки",
+   "url": "https://hmstudio.com.ua/feed/",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 1.0,
+   "profile": true
+  },
+  {
+   "kind": "rss",
+   "name": "HM Studio: усі матеріали",
+   "url": "https://hmstudio.com.ua/sitemap.rss",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.9,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Womo: краса і культура",
+   "url": "https://womo.ua/feed/",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.8,
+   "profile": true,
+   "includeCats": [
+    "краса, мода",
+    "культура, кіно",
+    "кіно"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "Телеграф (RSS)",
+   "url": "https://telegraf.com.ua/ukr/rss",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.8,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Факти (RSS)",
+   "url": "https://fakty.com.ua/ua/feed/",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.8,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Ukr.media",
+   "url": "https://ukr.media/rss/",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.6,
+   "profile": false,
+   "excludeCats": [
+    "їжа",
+    "езотерика",
+    "сад та город",
+    "тварини"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "Знай",
+   "url": "https://znaj.ua/feed/rss2.xml",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Politeka",
+   "url": "https://politeka.net/feed/rss2.xml",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.5,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "УНН",
+   "url": "https://unn.ua/rss/news_uk.xml",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "112.ua",
+   "url": "https://112.ua/rss.xml",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News: Stilnaya",
+   "url": "site:stilnaya.com.ua",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 1.0,
+   "profile": true
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News: Harper's Bazaar UA",
+   "url": "site:harpersbazaar.com.ua",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 1.2,
+   "profile": true
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News: Tochka.net",
+   "url": "site:tochka.net",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.9,
+   "profile": true
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News: Gazeta.ua",
+   "url": "site:gazeta.ua",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.7,
+   "profile": false
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News: TrueUA",
+   "url": "site:trueua.info",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News: KP.UA",
+   "url": "site:kp.ua",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News: Суспільне Культура",
+   "url": "site:suspilne.media/culture",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.8,
+   "profile": false
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News: СТБ",
+   "url": "site:stb.ua",
+   "tier": "competitor",
+   "lang": "uk",
+   "weight": 0.8,
+   "profile": false
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News (США): People",
+   "url": "site:people.com",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.8,
+   "profile": false
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News (США): TMZ",
+   "url": "site:tmz.com",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News (США): Hypebeast (коллаборации, низкий вес)",
+   "url": "site:hypebeast.com",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.3,
+   "profile": false
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News (США): Fragrantica",
+   "url": "site:fragrantica.com",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "gnews_query",
+   "name": "Google News (США): The Cut",
+   "url": "site:thecut.com",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "gnews_topic",
+   "name": "Google News (США): Entertainment",
+   "url": "ENTERTAINMENT",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Us Weekly",
+   "url": "https://www.usmagazine.com/feed/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.7,
+   "profile": false,
+   "excludeCats": [
+    "shopping"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "Hello!",
+   "url": "https://www.hellomagazine.com/feeds/rss/any/any/any/50.xml",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.7,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "OK! Magazine",
+   "url": "https://okmagazine.com/feed/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false
+  },
+  {
+   "kind": "sitemap",
+   "name": "InStyle (news-sitemap)",
+   "url": "https://www.instyle.com/google-news-sitemap.xml",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.7,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Glamour",
+   "url": "https://www.glamour.com/feed/rss",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false,
+   "excludeCats": [
+    "shopping",
+    "mom guilt"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "Vanity Fair",
+   "url": "https://www.vanityfair.com/feed/rss",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false,
+   "excludeCats": [
+    "politics",
+    "news / tech",
+    "news / business"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "Teen Vogue",
+   "url": "https://www.teenvogue.com/feed/rss",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false,
+   "excludeCats": [
+    "horoscopes",
+    "shopping",
+    "politics"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "GQ",
+   "url": "https://www.gq.com/feed/rss",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false,
+   "excludeCats": [
+    "shopping",
+    "watches"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "Who What Wear",
+   "url": "https://www.whowhatwear.com/feeds.xml",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false,
+   "excludeCats": [
+    "shopping"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "British Vogue",
+   "url": "https://www.vogue.co.uk/feed/rss",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.7,
+   "profile": false,
+   "excludeCats": [
+    "shopping",
+    "vogue shops"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "Elle UK",
+   "url": "https://www.elle.com/uk/rss/all.xml",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Harper's Bazaar UK",
+   "url": "https://www.harpersbazaar.com/uk/rss/default.xml",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Harper's Bazaar (США): усі",
+   "url": "https://www.harpersbazaar.com/rss/all.xml/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Marie Claire (США)",
+   "url": "https://www.marieclaire.com/feeds.xml",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.7,
+   "profile": false,
+   "excludeCats": [
+    "books"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "Cosmopolitan (США)",
+   "url": "https://www.cosmopolitan.com/rss/all.xml/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Hollywood Life",
+   "url": "https://hollywoodlife.com/feed/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false,
+   "excludeCats": [
+    "world news"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "Dazed",
+   "url": "https://www.dazeddigital.com/rss",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Highsnobiety",
+   "url": "https://www.highsnobiety.com/feed",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.4,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Hola! (США)",
+   "url": "https://www.hola.com/us/feeds/rss/any/any/any/50.xml",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Variety",
+   "url": "https://variety.com/feed/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Hollywood Reporter",
+   "url": "https://www.hollywoodreporter.com/feed/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false,
+   "excludeCats": [
+    "business"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "Billboard",
+   "url": "https://www.billboard.com/feed/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false,
+   "excludeCats": [
+    "business"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "Mirror 3AM",
+   "url": "https://www.mirror.co.uk/3am/?service=rss",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Metro: розваги",
+   "url": "https://metro.co.uk/entertainment/feed/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false,
+   "excludeCats": [
+    "gaming",
+    "opinion"
+   ]
+  },
+  {
+   "kind": "sitemap",
+   "name": "Byrdie (news-sitemap)",
+   "url": "https://www.byrdie.com/google-news-sitemap.xml",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Page Six Style",
+   "url": "https://pagesix.com/style/feed/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.7,
+   "profile": false
+  },
+  {
+   "kind": "sitemap",
+   "name": "Page Six (news-sitemap)",
+   "url": "https://pagesix.com/news-sitemap.xml",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.8,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Town & Country",
+   "url": "https://www.townandcountrymag.com/rss/all.xml/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Tatler",
+   "url": "https://www.tatler.com/feed/rss",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Elle (США): краса",
+   "url": "https://www.elle.com/rss/beauty.xml/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "WWD: бьюти",
+   "url": "https://wwd.com/beauty-industry-news/feed/",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.6,
+   "profile": false,
+   "excludeCats": [
+    "earnings"
+   ]
+  },
+  {
+   "kind": "rss",
+   "name": "Guardian: мода",
+   "url": "https://www.theguardian.com/fashion/rss",
+   "tier": "world",
+   "lang": "en",
+   "weight": 0.5,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Vogue France",
+   "url": "https://www.vogue.fr/feed/rss",
+   "tier": "world",
+   "lang": "fr",
+   "weight": 0.5,
+   "profile": false
+  },
+  {
+   "kind": "rss",
+   "name": "Vogue Italia",
+   "url": "https://www.vogue.it/feed/rss",
+   "tier": "world",
+   "lang": "it",
+   "weight": 0.5,
+   "profile": false,
+   "excludeCats": [
+    "oroscopo",
+    "shopping"
+   ]
+  }
+ ],
+ "entities": [
+  {
+   "name": "Світлана Лобода",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.5,
+   "aliases": [
+    "Лобода",
+    "Светлана Лобода",
+    "LOBODA"
+   ]
+  },
+  {
+   "name": "MONATIK",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.5,
+   "aliases": [
+    "Монатік",
+    "Монатик",
+    "Дмитро Монатік",
+    "Дмитрий Монатик"
+   ]
+  },
+  {
+   "name": "Настя Каменських",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.5,
+   "aliases": [
+    "Каменських",
+    "Каменских",
+    "Настя Каменских",
+    "NK Nastya Kamenskih"
+   ]
+  },
+  {
+   "name": "Маша Єфросиніна",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.5,
+   "aliases": [
+    "Єфросиніна",
+    "Ефросинина",
+    "Маша Ефросинина"
+   ]
+  },
+  {
+   "name": "Тоня Матвієнко",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.4,
+   "aliases": [
+    "Тоня Матвиенко",
+    "Антоніна Матвієнко"
+   ]
+  },
+  {
+   "name": "Віталій Козловський",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.4,
+   "aliases": [
+    "Виталий Козловский"
+   ]
+  },
+  {
+   "name": "Арсен Мірзоян",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "Мірзоян",
+    "Мирзоян",
+    "Арсен Мирзоян"
+   ]
+  },
+  {
+   "name": "Ірина Білик",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "Ирина Билык",
+    "Білик",
+    "Билык"
+   ]
+  },
+  {
+   "name": "Наталія Могилевська",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "Могилевська",
+    "Могилевская",
+    "Наталья Могилевская"
+   ]
+  },
+  {
+   "name": "Святослав Вакарчук",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "Вакарчук",
+    "Океан Ельзи",
+    "Океан Эльзы"
+   ]
+  },
+  {
+   "name": "Юлія Саніна",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "Саніна",
+    "Юлия Санина",
+    "Санина",
+    "The Hardkiss"
+   ]
+  },
+  {
+   "name": "Артем Пивоваров",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "Пивоваров",
+    "Артём Пивоваров"
+   ]
+  },
+  {
+   "name": "Руслана Лижичко",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "співачка Руслана",
+    "Руслана Лыжичко",
+    "Ruslana"
+   ]
+  },
+  {
+   "name": "Андрій Данилко",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "Данилко",
+    "Верка Сердючка",
+    "Сердючка",
+    "Андрей Данилко",
+    "Verka Serduchka"
+   ]
+  },
+  {
+   "name": "Слава Камінська",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "Камінська",
+    "Слава Каминская",
+    "Каминская"
+   ]
+  },
+  {
+   "name": "Ольга Фреймут",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "Фреймут"
+   ]
+  },
+  {
+   "name": "Юрій Горбунов",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "Юрий Горбунов"
+   ]
+  },
+  {
+   "name": "Григорій Решетник",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "Григорий Решетник"
+   ]
+  },
+  {
+   "name": "Даша Астаф'єва",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.3,
+   "aliases": [
+    "Астаф'єва",
+    "Астафьева",
+    "Даша Астафьева",
+    "Dasha Astafieva"
+   ]
+  },
+  {
+   "name": "Оля Цибульська",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.2,
+   "aliases": [
+    "Цибульська",
+    "Оля Цибульская",
+    "Цибульская"
+   ]
+  },
+  {
+   "name": "Ірина Федишин",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.2,
+   "aliases": [
+    "Федишин",
+    "Ирина Федишин"
+   ]
+  },
+  {
+   "name": "Олександр Пономарьов",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.2,
+   "aliases": [
+    "Александр Пономарев"
+   ]
+  },
+  {
+   "name": "MELOVIN",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.2,
+   "aliases": [
+    "Меловін",
+    "Меловин",
+    "Костянтин Бочаров"
+   ]
+  },
+  {
+   "name": "Wellboy",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.2,
+   "aliases": [
+    "Веллбой",
+    "Антон Веллбой"
+   ]
+  },
+  {
+   "name": "Kalush Orchestra",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.2,
+   "aliases": [
+    "Олег Псюк",
+    "Псюк"
+   ]
+  },
+  {
+   "name": "Ольга Сумська",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.2,
+   "aliases": [
+    "Ольга Сумская"
+   ]
+  },
+  {
+   "name": "Ксенія Мішина",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.2,
+   "aliases": [
+    "Мішина",
+    "Ксения Мишина"
+   ]
+  },
+  {
+   "name": "Наталія Мосейчук",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.2,
+   "aliases": [
+    "Мосейчук",
+    "Наталья Мосейчук"
+   ]
+  },
+  {
+   "name": "Соломія Вітвіцька",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.2,
+   "aliases": [
+    "Вітвіцька",
+    "Соломия Витвицкая"
+   ]
+  },
+  {
+   "name": "Санта Дімопулос",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.2,
+   "aliases": [
+    "Дімопулос",
+    "Санта Димопулос",
+    "Димопулос"
+   ]
+  },
+  {
+   "name": "Еліна Світоліна",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.2,
+   "aliases": [
+    "Світоліна",
+    "Свитолина",
+    "Элина Свитолина",
+    "Elina Svitolina"
+   ]
+  },
+  {
+   "name": "Наталка Карпа",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Наталья Карпа"
+   ]
+  },
+  {
+   "name": "KAZKA",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Олександра Зарицька",
+    "Зарицька",
+    "гурт Казка"
+   ]
+  },
+  {
+   "name": "YAKTAK",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Яктак"
+   ]
+  },
+  {
+   "name": "Klavdia Petrivna",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Клавдія Петрівна",
+    "Клавдия Петровна"
+   ]
+  },
+  {
+   "name": "MamaRika",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Мамаріка",
+    "Мамарика"
+   ]
+  },
+  {
+   "name": "Dzidzio",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Дзідзьо",
+    "Дзидзьо",
+    "Михайло Хома"
+   ]
+  },
+  {
+   "name": "Тарас Тополя",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Антитіла",
+    "Антитела"
+   ]
+  },
+  {
+   "name": "Анна Тринчер",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Тринчер"
+   ]
+  },
+  {
+   "name": "Віра Брежнєва",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Брежнєва",
+    "Вера Брежнева",
+    "Брежнева"
+   ]
+  },
+  {
+   "name": "Камалія",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Камалия",
+    "Kamaliya"
+   ]
+  },
+  {
+   "name": "Ольга Горбачова",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Ольга Горбачева",
+    "Ольга Горбачёва"
+   ]
+  },
+  {
+   "name": "Олена Шоптенко",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Шоптенко",
+    "Елена Шоптенко"
+   ]
+  },
+  {
+   "name": "Влад Яма",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": []
+  },
+  {
+   "name": "Женя Кошовий",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Евгений Кошевой"
+   ]
+  },
+  {
+   "name": "Тарас Цимбалюк",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": []
+  },
+  {
+   "name": "Максим Михайлюк",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": []
+  },
+  {
+   "name": "Ірма Вітовська",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Вітовська",
+    "Ирма Витовская"
+   ]
+  },
+  {
+   "name": "Анатолій Анатоліч",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Анатолич",
+    "Анатолий Анатолич"
+   ]
+  },
+  {
+   "name": "Аніта Луценко",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Анита Луценко"
+   ]
+  },
+  {
+   "name": "Ніна Матвієнко",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Нина Матвиенко"
+   ]
+  },
+  {
+   "name": "Go_A",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Катерина Павленко",
+    "гурт Go_A"
+   ]
+  },
+  {
+   "name": "Tvorchi",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "гурт Творчі"
+   ]
+  },
+  {
+   "name": "Alyosha",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Олена Кучер",
+    "співачка Альоша"
+   ]
+  },
+  {
+   "name": "Tayanna",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Таяна",
+    "Тетяна Решетняк"
+   ]
+  },
+  {
+   "name": "Kola",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Анастасія Прудиус",
+    "Прудиус"
+   ]
+  },
+  {
+   "name": "Римма Зюбіна",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Зюбіна",
+    "Римма Зюбина",
+    "Зюбина"
+   ]
+  },
+  {
+   "name": "Віталіна Біблів",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Біблів",
+    "Виталина Библив"
+   ]
+  },
+  {
+   "name": "Аліна Байкова",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Байкова",
+    "Алина Байкова"
+   ]
+  },
+  {
+   "name": "Алла Костромічова",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Костромічова",
+    "Костромичева"
+   ]
+  },
+  {
+   "name": "Валерія Крук",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Валерия Крук"
+   ]
+  },
+  {
+   "name": "Анна Ризатдінова",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Ризатдінова",
+    "Ризатдинова"
+   ]
+  },
+  {
+   "name": "Ігор Кондратюк",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Игорь Кондратюк"
+   ]
+  },
+  {
+   "name": "Аня Кошмал",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Кошмал"
+   ]
+  },
+  {
+   "name": "Дмитро Павко",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 0.9,
+   "aliases": [
+    "Павко"
+   ]
+  },
+  {
+   "name": "Павло Зібров",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 0.9,
+   "aliases": [
+    "Зібров",
+    "Зибров"
+   ]
+  },
+  {
+   "name": "Positiff",
+   "type": "person",
+   "grp": "ua_second",
+   "weight": 0.9,
+   "aliases": [
+    "Олексій Завгородній"
+   ]
+  },
+  {
+   "name": "Мілла Йовович",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.2,
+   "aliases": [
+    "Йовович",
+    "Милла Йовович",
+    "Milla Jovovich"
+   ]
+  },
+  {
+   "name": "Міла Куніс",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.2,
+   "aliases": [
+    "Куніс",
+    "Мила Кунис",
+    "Кунис",
+    "Mila Kunis"
+   ]
+  },
+  {
+   "name": "Ольга Куриленко",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Куриленко",
+    "Olga Kurylenko"
+   ]
+  },
+  {
+   "name": "Віра Фарміга",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Фарміга",
+    "Вера Фармига",
+    "Vera Farmiga"
+   ]
+  },
+  {
+   "name": "Кайлі Дженнер",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.2,
+   "aliases": [
+    "Кайли Дженнер",
+    "Kylie Jenner"
+   ]
+  },
+  {
+   "name": "Кендалл Дженнер",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.2,
+   "aliases": [
+    "Кендал Дженнер",
+    "Kendall Jenner"
+   ]
+  },
+  {
+   "name": "Кріс Дженнер",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Крис Дженнер",
+    "Kris Jenner"
+   ]
+  },
+  {
+   "name": "Хлої Кардаш'ян",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Хлоя Кардашьян",
+    "Хлої Кардашьян",
+    "Khloe Kardashian",
+    "Khloé Kardashian"
+   ]
+  },
+  {
+   "name": "Кортні Кардаш'ян",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Кортни Кардашьян",
+    "Кортні Кардашьян",
+    "Kourtney Kardashian"
+   ]
+  },
+  {
+   "name": "Белла Хадід",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Белла Хадид",
+    "Bella Hadid"
+   ]
+  },
+  {
+   "name": "Джіджі Хадід",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Джиджи Хадид",
+    "Gigi Hadid"
+   ]
+  },
+  {
+   "name": "Джастін Бібер",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Джастин Бибер",
+    "Justin Bieber"
+   ]
+  },
+  {
+   "name": "Марго Роббі",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Марго Робби",
+    "Margot Robbie"
+   ]
+  },
+  {
+   "name": "Сідні Свіні",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Сидни Суини",
+    "Сідні Суїні",
+    "Sydney Sweeney"
+   ]
+  },
+  {
+   "name": "Аріана Гранде",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Ариана Гранде",
+    "Ariana Grande"
+   ]
+  },
+  {
+   "name": "Біллі Айліш",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Билли Айлиш",
+    "Billie Eilish",
+    "Айліш",
+    "Айлиш"
+   ]
+  },
+  {
+   "name": "Тімоті Шаламе",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Тимоти Шаламе",
+    "Шаламе",
+    "Timothée Chalamet",
+    "Timothee Chalamet"
+   ]
+  },
+  {
+   "name": "Дженніфер Еністон",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Дженнифер Энистон",
+    "Еністон",
+    "Энистон",
+    "Jennifer Aniston"
+   ]
+  },
+  {
+   "name": "Скарлетт Йоханссон",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Йоханссон",
+    "Scarlett Johansson"
+   ]
+  },
+  {
+   "name": "Ніколь Кідман",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Николь Кидман",
+    "Кідман",
+    "Кидман",
+    "Nicole Kidman"
+   ]
+  },
+  {
+   "name": "Олівія Родріго",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Оливия Родриго",
+    "Olivia Rodrigo"
+   ]
+  },
+  {
+   "name": "Шакіра",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Шакира",
+    "Shakira"
+   ]
+  },
+  {
+   "name": "Кеті Перрі",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Кэти Перри",
+    "Кейті Перрі",
+    "Katy Perry"
+   ]
+  },
+  {
+   "name": "Майлі Сайрус",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Майли Сайрус",
+    "Miley Cyrus"
+   ]
+  },
+  {
+   "name": "Брітні Спірс",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Бритни Спирс",
+    "Britney Spears"
+   ]
+  },
+  {
+   "name": "Бред Пітт",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Брэд Питт",
+    "Brad Pitt"
+   ]
+  },
+  {
+   "name": "Леонардо Ді Капріо",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Леонардо Ди Каприо",
+    "Ді Капріо",
+    "Ди Каприо",
+    "Leonardo DiCaprio"
+   ]
+  },
+  {
+   "name": "Том Голланд",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Том Холланд",
+    "Tom Holland"
+   ]
+  },
+  {
+   "name": "Гаррі Стайлз",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Гарри Стайлс",
+    "Гаррі Стайлс",
+    "Harry Styles"
+   ]
+  },
+  {
+   "name": "Емма Стоун",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Эмма Стоун",
+    "Emma Stone"
+   ]
+  },
+  {
+   "name": "Емма Вотсон",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Эмма Уотсон",
+    "Емма Уотсон",
+    "Emma Watson"
+   ]
+  },
+  {
+   "name": "Ана де Армас",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Ana de Armas"
+   ]
+  },
+  {
+   "name": "Дакота Джонсон",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Dakota Johnson"
+   ]
+  },
+  {
+   "name": "Гайді Клум",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Хайди Клум",
+    "Хайді Клум",
+    "Клум",
+    "Heidi Klum"
+   ]
+  },
+  {
+   "name": "Наомі Кемпбелл",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Наоми Кэмпбелл",
+    "Naomi Campbell"
+   ]
+  },
+  {
+   "name": "Кейт Мосс",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Kate Moss"
+   ]
+  },
+  {
+   "name": "Ірина Шейк",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Ирина Шейк",
+    "Irina Shayk"
+   ]
+  },
+  {
+   "name": "Емілі Ратаковскі",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Эмили Ратаковски",
+    "Ратаковскі",
+    "Ратаковски",
+    "Emily Ratajkowski"
+   ]
+  },
+  {
+   "name": "Кара Делевінь",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Кара Делевинь",
+    "Cara Delevingne"
+   ]
+  },
+  {
+   "name": "Вікторія Бекхем",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.2,
+   "aliases": [
+    "Виктория Бекхэм",
+    "Вікторія Бекхэм",
+    "Victoria Beckham"
+   ]
+  },
+  {
+   "name": "Девід Бекхем",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Дэвид Бекхэм",
+    "David Beckham"
+   ]
+  },
+  {
+   "name": "Бруклін Бекхем",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Бруклин Бекхэм",
+    "Brooklyn Beckham"
+   ]
+  },
+  {
+   "name": "Пенелопа Крус",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Penélope Cruz",
+    "Penelope Cruz"
+   ]
+  },
+  {
+   "name": "Моніка Беллуччі",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Моника Беллуччи",
+    "Беллуччі",
+    "Беллуччи",
+    "Monica Bellucci"
+   ]
+  },
+  {
+   "name": "Сальма Гаєк",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Сальма Хайек",
+    "Сальма Хаєк",
+    "Salma Hayek"
+   ]
+  },
+  {
+   "name": "Демі Мур",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Деми Мур",
+    "Demi Moore"
+   ]
+  },
+  {
+   "name": "Памела Андерсон",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Pamela Anderson"
+   ]
+  },
+  {
+   "name": "Джорджина Родрігес",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Джорджина Родригес",
+    "Georgina Rodriguez",
+    "Georgina Rodríguez"
+   ]
+  },
+  {
+   "name": "Тревіс Келсі",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Трэвис Келси",
+    "Travis Kelce"
+   ]
+  },
+  {
+   "name": "Чаппелл Роун",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Chappell Roan"
+   ]
+  },
+  {
+   "name": "Лана Дель Рей",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Lana Del Rey"
+   ]
+  },
+  {
+   "name": "Адель",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Adele",
+    "співачка Адель"
+   ]
+  },
+  {
+   "name": "ASAP Rocky",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "A$AP Rocky",
+    "Ейсап Роккі",
+    "Эйсап Рокки"
+   ]
+  },
+  {
+   "name": "Каньє Вест",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Канье Уэст",
+    "Каньє Уест",
+    "Kanye West"
+   ]
+  },
+  {
+   "name": "Б'янка Цензорі",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Бьянка Цензори",
+    "Цензорі",
+    "Цензори",
+    "Bianca Censori"
+   ]
+  },
+  {
+   "name": "Мадонна",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Madonna"
+   ]
+  },
+  {
+   "name": "Кайлі Міноуг",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Кайли Миноуг",
+    "Kylie Minogue"
+   ]
+  },
+  {
+   "name": "Ріта Ора",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Рита Ора",
+    "Rita Ora"
+   ]
+  },
+  {
+   "name": "Міллі Боббі Браун",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Милли Бобби Браун",
+    "Millie Bobby Brown"
+   ]
+  },
+  {
+   "name": "Дженна Ортега",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Jenna Ortega"
+   ]
+  },
+  {
+   "name": "Зої Кравіц",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Зои Кравиц",
+    "Zoë Kravitz",
+    "Zoe Kravitz"
+   ]
+  },
+  {
+   "name": "Анна Вінтур",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Анна Винтур",
+    "Вінтур",
+    "Винтур",
+    "Anna Wintour"
+   ]
+  },
+  {
+   "name": "Ліса BLACKPINK",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Лиса BLACKPINK",
+    "Lisa BLACKPINK",
+    "Lalisa",
+    "Лаліса"
+   ]
+  },
+  {
+   "name": "BLACKPINK",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Блекпінк",
+    "Блэкпинк"
+   ]
+  },
+  {
+   "name": "Селін Діон",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Селин Дион",
+    "Celine Dion",
+    "Céline Dion"
+   ]
+  },
+  {
+   "name": "Джонні Депп",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Джонни Депп",
+    "Johnny Depp"
+   ]
+  },
+  {
+   "name": "Кіану Рівз",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Киану Ривз",
+    "Keanu Reeves"
+   ]
+  },
+  {
+   "name": "Райан Гослінг",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Райан Гослинг",
+    "Ryan Gosling"
+   ]
+  },
+  {
+   "name": "Амаль Клуні",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Амаль Клуни",
+    "Amal Clooney"
+   ]
+  },
+  {
+   "name": "Джордж Клуні",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Джордж Клуни",
+    "George Clooney"
+   ]
+  },
+  {
+   "name": "Енн Гетевей",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Энн Хэтэуэй",
+    "Енн Хетевей",
+    "Anne Hathaway"
+   ]
+  },
+  {
+   "name": "Різ Візерспун",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Риз Уизерспун",
+    "Reese Witherspoon"
+   ]
+  },
+  {
+   "name": "Сара Джессіка Паркер",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Сара Джессика Паркер",
+    "Sarah Jessica Parker"
+   ]
+  },
+  {
+   "name": "Кейті Голмс",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Кэти Холмс",
+    "Кейті Холмс",
+    "Katie Holmes"
+   ]
+  },
+  {
+   "name": "Кейт Бланшетт",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Кейт Бланшетт",
+    "Cate Blanchett"
+   ]
+  },
+  {
+   "name": "Принц Вільям",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Принц Уильям",
+    "Prince William"
+   ]
+  },
+  {
+   "name": "Принц Гаррі",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Принц Гарри",
+    "Prince Harry"
+   ]
+  },
+  {
+   "name": "Король Чарльз III",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Чарльз III",
+    "король Чарльз",
+    "Карл III",
+    "King Charles"
+   ]
+  },
+  {
+   "name": "Королева Камілла",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "королева Камилла",
+    "Queen Camilla"
+   ]
+  },
+  {
+   "name": "Принцеса Шарлотта",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "принцесса Шарлотта",
+    "Princess Charlotte"
+   ]
+  },
+  {
+   "name": "Королева Летиція",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.0,
+   "aliases": [
+    "Летиція",
+    "Летиция",
+    "Queen Letizia"
+   ]
+  },
+  {
+   "name": "Княгиня Шарлін",
+   "type": "person",
+   "grp": "world",
+   "weight": 0.9,
+   "aliases": [
+    "Шарлін",
+    "княгиня Шарлен",
+    "Princess Charlene"
+   ]
+  },
+  {
+   "name": "Prada",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Прада"
+   ]
+  },
+  {
+   "name": "Balenciaga",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Баленсіага",
+    "Баленсиага"
+   ]
+  },
+  {
+   "name": "Saint Laurent",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Сен-Лоран",
+    "Сен Лоран",
+    "Yves Saint Laurent",
+    "YSL Beauty"
+   ]
+  },
+  {
+   "name": "Valentino",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": []
+  },
+  {
+   "name": "Versace",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Версаче",
+    "Донателла Версаче"
+   ]
+  },
+  {
+   "name": "Givenchy",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Живанші",
+    "Живанши"
+   ]
+  },
+  {
+   "name": "Fendi",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Фенді",
+    "Фенди"
+   ]
+  },
+  {
+   "name": "Bottega Veneta",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Боттега Венета"
+   ]
+  },
+  {
+   "name": "Loewe",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Лоеве",
+    "Лоэве"
+   ]
+  },
+  {
+   "name": "Celine",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Céline"
+   ]
+  },
+  {
+   "name": "Hermès",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Hermes",
+    "Ермес",
+    "Эрмес",
+    "сумка Birkin",
+    "сумка Біркін"
+   ]
+  },
+  {
+   "name": "Burberry",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Барберрі",
+    "Берберри"
+   ]
+  },
+  {
+   "name": "Dolce & Gabbana",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Dolce&Gabbana",
+    "Дольче Габбана",
+    "Дольче і Габбана"
+   ]
+  },
+  {
+   "name": "Armani",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Армані",
+    "Армани",
+    "Giorgio Armani",
+    "Джорджо Армані"
+   ]
+  },
+  {
+   "name": "Schiaparelli",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.1,
+   "aliases": [
+    "Скьяпареллі",
+    "Скіапареллі",
+    "Скьяпарелли",
+    "Скиапарелли"
+   ]
+  },
+  {
+   "name": "Alaïa",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Alaia",
+    "Алайя"
+   ]
+  },
+  {
+   "name": "Balmain",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Бальмен"
+   ]
+  },
+  {
+   "name": "Chloé",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "бренд Chloé",
+    "будинок Chloé"
+   ]
+  },
+  {
+   "name": "Coperni",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Коперні"
+   ]
+  },
+  {
+   "name": "Mugler",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Мюглер"
+   ]
+  },
+  {
+   "name": "Rabanne",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Paco Rabanne",
+    "Пако Рабан"
+   ]
+  },
+  {
+   "name": "Marc Jacobs",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Марк Джейкобс"
+   ]
+  },
+  {
+   "name": "Michael Kors",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Майкл Корс"
+   ]
+  },
+  {
+   "name": "Ralph Lauren",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Ральф Лорен"
+   ]
+  },
+  {
+   "name": "Tommy Hilfiger",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Томмі Хілфігер",
+    "Томми Хилфигер"
+   ]
+  },
+  {
+   "name": "Calvin Klein",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Кельвін Кляйн",
+    "Кельвин Кляйн"
+   ]
+  },
+  {
+   "name": "Victoria's Secret",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.1,
+   "aliases": [
+    "Victoria Secret",
+    "Вікторія Сікрет",
+    "Виктория Сикрет"
+   ]
+  },
+  {
+   "name": "Skims",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.1,
+   "aliases": [
+    "Скімс",
+    "Скимс"
+   ]
+  },
+  {
+   "name": "H&M",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Hennes & Mauritz"
+   ]
+  },
+  {
+   "name": "Mango",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "бренд Mango"
+   ]
+  },
+  {
+   "name": "Uniqlo",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Юнікло",
+    "Юникло"
+   ]
+  },
+  {
+   "name": "Bershka",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Бершка"
+   ]
+  },
+  {
+   "name": "Pull&Bear",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Pull and Bear"
+   ]
+  },
+  {
+   "name": "Stradivarius",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Страдіваріус"
+   ]
+  },
+  {
+   "name": "Shein",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Adidas",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Адідас",
+    "Адидас"
+   ]
+  },
+  {
+   "name": "Puma",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Converse",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Конверси"
+   ]
+  },
+  {
+   "name": "Asics",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Асікс",
+    "Асикс"
+   ]
+  },
+  {
+   "name": "Salomon",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Саломон"
+   ]
+  },
+  {
+   "name": "Crocs",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Крокси",
+    "Кроксы"
+   ]
+  },
+  {
+   "name": "UGG",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "угги",
+    "уггі",
+    "UGGs"
+   ]
+  },
+  {
+   "name": "Dr. Martens",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Dr Martens",
+    "Мартінси",
+    "Мартенсы"
+   ]
+  },
+  {
+   "name": "Birkenstock",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Біркенсток",
+    "Биркенсток"
+   ]
+  },
+  {
+   "name": "Swarovski",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Сваровскі",
+    "Сваровски"
+   ]
+  },
+  {
+   "name": "Pandora",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "прикраси Pandora"
+   ]
+  },
+  {
+   "name": "Cartier",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": []
+  },
+  {
+   "name": "Tiffany & Co.",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Tiffany & Co",
+    "Тіффані",
+    "Тиффани"
+   ]
+  },
+  {
+   "name": "Bvlgari",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Bulgari",
+    "Булгарі",
+    "Булгари"
+   ]
+  },
+  {
+   "name": "Van Cleef & Arpels",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Van Cleef",
+    "Ван Кліф"
+   ]
+  },
+  {
+   "name": "Rolex",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Ролекс"
+   ]
+  },
+  {
+   "name": "Lululemon",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Лулулемон"
+   ]
+  },
+  {
+   "name": "Alo Yoga",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Moncler",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Монклер"
+   ]
+  },
+  {
+   "name": "Levi's",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Levis",
+    "Лівайс",
+    "Ливайс"
+   ]
+  },
+  {
+   "name": "Jimmy Choo",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Джиммі Чу",
+    "Джимми Чу"
+   ]
+  },
+  {
+   "name": "Manolo Blahnik",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Маноло Бланік",
+    "Маноло Бланик"
+   ]
+  },
+  {
+   "name": "Christian Louboutin",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Louboutin",
+    "Лубутен",
+    "лабутени",
+    "лабутены"
+   ]
+  },
+  {
+   "name": "Golden Goose",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Moschino",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "Москіно",
+    "Москино"
+   ]
+  },
+  {
+   "name": "Max Mara",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "МаксМара",
+    "Макс Мара"
+   ]
+  },
+  {
+   "name": "Kenzo",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Кензо"
+   ]
+  },
+  {
+   "name": "Lacoste",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": [
+    "Лакост"
+   ]
+  },
+  {
+   "name": "Ganni",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "The Row",
+   "type": "brand",
+   "grp": "world_brand",
+   "weight": 0.9,
+   "aliases": [
+    "бренд The Row"
+   ]
+  },
+  {
+   "name": "Estée Lauder",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 1.0,
+   "aliases": [
+    "Estee Lauder",
+    "Есте Лаудер",
+    "Эсте Лаудер"
+   ]
+  },
+  {
+   "name": "Clinique",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": []
+  },
+  {
+   "name": "MAC Cosmetics",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "M.A.C Cosmetics",
+    "косметика MAC"
+   ]
+  },
+  {
+   "name": "NARS",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Нарс"
+   ]
+  },
+  {
+   "name": "Rare Beauty",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 1.0,
+   "aliases": [
+    "Рер Бʼюті",
+    "Rare Beauty Селени Гомес"
+   ]
+  },
+  {
+   "name": "Kylie Cosmetics",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": []
+  },
+  {
+   "name": "Huda Beauty",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Худа Бʼюті"
+   ]
+  },
+  {
+   "name": "Glossier",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Глосьє"
+   ]
+  },
+  {
+   "name": "The Ordinary",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 1.0,
+   "aliases": [
+    "Зе Ординарі"
+   ]
+  },
+  {
+   "name": "CeraVe",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Сераве",
+    "Цераве"
+   ]
+  },
+  {
+   "name": "La Roche-Posay",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "La Roche Posay",
+    "Ла Рош-Позе",
+    "Ля Рош Позе"
+   ]
+  },
+  {
+   "name": "Vichy",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "косметика Vichy"
+   ]
+  },
+  {
+   "name": "Nivea",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Нівея",
+    "Нивея"
+   ]
+  },
+  {
+   "name": "Garnier",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Maybelline",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Мейбеллін",
+    "Мейбеллин"
+   ]
+  },
+  {
+   "name": "NYX Professional Makeup",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "косметика NYX"
+   ]
+  },
+  {
+   "name": "Too Faced",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Urban Decay",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Pat McGrath",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Пет Макграт",
+    "Пэт Макграт"
+   ]
+  },
+  {
+   "name": "Dyson Airwrap",
+   "type": "product",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Дайсон",
+    "стайлер Dyson",
+    "Dyson"
+   ]
+  },
+  {
+   "name": "Olaplex",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Олаплекс"
+   ]
+  },
+  {
+   "name": "Kérastase",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Kerastase",
+    "Керастаз"
+   ]
+  },
+  {
+   "name": "Clarins",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Кларанс"
+   ]
+  },
+  {
+   "name": "Guerlain",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Герлен"
+   ]
+  },
+  {
+   "name": "La Mer",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "крем La Mer"
+   ]
+  },
+  {
+   "name": "Byredo",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Байредо"
+   ]
+  },
+  {
+   "name": "Le Labo",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Ле Лабо"
+   ]
+  },
+  {
+   "name": "Maison Margiela",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Margiela",
+    "Маржела",
+    "Мейсон Маржела"
+   ]
+  },
+  {
+   "name": "Jo Malone",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Джо Малон"
+   ]
+  },
+  {
+   "name": "Tom Ford",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Том Форд"
+   ]
+  },
+  {
+   "name": "Sol de Janeiro",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Bath & Body Works",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Bath and Body Works"
+   ]
+  },
+  {
+   "name": "Summer Fridays",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Laneige",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Ланейж"
+   ]
+  },
+  {
+   "name": "Drunk Elephant",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Medik8",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Медікейт"
+   ]
+  },
+  {
+   "name": "Paula's Choice",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Paulas Choice"
+   ]
+  },
+  {
+   "name": "Kiehl's",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Kiehls",
+    "Кілс",
+    "Килс"
+   ]
+  },
+  {
+   "name": "Caudalie",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Кодалі",
+    "Кодали"
+   ]
+  },
+  {
+   "name": "Diptyque",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Діптік",
+    "Диптик"
+   ]
+  },
+  {
+   "name": "Carolina Herrera",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Кароліна Еррера",
+    "Каролина Эррера"
+   ]
+  },
+  {
+   "name": "Gisou",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Haus Labs",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Kayali",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Watsons",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Ватсонс"
+   ]
+  },
+  {
+   "name": "EVA",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "мережа EVA",
+    "магазини EVA",
+    "eva.ua"
+   ]
+  },
+  {
+   "name": "Prostor",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "мережа Prostor",
+    "мережа Простор"
+   ]
+  },
+  {
+   "name": "Notino",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": [
+    "Нотіно",
+    "Нотино"
+   ]
+  },
+  {
+   "name": "Joko Blend",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.9,
+   "aliases": [
+    "Джоко Бленд"
+   ]
+  },
+  {
+   "name": "Hillary Cosmetics",
+   "type": "brand",
+   "grp": "beauty",
+   "weight": 0.8,
+   "aliases": []
+  },
+  {
+   "name": "Litkovska",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.1,
+   "aliases": [
+    "Літковська",
+    "Литковская",
+    "Лілія Літковська"
+   ]
+  },
+  {
+   "name": "Jean Gritsfeldt",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.1,
+   "aliases": [
+    "Жан Гріцфельдт",
+    "Гріцфельдт",
+    "Грицфельдт"
+   ]
+  },
+  {
+   "name": "Anna October",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.1,
+   "aliases": [
+    "Анна Октобер"
+   ]
+  },
+  {
+   "name": "Катерина Сільченко",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.1,
+   "aliases": [
+    "The Coat by Katya Silchenko",
+    "Катя Сільченко",
+    "Сільченко"
+   ]
+  },
+  {
+   "name": "Gasanova",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Гасанова"
+   ]
+  },
+  {
+   "name": "Andre Tan",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.1,
+   "aliases": [
+    "Андре Тан"
+   ]
+  },
+  {
+   "name": "Kachorovska",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Качоровська",
+    "Качоровская"
+   ]
+  },
+  {
+   "name": "Ruslan Baginskiy",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Руслан Багінський",
+    "Руслан Багинский"
+   ]
+  },
+  {
+   "name": "Nadya Dzyak",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Надя Дзяк"
+   ]
+  },
+  {
+   "name": "Олена Рева",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Elena Reva",
+    "Елена Рева"
+   ]
+  },
+  {
+   "name": "Ienki Ienki",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Єнкі Єнкі"
+   ]
+  },
+  {
+   "name": "Chereshnivska",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Черешнівська"
+   ]
+  },
+  {
+   "name": "Arsenicum",
+   "type": "brand",
+   "grp": "ua_brand",
+   "weight": 1.0,
+   "aliases": [
+    "Арсенікум"
+   ]
+  },
+  {
+   "name": "Венеційський кінофестиваль",
+   "type": "event",
+   "grp": "event",
+   "weight": 1.2,
+   "aliases": [
+    "Венеційськ кінофестивал",
+    "Венецианский кинофестиваль",
+    "Venice Film Festival",
+    "Мостра"
+   ]
+  },
+  {
+   "name": "BAFTA",
+   "type": "event",
+   "grp": "event",
+   "weight": 1.1,
+   "aliases": [
+    "БАФТА"
+   ]
+  },
+  {
+   "name": "Премія Еммі",
+   "type": "event",
+   "grp": "event",
+   "weight": 1.1,
+   "aliases": [
+    "Emmy Awards",
+    "премии Эмми",
+    "церемонія Еммі"
+   ]
+  },
+  {
+   "name": "MTV VMA",
+   "type": "event",
+   "grp": "event",
+   "weight": 1.0,
+   "aliases": [
+    "VMA",
+    "MTV Video Music Awards"
+   ]
+  },
+  {
+   "name": "Brit Awards",
+   "type": "event",
+   "grp": "event",
+   "weight": 0.9,
+   "aliases": [
+    "BRIT Awards"
+   ]
+  },
+  {
+   "name": "American Music Awards",
+   "type": "event",
+   "grp": "event",
+   "weight": 0.9,
+   "aliases": [
+    "AMA 2026"
+   ]
+  },
+  {
+   "name": "Показ Victoria's Secret",
+   "type": "event",
+   "grp": "event",
+   "weight": 1.2,
+   "aliases": [
+    "Victoria's Secret Fashion Show",
+    "шоу Victoria's Secret",
+    "ангели Victoria's Secret"
+   ]
+  },
+  {
+   "name": "Coachella",
+   "type": "event",
+   "grp": "event",
+   "weight": 1.1,
+   "aliases": [
+    "Коачелла"
+   ]
+  },
+  {
+   "name": "Супербоул",
+   "type": "event",
+   "grp": "event",
+   "weight": 0.9,
+   "aliases": [
+    "Super Bowl",
+    "Суперкубок NFL"
+   ]
+  },
+  {
+   "name": "Нацвідбір",
+   "type": "event",
+   "grp": "event",
+   "weight": 1.2,
+   "aliases": [
+    "Нацотбор",
+    "Національний відбір на Євробачення"
+   ]
+  },
+  {
+   "name": "Голос країни",
+   "type": "event",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Голос страны"
+   ]
+  },
+  {
+   "name": "Фабрика зірок",
+   "type": "event",
+   "grp": "ua_second",
+   "weight": 1.1,
+   "aliases": [
+    "Фабрика звезд"
+   ]
+  },
+  {
+   "name": "Кохання на виживання",
+   "type": "event",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": [
+    "Любовь на выживание"
+   ]
+  },
+  {
+   "name": "Супермама",
+   "type": "event",
+   "grp": "ua_second",
+   "weight": 1.0,
+   "aliases": []
+  },
+  {
+   "name": "Тиждень високої моди",
+   "type": "event",
+   "grp": "event",
+   "weight": 1.2,
+   "aliases": [
+    "Haute Couture",
+    "кутюрн",
+    "Неделя высокой моды"
+   ]
+  },
+  {
+   "name": "CFDA Fashion Awards",
+   "type": "event",
+   "grp": "event",
+   "weight": 0.9,
+   "aliases": [
+    "CFDA"
+   ]
+  },
+  {
+   "name": "British Fashion Awards",
+   "type": "event",
+   "grp": "event",
+   "weight": 0.9,
+   "aliases": [
+    "Fashion Awards"
+   ]
+  },
+  {
+   "name": "Геловін",
+   "type": "event",
+   "grp": "event",
+   "weight": 1.1,
+   "aliases": [
+    "Хелловін",
+    "Гелловін",
+    "Хеллоуїн",
+    "Хэллоуин",
+    "Halloween"
+   ]
+  },
+  {
+   "name": "Чорна п'ятниця",
+   "type": "event",
+   "grp": "event",
+   "weight": 0.8,
+   "aliases": [
+    "Черная пятница",
+    "Black Friday"
+   ]
+  },
+  {
+   "name": "День святого Валентина",
+   "type": "event",
+   "grp": "event",
+   "weight": 1.0,
+   "aliases": [
+    "День закоханих",
+    "Valentine's Day"
+   ]
+  },
+  {
+   "name": "Pantone",
+   "type": "trend",
+   "grp": "trend",
+   "weight": 1.1,
+   "aliases": [
+    "Пантон",
+    "колір року Pantone"
+   ]
+  },
+  {
+   "name": "Тиха розкіш",
+   "type": "trend",
+   "grp": "trend",
+   "weight": 1.1,
+   "aliases": [
+    "тихої розкоші",
+    "тихая роскошь",
+    "quiet luxury"
+   ]
+  },
+  {
+   "name": "Old money",
+   "type": "trend",
+   "grp": "trend",
+   "weight": 1.0,
+   "aliases": [
+    "олд мані",
+    "стиль старих грошей"
+   ]
+  },
+  {
+   "name": "Балеткор",
+   "type": "trend",
+   "grp": "trend",
+   "weight": 1.0,
+   "aliases": [
+    "balletcore"
+   ]
+  },
+  {
+   "name": "Clean girl",
+   "type": "trend",
+   "grp": "trend",
+   "weight": 1.0,
+   "aliases": [
+    "клін герл"
+   ]
+  },
+  {
+   "name": "Mob wife",
+   "type": "trend",
+   "grp": "trend",
+   "weight": 0.9,
+   "aliases": [
+    "моб вайф"
+   ]
+  },
+  {
+   "name": "Барбікор",
+   "type": "trend",
+   "grp": "trend",
+   "weight": 0.9,
+   "aliases": [
+    "Barbiecore",
+    "барбикор"
+   ]
+  },
+  {
+   "name": "Стиль нульових",
+   "type": "trend",
+   "grp": "trend",
+   "weight": 0.9,
+   "aliases": [
+    "Y2K-стиль",
+    "мода нульових"
+   ]
+  }
+ ]
+}

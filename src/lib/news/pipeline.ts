@@ -11,7 +11,7 @@ import { onSiteStep } from "./onsite";
 import { projectSpend } from "./runs";
 import { alertText, sendTelegram } from "./telegram";
 import { BASE_PATH, emptyStats, parseSettings, parseState, type NewsSettings, type ProjectState, type RunStats, type ScorePart } from "./types";
-import type { FeedItem } from "./parse";
+import { wellFormed, type FeedItem } from "./parse";
 
 /**
  * Конвейер прогона (ТЗ, раздел 3): сбор → дедупликация → фильтр слов и рубрик → эмбеддинг и фильтр по нему →
@@ -237,7 +237,7 @@ export async function runPipeline(runId: string, shouldStop: () => boolean = () 
       }
       await prisma.newsItem.create({
         data: {
-          projectId: project.id, sourceId: c.src.virtual ? null : c.src.id, urlHash: c.urlHash, url: c.url.slice(0, 1990), domain: c.domain, title: c.title.slice(0, 2000), normTitle: c.normTitle.slice(0, 480),
+          projectId: project.id, sourceId: c.src.virtual ? null : c.src.id, urlHash: c.urlHash, url: c.url.slice(0, 1990), domain: c.domain, title: wellFormed(c.title.slice(0, 2000)), normTitle: wellFormed(c.normTitle.slice(0, 480)),
           lead: c.lead || null, imageUrl: c.imageUrl?.slice(0, 1990) ?? null, categories: c.categories as unknown as Prisma.InputJsonValue, tier: c.src.tier, lang: c.src.lang,
           publishedAt: c.publishedAt, status: cutStep ? "cut" : "queued", cutStep, cutReason, matched: hits.length ? (hits as unknown as Prisma.InputJsonValue) : Prisma.DbNull, runId,
           extraSources: c.extra?.length ? (c.extra as Prisma.InputJsonValue) : Prisma.DbNull,
@@ -368,7 +368,7 @@ async function dedup(projectId: string, runId: string, list: Candidate[], s: New
         // Повтор внутри одного прогона: оригинал ещё не записан — запоминаем на кандидате.
         dupOf.cand.extra = [...(dupOf.cand.extra ?? []), entry];
       }
-      await prisma.newsItem.create({ data: { projectId, sourceId: c.src.virtual ? null : c.src.id, urlHash: c.urlHash, url: c.url.slice(0, 1990), domain: c.domain, title: c.title.slice(0, 2000), normTitle: c.normTitle.slice(0, 480), tier: c.src.tier, lang: c.src.lang, publishedAt: c.publishedAt, status: "dup", cutReason: dupOf.id ?? "в этом же прогоне", runId } }).catch(() => {});
+      await prisma.newsItem.create({ data: { projectId, sourceId: c.src.virtual ? null : c.src.id, urlHash: c.urlHash, url: c.url.slice(0, 1990), domain: c.domain, title: wellFormed(c.title.slice(0, 2000)), normTitle: wellFormed(c.normTitle.slice(0, 480)), tier: c.src.tier, lang: c.src.lang, publishedAt: c.publishedAt, status: "dup", cutReason: dupOf.id ?? "в этом же прогоне", runId } }).catch(() => {});
       continue;
     }
     fresh.push(c);
@@ -540,7 +540,7 @@ async function clusterStep(projectId: string, s: NewsSettings, stats: RunStats) 
     } else {
       const row = await prisma.newsCluster.create({
         data: {
-          projectId, title: it.title.slice(0, 2000), imageUrl: it.imageUrl, category: it.category, subcategory: it.subcategory, mainEntity: me?.key ?? null, mainEntityName: me?.name ?? null,
+          projectId, title: wellFormed(it.title.slice(0, 2000)), imageUrl: it.imageUrl, category: it.category, subcategory: it.subcategory, mainEntity: me?.key ?? null, mainEntityName: me?.name ?? null,
           entities: it.entities ?? Prisma.DbNull, centroid: v ? pack(v) : null, itemCount: 1, firstPublishedAt: at, lastItemAt: at, sensitive: it.sensitive, hasPrice: it.hasPrice, visual: it.visual,
         },
       });

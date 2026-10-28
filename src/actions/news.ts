@@ -212,7 +212,7 @@ export async function updateSource(_p: FormState, f: FormData): Promise<FormStat
     else if (op === "test") {
       const { fetchSource, activeProxies } = await import("@/lib/news/sources");
       const p = await prisma.newsProject.findUniqueOrThrow({ where: { id: src.projectId } });
-      const r = await fetchSource({ id: src.id, kind: src.kind, url: src.url, viaProxy: src.viaProxy }, parseSettings(p.settings), await activeProxies());
+      const r = await fetchSource({ id: src.id, kind: src.kind, url: src.url, viaProxy: src.viaProxy, lang: src.lang }, parseSettings(p.settings), await activeProxies());
       if (r.error) return { error: `${src.name}: ${r.error}${r.viaProxy ? " (через прокси)" : ""}` };
       const newest = r.items.map((i) => i.publishedAt?.getTime() ?? 0).reduce((a, b) => Math.max(a, b), 0);
       const sample = r.items.slice(0, 3).map((i) => `«${i.title.slice(0, 70)}»`).join(", ");

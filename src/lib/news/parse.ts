@@ -67,6 +67,21 @@ function firstImg(html: string): string | null {
   return m ? decodeEntities(m[1]) : null;
 }
 
+/** Без «половинок» эмодзи: обрезка строки или сущность &#55357; дают одиночный суррогат, и база не принимает запись. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+export const wellFormed = (s: string) => s.replace(LONE_SURROGATE, "");
+function wellFormedItem(it: FeedItem): FeedItem {
+  return {
+    ...it,
+    url: wellFormed(it.url),
+    title: wellFormed(it.title),
+    lead: wellFormed(it.lead),
+    imageUrl: it.imageUrl ? wellFormed(it.imageUrl) : null,
+    categories: it.categories.map(wellFormed),
+    ...(it.sourceName ? { sourceName: wellFormed(it.sourceName) } : {}),
+  };
+}
+
 function rssItem(b: string): FeedItem | null {
   const title = stripHtml(tag(b, "title"));
   let url = stripHtml(tag(b, "link"));
@@ -144,10 +159,10 @@ export function slugTitle(url: string): string {
 export function parseFeed(xml: string): ParsedFeed {
   const head = xml.slice(0, 3000);
   if (/<rss\b|<rdf:RDF\b|<channel\b/i.test(head)) {
-    return { kind: "rss", items: blocks(xml, "item").map(rssItem).filter((x): x is FeedItem => !!x), children: [] };
+    return { kind: "rss", items: blocks(xml, "item").map(rssItem).filter((x): x is FeedItem => !!x).map(wellFormedItem), children: [] };
   }
   if (/<feed\b/i.test(head)) {
-    return { kind: "atom", items: blocks(xml, "entry").map(atomEntry).filter((x): x is FeedItem => !!x), children: [] };
+    return { kind: "atom", items: blocks(xml, "entry").map(atomEntry).filter((x): x is FeedItem => !!x).map(wellFormedItem), children: [] };
   }
   if (/<sitemapindex\b/i.test(head)) {
     const children = blocks(xml, "sitemap").map((b) => ({ loc: stripHtml(tag(b, "loc")), mod: parseDate(stripHtml(tag(b, "lastmod")))?.getTime() ?? 0 }));
@@ -155,7 +170,7 @@ export function parseFeed(xml: string): ParsedFeed {
     return { kind: "sitemapindex", items: [], children: children.map((c) => c.loc).filter(Boolean) };
   }
   if (/<urlset\b/i.test(head)) {
-    return { kind: "urlset", items: blocks(xml, "url").map(sitemapUrl).filter((x): x is FeedItem => !!x), children: [] };
+    return { kind: "urlset", items: blocks(xml, "url").map(sitemapUrl).filter((x): x is FeedItem => !!x).map(wellFormedItem), children: [] };
   }
   return { kind: "unknown", items: [], children: [] };
 }
