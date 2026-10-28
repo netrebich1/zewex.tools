@@ -56,7 +56,8 @@ export async function moderationBatch(me: CurrentUser, f: ModerationFilter): Pro
     keyword: r.page.keyword,
     title: r.title,
     thumbUrl: r.thumbPath ? publicUrl(r.thumbPath) : r.imagePath ? publicUrl(r.imagePath) : r.sourceImageUrl,
-    imageUrl: r.imagePath ? publicUrl(r.imagePath) : r.sourceImageUrl,
+    // Полный файл залитого пина удаляется с диска (cron), остаётся копия в медиатеке WP.
+    imageUrl: r.wpMediaUrl || (r.imagePath ? publicUrl(r.imagePath) : r.sourceImageUrl),
   }));
   return { items, nextCursor: rows.length > limit ? slice[slice.length - 1].id : null };
 }

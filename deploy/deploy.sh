@@ -47,6 +47,10 @@ chown -R zewex_tools_usr:zewex_tools_usr .
 install -m 755 deploy/backup-db.sh /usr/local/bin/zewex-backup-db
 printf '30 3 * * * root /usr/local/bin/zewex-backup-db daily >> /var/log/zewex-backup.log 2>&1\n' > /etc/cron.d/zewex-tools-backup
 chmod 644 /etc/cron.d/zewex-tools-backup
+# Pins photo cache: capped at 5 GB, least recently read files go first (04:40).
+install -m 755 deploy/prune-photo-cache.sh /usr/local/bin/zewex-prune-photo-cache
+printf '40 4 * * * root /usr/local/bin/zewex-prune-photo-cache 5 >> /var/log/zewex-prune.log 2>&1\n' > /etc/cron.d/zewex-tools-prune
+chmod 644 /etc/cron.d/zewex-tools-prune
 /usr/local/bin/zewex-backup-db predeploy
 # Reproducible install: npm ci when a lockfile is committed, otherwise npm install and bring the lockfile back.
 if [ -f package-lock.json ]; then
