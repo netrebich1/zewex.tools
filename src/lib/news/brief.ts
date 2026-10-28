@@ -115,7 +115,8 @@ export async function makeBrief(ctx: AiCtx, st: NewsSettings, site: string, c: C
 ${DISCOVER_RULES}
 Стиль редакції (коротко): ${st.houseStyle.split("\n").slice(0, 3).join(" ")}
 
-Склади коротке ТЗ для автора. Формат: ${fmt.label} (${fmt.words}) — ${fmt.when}. Пиши українською. Факти лише з публікацій (номер джерела). Нічого не вигадуй: чого нема в джерелах — у todo як завдання автору перевірити.
+Склади коротке ТЗ для автора. Формат: ${fmt.label} (${fmt.words}) — ${fmt.when}. Пиши українською. Факти лише з публікацій (номер джерела). Нічого не вигадуй: чого нема в джерелах — у todo як завдання автору перевірити.${c.entity ? `\nІм'я героя пиши саме так, як у нашому списку: «${c.entity}» — у заголовках, Title, alt і тегах.` : ""}
+Головне фото (перше в photos) НЕ може бути embed-постом: його where — пресматеріали бренду/організатора, фотобанк за редакційною ліцензією або Wikimedia Commons; embed поста героя — лише для 2-го чи 3-го фото.
 Поверни лише JSON:
 {"hook":"одне речення — що нового і чому читачка клікне",
 "why_now":"одне речення — чому писати сьогодні",
@@ -186,8 +187,10 @@ const clickbait = (t: string) => /шок|сенсац|не повірит|\.\.\.
 function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Angle, fmt: { label: string; words: string }, b: BriefJson, ours: OurArticle[], summaryUk: string | null, research: ClusterResearch | null, tags: OurTag[] = []): string {
   const titleMax = Math.max(35, 60 - st.titleSuffix.length);
   const tagSlug = (n: string) => n.toLowerCase().replace(/[’'ʼ]/g, "").replace(/[^a-zа-яіїєґ0-9]+/gi, "-").replace(/^-|-$/g, "");
-  const hero = c.entity ? c.entity.split(" ").filter((w) => w.length > 2).map((w) => w.toLowerCase().slice(0, 5)) : [];
-  const heroIn = (t: string) => !hero.length || hero.some((h) => t.toLowerCase().includes(h));
+  // Герой в заголовке: сравниваем основы слов с поправкой на варианты транслитерации (Періс/Паріс, Гілтон/Хілтон).
+  const fold = (s: string) => s.toLowerCase().replace(/[’'ʼ]/g, "").replace(/[іїи]/g, "и").replace(/[єе]/g, "е").replace(/[гґх]/g, "х").replace(/[ая]/g, "а").replace(/[уюо]/g, "о");
+  const hero = c.entity ? c.entity.split(" ").filter((w) => w.length > 2).map((w) => fold(w).slice(1, 5)) : [];
+  const heroIn = (t: string) => !hero.length || hero.some((h) => h.length >= 3 && fold(t).includes(h));
   const hl = (t: string) => `${t} — ${check(t, 45, 65)}${clickbait(t) ? " ⚠ клікбейт" : ""}${heroIn(t) ? "" : " ⚠ без героя"}`;
   const lines: string[] = [
     `# ТЗ (${fmt.label}, ${fmt.words}): ${b.headlines[0]?.text || angle.title}`,
