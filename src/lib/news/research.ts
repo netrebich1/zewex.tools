@@ -1,0 +1,110 @@
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/db";
+import { decodeEntities } from "./text";
+import { activeProxies, fetchWithProxy } from "./sources";
+
+/**
+ * Ресёрч по карточке из избранного: открываем страницы источников и собираем кандидатов главной картинки
+ * (og:image, крупные <img>) и вставки Instagram / X / YouTube. Картинки источников — только ориентир для поиска
+ * оригинала (пресс-фото, пост героя); вставки можно ставить штатным кодом.
+ */
+
+export type ResearchImage = { url: string; from: string; w?: number; h?: number; kind: "og" | "img" | "feed" };
+export type ResearchEmbed = { kind: "instagram" | "x" | "youtube" | "tiktok"; url: string; from: string };
+export type ClusterResearch = { images: ResearchImage[]; embeds: ResearchEmbed[]; pages: { url: string; ok: boolean; note?: string }[]; at: string };
+
+const attr = (tag: string, name: string) => decodeEntities(tag.match(new RegExp(`\\b${name}\\s*=\\s*["']([^"']+)["']`, "i"))?.[1] ?? "");
+const metaContent = (html: string, prop: string) => {
+  for (const m of html.matchAll(/<meta\b[^>]*>/gi)) {
+    const t = m[0];
+    if (new RegExp(`\\b(?:property|name)\\s*=\\s*["']${prop}["']`, "i").test(t)) return attr(t, "content");
+  }
+  return "";
+};
+const abs = (u: string, base: string) => {
+  try {
+    return new URL(u, base).toString();
+  } catch {
+    return "";
+  }
+};
+const isPhoto = (u: string) => /\.(jpe?g|png|webp|avif)(\?|$)/i.test(u) || /\/wp-content\/uploads\/|images\.|img\.|cdn\./i.test(u);
+const junk = (u: string) => /logo|icon|avatar|sprite|placeholder|blank|pixel|badge|button|banner|ads?\.|\.svg|\.gif|emoji|1x1|spacer/i.test(u);
+
+export function extractFromHtml(html: string, pageUrl: string, from: string): { images: ResearchImage[]; embeds: ResearchEmbed[] } {
+  const images: ResearchImage[] = [];
+  const embeds: ResearchEmbed[] = [];
+  const seen = new Set<string>();
+  const addImg = (u: string, kind: ResearchImage["kind"], w?: number, h?: number) => {
+    const full = abs(u, pageUrl);
+    if (!full || seen.has(full) || junk(full) || !/^https?:/.test(full)) return;
+    seen.add(full);
+    images.push({ url: full, from, kind, ...(w ? { w } : {}), ...(h ? { h } : {}) });
+  };
+  const og = metaContent(html, "og:image") || metaContent(html, "og:image:url") || metaContent(html, "twitter:image");
+  if (og) addImg(og, "og", Number(metaContent(html, "og:image:width")) || undefined, Number(metaContent(html, "og:image:height")) || undefined);
+  // Крупные картинки статьи: по атрибутам ширины или по srcset с большим размером.
+  for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
+    const t = m[0];
+    const src = attr(t, "data-src") || attr(t, "data-lazy-src") || attr(t, "src");
+    const srcset = attr(t, "data-srcset") || attr(t, "srcset");
+    let best = src;
+    let bestW = Number(attr(t, "width")) || 0;
+    if (srcset) {
+      for (const part of srcset.split(",")) {
+        const [u, d] = part.trim().split(/\s+/);
+        const w = parseInt(d ?? "0", 10);
+        if (u && w > bestW) {
+          best = u;
+          bestW = w;
+        }
+      }
+    }
+    if (!best || !isPhoto(best)) continue;
+    const h = Number(attr(t, "height")) || 0;
+    if (bestW && bestW < 600) continue;
+    if (images.length >= 12) break;
+    addImg(best, "img", bestW || undefined, h || undefined);
+  }
+  const addEmbed = (kind: ResearchEmbed["kind"], u: string) => {
+    const full = abs(u, pageUrl).replace(/[?#].*$/, "");
+    if (!full || embeds.some((e) => e.url === full)) return;
+    embeds.push({ kind, url: full, from });
+  };
+  for (const m of html.matchAll(/https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel|reels|tv)\/[A-Za-z0-9_-]+/gi)) addEmbed("instagram", m[0]);
+  for (const m of html.matchAll(/https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[A-Za-z0-9_]+\/status\/\d+/gi)) addEmbed("x", m[0]);
+  for (const m of html.matchAll(/https?:\/\/(?:www\.)?(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)[A-Za-z0-9_-]{6,}/gi)) addEmbed("youtube", m[0]);
+  for (const m of html.matchAll(/https?:\/\/(?:www\.)?tiktok\.com\/@[A-Za-z0-9_.-]+\/video\/\d+/gi)) addEmbed("tiktok", m[0]);
+  return { images, embeds: embeds.slice(0, 12) };
+}
+
+/** Собрать ресёрч по кластеру: страницы источников (до 8) + картинки из лент. */
+export async function researchCluster(clusterId: string): Promise<ClusterResearch> {
+  const [cluster, items, proxies] = await Promise.all([
+    prisma.newsCluster.findUniqueOrThrow({ where: { id: clusterId }, select: { projectId: true, imageUrl: true } }),
+    prisma.newsItem.findMany({ where: { clusterId }, orderBy: { foundAt: "asc" }, select: { url: true, domain: true, imageUrl: true, tier: true } }),
+    activeProxies(),
+  ]);
+  const project = await prisma.newsProject.findUniqueOrThrow({ where: { id: cluster.projectId }, select: { settings: true } });
+  const autoProxy = (project.settings as { autoProxy?: boolean } | null)?.autoProxy !== false;
+  const out: ClusterResearch = { images: [], embeds: [], pages: [], at: new Date().toISOString() };
+  for (const it of items) if (it.imageUrl && !junk(it.imageUrl)) out.images.push({ url: it.imageUrl, from: it.domain, kind: "feed" });
+  const pages = items.filter((x) => !/news\.google\.com/.test(x.url)).slice(0, 8);
+  await Promise.all(pages.map(async (p) => {
+    const r = await fetchWithProxy(p.url, false, autoProxy, proxies);
+    if (!r.ok) {
+      out.pages.push({ url: p.url, ok: false, note: r.error ?? `HTTP ${r.status}` });
+      return;
+    }
+    const got = extractFromHtml(r.text, r.finalUrl || p.url, p.domain);
+    for (const im of got.images) if (!out.images.some((x) => x.url === im.url)) out.images.push(im);
+    for (const e of got.embeds) if (!out.embeds.some((x) => x.url === e.url)) out.embeds.push(e);
+    out.pages.push({ url: p.url, ok: true, note: `${got.images.length} фото, ${got.embeds.length} вставок` });
+  }));
+  // Google News ссылки ведут на news.google.com — страницы оригиналов недоступны без редиректа; это отмечаем.
+  const gn = items.length - pages.length;
+  if (gn > 0) out.pages.push({ url: "news.google.com", ok: false, note: `${gn} ссылок через Google News — оригиналы не открывались` });
+  out.images = out.images.slice(0, 16);
+  await prisma.newsCluster.update({ where: { id: clusterId }, data: { research: out as unknown as Prisma.InputJsonValue, researchAt: new Date() } });
+  return out;
+}

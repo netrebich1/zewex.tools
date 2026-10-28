@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/db";
 import { parseSettings, type RunStats, type ScorePart } from "./types";
+import type { ClusterResearch } from "./research";
 import { projectSpend } from "./runs";
 
 /** Выборки для экранов модуля: лента, сводка, прогоны и расход. */
 
-export type FeedFilter = { cat?: string; urgent?: boolean; notUa?: boolean; all?: boolean; status?: string; priority?: string; sort?: "score" | "fresh"; hours?: number };
+export type FeedFilter = { cat?: string; urgent?: boolean; notUa?: boolean; all?: boolean; status?: string; priority?: string; sort?: "score" | "fresh"; hours?: number; fav?: boolean };
 
 export type FeedSource = { domain: string; title: string; url: string; at: Date; tier: string };
 export type FeedCard = {
@@ -37,6 +38,8 @@ export type FeedCard = {
   brief: string | null;
   briefAt: Date | null;
   isNew: boolean;
+  starred: boolean;
+  research: ClusterResearch | null;
   newSources: number;
 };
 
@@ -50,14 +53,14 @@ export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: F
   const lastRun = await prisma.newsRun.findFirst({ where: { projectId, kind: { in: ["scheduled", "manual"] }, status: "done" }, orderBy: { finishedAt: "desc" }, select: { startedAt: true } });
   const rows = await prisma.newsCluster.findMany({
     where: {
-      projectId, lastItemAt: { gte: f.status ? new Date(Date.now() - 7 * 86_400_000) : since }, score: { gte: f.status ? 0 : s.minScore }, category: f.cat ? f.cat : { in: s.targetCategories }, ...(f.priority ? { priority: f.priority } : {}),
-      status: f.status ? f.status : { not: "rejected" }, ...(f.urgent ? { urgent: true } : {}), ...(f.notUa ? { uaCount: 0, worldCount: { gt: 0 } } : {}),
+      projectId, lastItemAt: { gte: f.status || f.fav ? new Date(Date.now() - 14 * 86_400_000) : since }, score: { gte: f.status || f.fav ? 0 : s.minScore }, category: f.cat ? f.cat : { in: s.targetCategories }, ...(f.priority ? { priority: f.priority } : {}),
+      status: f.status ? f.status : { not: "rejected" }, ...(f.urgent ? { urgent: true } : {}), ...(f.notUa ? { uaCount: 0, worldCount: { gt: 0 } } : {}), ...(f.fav ? { starred: true } : {}),
     },
     orderBy: fresh ? [{ lastItemAt: "desc" }, { score: "desc" }] : [{ score: "desc" }, { lastItemAt: "desc" }],
     take: 300,
   });
   const total = rows.length;
-  const shown = f.all || fresh ? rows : rows.slice(0, s.topN);
+  const shown = f.all || fresh || f.fav ? rows : rows.slice(0, s.topN);
   const runStart = lastRun?.startedAt ?? null;
   const items = await prisma.newsItem.findMany({
     where: { clusterId: { in: shown.map((r) => r.id) } },
@@ -86,6 +89,7 @@ export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: F
       angles: (c.angles as FeedCard["angles"]) ?? null, angleIdx: c.angleIdx, brief: c.brief, briefAt: c.briefAt,
       // Что изменилось в последнем прогоне: кластер новый или к нему добавились источники.
       isNew: !!runStart && c.createdAt >= runStart,
+      starred: c.starred, research: (c.research as ClusterResearch | null) ?? null,
       newSources: runStart && c.createdAt < runStart ? sources.filter((x) => x.at >= runStart).length : 0,
     };
   });
@@ -123,10 +127,6 @@ export async function summary(projectId: string) {
   };
 }
 
-export async function trendsOf(projectId: string) {
-  const since = new Date(Date.now() - 12 * 3600_000);
-  return prisma.newsTrend.findMany({ where: { projectId, lastSeenAt: { gte: since } }, orderBy: [{ relevant: "desc" }, { lastSeenAt: "desc" }], take: 30 });
-}
 
 export async function runsOf(projectId: string, take = 60) {
   const runs = await prisma.newsRun.findMany({ where: { projectId }, orderBy: { createdAt: "desc" }, take });
@@ -168,4 +168,22 @@ export function agoText(d: Date | string | null | undefined): string {
   const h = Math.floor(min / 60);
   if (h < 24) return `${h} ч ${min % 60 ? `${min % 60} мин ` : ""}назад`;
   return `${Math.floor(h / 24)} дн назад`;
+}
+
+/** Тренды за 12 ч + карточка ленты, если тренд уже в кластере (по заголовку и герою). */
+export async function trendsOf(projectId: string) {
+  const since = new Date(Date.now() - 12 * 3600_000);
+  const [trends, clusters] = await Promise.all([
+    prisma.newsTrend.findMany({ where: { projectId, lastSeenAt: { gte: since } }, orderBy: [{ relevant: "desc" }, { lastSeenAt: "desc" }], take: 30 }),
+    prisma.newsCluster.findMany({ where: { projectId, lastItemAt: { gte: new Date(Date.now() - 48 * 3600_000) } }, select: { id: true, title: true, titleUk: true, mainEntityName: true, score: true }, orderBy: { score: "desc" } }),
+  ]);
+  const norm = (s: string) => s.toLowerCase().replace(/[’'ʼ]/g, "").replace(/ё/g, "е");
+  return trends.map((t) => {
+    const words = norm(t.title).split(/\s+/).filter((w) => w.length >= 3).map((w) => w.slice(0, Math.max(3, w.length - 2)));
+    const hit = words.length ? clusters.find((c) => {
+      const hay = norm(`${c.title} ${c.titleUk ?? ""} ${c.mainEntityName ?? ""}`);
+      return words.every((w) => hay.includes(w));
+    }) : undefined;
+    return { ...t, cluster: hit ? { id: hit.id, title: hit.titleUk || hit.title, score: Math.round(hit.score) } : null };
+  });
 }

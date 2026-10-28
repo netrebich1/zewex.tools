@@ -5,7 +5,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { NewsNav } from "@/components/news/NewsNav";
 import { LiveRefresh } from "@/components/news/LiveRefresh";
-import { makeBriefAction, runNow, setClusterStatus, takeToWork } from "@/actions/news";
+import { makeBriefAction, researchAction, runNow, setClusterStatus, takeToWork, toggleStar, trendSearch } from "@/actions/news";
 import { CopyButton } from "@/components/news/CopyButton";
 import { FORMATS } from "@/lib/news/brief";
 import { requireProject } from "@/lib/news/access";
@@ -29,11 +29,11 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
       </>
     );
   }
-  const filter = { cat: sp(q, "cat") || undefined, urgent: sp(q, "urgent") === "1", notUa: sp(q, "notua") === "1", all: sp(q, "all") === "1", status: sp(q, "status") || undefined, priority: sp(q, "pr") || undefined, sort: (sp(q, "sort") === "fresh" ? "fresh" : "score") as "fresh" | "score", hours: Number(sp(q, "h")) || 6 };
+  const filter = { cat: sp(q, "cat") || undefined, urgent: sp(q, "urgent") === "1", notUa: sp(q, "notua") === "1", all: sp(q, "all") === "1", status: sp(q, "status") || undefined, priority: sp(q, "pr") || undefined, sort: (sp(q, "sort") === "fresh" ? "fresh" : "score") as "fresh" | "score", hours: Number(sp(q, "h")) || 6, fav: sp(q, "fav") === "1" };
   const [{ cards, hidden, total, lastRunAt }, sum, trends, spend] = await Promise.all([feed(project.id, filter), summary(project.id), trendsOf(project.id), spendByDay(project.id)]);
   const link = (patch: Record<string, string | undefined>) => {
     const u = new URLSearchParams({ project: project.id });
-    const merged = { cat: filter.cat, urgent: filter.urgent ? "1" : undefined, notua: filter.notUa ? "1" : undefined, all: filter.all ? "1" : undefined, status: filter.status, pr: filter.priority, sort: filter.sort === "fresh" ? "fresh" : undefined, h: filter.sort === "fresh" && filter.hours !== 6 ? String(filter.hours) : undefined, ...patch };
+    const merged = { cat: filter.cat, urgent: filter.urgent ? "1" : undefined, notua: filter.notUa ? "1" : undefined, all: filter.all ? "1" : undefined, status: filter.status, pr: filter.priority, sort: filter.sort === "fresh" ? "fresh" : undefined, h: filter.sort === "fresh" && filter.hours !== 6 ? String(filter.hours) : undefined, fav: filter.fav ? "1" : undefined, ...patch };
     for (const [k, v] of Object.entries(merged)) if (v) u.set(k, v);
     return `${BASE_PATH}?${u.toString()}`;
   };
@@ -85,6 +85,7 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
         <Link href={link({ urgent: filter.urgent ? undefined : "1" })} className={`tab ${filter.urgent ? "active" : ""}`}>Только срочные</Link>
         <Link href={link({ notua: filter.notUa ? undefined : "1" })} className={`tab ${filter.notUa ? "active" : ""}`}>Ещё нет в UA</Link>
         <Link href={link({ status: filter.status === "in_work" ? undefined : "in_work" })} className={`tab ${filter.status === "in_work" ? "active" : ""}`}>В работе</Link>
+        <Link href={link({ fav: filter.fav ? undefined : "1" })} className={`tab ${filter.fav ? "active" : ""}`}>★ Избранное</Link>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2 text-[14px]">
@@ -122,9 +123,18 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
               <ul className="space-y-2 text-[14px]">
                 {trends.slice(0, 15).map((t) => (
                   <li key={t.id} className={t.relevant ? "" : "opacity-60"}>
-                    <span className={t.relevant ? "font-medium" : ""}>{t.title}</span>
-                    {t.traffic && <span className="help"> · {t.traffic}</span>}
-                    {t.relevant && <Badge tone="brand">наше</Badge>}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={t.relevant ? "font-medium" : ""}>{t.title}</span>
+                      {t.traffic && <span className="help">· {t.traffic}</span>}
+                      {t.relevant && <Badge tone="brand">наше</Badge>}
+                    </div>
+                    {t.relevant && (t.cluster ? (
+                      <a href={`#c-${t.cluster.id}`} className="help block text-info hover:underline">→ карточка «{t.cluster.title.slice(0, 60)}» ({t.cluster.score})</a>
+                    ) : (
+                      <ActionForm action={trendSearch} className="mt-0.5 inline" hidden={{ project: project.id, q: t.title }}>
+                        <SubmitButton className="btn-ghost btn-sm !h-6 !px-2 text-[12px]" pendingText="Ищу…">Найти новости по тренду</SubmitButton>
+                      </ActionForm>
+                    ))}
                   </li>
                 ))}
               </ul>
@@ -156,7 +166,7 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
   const firstWhy = c.priorityWhy[0] ?? [...c.parts].filter((p) => p.points > 0).sort((a, b) => b.points - a.points).map((p) => `${p.label}: ${p.why}`)[0];
   const angles = c.angles?.angles ?? [];
   return (
-    <details id={`c-${c.id}`} className="card group overflow-hidden" open={!!c.angles && c.status === "in_work"}>
+    <details id={`c-${c.id}`} className={`card group overflow-hidden ${c.starred ? "!border-brand/60 !bg-brand-soft/25" : ""}`} open={!!c.angles && c.status === "in_work"}>
       <summary className="flex cursor-pointer list-none gap-3 p-3 sm:p-4 [&::-webkit-details-marker]:hidden">
         <div className="relative h-20 w-24 shrink-0 overflow-hidden rounded-lg bg-ink/5 sm:h-24 sm:w-32">
           {c.imageUrl ? (
@@ -169,6 +179,7 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
             <span className="text-[12px] text-muted">#{rank}</span>
+            {c.starred && <span className="badge bg-brand-soft text-warn">★ в избранном</span>}
             {c.isNew && <span className="badge bg-info-soft text-info">нове</span>}
             {!c.isNew && c.newSources > 0 && <span className="badge bg-info-soft text-info">+{c.newSources} {c.newSources === 1 ? "источник" : "источника"}</span>}
             {fresh && <span className="text-[12px] text-muted">последняя публикация {agoText(c.lastItemAt)}</span>}
@@ -245,6 +256,48 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
           </ul>
           {c.sources.length > 12 && <p className="help mt-1">и ещё {c.sources.length - 12}</p>}
         </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <ActionForm action={toggleStar} className="inline" hidden={{ id: c.id }}>
+            <SubmitButton className={c.starred ? "btn-ghost btn-sm" : "btn-primary btn-sm"} pendingText={c.starred ? "…" : "Добавляю и собираю материалы… ~10 с"}>{c.starred ? "☆ Убрать из избранного" : "★ В избранное — хочу написать"}</SubmitButton>
+          </ActionForm>
+          {c.starred && (
+            <ActionForm action={researchAction} className="inline" hidden={{ id: c.id }}>
+              <SubmitButton className="btn-ghost btn-sm" pendingText="Собираю… ~10 с">{c.research ? "Обновить материалы из источников" : "Собрать материалы из источников"}</SubmitButton>
+            </ActionForm>
+          )}
+        </div>
+
+        {c.research && (c.research.images.length > 0 || c.research.embeds.length > 0) && (
+          <div>
+            <h4 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted">Материалы из источников</h4>
+            {c.research.embeds.length > 0 && (
+              <div className="mb-3">
+                <p className="mb-1 text-[13px] text-ink-2">Вставки — можно ставить штатным кодом вбудовування, главным фото быть не могут:</p>
+                <ul className="space-y-0.5 text-[14px]">
+                  {c.research.embeds.map((e) => (
+                    <li key={e.url} className="truncate"><Badge>{e.kind}</Badge> <a href={e.url} target="_blank" rel="noopener noreferrer" className="text-info hover:underline">{e.url}</a> <span className="help">из {e.from}</span></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {c.research.images.length > 0 && (
+              <div>
+                <p className="mb-1 text-[13px] text-ink-2">Картинки источников — только ориентир, что искать (сюжет, ракурс). На сайт не копировать: искать оригинал в пресс-материалах или посте героя.</p>
+                <div className="flex flex-wrap gap-2">
+                  {c.research.images.slice(0, 12).map((im) => (
+                    <a key={im.url} href={im.url} target="_blank" rel="noopener noreferrer" className="block w-28 overflow-hidden rounded-lg border border-line bg-ink/5" title={`${im.from}${im.w ? ` · ${im.w}${im.h ? `×${im.h}` : " px"}` : ""}`}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={im.url} alt="" loading="lazy" referrerPolicy="no-referrer" className="h-20 w-full object-cover" />
+                      <div className="truncate px-1 py-0.5 text-[11px] text-muted">{im.from}{im.w ? ` · ${im.w}` : ""}</div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+            {c.research.pages.some((p) => !p.ok) && <p className="help mt-1">Не открылись: {c.research.pages.filter((p) => !p.ok).map((p) => `${p.url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0]} (${p.note})`).join(", ")}</p>}
+          </div>
+        )}
 
         <div className="rounded-xl border border-line bg-surface-2 p-3 sm:p-4">
           <h4 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted">Как писать</h4>

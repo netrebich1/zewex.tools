@@ -316,3 +316,56 @@ export async function saveProxy(_p: FormState, f: FormData): Promise<FormState> 
     return fail(e);
   }
 }
+
+// ───────── Избранное, ресёрч, тренды ─────────
+
+/** Звёздочка: «хочу написать». При добавлении сразу собирается ресёрч по источникам (картинки, вставки). */
+export async function toggleStar(_p: FormState, f: FormData): Promise<FormState> {
+  try {
+    const me = await requireUser();
+    const c = await prisma.newsCluster.findUniqueOrThrow({ where: { id: str(f, "id") } });
+    await loadProjectFor(me, c.projectId);
+    const on = !c.starred;
+    await prisma.newsCluster.update({ where: { id: c.id }, data: { starred: on, starredById: on ? me.id : null, starredAt: on ? new Date() : null } });
+    if (on && !c.researchAt) {
+      const { researchCluster } = await import("@/lib/news/research");
+      const r = await researchCluster(c.id);
+      done();
+      return { ok: `В избранном. Ресёрч: ${r.images.length} картинок, ${r.embeds.length} вставок из ${r.pages.filter((p) => p.ok).length} страниц` };
+    }
+    done();
+    return { ok: on ? "В избранном" : "Убрано из избранного" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function researchAction(_p: FormState, f: FormData): Promise<FormState> {
+  try {
+    const me = await requireUser();
+    const c = await prisma.newsCluster.findUniqueOrThrow({ where: { id: str(f, "id") } });
+    await loadProjectFor(me, c.projectId);
+    const { researchCluster } = await import("@/lib/news/research");
+    const r = await researchCluster(c.id);
+    done();
+    return { ok: `Ресёрч обновлён: ${r.images.length} картинок, ${r.embeds.length} вставок из ${r.pages.filter((p) => p.ok).length} страниц` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Тренд без карточки: прогон по запросу Google News — найденные новости попадут в ленту кластером. */
+export async function trendSearch(_p: FormState, f: FormData): Promise<FormState> {
+  try {
+    const me = await requireUser();
+    const p = await loadProjectFor(me, str(f, "project"));
+    const q = str(f, "q").slice(0, 120);
+    if (!q) throw new Error("Пустой запрос");
+    const r = await requestRun(p.id, me.id, `query:${q}`, true);
+    if (!r.ok) return { error: r.error };
+    done();
+    return { ok: `Ищу новости по «${q}» в Google News — карточка появится в ленте через минуту-две` };
+  } catch (e) {
+    return fail(e);
+  }
+}

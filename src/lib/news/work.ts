@@ -34,10 +34,11 @@ export async function summaryStep(project: { id: string }, ctx: AiCtx, s: NewsSe
   const doneToday = await prisma.newsCluster.count({ where: { projectId: project.id, aiAt: { gte: dayStart } } });
   const left = s.autoSummaryPerDay - doneToday;
   if (left <= 0) return;
+  // Все кластеры нашей ниши за сутки (не только топ-N): перевод и «почему зайдёт» нужны и в режиме «Свежее».
   const top = await prisma.newsCluster.findMany({
     where: { projectId: project.id, lastItemAt: { gte: new Date(Date.now() - 24 * 3600_000) }, score: { gte: s.minScore }, category: { in: s.targetCategories }, status: { not: "rejected" } },
     orderBy: { score: "desc" },
-    take: s.topN,
+    take: 200,
     select: { id: true, aiAt: true, aiSourceCount: true, sourceCount: true },
   });
   const need = top.filter((c) => !c.aiAt || c.sourceCount >= c.aiSourceCount + 2).slice(0, Math.min(left, 60));

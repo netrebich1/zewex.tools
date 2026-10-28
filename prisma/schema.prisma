@@ -2735,6 +2735,13 @@ model NewsCluster {
   brief            String?   @db.MediumText
   briefAt          DateTime?
   workById         String?
+  /// Избранное редакции: «хочу написать» (подсветка в ленте, вкладка «Избранное»)
+  starred          Boolean   @default(false)
+  starredById      String?
+  starredAt        DateTime?
+  /// Ресёрч по источникам: кандидаты главных картинок (ориентир), вставки Instagram / X / YouTube — ClusterResearch
+  research         Json?
+  researchAt       DateTime?
   /// new | in_work | published | rejected
   status           String    @default("new")
   alertedAt        DateTime?

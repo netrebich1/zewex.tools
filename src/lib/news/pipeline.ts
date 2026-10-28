@@ -118,6 +118,11 @@ export async function runPipeline(runId: string, shouldStop: () => boolean = () 
     // ── 1. Сбор ──
     await step("Сбор");
     const sources = pickSources(sourceRows, run.scope, run.kind, s);
+    if (run.scope.startsWith("query:")) {
+      // Прогон по тренду или запросу редактора: один запрос Google News за 2 дня, остальные источники не трогаем.
+      const q = run.scope.slice(6);
+      sources.push({ id: `q:${sha1(q).slice(0, 12)}`, kind: "gnews_query", url: `${q} when:2d`, viaProxy: false, name: `Google News: ${q.slice(0, 80)}`, tier: "competitor", lang: s.hl, weight: 1, profile: true, includeCats: [], excludeCats: [], includeUrls: [], virtual: true });
+    }
     if (run.scope === "all" || run.scope === "gnews") {
       const eq = entityQueries(entities, s, state);
       state.gnewsCursor = eq.cursor;
@@ -288,6 +293,7 @@ function pickSources(rows: Prisma.NewsSourceGetPayload<object>[], scope: string,
     if (scope === "world") return r.tier === "world";
     if (scope === "trends") return r.kind === "trends";
     if (scope.startsWith("source:")) return r.id === scope.slice(7);
+    if (scope.startsWith("query:")) return false;
     return true;
   };
   return rows.filter((r) => inScope(r) && due(r)).map((r) => ({
@@ -423,7 +429,7 @@ async function embedStep(projectId: string, ctx: AiCtx, s: NewsSettings, stats: 
 async function classifyStep(project: ProjectRow, ctx: AiCtx, s: NewsSettings, stats: RunStats, log: (m: string) => void) {
   const todayRuns = await prisma.newsRun.findMany({ where: { projectId: project.id, createdAt: { gte: dayStart() } }, select: { stats: true } });
   const done = todayRuns.reduce((a, r) => a + (Number((r.stats as { classified?: number } | null)?.classified) || 0), 0);
-  const allowed = Math.max(0, Math.min(150, s.classifyPerDay - done));
+  const allowed = Math.max(0, Math.min(300, s.classifyPerDay - done));
   if (!allowed) {
     log(`дневной лимит классификаций ${s.classifyPerDay} исчерпан — материалы ждут завтра`);
     return;

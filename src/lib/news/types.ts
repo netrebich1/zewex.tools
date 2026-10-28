@@ -133,7 +133,7 @@ export const DEFAULT_STOP_WORDS = [
   "курс долар", "курс доллар", "нбу", "інфляці", "инфляци", "тариф", "пенсі", "пенси", "субсиді", "субсиди", "податк", "налог", "енергосистем", "енергетик", "энергосистем", "энергетик", "відключен", "отключен",
   "прогноз погоди", "прогноз погоды", "синоптик", "гороскоп", "астролог", "магнітн", "магнитн", "сад", "город", "врожа", "урожа", "рецепт",
   // спорт
-  "футбол", "матч", "чемпіонат", "чемпионат", "збірн", "сборн", "олімпі", "олимпи", "бокс", "ломаченк", "усик",
+  "футбол", "матч", "чемпіонат", "чемпионат", "збірн", "сборн", "олімпі", "олимпи", "бокс", "ломаченк", "усик", "ямал", "барселон", "мадрид", "ліга чемпіон", "лига чемпион", "wta", "atp", "теніс", "теннис", "блохін", "блохин", "золотий м", "золотой м", "воротар", "вратар", "нападник", "півзахисник", "тренер збірн",
 ];
 
 export const DEFAULT_STOP_EXCEPTIONS = [
@@ -177,7 +177,7 @@ export const DEFAULT_SETTINGS: NewsSettings = {
   clusterWindowHours: 48,
   embedFilter: true,
   embedMargin: 0.06,
-  classifyPerDay: 400,
+  classifyPerDay: 1500,
   monthlyBudgetUsd: 50,
   classifyModel: DEFAULT_CLASSIFY_MODEL,
   embedModel: DEFAULT_EMBED_MODEL,
@@ -198,7 +198,7 @@ export const DEFAULT_SETTINGS: NewsSettings = {
   houseStyle: DEFAULT_HOUSE_STYLE,
   siteAbout: "beautydaily.com.ua — українське жіноче медіа про зірок, моду й красу; аудиторія — жінки 22–45 років, які стежать за українськими зірками, трендами й новинками косметики.",
   briefModel: DEFAULT_BRIEF_MODEL,
-  autoSummaryPerDay: 150,
+  autoSummaryPerDay: 300,
 };
 
 const num = (v: unknown, d: number, min: number, max: number) => {

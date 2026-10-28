@@ -1,6 +1,7 @@
 import { chatJson, type AiCtx } from "./llm";
 import { fetchText } from "./fetch";
 import { CATEGORY_LABELS, SLOT_BRIEF, SLOT_CLASSIFY, type NewsSettings } from "./types";
+import type { ClusterResearch } from "./research";
 
 /**
  * Этап 2: украинская суть карточки и «почему зайдёт у нас» (в прогоне, пачками), углы по кнопке «В работу»,
@@ -106,7 +107,7 @@ type BriefJson = {
 };
 
 /** ТЗ по выбранному углу: короткое, под формат, с вариантами заголовков, title, description, slug и именами файлов. */
-export async function makeBrief(ctx: AiCtx, st: NewsSettings, site: string, c: ClusterForAi, angle: Angle, ours: OurArticle[], summaryUk: string | null): Promise<string> {
+export async function makeBrief(ctx: AiCtx, st: NewsSettings, site: string, c: ClusterForAi, angle: Angle, ours: OurArticle[], summaryUk: string | null, research?: ClusterResearch | null): Promise<string> {
   const fmt = FORMATS[angle.format ?? "news"] ?? FORMATS.news;
   const system = `Ти шеф-редактор українського жіночого медіа ${site} для Google Discover. Про сайт: ${st.siteAbout}
 ${DISCOVER_RULES}
@@ -150,7 +151,7 @@ ${DISCOVER_RULES}
     og: s(j.og, 300),
     dont: list(j.dont, 300).slice(0, 5),
   };
-  return renderBrief(site, st, c, angle, fmt, b, ours, summaryUk);
+  return renderBrief(site, st, c, angle, fmt, b, ours, summaryUk, research ?? null);
 }
 
 const srcRef = (c: ClusterForAi, ref: string) => {
@@ -160,7 +161,7 @@ const srcRef = (c: ClusterForAi, ref: string) => {
 const check = (text: string, min: number, max: number) => (text.length < min ? `⚠ ${text.length}, замало` : text.length > max ? `⚠ ${text.length}, забагато` : `${text.length}`);
 const clickbait = (t: string) => /шок|сенсац|не повірит|\.\.\.|…|!{2,}/i.test(t);
 
-function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Angle, fmt: { label: string; words: string }, b: BriefJson, ours: OurArticle[], summaryUk: string | null): string {
+function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Angle, fmt: { label: string; words: string }, b: BriefJson, ours: OurArticle[], summaryUk: string | null, research: ClusterResearch | null): string {
   const hero = c.entity ? c.entity.split(" ").filter((w) => w.length > 2).map((w) => w.toLowerCase().slice(0, 5)) : [];
   const heroIn = (t: string) => !hero.length || hero.some((h) => t.toLowerCase().includes(h));
   const hl = (t: string) => `${t} — ${check(t, 45, 65)}${clickbait(t) ? " ⚠ клікбейт" : ""}${heroIn(t) ? "" : " ⚠ без героя"}`;
@@ -217,6 +218,14 @@ function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Ang
     "## Чого не робити",
     ...(b.dont.length ? b.dont : ["не перетворювати на довідник", "не оцінювати зовнішність", "не вигадувати ціни й назви засобів"]).map((x) => `- ${x}`),
     "",
+    ...(research && (research.embeds.length || research.images.length)
+      ? [
+          "## Матеріали з джерел (ресьорч)",
+          ...(research.embeds.length ? ["Вставки — можна ставити штатним кодом вбудовування (Instagram, X, YouTube); головним фото бути не можуть:", ...research.embeds.map((e) => `- ${e.kind}: ${e.url} (з ${e.from})`)] : []),
+          ...(research.images.length ? ["Картинки джерел — ЛИШЕ орієнтир, що саме шукати (сюжет, ракурс); на сайт не копіювати, знайти оригінал у пресматеріалах або пості героя:", ...research.images.slice(0, 8).map((im) => `- ${im.url}${im.w ? ` (${im.w}${im.h ? `×${im.h}` : " px"})` : ""} — ${im.from}`)] : []),
+          "",
+        ]
+      : []),
     "## Внутрішні посилання",
     ...(ours.length ? ours.map((o) => `- [${o.title}](${o.url})`) : ["- Підберіть 1–2 наші статті про героя чи тему (на сайті поки не знайдено)."]),
     "",
