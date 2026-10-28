@@ -1,0 +1,150 @@
+import { prisma } from "@/lib/db";
+import { parseSettings, type RunStats, type ScorePart } from "./types";
+import { projectSpend } from "./runs";
+
+/** Выборки для экранов модуля: лента, сводка, прогоны и расход. */
+
+export type FeedFilter = { cat?: string; urgent?: boolean; notUa?: boolean; all?: boolean; status?: string };
+
+export type FeedSource = { domain: string; title: string; url: string; at: Date; tier: string };
+export type FeedCard = {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  category: string | null;
+  subcategory: string | null;
+  mainEntityName: string | null;
+  score: number;
+  urgent: boolean;
+  status: string;
+  sensitive: boolean;
+  sourceCount: number;
+  uaCount: number;
+  worldCount: number;
+  firstPublishedAt: Date;
+  lastItemAt: Date;
+  parts: ScorePart[];
+  history: { at: string; score: number }[];
+  sources: FeedSource[];
+  entities: { name: string; orig?: string; type?: string; role?: string }[];
+};
+
+export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: FeedCard[]; hidden: number; total: number }> {
+  const p = await prisma.newsProject.findUniqueOrThrow({ where: { id: projectId } });
+  const s = parseSettings(p.settings);
+  const since = new Date(Date.now() - 24 * 3600_000);
+  const rows = await prisma.newsCluster.findMany({
+    where: {
+      projectId, lastItemAt: { gte: since }, score: { gte: s.minScore }, category: f.cat ? f.cat : { in: s.targetCategories },
+      status: f.status ? f.status : { not: "rejected" }, ...(f.urgent ? { urgent: true } : {}), ...(f.notUa ? { uaCount: 0, worldCount: { gt: 0 } } : {}),
+    },
+    orderBy: [{ score: "desc" }, { lastItemAt: "desc" }],
+    take: 300,
+  });
+  const total = rows.length;
+  const shown = f.all ? rows : rows.slice(0, s.topN);
+  const items = await prisma.newsItem.findMany({
+    where: { clusterId: { in: shown.map((r) => r.id) } },
+    select: { clusterId: true, title: true, url: true, domain: true, tier: true, publishedAt: true, foundAt: true, extraSources: true },
+    orderBy: { foundAt: "asc" },
+  });
+  const byCluster = new Map<string, FeedSource[]>();
+  for (const it of items) {
+    if (!it.clusterId) continue;
+    const list = byCluster.get(it.clusterId) ?? [];
+    list.push({ domain: it.domain, title: it.title, url: it.url, at: it.publishedAt ?? it.foundAt, tier: it.tier });
+    for (const x of Array.isArray(it.extraSources) ? (it.extraSources as { domain: string; url: string; at: string; tier: string }[]) : []) {
+      list.push({ domain: x.domain, title: it.title, url: x.url, at: new Date(x.at), tier: x.tier });
+    }
+    byCluster.set(it.clusterId, list);
+  }
+  const cards: FeedCard[] = shown.map((c) => {
+    const seen = new Set<string>();
+    const sources = (byCluster.get(c.id) ?? []).sort((a, b) => a.at.getTime() - b.at.getTime()).filter((x) => (seen.has(x.domain) ? false : (seen.add(x.domain), true)));
+    return {
+      id: c.id, title: c.title, imageUrl: c.imageUrl, category: c.category, subcategory: c.subcategory, mainEntityName: c.mainEntityName, score: Math.round(c.score), urgent: c.urgent, status: c.status,
+      sensitive: c.sensitive, sourceCount: c.sourceCount, uaCount: c.uaCount, worldCount: c.worldCount, firstPublishedAt: c.firstPublishedAt, lastItemAt: c.lastItemAt,
+      parts: Array.isArray(c.scoreParts) ? (c.scoreParts as ScorePart[]) : [], history: Array.isArray(c.scoreHistory) ? (c.scoreHistory as { at: string; score: number }[]) : [],
+      sources, entities: Array.isArray(c.entities) ? (c.entities as FeedCard["entities"]) : [],
+    };
+  });
+  return { cards, hidden: Math.max(0, total - shown.length), total };
+}
+
+export async function summary(projectId: string) {
+  const p = await prisma.newsProject.findUniqueOrThrow({ where: { id: projectId } });
+  const s = parseSettings(p.settings);
+  const since = new Date(Date.now() - 24 * 3600_000);
+  const [runs, spend, waiting, urgent, cards, lastRun, active] = await Promise.all([
+    prisma.newsRun.findMany({ where: { projectId, createdAt: { gte: since } }, select: { stats: true } }),
+    projectSpend(projectId),
+    prisma.newsItem.count({ where: { projectId, status: "queued" } }),
+    prisma.newsCluster.count({ where: { projectId, lastItemAt: { gte: since }, urgent: true, status: { not: "rejected" } } }),
+    prisma.newsCluster.count({ where: { projectId, lastItemAt: { gte: since }, score: { gte: s.minScore }, category: { in: s.targetCategories }, status: { not: "rejected" } } }),
+    prisma.newsRun.findFirst({ where: { projectId, status: { in: ["done", "failed"] } }, orderBy: { createdAt: "desc" } }),
+    prisma.newsRun.findFirst({ where: { projectId, status: { in: ["queued", "running"] } }, orderBy: { createdAt: "desc" } }),
+  ]);
+  const sum = (k: keyof RunStats) => runs.reduce((a, r) => a + (Number((r.stats as RunStats | null)?.[k]) || 0), 0);
+  return {
+    settings: s,
+    fetched: sum("fetched"),
+    fresh: sum("fresh"),
+    passed: sum("fresh") - sum("cutWords") - sum("cutRubric") - sum("cutWhitelist"),
+    classified: sum("classified"),
+    waiting,
+    urgent,
+    cards: Math.min(cards, s.topN),
+    cardsTotal: cards,
+    spend,
+    lastRun,
+    active,
+    nextRunAt: p.nextRunAt,
+  };
+}
+
+export async function trendsOf(projectId: string) {
+  const since = new Date(Date.now() - 12 * 3600_000);
+  return prisma.newsTrend.findMany({ where: { projectId, lastSeenAt: { gte: since } }, orderBy: [{ relevant: "desc" }, { lastSeenAt: "desc" }], take: 30 });
+}
+
+export async function runsOf(projectId: string, take = 60) {
+  const runs = await prisma.newsRun.findMany({ where: { projectId }, orderBy: { createdAt: "desc" }, take });
+  const ids = [...new Set(runs.map((r) => r.userId).filter((x): x is string => !!x))];
+  const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : [];
+  return runs.map((r) => ({ ...r, userName: users.find((u) => u.id === r.userId)?.name ?? null, st: (r.stats ?? {}) as Partial<RunStats> }));
+}
+
+/** Расход по дням за 14 дней (по журналу прогонов) и средняя цена прогона за 7 дней. */
+export async function spendByDay(projectId: string) {
+  const since = new Date(Date.now() - 14 * 86_400_000);
+  const runs = await prisma.newsRun.findMany({ where: { projectId, createdAt: { gte: since } }, select: { createdAt: true, costUsd: true, kind: true, status: true } });
+  const days = new Map<string, { usd: number; runs: number }>();
+  for (const r of runs) {
+    const d = r.createdAt.toISOString().slice(0, 10);
+    const x = days.get(d) ?? { usd: 0, runs: 0 };
+    x.usd += r.costUsd;
+    x.runs++;
+    days.set(d, x);
+  }
+  const week = runs.filter((r) => Date.now() - r.createdAt.getTime() < 7 * 86_400_000 && r.status === "done");
+  const avgRun = week.length ? week.reduce((a, r) => a + r.costUsd, 0) / week.length : null;
+  const last7 = [...days.entries()].filter(([d]) => Date.now() - Date.parse(d) < 7 * 86_400_000).reduce((a, [, v]) => a + v.usd, 0);
+  return { days: [...days.entries()].sort((a, b) => b[0].localeCompare(a[0])), avgRun, last7 };
+}
+
+export function fmtKyiv(d: Date | string | null | undefined, withDate = true): string {
+  if (!d) return "—";
+  const x = typeof d === "string" ? new Date(d) : d;
+  return x.toLocaleString("ru-RU", { timeZone: "Europe/Kyiv", ...(withDate ? { day: "2-digit", month: "2-digit" } : {}), hour: "2-digit", minute: "2-digit" });
+}
+
+export function agoText(d: Date | string | null | undefined): string {
+  if (!d) return "—";
+  const ms = Date.now() - (typeof d === "string" ? Date.parse(d) : d.getTime());
+  const min = Math.round(ms / 60_000);
+  if (min < 1) return "только что";
+  if (min < 60) return `${min} мин назад`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} ч ${min % 60 ? `${min % 60} мин ` : ""}назад`;
+  return `${Math.floor(h / 24)} дн назад`;
+}

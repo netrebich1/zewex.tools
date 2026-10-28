@@ -334,5 +334,60 @@ if (pinterest) {
     create: { sectionId: pinterest.id, slug: "uploader", name: "Заливка в Pinterest", description: "Автозаливка файлов выгрузки пинов в Pinterest через Dolphin Anty: сайт ↔ профиль, запуск кнопкой и по расписанию, статусы и отметки в «Проектах»", url: "/pinterest/uploader", status: "ACTIVE", order: 6 },
   });
 }
+// ───────────────────────────── Новости (Google Discover / Google News, раздел Discovery) ─────────────────────────────
+// Слоты: классификация пачками (CHAT) и эмбеддинги заголовков (EMBEDDING), оба через OpenRouter.
+// Правила команды WexOra (инструмент для неё) создаются, только если их ещё нет. Стартовый проект beautydaily.com.ua
+// с проверенными лентами и примерами сущностей — только если проектов модуля ещё нет (seed-data/news/beautydaily.json).
+const discoveryNews = await prisma.section.findUnique({ where: { slug: "discovery" } });
+if (discoveryNews) {
+  const newsProject = await prisma.project.upsert({
+    where: { slug: "news" },
+    update: {},
+    create: { sectionId: discoveryNews.id, slug: "news", name: "Новости для Discover", description: "Мониторинг новостей под Google Discover и Google News: ленты, Google News и Trends, склейка дублей, балл «почему первая», срочные — в Telegram", url: "/discovery/news", status: "ACTIVE", order: 2 },
+  });
+  const newsSlots = [
+    { key: "text_main", name: "Классификация материалов", capability: "CHAT", description: "Категория, сущности, визуальность, чувствительность — пачками по 10 (deepseek-v4-flash)", preferProviders: "openrouter" },
+    { key: "embed", name: "Эмбеддинги заголовков", capability: "EMBEDDING", description: "Склейка дублей в кластеры и фильтр «наше / не наше» (baai/bge-m3)", preferProviders: "openrouter" },
+  ];
+  for (const s of newsSlots) {
+    await prisma.slot.upsert({ where: { projectId_key: { projectId: newsProject.id, key: s.key } }, update: { preferProviders: s.preferProviders }, create: { projectId: newsProject.id, ...s } });
+  }
+  const orNews = await prisma.provider.findUnique({ where: { slug: "openrouter" } });
+  const wexora = await prisma.team.findUnique({ where: { slug: "wexora" } });
+  if (orNews) {
+    await prisma.model.upsert({ where: { providerId_modelId: { providerId: orNews.id, modelId: "baai/bge-m3" } }, update: { isEnabled: true }, create: { providerId: orNews.id, modelId: "baai/bge-m3", name: "BGE-M3 (эмбеддинги)", capabilities: "EMBEDDING", inputPrice: 0.01, outputPrice: 0, source: "MANUAL", isEnabled: true } });
+  }
+  if (orNews && wexora) {
+    const key = await prisma.apiKey.findFirst({ where: { teamId: wexora.id, providerId: orNews.id, status: "ACTIVE" }, orderBy: { createdAt: "asc" } });
+    const models = {
+      text_main: await prisma.model.findUnique({ where: { providerId_modelId: { providerId: orNews.id, modelId: "deepseek/deepseek-v4-flash" } } }),
+      embed: await prisma.model.findUnique({ where: { providerId_modelId: { providerId: orNews.id, modelId: "baai/bge-m3" } } }),
+    };
+    if (key) {
+      for (const s of newsSlots) {
+        const slot = await prisma.slot.findUnique({ where: { projectId_key: { projectId: newsProject.id, key: s.key } } });
+        const has = await prisma.binding.findFirst({ where: { scope: "TEAM_PROJECT", slotId: slot.id, teamId: wexora.id } });
+        if (!has && models[s.key]) {
+          await prisma.binding.create({ data: { scope: "TEAM_PROJECT", slotId: slot.id, teamId: wexora.id, providerId: orNews.id, modelId: models[s.key].id, apiKeyId: key.id } });
+          console.log(`news: rule ${s.key} → WexOra / ${models[s.key].modelId}`);
+        }
+      }
+    }
+  }
+  if (wexora && (await prisma.newsProject.count()) === 0) {
+    const data = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "seed-data", "news", "beautydaily.json"), "utf8"));
+    const owners = (process.env.ALLOWED_REGISTRATION_EMAILS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const owner = (owners.length ? await prisma.user.findFirst({ where: { email: { in: owners } } }) : null) ?? (await prisma.user.findFirst({ where: { role: "ADMIN" }, orderBy: { createdAt: "asc" } }));
+    const site = await prisma.siteAccess.findFirst({ where: { baseUrl: { contains: "beautydaily.com.ua" } }, orderBy: { createdAt: "asc" } });
+    const p = await prisma.newsProject.create({ data: { teamId: wexora.id, siteAccessId: site?.id ?? null, name: data.project.name, siteUrl: data.project.siteUrl, settings: {}, createdById: owner?.id ?? null } });
+    for (const s of data.sources) {
+      await prisma.newsSource.create({ data: { projectId: p.id, kind: s.kind, name: s.name, url: s.url, tier: s.tier, lang: s.lang ?? "uk", weight: s.weight, profile: !!s.profile, includeCats: s.includeCats ?? undefined, excludeCats: s.excludeCats ?? undefined, includeUrls: s.includeUrls ?? undefined, intervalMin: s.intervalMin ?? null } });
+    }
+    for (const e of data.entities) {
+      await prisma.newsEntity.create({ data: { projectId: p.id, name: e.name, type: e.type, grp: e.grp, weight: e.weight, aliases: e.aliases } });
+    }
+    console.log(`news seed: project ${p.name}, ${data.sources.length} sources, ${data.entities.length} entities`);
+  }
+}
 console.log("seed done");
 await prisma.$disconnect();

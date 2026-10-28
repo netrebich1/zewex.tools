@@ -14,6 +14,7 @@ import { aiModerationInflight, aiModerationLoop } from "./articles/aiModeration"
 import { deeplInflight, deeplLoop, deeplRequeueStale } from "./deepl";
 import { analyticsInflight, analyticsLoop, analyticsRequeueStale } from "./analytics";
 import { blogInflight, blogLoop, blogStartup } from "./blog";
+import { newsInflight, newsLoop, newsStartup } from "./news";
 import sharp from "sharp";
 
 /**
@@ -90,17 +91,18 @@ async function main() {
   await blogStartup(hostname());
   await deeplRequeueStale(hostname()).catch((e) => log.warn("deepl requeue failed", e));
   await analyticsRequeueStale(hostname()).catch((e) => log.warn("analytics requeue failed", e));
+  await newsStartup(hostname()).catch((e) => log.warn("news startup failed", e));
   const stopCron = startCron();
   const shutdown = async (sig: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    log.info(`${sig}: finishing ${inflight.size} job(s), ${domainsInflight().size} domain run(s) and ${articlesInflight().size} article(s), ${blogInflight().size} blog post(s), ${aiModerationInflight().size} AI review(s), ${deeplInflight().size} DeepL article(s), ${analyticsInflight().size} GA sync(s), up to 60s`);
+    log.info(`${sig}: finishing ${inflight.size} job(s), ${domainsInflight().size} domain run(s) and ${articlesInflight().size} article(s), ${blogInflight().size} blog post(s), ${aiModerationInflight().size} AI review(s), ${deeplInflight().size} DeepL article(s), ${analyticsInflight().size} GA sync(s), ${newsInflight().size} news run(s), up to 60s`);
     stopCron();
     const t = setTimeout(() => {
       log.warn("forced exit");
       process.exit(1);
     }, 60_000);
-    await Promise.allSettled([...inflight, ...domainsInflight(), ...articlesInflight(), ...blogInflight(), ...aiModerationInflight(), ...deeplInflight(), ...analyticsInflight()]);
+    await Promise.allSettled([...inflight, ...domainsInflight(), ...articlesInflight(), ...blogInflight(), ...aiModerationInflight(), ...deeplInflight(), ...analyticsInflight(), ...newsInflight()]);
     clearTimeout(t);
     await prisma.$disconnect();
     log.info("bye");
@@ -109,7 +111,7 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
   // Очереди подборов доменов и статей работают рядом с очередью пинов в том же процессе.
-  await Promise.all([loop(), domainsLoop(WORKER_ID, () => shuttingDown), articlesLoop(WORKER_ID, () => shuttingDown), blogLoop(WORKER_ID, () => shuttingDown), aiModerationLoop(WORKER_ID, () => shuttingDown), deeplLoop(WORKER_ID, () => shuttingDown), analyticsLoop(WORKER_ID, () => shuttingDown)]);
+  await Promise.all([loop(), domainsLoop(WORKER_ID, () => shuttingDown), articlesLoop(WORKER_ID, () => shuttingDown), blogLoop(WORKER_ID, () => shuttingDown), aiModerationLoop(WORKER_ID, () => shuttingDown), deeplLoop(WORKER_ID, () => shuttingDown), analyticsLoop(WORKER_ID, () => shuttingDown), newsLoop(WORKER_ID, () => shuttingDown)]);
 }
 
 main().catch((e) => {

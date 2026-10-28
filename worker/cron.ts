@@ -13,6 +13,7 @@ import { failedKeywordsTick } from "@/lib/articles/failedKeywords";
 import { deeplPurgeCache, deeplRequeueStale } from "./deepl";
 import { analyticsPurge, analyticsRequeueStale } from "./analytics";
 import { uploaderTick } from "@/lib/uploader/runs";
+import { newsDaily } from "./news";
 
 /** Периодические задачи воркера: сторож зависших задач, уборка (позже). */
 export function startCron(): () => void {
@@ -47,5 +48,8 @@ export function startCron(): () => void {
   timers.push(setInterval(() => analyticsPurge().catch((e) => log.warn("analytics purge failed", e)), 24 * 60 * 60_000));
   // Заливка в Pinterest (Pin Uploader): агенты офлайн, просроченные аренды, фаза проверки, расписание — раз в минуту.
   timers.push(setInterval(() => uploaderTick().then((r) => { if (r.verify || r.scheduled) log.info(`uploader tick: verify ${r.verify}, scheduled ${r.scheduled}, stale ${r.stale}`); }).catch((e) => log.warn("uploader tick failed", e)), 60_000));
+  // Новости (Google Discover): уборка отсечённых материалов и старых векторов, зависшие прогоны — через 5 мин после старта и раз в сутки.
+  const news = () => newsDaily().catch((e) => log.warn("news daily failed", e));
+  timers.push(setTimeout(news, 5 * 60_000), setInterval(news, 24 * 60 * 60_000));
   return () => timers.forEach(clearInterval);
 }

@@ -2551,3 +2551,239 @@ model UplSet {
 
   @@index([userId])
 }
+
+// ───────────────────────────── Новости (Google Discover / Google News, раздел Discovery, проект `news`) ─────────────────────────────
+// ТЗ: https://claude.ai/artifact/EE1mbM8S4gJtRcKetNfjud, код — src/lib/news/*, воркер worker/news.ts, заметки — docs/news/README.md.
+
+/// Проект модуля = один сайт (beautydaily.com.ua и т. д.): свои источники, сущности, фильтры, бюджет, бот.
+model NewsProject {
+  id           String    @id @default(uuid()) @db.Char(36)
+  /// Команда, с ключей которой идёт расход (правила слотов проекта `news`)
+  teamId       String
+  /// Сайт из раздела «Сайты» (для будущих черновиков WordPress), может быть пустым
+  siteAccessId String?   @db.Char(36)
+  name         String
+  siteUrl      String    @default("")
+  isActive     Boolean   @default(true)
+  /// NewsSettings (src/lib/news/types.ts): интервалы, пороги, лимиты, фильтры, запросы Google News
+  settings     Json
+  /// Telegram-бот для алертов: токен зашифрован, чат — id или @канал
+  tgTokenEnc   String?   @db.Text
+  tgChatId     String?
+  /// Служебное: курсор ротации запросов Google News, отметки алертов бюджета
+  state        Json?
+  nextRunAt    DateTime?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sources      NewsSource[]
+  entities     NewsEntity[]
+  items        NewsItem[]
+  clusters     NewsCluster[]
+  runs         NewsRun[]
+  trends       NewsTrend[]
+
+  @@index([teamId])
+}
+
+/// Источник: RSS/Atom, news-sitemap, запрос Google News, раздел Google News, Google Trends.
+model NewsSource {
+  id          String    @id @default(uuid()) @db.Char(36)
+  projectId   String    @db.Char(36)
+  /// rss | sitemap | gnews_query | gnews_topic | trends
+  kind        String
+  name        String
+  /// URL ленты; для gnews_query — сам запрос (без when:)
+  url         String    @db.VarChar(2000)
+  /// primary (первоисточник) | competitor (украинские медиа) | world (мировые медиа)
+  tier        String    @default("competitor")
+  lang        String    @default("uk")
+  weight      Float     @default(1)
+  /// Профильный источник: проходит белый список без сущности
+  profile     Boolean   @default(false)
+  /// Фильтр рубрик: оставить только эти / убрать эти (подстроки, без регистра); фильтр адресов — подстроки URL
+  includeCats Json?
+  excludeCats Json?
+  includeUrls Json?
+  viaProxy    Boolean   @default(false)
+  /// Свой интервал опроса в минутах (null — интервал проекта)
+  intervalMin Int?
+  isActive    Boolean   @default(true)
+  lastFetchAt DateTime?
+  lastOkAt    DateTime?
+  lastNewAt   DateTime?
+  lastError   String?   @db.Text
+  errorStreak Int       @default(0)
+  /// Последний ответ: материалов, новых, прошло фильтр, через прокси
+  lastStats   Json?
+  createdAt   DateTime  @default(now())
+  project     NewsProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, isActive])
+}
+
+/// Сущность (персона, бренд, событие, тренд): главная настройка Discover-потенциала.
+model NewsEntity {
+  id        String   @id @default(uuid()) @db.Char(36)
+  projectId String   @db.Char(36)
+  name      String
+  /// person | brand | event | trend | product
+  type      String   @default("person")
+  /// Группа (ua_top, ua_second, world, ua_brand, world_brand, beauty, event, trend)
+  grp       String   @default("")
+  weight    Float    @default(1)
+  /// Варианты написания (укр/рус/англ); совпадение по основе слова, окончания отрезаются
+  aliases   Json
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  project   NewsProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+/// Материал из источника (одна статья / один пункт ленты). Повтор того же материала — запись в extraSources.
+model NewsItem {
+  id           String    @id @default(uuid()) @db.Char(36)
+  projectId    String    @db.Char(36)
+  sourceId     String?   @db.Char(36)
+  /// sha1 канонического URL (уникален в проекте)
+  urlHash      String    @db.Char(40)
+  url          String    @db.VarChar(2000)
+  domain       String    @default("")
+  title        String    @db.Text
+  /// Нормализованный заголовок (дедупликация)
+  normTitle    String    @db.VarChar(500)
+  lead         String?   @db.Text
+  imageUrl     String?   @db.VarChar(2000)
+  categories   Json?
+  tier         String    @default("competitor")
+  lang         String    @default("uk")
+  publishedAt  DateTime?
+  foundAt      DateTime  @default(now())
+  /// cut | queued | classified | error | dup
+  status       String    @default("queued")
+  /// Шаг отсечения: old | words | rubric | whitelist | embed | llm
+  cutStep      String?
+  cutReason    String?   @db.Text
+  /// Найденные бесплатным фильтром сущности [{id, name, weight}]
+  matched      Json?
+  /// Эмбеддинг заголовка и лида (Float32), удаляется через 30 дней
+  embedding    Bytes?
+  category     String?
+  subcategory  String?
+  /// [{name, orig, type, role}] от LLM
+  entities     Json?
+  sensitive    Boolean   @default(false)
+  visual       Int?
+  isNews       Boolean?
+  hasPrice     Boolean   @default(false)
+  clusterId    String?   @db.Char(36)
+  /// Другие источники того же материала [{sourceId, domain, url, at, tier}]
+  extraSources Json?
+  runId        String?   @db.Char(36)
+  project      NewsProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  cluster      NewsCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, urlHash])
+  @@index([projectId, status])
+  @@index([projectId, foundAt])
+  @@index([projectId, normTitle(length: 120)])
+  @@index([clusterId])
+}
+
+/// Кластер — одно событие из нескольких материалов, единица ленты.
+model NewsCluster {
+  id               String    @id @default(uuid()) @db.Char(36)
+  projectId        String    @db.Char(36)
+  title            String    @db.Text
+  imageUrl         String?   @db.VarChar(2000)
+  category         String?
+  subcategory      String?
+  /// Главная сущность (нормализованный ключ) и её подпись
+  mainEntity       String?
+  mainEntityName   String?
+  entities         Json?
+  centroid         Bytes?
+  itemCount        Int       @default(0)
+  sourceCount      Int       @default(0)
+  uaCount          Int       @default(0)
+  worldCount       Int       @default(0)
+  sensitive        Boolean   @default(false)
+  hasPrice         Boolean   @default(false)
+  visual           Int?
+  firstPublishedAt DateTime
+  lastItemAt       DateTime
+  score            Float     @default(0)
+  /// [{key, label, points, max, why}] — строки «почему сейчас»
+  scoreParts       Json?
+  /// Баллы по времени [{at, score}] (последние 48)
+  scoreHistory     Json?
+  urgent           Boolean   @default(false)
+  /// new | in_work | published | rejected
+  status           String    @default("new")
+  alertedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  project          NewsProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items            NewsItem[]
+
+  @@index([projectId, lastItemAt])
+  @@index([projectId, score])
+}
+
+/// Прогон конвейера: плановый или ручной. Расход — UsageLog с refId = id прогона.
+model NewsRun {
+  id         String    @id @default(uuid()) @db.Char(36)
+  projectId  String    @db.Char(36)
+  /// scheduled | manual
+  kind       String    @default("scheduled")
+  /// all | sites | gnews | world | trends | source:<id>
+  scope      String    @default("all")
+  userId     String?
+  /// queued | running | done | failed
+  status     String    @default("queued")
+  workerId   String?
+  step       String?
+  /// Воронка RunStats (src/lib/news/types.ts)
+  stats      Json?
+  costUsd    Float     @default(0)
+  error      String?   @db.Text
+  createdAt  DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  project    NewsProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([status])
+}
+
+/// Тренд Google Trends (RSS, гео проекта): для сигнала «трендовость».
+model NewsTrend {
+  id          String   @id @default(uuid()) @db.Char(36)
+  projectId   String   @db.Char(36)
+  title       String
+  normTitle   String   @db.VarChar(300)
+  traffic     String   @default("")
+  /// Заголовки новостей тренда [{title, source, url}]
+  news        Json?
+  /// Прошёл ли стоп-фильтр (война, политика)
+  relevant    Boolean  @default(false)
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  project     NewsProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, normTitle])
+  @@index([projectId, lastSeenAt])
+}
+
+/// Прокси модуля (настройка администратора): для сайтов с защитой от ботов и при ответах 403/429.
+model NewsProxy {
+  id        String    @id @default(uuid()) @db.Char(36)
+  label     String
+  /// http://user:pass@host:port, зашифровано
+  urlEnc    String    @db.Text
+  isActive  Boolean   @default(true)
+  lastOkAt  DateTime?
+  lastError String?   @db.Text
+  createdAt DateTime  @default(now())
+}
