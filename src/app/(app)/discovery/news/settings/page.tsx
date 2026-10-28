@@ -139,6 +139,7 @@ export default async function NewsSettingsPage({ searchParams }: { searchParams:
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block"><span className="label">Модель углов и ТЗ</span><input name="briefModel" className="input" defaultValue={s.briefModel} /><span className="help mt-0.5 block">Слот «Углы и ТЗ» инструмента</span></label>
                 <Num name="autoSummaryPerDay" label="Суть карточек в сутки" value={s.autoSummaryPerDay} hint="Украинская суть и «почему зайдёт» для топа ленты" />
+                <label className="block sm:col-span-2"><span className="label">Суффикс, который Yoast дописывает к Title</span><input name="titleSuffix" className="input" defaultValue={s.titleSuffix} placeholder=" - Beauty Daily UA (пусто — суффикс выключен)" /><span className="help mt-0.5 block">ТЗ считает лимит Title с учётом суффикса. Для новостей суффикс лучше выключить в Yoast: он съедает 18 знаков.</span></label>
               </div>
             </div>
           </Card>

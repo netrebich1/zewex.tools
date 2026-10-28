@@ -116,6 +116,7 @@ export async function saveSettings(_p: FormState, f: FormData): Promise<FormStat
     const next: Record<string, unknown> = { ...cur };
     for (const k of SETTING_NUMBERS) next[k] = numOr(str(f, k), cur[k] as number);
     for (const k of ["classifyModel", "embedModel", "briefModel", "hl", "gl", "ceid", "houseStyle", "siteAbout"] as const) next[k] = str(f, k);
+    next.titleSuffix = String(f.get("titleSuffix") ?? "").trimEnd();
     for (const k of ["embedFilter", "autoProxy", "telegramAlerts"] as const) next[k] = f.get(k) === "on";
     next.targetCategories = f.getAll("targetCategories").map(String).filter((c) => (CATEGORIES as readonly string[]).includes(c) && c !== "other");
     for (const k of ["stopWords", "stopExceptions", "stopRubrics", "nicheWords", "gnewsQueries"] as const) {

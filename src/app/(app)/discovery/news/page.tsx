@@ -8,6 +8,8 @@ import { LiveRefresh } from "@/components/news/LiveRefresh";
 import { makeBriefAction, researchAction, runNow, setClusterStatus, takeToWork, toggleStar, trendSearch } from "@/actions/news";
 import { CopyButton } from "@/components/news/CopyButton";
 import { FORMATS } from "@/lib/news/brief";
+import { embedCode } from "@/lib/news/research";
+import { EmbedPreview } from "@/components/news/EmbedPreview";
 import { requireProject } from "@/lib/news/access";
 import { agoText, feed, fmtKyiv, spendByDay, summary, trendsOf, type FeedCard } from "@/lib/news/query";
 import { BASE_PATH, CATEGORY_LABELS, CLUSTER_STATUS_LABELS, PRIORITY_LABELS, RUN_SCOPES } from "@/lib/news/types";
@@ -273,12 +275,8 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
             <h4 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted">Материалы из источников</h4>
             {c.research.embeds.length > 0 && (
               <div className="mb-3">
-                <p className="mb-1 text-[13px] text-ink-2">Вставки — можно ставить штатным кодом вбудовування, главным фото быть не могут:</p>
-                <ul className="space-y-0.5 text-[14px]">
-                  {c.research.embeds.map((e) => (
-                    <li key={e.url} className="truncate"><Badge>{e.kind}</Badge> <a href={e.url} target="_blank" rel="noopener noreferrer" className="text-info hover:underline">{e.url}</a> <span className="help">из {e.from}</span></li>
-                  ))}
-                </ul>
+                <p className="mb-1 text-[13px] text-ink-2">Вставки — готовый код для WordPress (блок «HTML»), главным фото быть не могут:</p>
+                <EmbedPreview embeds={c.research.embeds.map((e) => ({ kind: e.kind, url: e.url, from: e.from, code: embedCode(e) }))} />
               </div>
             )}
             {c.research.images.length > 0 && (

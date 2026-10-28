@@ -1,7 +1,7 @@
 import { chatJson, type AiCtx } from "./llm";
 import { fetchText } from "./fetch";
 import { CATEGORY_LABELS, SLOT_BRIEF, SLOT_CLASSIFY, type NewsSettings } from "./types";
-import type { ClusterResearch } from "./research";
+import { embedCode, type ClusterResearch } from "./research";
 
 /**
  * Этап 2: украинская суть карточки и «почему зайдёт у нас» (в прогоне, пачками), углы по кнопке «В работу»,
@@ -56,7 +56,9 @@ const DISCOVER_RULES = `Правила Discover (Україна):
 - Текст легкий: короткий лід у 2 речення, далі 3–5 коротких блоків, по 2–4 речення. Одна наша думка або порада, а не чотири розділи. Жодних списків «для круглого обличчя», цін по містах, історії стрижки з 1953 року.
 - Факти лише з джерел. Деталі, яких нема в джерелах (ціни в салонах, назви засобів), не вигадувати — або прибрати, або позначити як завдання автору знайти.
 - Фото вирішує: велике (1200 px+), герой або річ у центрі, без колажів із логотипами. Під кожне фото — ім'я файлу та alt з героєм.
-- Теги = сутності (герой, бренд, подія); рубрика — одна.`;
+- Права на фото: головне фото лише з пресматеріалів бренду чи організатора, фотобанку за ліцензією, Wikimedia Commons (CC) або власної зйомки; пост героя — тільки вбудуванням (embed), не скриншотом. Фото з Daily Mail, Page Six, People та будь-яких сайтів-джерел брати заборонено. Під фото — підпис із джерелом і ліцензією.
+- Зовнішні посилання: першоджерело (пост героя, пресреліз, інтерв'ю) і не більше 2 авторитетних медіа. Жодних посилань на магазини й каталоги в новині.
+- Теги = сутності (герой, бренд, подія); рубрика — одна. Внутрішні посилання: 1–2 наші статті або сторінка тегу героя.`;
 
 /** 3 угла с форматом (кнопка «В работу»). */
 export async function makeAngles(ctx: AiCtx, st: NewsSettings, c: ClusterForAi, ours: OurArticle[]): Promise<{ angles: Angle[]; competitorsAngle: string; gaps: string[] }> {
@@ -95,7 +97,7 @@ type BriefJson = {
   blocks: { h2: string; note: string }[];
   ourTouch: string[];
   todo: string[];
-  photos: { shot: string; file: string; alt: string }[];
+  photos: { shot: string; file: string; alt: string; where: string }[];
   headlines: { text: string; type: string }[];
   titles: string[];
   descriptions: string[];
@@ -122,9 +124,9 @@ ${DISCOVER_RULES}
 "blocks":[{"h2":"підзаголовок без клікбейту","note":"що в блоці, 1 речення"}] — рівно стільки, скільки потрібно формату (момент: 2–3; новина: 3–4; розбір/підбірка: 4–6), без H3,
 "our_touch":["1–2 речі від себе одним абзацом кожна: порада, контекст, український аналог"],
 "todo":["що автору перевірити або знайти самому, бо в джерелах цього немає"],
-"photos":[{"shot":"що в кадрі","file":"ім'я файлу латиницею через дефіс з героєм і деталлю, напр. zendaya-pixie-wnba-finals.jpg","alt":"alt українською з героєм, до 110 символів"}] — 2–3 фото, перше головне 1200 px+,
+"photos":[{"shot":"що в кадрі","file":"ім'я файлу латиницею через дефіс з героєм і деталлю, напр. zendaya-pixie-wnba-finals.jpg","alt":"alt українською з героєм, до 110 символів","where":"де легально взяти саме цей кадр: пресматеріали бренду X / embed поста героя / фотобанк / Wikimedia Commons"}] — 2–3 фото, перше головне 1200 px+,
 "headlines":[{"text":"…","type":"новина|деталь|питання|емоція|користь"}] — 5 різних заголовків 45–65 символів, герой у перших словах,
-"titles":["3 варіанти Title до 60 символів"],
+"titles":["3 варіанти Title до ${Math.max(35, 60 - st.titleSuffix.length)} символів${st.titleSuffix ? ` (сайт дописує «${st.titleSuffix}»)` : ""}"],
 "descriptions":["3 варіанти Description 110–155 символів: що побачить читачка + конкретна деталь"],
 "slugs":["3 варіанти slug транслітом, 3–6 слів, з героєм, без дат"],
 "tags":["сутності: герой, бренд, подія"],"rubric":"одна рубрика","og":"сюжет OG 1200×630",
@@ -141,7 +143,7 @@ ${DISCOVER_RULES}
     blocks: arr(j.blocks, (x) => ({ h2: s(x.h2, 160), note: s(x.note, 300) })).filter((x) => x.h2).slice(0, 7),
     ourTouch: list(j.our_touch, 400).slice(0, 3),
     todo: list(j.todo, 300).slice(0, 5),
-    photos: arr(j.photos, (x) => ({ shot: s(x.shot, 200), file: s(x.file, 80).toLowerCase().replace(/[^a-z0-9.-]+/g, "-"), alt: s(x.alt, 160) })).filter((x) => x.shot).slice(0, 4),
+    photos: arr(j.photos, (x) => ({ shot: s(x.shot, 200), file: s(x.file, 80).toLowerCase().replace(/[^a-z0-9.-]+/g, "-"), alt: s(x.alt, 160), where: s(x.where, 200) })).filter((x) => x.shot).slice(0, 4),
     headlines: arr(j.headlines, (x) => ({ text: s(x.text, 120), type: s(x.type, 20) })).filter((x) => x.text).slice(0, 6),
     titles: list(j.titles, 120).slice(0, 4),
     descriptions: list(j.descriptions, 220).slice(0, 4),
@@ -151,7 +153,27 @@ ${DISCOVER_RULES}
     og: s(j.og, 300),
     dont: list(j.dont, 300).slice(0, 5),
   };
-  return renderBrief(site, st, c, angle, fmt, b, ours, summaryUk, research ?? null);
+  const tags = await ourTags(`https://${site}`, [c.entity, ...b.tags.slice(0, 3)].filter((x): x is string => !!x));
+  return renderBrief(site, st, c, angle, fmt, b, ours, summaryUk, research ?? null, tags);
+}
+
+export type OurTag = { name: string; url: string; count: number };
+
+/** Страницы тегов сайта по герою и сущностям: внутренняя ссылка, когда статей про героя ещё нет. */
+export async function ourTags(siteUrl: string, names: string[]): Promise<OurTag[]> {
+  const out: OurTag[] = [];
+  for (const n of names.slice(0, 4)) {
+    try {
+      const r = await fetchText(`${siteUrl.replace(/\/$/, "")}/wp-json/wp/v2/tags?search=${encodeURIComponent(n.slice(0, 60))}&per_page=3&_fields=name,link,count`, { timeoutMs: 8000, accept: "application/json" });
+      if (!r.ok) continue;
+      for (const t of JSON.parse(r.text) as { name?: string; link?: string; count?: number }[]) {
+        if (t?.link && t.name && !out.some((x) => x.url === t.link)) out.push({ name: t.name, url: t.link, count: Number(t.count) || 0 });
+      }
+    } catch {
+      /* тегов нет или сайт не ответил */
+    }
+  }
+  return out.slice(0, 4);
 }
 
 const srcRef = (c: ClusterForAi, ref: string) => {
@@ -161,7 +183,9 @@ const srcRef = (c: ClusterForAi, ref: string) => {
 const check = (text: string, min: number, max: number) => (text.length < min ? `⚠ ${text.length}, замало` : text.length > max ? `⚠ ${text.length}, забагато` : `${text.length}`);
 const clickbait = (t: string) => /шок|сенсац|не повірит|\.\.\.|…|!{2,}/i.test(t);
 
-function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Angle, fmt: { label: string; words: string }, b: BriefJson, ours: OurArticle[], summaryUk: string | null, research: ClusterResearch | null): string {
+function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Angle, fmt: { label: string; words: string }, b: BriefJson, ours: OurArticle[], summaryUk: string | null, research: ClusterResearch | null, tags: OurTag[] = []): string {
+  const titleMax = Math.max(35, 60 - st.titleSuffix.length);
+  const tagSlug = (n: string) => n.toLowerCase().replace(/[’'ʼ]/g, "").replace(/[^a-zа-яіїєґ0-9]+/gi, "-").replace(/^-|-$/g, "");
   const hero = c.entity ? c.entity.split(" ").filter((w) => w.length > 2).map((w) => w.toLowerCase().slice(0, 5)) : [];
   const heroIn = (t: string) => !hero.length || hero.some((h) => t.toLowerCase().includes(h));
   const hl = (t: string) => `${t} — ${check(t, 45, 65)}${clickbait(t) ? " ⚠ клікбейт" : ""}${heroIn(t) ? "" : " ⚠ без героя"}`;
@@ -194,14 +218,15 @@ function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Ang
   if (b.todo.length) lines.push("## Автору перевірити (у джерелах цього немає)", ...b.todo.map((x) => `- ${x}`), "");
   lines.push(
     "## Фото (вирішує, чи покажуть у Discover)",
-    ...b.photos.map((p, i) => `${i + 1}. ${p.shot}${i === 0 ? " — головне, 1200 px і ширше, герой у центрі" : ""}\n   файл: \`${p.file || "hero-detail.jpg"}\` · alt: ${p.alt}`),
-    "- Звідки: офіційні пресфото, пресрелізи брендів, вбудований пост Instagram героя (кодом, з автором), фотобанк за ліцензією, Wikimedia Commons (CC, з автором). Не брати фото з сайтів-джерел: права належать агенціям.",
+    ...b.photos.map((p, i) => `${i + 1}. ${p.shot}${i === 0 ? " — головне, 1200 px і ширше, герой у центрі" : ""}\n   файл: \`${p.file || "hero-detail.jpg"}\` · alt: ${p.alt}${p.where ? `\n   звідки: ${p.where}` : ""}`),
+    "- Права: головне фото — лише пресматеріали, фотобанк за ліцензією, Wikimedia Commons (CC) або власна зйомка; пост героя — embed-кодом. ЗАБОРОНЕНО брати фото з Daily Mail, Page Six, People та інших сайтів-джерел: це знімки агентств, за них виставляють рахунки.",
+    "- Під кожним фото — підпис із джерелом і ліцензією: «Фото: пресслужба Skims», «Фото: Wikimedia Commons / Автор, CC BY-SA 4.0». Підпис «Фото: dailymail.com» = порушення.",
     "",
     "## Заголовки (оберіть один)",
     ...b.headlines.map((h) => `- [${h.type || "варіант"}] ${hl(h.text)}`),
     "",
-    "## Title (до 60)",
-    ...b.titles.map((t) => `- ${t} — ${check(t, 35, 60)}${clickbait(t) ? " ⚠ клікбейт" : ""}${heroIn(t) ? "" : " ⚠ без героя"}`),
+    `## Title (до ${titleMax}${st.titleSuffix ? `, бо сайт дописує «${st.titleSuffix}» — краще вимкнути суфікс у Yoast для новин` : ""})`,
+    ...b.titles.map((t) => `- ${t} — ${check(t, 30, titleMax)}${clickbait(t) ? " ⚠ клікбейт" : ""}${heroIn(t) ? "" : " ⚠ без героя"}`),
     "",
     "## Description (110–155)",
     ...b.descriptions.map((d) => `- ${d} — ${check(d, 110, 155)}`),
@@ -213,7 +238,8 @@ function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Ang
     `- Теги: ${b.tags.join(", ") || "герой, бренд, подія"}`,
     `- Рубрика: ${b.rubric || "—"}`,
     `- OG 1200×630: ${b.og || "те саме, що головне фото"}`,
-    "- Технічно: robots max-image-preview:large; schema NewsArticle (headline, image 16:9 / 4:3 / 1:1, datePublished, dateModified, author); article:published_time з таймзоною.",
+    "- Технічно: robots max-image-preview:large; schema NewsArticle, не Article (у Yoast: тип сторінки для рубрики новин → NewsArticle), headline, image 16:9 / 4:3 / 1:1, datePublished, dateModified, author; article:published_time з таймзоною.",
+    "- Зовнішні посилання: першоджерело + не більше 2 медіа; без магазинів і каталогів.",
     "",
     "## Чого не робити",
     ...(b.dont.length ? b.dont : ["не перетворювати на довідник", "не оцінювати зовнішність", "не вигадувати ціни й назви засобів"]).map((x) => `- ${x}`),
@@ -221,13 +247,25 @@ function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Ang
     ...(research && (research.embeds.length || research.images.length)
       ? [
           "## Матеріали з джерел (ресьорч)",
-          ...(research.embeds.length ? ["Вставки — можна ставити штатним кодом вбудовування (Instagram, X, YouTube); головним фото бути не можуть:", ...research.embeds.map((e) => `- ${e.kind}: ${e.url} (з ${e.from})`)] : []),
+          ...(research.embeds.length
+            ? [
+                "Вставки — готовий код, вставляти у WordPress блоком «HTML»; головним фото бути не можуть:",
+                ...research.embeds.flatMap((e) => [`- ${e.kind}: ${e.url} (з ${e.from})`, "```html", embedCode(e), "```"]),
+              ]
+            : []),
           ...(research.images.length ? ["Картинки джерел — ЛИШЕ орієнтир, що саме шукати (сюжет, ракурс); на сайт не копіювати, знайти оригінал у пресматеріалах або пості героя:", ...research.images.slice(0, 8).map((im) => `- ${im.url}${im.w ? ` (${im.w}${im.h ? `×${im.h}` : " px"})` : ""} — ${im.from}`)] : []),
           "",
         ]
       : []),
     "## Внутрішні посилання",
-    ...(ours.length ? ours.map((o) => `- [${o.title}](${o.url})`) : ["- Підберіть 1–2 наші статті про героя чи тему (на сайті поки не знайдено)."]),
+    ...(ours.length ? ours.map((o) => `- [${o.title}](${o.url})`) : []),
+    ...(tags.length ? tags.map((t) => `- Сторінка тегу «${t.name}» (${t.count} матеріалів): ${t.url}`) : []),
+    ...(!ours.length && !tags.length
+      ? [
+          `- Наших статей і тегу про героя на сайті ще немає. Створіть тег «${c.entity ?? "герой"}» (slug ${tagSlug(c.entity ?? "hero")}) і поставте посилання на нього в тексті: сторінки тегів по персонах збирають Discover-трафік самі.`,
+        ]
+      : []),
+    `- Ще 1–2 дотичні наші статті знайди сам у карті сайту https://${site}/sitemap_index.xml (розділи post-sitemap): за героєм, брендом або темою; посилання лише на справді дотичне.`,
     "",
     "## Джерела",
     ...c.sources.slice(0, 8).map((x, i) => `${i + 1}. [${x.domain}: ${x.title}](${x.url})`),

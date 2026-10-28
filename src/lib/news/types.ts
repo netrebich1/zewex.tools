@@ -117,6 +117,8 @@ export type NewsSettings = {
   briefModel: string;
   /** Украинская суть и «почему зайдёт» в прогоне — для топа ленты, не больше N кластеров в сутки. */
   autoSummaryPerDay: number;
+  /** Суффикс, который CMS дописывает к Title (например « - Beauty Daily UA»): ТЗ считает лимит с его учётом. Лучше выключить в Yoast. */
+  titleSuffix: string;
 };
 
 export const DEFAULT_STOP_WORDS = [
@@ -199,6 +201,7 @@ export const DEFAULT_SETTINGS: NewsSettings = {
   siteAbout: "beautydaily.com.ua — українське жіноче медіа про зірок, моду й красу; аудиторія — жінки 22–45 років, які стежать за українськими зірками, трендами й новинками косметики.",
   briefModel: DEFAULT_BRIEF_MODEL,
   autoSummaryPerDay: 300,
+  titleSuffix: "",
 };
 
 const num = (v: unknown, d: number, min: number, max: number) => {
@@ -246,6 +249,7 @@ export function parseSettings(raw: unknown): NewsSettings {
     siteAbout: typeof r.siteAbout === "string" && r.siteAbout.trim() ? r.siteAbout.trim() : d.siteAbout,
     briefModel: str(r.briefModel, d.briefModel),
     autoSummaryPerDay: num(r.autoSummaryPerDay, d.autoSummaryPerDay, 0, 2000),
+    titleSuffix: typeof r.titleSuffix === "string" ? r.titleSuffix : d.titleSuffix,
   };
 }
 

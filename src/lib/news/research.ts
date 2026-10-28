@@ -109,3 +109,20 @@ export async function researchCluster(clusterId: string): Promise<ClusterResearc
   await prisma.newsCluster.update({ where: { id: clusterId }, data: { research: out as unknown as Prisma.InputJsonValue, researchAt: new Date() } });
   return out;
 }
+
+/** Готовый код вставки по ссылке: Instagram, X, YouTube, TikTok — штатные embed-коды платформ. */
+export function embedCode(e: { kind: ResearchEmbed["kind"]; url: string }): string {
+  const u = e.url.replace(/[?#].*$/, "");
+  if (e.kind === "instagram") {
+    return `<blockquote class="instagram-media" data-instgrm-permalink="${u}/?utm_source=ig_embed" data-instgrm-version="14" style="max-width:540px;min-width:326px;width:100%;margin:1em auto;"><a href="${u}/">Переглянути цей допис в Instagram</a></blockquote>\n<script async src="https://www.instagram.com/embed.js"></script>`;
+  }
+  if (e.kind === "x") {
+    return `<blockquote class="twitter-tweet"><a href="${u}">${u}</a></blockquote>\n<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>`;
+  }
+  if (e.kind === "youtube") {
+    const id = e.url.match(/(?:v=|embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/)?.[1] ?? "";
+    return `<iframe width="560" height="315" src="https://www.youtube.com/embed/${id}" title="YouTube video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="max-width:100%"></iframe>`;
+  }
+  const vid = e.url.match(/\/video\/(\d+)/)?.[1] ?? "";
+  return `<blockquote class="tiktok-embed" cite="${u}" data-video-id="${vid}" style="max-width:605px;min-width:325px"><a href="${u}">TikTok</a></blockquote>\n<script async src="https://www.tiktok.com/embed.js"></script>`;
+}
