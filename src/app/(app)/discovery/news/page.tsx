@@ -261,11 +261,11 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
 
         <div className="flex flex-wrap items-center gap-2">
           <ActionForm action={toggleStar} className="inline" hidden={{ id: c.id }}>
-            <SubmitButton className={c.starred ? "btn-ghost btn-sm" : "btn-primary btn-sm"} pendingText={c.starred ? "…" : "Добавляю и собираю материалы… ~10 с"}>{c.starred ? "☆ Убрать из избранного" : "★ В избранное — хочу написать"}</SubmitButton>
+            <SubmitButton className={c.starred ? "btn-ghost btn-sm" : "btn-primary btn-sm"} pendingText={c.starred ? "…" : "Добавляю и ищу материалы в вебе… ~30 с"}>{c.starred ? "☆ Убрать из избранного" : "★ В избранное — хочу написать"}</SubmitButton>
           </ActionForm>
           {c.starred && (
             <ActionForm action={researchAction} className="inline" hidden={{ id: c.id }}>
-              <SubmitButton className="btn-ghost btn-sm" pendingText="Собираю… ~10 с">{c.research ? "Обновить материалы из источников" : "Собрать материалы из источников"}</SubmitButton>
+              <SubmitButton className="btn-ghost btn-sm" pendingText="Ищу в вебе и у конкурентов… ~30 с">{c.research ? "Обновить материалы из источников" : "Собрать материалы из источников"}</SubmitButton>
             </ActionForm>
           )}
         </div>

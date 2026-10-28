@@ -329,8 +329,8 @@ export async function toggleStar(_p: FormState, f: FormData): Promise<FormState>
     const on = !c.starred;
     await prisma.newsCluster.update({ where: { id: c.id }, data: { starred: on, starredById: on ? me.id : null, starredAt: on ? new Date() : null } });
     if (on && !c.researchAt) {
-      const { researchCluster } = await import("@/lib/news/research");
-      const r = await researchCluster(c.id);
+      const { deepResearch } = await import("@/lib/news/research");
+      const r = await deepResearch(c.id);
       done();
       return { ok: `В избранном. Ресёрч: ${r.images.length} картинок, ${r.embeds.length} вставок из ${r.pages.filter((p) => p.ok).length} страниц` };
     }
@@ -346,8 +346,8 @@ export async function researchAction(_p: FormState, f: FormData): Promise<FormSt
     const me = await requireUser();
     const c = await prisma.newsCluster.findUniqueOrThrow({ where: { id: str(f, "id") } });
     await loadProjectFor(me, c.projectId);
-    const { researchCluster } = await import("@/lib/news/research");
-    const r = await researchCluster(c.id);
+    const { deepResearch } = await import("@/lib/news/research");
+    const r = await deepResearch(c.id);
     done();
     return { ok: `Ресёрч обновлён: ${r.images.length} картинок, ${r.embeds.length} вставок из ${r.pages.filter((p) => p.ok).length} страниц` };
   } catch (e) {

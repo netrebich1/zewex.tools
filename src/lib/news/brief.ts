@@ -252,7 +252,7 @@ function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Ang
           "## Матеріали з джерел (ресьорч)",
           ...(research.embeds.length
             ? [
-                "Вставки — готовий код, вставляти у WordPress блоком «HTML»; головним фото бути не можуть:",
+                "Вставки з будь-яких соцмереж (Instagram, X, Facebook, Threads, Telegram, TikTok, YouTube, Pinterest) — готовий код, вставляти у WordPress блоком «HTML»; головним фото бути не можуть:",
                 ...research.embeds.flatMap((e) => [`- ${e.kind}: ${e.url} (з ${e.from})`, "```html", embedCode(e), "```"]),
               ]
             : []),

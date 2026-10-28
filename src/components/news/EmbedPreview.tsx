@@ -31,20 +31,23 @@ function Live({ code }: { code: string }) {
     const el = ref.current;
     if (!el) return;
     el.innerHTML = code.replace(/<script[\s\S]*?<\/script>/gi, "");
-    // Скрипты платформ подхватывают blockquote на странице: грузим их отдельно, повторный вызов — process().
-    const scripts = [...code.matchAll(/<script[^>]*src="([^"]+)"/gi)].map((m) => m[1]);
-    for (const src of scripts) {
-      const existing = document.querySelector<HTMLScriptElement>(`script[src="${src}"]`);
-      if (existing) {
-        const w = window as unknown as { instgrm?: { Embeds: { process: () => void } }; twttr?: { widgets: { load: (n?: Element) => void } } };
+    // Скрипты платформ подхватывают blockquote на странице (Instagram, X, Threads, TikTok, Pinterest) или сами рисуют
+    // виджет на месте тега (Telegram): создаём <script> со всеми атрибутами внутри контейнера; повторный вызов — process().
+    const w = window as unknown as { instgrm?: { Embeds: { process: () => void } }; twttr?: { widgets: { load: (n?: Element) => void } } };
+    for (const m of code.matchAll(/<script\b([^>]*)>/gi)) {
+      const attrs = [...m[1].matchAll(/([a-zA-Z-]+)(?:="([^"]*)")?/g)];
+      const src = attrs.find((a) => a[1] === "src")?.[2] ?? "";
+      const dataAttrs = attrs.filter((a) => a[1].startsWith("data-"));
+      if (src && !dataAttrs.length && document.querySelector(`script[src="${src}"]`)) {
         w.instgrm?.Embeds?.process();
         w.twttr?.widgets?.load(el);
         continue;
       }
       const s = document.createElement("script");
       s.async = true;
-      s.src = src;
-      document.body.appendChild(s);
+      if (src) s.src = src;
+      for (const a of dataAttrs) s.setAttribute(a[1], a[2] ?? "");
+      el.appendChild(s);
     }
   }, [code]);
   return (

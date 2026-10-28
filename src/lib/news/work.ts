@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { hostOf } from "./text";
 import { makeAngles, makeBrief, ourArticles, summarizeClusters, type Angle, type ClusterForAi } from "./brief";
 import type { AiCtx } from "./llm";
+import { deepResearch, type ClusterResearch } from "./research";
 import { parseSettings, type NewsSettings, type RunStats, type ScorePart } from "./types";
 
 /** Кластер для ИИ: источники (украинские первыми), сигналы балла и причины важности словами. */
@@ -119,6 +120,15 @@ export async function buildBrief(userId: string, clusterId: string, idx: number)
       c.title = sum[0].titleUk || c.title;
     }
   }
-  const md = await withCostRun(project.id, userId, "brief", clusterId, project.teamId, (ctx) => makeBrief(ctx, s, site, c, angle, ours, summaryUk), s);
+  // Избранное: перед ТЗ — глубокий ресёрч (поиск по герою в вебе, страницы конкурентов, вставки любых соцсетей), один раз.
+  let research = (row.research as ClusterResearch | null) ?? null;
+  if (row.starred && !research?.deep) {
+    try {
+      research = await deepResearch(clusterId);
+    } catch {
+      /* ресёрч не обязателен для ТЗ */
+    }
+  }
+  const md = await withCostRun(project.id, userId, "brief", clusterId, project.teamId, (ctx) => makeBrief(ctx, s, site, c, angle, ours, summaryUk, research), s);
   await prisma.newsCluster.update({ where: { id: clusterId }, data: { angleIdx: idx, brief: md, briefAt: new Date(), status: "in_work", workById: userId } });
 }
