@@ -83,6 +83,27 @@ function clean(s: unknown, max: number): string {
   return stripDangling((sp > max * 0.5 ? cut.slice(0, sp) : base.slice(0, max)).replace(/[\s,:;—–-]+$/, "").trim());
 }
 
+/** Слова сезонов на языках пинов. Сезон на пине — только если он есть в ключе страницы. */
+const SEASON_RE = /(?<!\p{L})(?:winter|spring|summer|fall|autumn(?:al)?|зим\p{L}*|весн\p{L}*|весен\p{L}*|весін\p{L}*|лето|летн\p{L}*|літо|літн\p{L}*|осен\p{L}*|осін\p{L}*|frühling|sommer|herbst|hiver|printemps|été|automne|invierno|primavera|verano|otoño|inverno|estate|autunno|verão|outono|zim[aoyę]\p{L}*|wiosn\p{L}*|lato|letni\p{L}*|jesie\p{L}*)(?!\p{L})/giu;
+
+function stripSeason(s: string): string {
+  return stripDangling(s.replace(SEASON_RE, " ").replace(/\s{2,}/g, " ").replace(/^[\s,:;—–-]+|[\s,:;—–-]+$/g, "").trim());
+}
+
+/** Есть ли сезон в ключе страницы (поле season или сезонное слово в ключе/заголовке). */
+export function pageHasSeason(p: { season?: string | null; keyword?: string | null; title?: string | null }): boolean {
+  return !!p.season || new RegExp(SEASON_RE.source, "iu").test(`${p.keyword ?? ""} ${p.title ?? ""}`);
+}
+
+/** Хук без сезонных слов, если у страницы сезона нет (и для уже сохранённых хуков). */
+export function seasonSafeHook(h: CanvasHook, keepSeason: boolean): CanvasHook {
+  if (keepSeason) return h;
+  const title = stripSeason(h.title);
+  const kicker = h.kicker ? stripSeason(h.kicker) : "";
+  const cta = h.cta ? stripSeason(h.cta) : "";
+  return { title: title.split(" ").length >= 2 ? title : h.title, ...(kicker ? { kicker } : {}), ...(cta ? { cta } : {}) };
+}
+
 /** Пришлось ли резать текст (длиннее лимита). */
 function wasCut(s: unknown, max: number): boolean {
   return String(s ?? "").replace(EMOJI_RE, "").replace(/[«»"“”]/g, "").replace(/\s{2,}/g, " ").replace(/[.!]+$/, "").trim().length > max;
@@ -115,7 +136,9 @@ function systemPrompt(language: string, audience: string, perPage: number): stri
     `Для кожної сторінки дай ${perPage} варіантів тексту для картинки піна.`,
     "Тематика сайту і ніша вказані у кожній сторінці (поля topic, niche).",
     "ГОЛОВНЕ ПРАВИЛО СМИСЛУ: кожен заголовок — це той самий запит сторінки, лише трохи розширений",
-    "LSI-словами і тематичними ключами (синоніми, уточнення, аудиторія, сезон, привід, довжина/тип).",
+    "LSI-словами і тематичними ключами (синоніми, уточнення, аудиторія, привід, довжина/тип).",
+    "СЕЗОН: згадуй сезон (осінь, зима, весна, літо) ТІЛЬКИ якщо поле season сторінки непорожнє — і тільки цей сезон.",
+    "Якщо season порожнє — жодних сезонів ні в title, ні в kicker, ні в cta.",
     "Заборонено підміняти тему або звужувати її до іншого підвиду: якщо стаття про «короткі стрижки»,",
     "не можна писати «стрижка піксі», «каре» чи будь-який інший конкретний підвид, якого немає в keyword/title.",
     "Ключове слово (або його очевидний синонім/словоформа) має бути присутнє в кожному title.",
@@ -128,7 +151,7 @@ function systemPrompt(language: string, audience: string, perPage: number): stri
     "  (кількість ідей і рік підставляє шаблон автоматично). Не пиши «7 ідей», «2025» тощо.",
     "- ВИНЯТОК: цифри, що вже є в keyword/title сторінки (вік «Over 40», розмір, номер моделі),",
     "  ЗБЕРІГАЙ у title обов'язково — це частина теми, а не лічильник ідей.",
-    `- kicker: коротка плашка до ${HOOK_KICKER_MAX} знаків (рубрика/сезон), теж у межах теми, без цифр.`,
+    `- kicker: коротка плашка до ${HOOK_KICKER_MAX} знаків (рубрика; сезон — лише якщо season непорожнє), теж у межах теми, без цифр.`,
     `- cta: до ${HOOK_CTA_MAX} знаків, дієслово-заклик.`,
     "- Не повторювати назву бренду або домен у тексті.",
     "- Не дублювати однакові заголовки між варіантами.",
@@ -165,14 +188,17 @@ function parseResults(json: unknown): RawRow[] {
 
 function toHooks(row: RawRow, src: HookPageInput): CanvasHook[] {
   const allow = keywordDigits(src.keyword, src.title);
+  // Сезона нет в ключе — сезонные слова модели снимаем (кроме тех, что есть в самом ключе/заголовке).
+  const keepSeason = pageHasSeason(src);
+  const noSeason = (s: string) => (keepSeason ? s : stripSeason(s));
   const list = Array.isArray(row.hooks) ? row.hooks.filter(isRecord) : [];
   const out: Array<CanvasHook & { cut: boolean }> = [];
   const seen = new Set<string>();
   for (const h of list as RawHook[]) {
-    const title = stripDigits(clean(h.title, HOOK_TITLE_MAX), allow);
+    const title = noSeason(stripDigits(clean(h.title, HOOK_TITLE_MAX), allow));
     if (!title || title.split(" ").length < 2 || seen.has(title.toLowerCase())) continue;
     seen.add(title.toLowerCase());
-    const kicker = stripDigits(clean(h.kicker, HOOK_KICKER_MAX), allow);
+    const kicker = noSeason(stripDigits(clean(h.kicker, HOOK_KICKER_MAX), allow));
     const cta = stripDigits(clean(h.cta, HOOK_CTA_MAX), allow);
     out.push({ title, ...(kicker ? { kicker } : {}), ...(cta ? { cta } : {}), cut: wasCut(h.title, HOOK_TITLE_MAX) });
   }

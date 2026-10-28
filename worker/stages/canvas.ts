@@ -4,7 +4,7 @@ import { guessAccent, renderPin } from "@/lib/pins/canvas";
 import { toRecipe } from "@/lib/pins/canvas/styleSpec";
 import { scriptForLanguage } from "@/lib/pins/canvas/fonts";
 import { approvedStylesForSite } from "@/lib/pins/canvas/catalog";
-import { generateHooks, type CanvasHook } from "@/lib/pins/canvas/hooks";
+import { generateHooks, pageHasSeason, seasonSafeHook, type CanvasHook } from "@/lib/pins/canvas/hooks";
 import { cachedPhoto } from "@/lib/pins/canvas/photos";
 import { rankPhotos, subjectBoxFor, BAD_PHOTO_FLAGS, type PhotoRank } from "@/lib/pins/canvas/subject";
 import { assignPhotos, candidateCount, spreadIndices } from "@/lib/pins/canvas/photoPick";
@@ -12,7 +12,7 @@ import { planCanvasPins, type CanvasPlanRow } from "@/lib/pins/plan/canvasPlan";
 import { articleKindsFor, BLOG_TAG, kindKicker, kindTag, type ArticleInfo } from "@/lib/pins/articleKind";
 import type { StyleSpec } from "@/lib/pins/canvas/styleSpec";
 import { hash32 } from "@/lib/pins/plan/seed";
-import { decideElements, seasonForDate, seasonWord, pinYearFor } from "@/lib/pins/prompts/elements";
+import { decideElements, seasonWord, pinYearFor } from "@/lib/pins/prompts/elements";
 import { ideaCountFor } from "@/lib/pins/types";
 import { makeThumb } from "@/lib/pins/images";
 import { itemImageRel, itemThumbRel, writeFileAtomic } from "@/lib/pins/storage";
@@ -176,7 +176,8 @@ export const canvasStage: StageHandler = async (ctx) => {
         return sb;
       }));
       const hooks = (page.canvasHooks as unknown as CanvasHook[] | null) ?? [];
-      const hook = hooks.length ? hooks[row.sortOrder % hooks.length] : { title: page.keyword };
+      const keepSeason = pageHasSeason({ season: page.seasonWord || page.season, keyword: page.keyword, title: page.pageTitle || page.h1 });
+      const hook = seasonSafeHook(hooks.length ? hooks[row.sortOrder % hooks.length] : { title: page.keyword }, keepSeason);
       // Элементы пина по процентам рецепта (как у ИИ-пинов): сезон/год — в кикер, число — только
       // если стиль умеет цифру (обязательная цифра стиля ставится всегда), призыв и имя сайта — по жребию.
       const tags = decideElements(`${page.id}|${row.styleId}|${row.sortOrder}`, rc.recipe.text);
@@ -187,7 +188,8 @@ export const canvasStage: StageHandler = async (ctx) => {
       const numberRequired = style.spec.number?.mode === "required";
       const showNumber = ideaCount >= 3 && !!style.spec.number && (numberRequired || tags.number || !!blogKind);
       const lang = rc.recipe.text.language;
-      const seasonTxt = tags.season ? (page.seasonWord || seasonWord((page.season as "fall" | "winter" | "spring" | "summer") || seasonForDate(), lang)) : "";
+      // Сезон — только если он есть в ключе страницы; сезон по текущей дате не подставляем.
+      const seasonTxt = tags.season && (page.seasonWord || page.season) ? (page.seasonWord || seasonWord((page.season === "autumn" ? "fall" : page.season) as "fall" | "winter" | "spring" | "summer", lang)) : "";
       const yearTxt = tags.year ? pinYearFor(rc.recipe.text, page) : "";
       const kickerParts = [seasonTxt, yearTxt].filter(Boolean);
       // Блоговая статья: надзаголовок по типу («Step-by-step guide», «Checklist»…), год — следом, если выпал.
