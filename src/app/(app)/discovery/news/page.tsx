@@ -276,7 +276,7 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
             {c.research.embeds.length > 0 && (
               <div className="mb-3">
                 <p className="mb-1 text-[13px] text-ink-2">Вставки — готовый код для WordPress (блок «HTML»), главным фото быть не могут:</p>
-                <EmbedPreview embeds={c.research.embeds.map((e) => ({ kind: e.kind, url: e.url, from: e.from, code: embedCode(e) }))} />
+                <EmbedPreview embeds={c.research.embeds.map((e) => ({ kind: e.kind, url: e.url, from: e.from, author: e.author, text: e.text, why: e.why, code: embedCode(e) }))} />
               </div>
             )}
             {c.research.images.length > 0 && (

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CopyButton } from "./CopyButton";
 
-type Embed = { kind: string; url: string; code: string; from: string };
+type Embed = { kind: string; url: string; code: string; from: string; author?: string; text?: string; why?: string };
 
 /** Живой предпросмотр вставок Instagram / X / YouTube / TikTok и код для копирования в WordPress. */
 export function EmbedPreview({ embeds }: { embeds: Embed[] }) {
@@ -14,10 +14,11 @@ export function EmbedPreview({ embeds }: { embeds: Embed[] }) {
           <div className="flex flex-wrap items-center gap-2 text-[13px]">
             <span className="badge bg-ink/5 text-ink-2">{e.kind}</span>
             <a href={e.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate text-info hover:underline">{e.url}</a>
-            <span className="help">из {e.from}</span>
+            <span className="help">из {e.from}{e.why ? ` · ${e.why}` : ""}</span>
             <button type="button" className="btn-ghost btn-sm" onClick={() => setOpen(open === e.url ? null : e.url)}>{open === e.url ? "Скрыть превью" : "Показать, как будет выглядеть"}</button>
             <CopyButton text={e.code} label="Скопировать код" className="btn-primary btn-sm" />
           </div>
+          {(e.author || e.text) && <div className="mt-1 text-[12.5px] text-ink-2">{e.author ? <b>@{e.author}</b> : null}{e.text ? ` — ${e.text}` : ""}</div>}
           {open === e.url && <Live code={e.code} />}
         </li>
       ))}

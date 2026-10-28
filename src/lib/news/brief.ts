@@ -266,7 +266,7 @@ function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Ang
           ...(research.embeds.length
             ? [
                 "Вставки з будь-яких соцмереж (Instagram, X, Facebook, Threads, Telegram, TikTok, YouTube, Pinterest) — готовий код, вставляти у WordPress блоком «HTML»; головним фото бути не можуть:",
-                ...research.embeds.flatMap((e) => [`- ${e.kind}: ${e.url} (з ${e.from})`, "```html", embedCode(e), "```"]),
+                ...research.embeds.flatMap((e) => [`- ${e.kind}: ${e.url} (з ${e.from}${e.author ? `, @${e.author}` : ""}${e.text ? ` — «${e.text.slice(0, 120)}»` : ""})`, "```html", embedCode(e), "```"]),
               ]
             : []),
           ...(research.images.length ? ["Картинки джерел — ЛИШЕ орієнтир, що саме шукати (сюжет, ракурс); на сайт не копіювати, знайти оригінал у пресматеріалах або пості героя:", ...research.images.slice(0, 8).map((im) => `- ${im.url}${im.w ? ` (${im.w}${im.h ? `×${im.h}` : " px"})` : ""} — ${im.from}`)] : []),
