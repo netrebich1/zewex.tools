@@ -40,6 +40,10 @@
   {
    "url": "https://footwearnews.com/feed/",
    "why": "релизы кроссовок и обувная индустрия, не аудитория сайта"
+  },
+  {
+   "url": "site:hypebeast.com",
+   "why": "даже с весом 0.3 даёт до трети верха ленты релизами кроссовок, это не тема сайта"
   }
  ],
  "sources": [
@@ -49,7 +53,7 @@
    "url": "https://hmstudio.com.ua/feed/",
    "tier": "competitor",
    "lang": "uk",
-   "weight": 1.0,
+   "weight": 1,
    "profile": true
   },
   {
@@ -150,7 +154,7 @@
    "url": "site:stilnaya.com.ua",
    "tier": "competitor",
    "lang": "uk",
-   "weight": 1.0,
+   "weight": 1,
    "profile": true
   },
   {
@@ -232,15 +236,6 @@
    "tier": "world",
    "lang": "en",
    "weight": 0.6,
-   "profile": false
-  },
-  {
-   "kind": "gnews_query",
-   "name": "Google News (США): Hypebeast (коллаборации, низкий вес)",
-   "url": "site:hypebeast.com",
-   "tier": "world",
-   "lang": "en",
-   "weight": 0.3,
    "profile": false
   },
   {
@@ -1140,7 +1135,7 @@
    "name": "Ніна Матвієнко",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Нина Матвиенко"
    ]
@@ -1149,7 +1144,7 @@
    "name": "Go_A",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Катерина Павленко",
     "гурт Go_A"
@@ -1159,7 +1154,7 @@
    "name": "Tvorchi",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "гурт Творчі"
    ]
@@ -1168,7 +1163,7 @@
    "name": "Alyosha",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Олена Кучер",
     "співачка Альоша"
@@ -1178,7 +1173,7 @@
    "name": "Tayanna",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Таяна",
     "Тетяна Решетняк"
@@ -1188,7 +1183,7 @@
    "name": "Kola",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Анастасія Прудиус",
     "Прудиус"
@@ -1198,7 +1193,7 @@
    "name": "Римма Зюбіна",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Зюбіна",
     "Римма Зюбина",
@@ -1209,7 +1204,7 @@
    "name": "Віталіна Біблів",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Біблів",
     "Виталина Библив"
@@ -1219,7 +1214,7 @@
    "name": "Аліна Байкова",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Байкова",
     "Алина Байкова"
@@ -1229,7 +1224,7 @@
    "name": "Алла Костромічова",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Костромічова",
     "Костромичева"
@@ -1239,7 +1234,7 @@
    "name": "Валерія Крук",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Валерия Крук"
    ]
@@ -1248,7 +1243,7 @@
    "name": "Анна Ризатдінова",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Ризатдінова",
     "Ризатдинова"
@@ -1258,7 +1253,7 @@
    "name": "Ігор Кондратюк",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Игорь Кондратюк"
    ]
@@ -1267,7 +1262,7 @@
    "name": "Аня Кошмал",
    "type": "person",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Кошмал"
    ]
@@ -1337,7 +1332,7 @@
    "name": "Віра Фарміга",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Фарміга",
     "Вера Фармига",
@@ -1368,7 +1363,7 @@
    "name": "Кріс Дженнер",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Крис Дженнер",
     "Kris Jenner"
@@ -1378,7 +1373,7 @@
    "name": "Хлої Кардаш'ян",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Хлоя Кардашьян",
     "Хлої Кардашьян",
@@ -1390,7 +1385,7 @@
    "name": "Кортні Кардаш'ян",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Кортни Кардашьян",
     "Кортні Кардашьян",
@@ -1421,7 +1416,7 @@
    "name": "Джастін Бібер",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Джастин Бибер",
     "Justin Bieber"
@@ -1462,7 +1457,7 @@
    "name": "Біллі Айліш",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Билли Айлиш",
     "Billie Eilish",
@@ -1498,7 +1493,7 @@
    "name": "Скарлетт Йоханссон",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Йоханссон",
     "Scarlett Johansson"
@@ -1520,7 +1515,7 @@
    "name": "Олівія Родріго",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Оливия Родриго",
     "Olivia Rodrigo"
@@ -1530,7 +1525,7 @@
    "name": "Шакіра",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Шакира",
     "Shakira"
@@ -1540,7 +1535,7 @@
    "name": "Кеті Перрі",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Кэти Перри",
     "Кейті Перрі",
@@ -1551,7 +1546,7 @@
    "name": "Майлі Сайрус",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Майли Сайрус",
     "Miley Cyrus"
@@ -1561,7 +1556,7 @@
    "name": "Брітні Спірс",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Бритни Спирс",
     "Britney Spears"
@@ -1571,7 +1566,7 @@
    "name": "Бред Пітт",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Брэд Питт",
     "Brad Pitt"
@@ -1581,7 +1576,7 @@
    "name": "Леонардо Ді Капріо",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Леонардо Ди Каприо",
     "Ді Капріо",
@@ -1593,7 +1588,7 @@
    "name": "Том Голланд",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Том Холланд",
     "Tom Holland"
@@ -1603,7 +1598,7 @@
    "name": "Гаррі Стайлз",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Гарри Стайлс",
     "Гаррі Стайлс",
@@ -1614,7 +1609,7 @@
    "name": "Емма Стоун",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Эмма Стоун",
     "Emma Stone"
@@ -1635,7 +1630,7 @@
    "name": "Ана де Армас",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Ana de Armas"
    ]
@@ -1644,7 +1639,7 @@
    "name": "Дакота Джонсон",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Dakota Johnson"
    ]
@@ -1653,7 +1648,7 @@
    "name": "Гайді Клум",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Хайди Клум",
     "Хайді Клум",
@@ -1665,7 +1660,7 @@
    "name": "Наомі Кемпбелл",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Наоми Кэмпбелл",
     "Naomi Campbell"
@@ -1675,7 +1670,7 @@
    "name": "Кейт Мосс",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Kate Moss"
    ]
@@ -1694,7 +1689,7 @@
    "name": "Емілі Ратаковскі",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Эмили Ратаковски",
     "Ратаковскі",
@@ -1727,7 +1722,7 @@
    "name": "Девід Бекхем",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Дэвид Бекхэм",
     "David Beckham"
@@ -1737,7 +1732,7 @@
    "name": "Бруклін Бекхем",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Бруклин Бекхэм",
     "Brooklyn Beckham"
@@ -1747,7 +1742,7 @@
    "name": "Пенелопа Крус",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Penélope Cruz",
     "Penelope Cruz"
@@ -1769,7 +1764,7 @@
    "name": "Сальма Гаєк",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Сальма Хайек",
     "Сальма Хаєк",
@@ -1838,7 +1833,7 @@
    "name": "Адель",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Adele",
     "співачка Адель"
@@ -1859,7 +1854,7 @@
    "name": "Каньє Вест",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Канье Уэст",
     "Каньє Уест",
@@ -1882,7 +1877,7 @@
    "name": "Мадонна",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Madonna"
    ]
@@ -1921,7 +1916,7 @@
    "name": "Дженна Ортега",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Jenna Ortega"
    ]
@@ -1941,7 +1936,7 @@
    "name": "Анна Вінтур",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Анна Винтур",
     "Вінтур",
@@ -1953,7 +1948,7 @@
    "name": "Ліса BLACKPINK",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Лиса BLACKPINK",
     "Lisa BLACKPINK",
@@ -1965,7 +1960,7 @@
    "name": "BLACKPINK",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Блекпінк",
     "Блэкпинк"
@@ -1975,7 +1970,7 @@
    "name": "Селін Діон",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Селин Дион",
     "Celine Dion",
@@ -1986,7 +1981,7 @@
    "name": "Джонні Депп",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Джонни Депп",
     "Johnny Depp"
@@ -2016,7 +2011,7 @@
    "name": "Амаль Клуні",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Амаль Клуни",
     "Amal Clooney"
@@ -2036,7 +2031,7 @@
    "name": "Енн Гетевей",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Энн Хэтэуэй",
     "Енн Хетевей",
@@ -2057,7 +2052,7 @@
    "name": "Сара Джессіка Паркер",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Сара Джессика Паркер",
     "Sarah Jessica Parker"
@@ -2108,7 +2103,7 @@
    "name": "Король Чарльз III",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Чарльз III",
     "король Чарльз",
@@ -2140,7 +2135,7 @@
    "name": "Королева Летиція",
    "type": "person",
    "grp": "world",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Летиція",
     "Летиция",
@@ -2162,7 +2157,7 @@
    "name": "Prada",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Прада"
    ]
@@ -2171,7 +2166,7 @@
    "name": "Balenciaga",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Баленсіага",
     "Баленсиага"
@@ -2181,7 +2176,7 @@
    "name": "Saint Laurent",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Сен-Лоран",
     "Сен Лоран",
@@ -2193,14 +2188,14 @@
    "name": "Valentino",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": []
   },
   {
    "name": "Versace",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Версаче",
     "Донателла Версаче"
@@ -2210,7 +2205,7 @@
    "name": "Givenchy",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Живанші",
     "Живанши"
@@ -2220,7 +2215,7 @@
    "name": "Fendi",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Фенді",
     "Фенди"
@@ -2230,7 +2225,7 @@
    "name": "Bottega Veneta",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Боттега Венета"
    ]
@@ -2239,7 +2234,7 @@
    "name": "Loewe",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Лоеве",
     "Лоэве"
@@ -2258,7 +2253,7 @@
    "name": "Hermès",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Hermes",
     "Ермес",
@@ -2271,7 +2266,7 @@
    "name": "Burberry",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Барберрі",
     "Берберри"
@@ -2281,7 +2276,7 @@
    "name": "Dolce & Gabbana",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Dolce&Gabbana",
     "Дольче Габбана",
@@ -2292,7 +2287,7 @@
    "name": "Armani",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Армані",
     "Армани",
@@ -2441,7 +2436,7 @@
    "name": "H&M",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Hennes & Mauritz"
    ]
@@ -2503,7 +2498,7 @@
    "name": "Adidas",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Адідас",
     "Адидас"
@@ -2609,14 +2604,14 @@
    "name": "Cartier",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": []
   },
   {
    "name": "Tiffany & Co.",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Tiffany & Co",
     "Тіффані",
@@ -2713,7 +2708,7 @@
    "name": "Christian Louboutin",
    "type": "brand",
    "grp": "world_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Louboutin",
     "Лубутен",
@@ -2786,7 +2781,7 @@
    "name": "Estée Lauder",
    "type": "brand",
    "grp": "beauty",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Estee Lauder",
     "Есте Лаудер",
@@ -2823,7 +2818,7 @@
    "name": "Rare Beauty",
    "type": "brand",
    "grp": "beauty",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Рер Бʼюті",
     "Rare Beauty Селени Гомес"
@@ -2858,7 +2853,7 @@
    "name": "The Ordinary",
    "type": "brand",
    "grp": "beauty",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Зе Ординарі"
    ]
@@ -3278,7 +3273,7 @@
    "name": "Gasanova",
    "type": "brand",
    "grp": "ua_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Гасанова"
    ]
@@ -3296,7 +3291,7 @@
    "name": "Kachorovska",
    "type": "brand",
    "grp": "ua_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Качоровська",
     "Качоровская"
@@ -3306,7 +3301,7 @@
    "name": "Ruslan Baginskiy",
    "type": "brand",
    "grp": "ua_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Руслан Багінський",
     "Руслан Багинский"
@@ -3316,7 +3311,7 @@
    "name": "Nadya Dzyak",
    "type": "brand",
    "grp": "ua_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Надя Дзяк"
    ]
@@ -3325,7 +3320,7 @@
    "name": "Олена Рева",
    "type": "brand",
    "grp": "ua_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Elena Reva",
     "Елена Рева"
@@ -3335,7 +3330,7 @@
    "name": "Ienki Ienki",
    "type": "brand",
    "grp": "ua_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Єнкі Єнкі"
    ]
@@ -3344,7 +3339,7 @@
    "name": "Chereshnivska",
    "type": "brand",
    "grp": "ua_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Черешнівська"
    ]
@@ -3353,7 +3348,7 @@
    "name": "Arsenicum",
    "type": "brand",
    "grp": "ua_brand",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Арсенікум"
    ]
@@ -3394,7 +3389,7 @@
    "name": "MTV VMA",
    "type": "event",
    "grp": "event",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "VMA",
     "MTV Video Music Awards"
@@ -3480,7 +3475,7 @@
    "name": "Кохання на виживання",
    "type": "event",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "Любовь на выживание"
    ]
@@ -3489,7 +3484,7 @@
    "name": "Супермама",
    "type": "event",
    "grp": "ua_second",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": []
   },
   {
@@ -3548,7 +3543,7 @@
    "name": "День святого Валентина",
    "type": "event",
    "grp": "event",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "День закоханих",
     "Valentine's Day"
@@ -3579,7 +3574,7 @@
    "name": "Old money",
    "type": "trend",
    "grp": "trend",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "олд мані",
     "стиль старих грошей"
@@ -3589,7 +3584,7 @@
    "name": "Балеткор",
    "type": "trend",
    "grp": "trend",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "balletcore"
    ]
@@ -3598,7 +3593,7 @@
    "name": "Clean girl",
    "type": "trend",
    "grp": "trend",
-   "weight": 1.0,
+   "weight": 1,
    "aliases": [
     "клін герл"
    ]
