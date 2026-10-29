@@ -33,11 +33,11 @@ async function call(ctx: AiCtx, slotKey: string, payload: Record<string, unknown
 }
 
 /** Чат с ответом JSON (слот и модель — по задаче). Ответ не JSON — ошибка, которую можно повторить. */
-export async function chatJson(ctx: AiCtx, slotKey: string, system: string, user: string, model: string | undefined, maxTokens = 3000, timeoutMs = 120_000): Promise<Record<string, unknown>> {
+export async function chatJson(ctx: AiCtx, slotKey: string, system: string, user: string, model: string | undefined, maxTokens = 3000, timeoutMs = 120_000, temperature = 0.4): Promise<Record<string, unknown>> {
   const data = (await call(
     ctx,
     slotKey,
-    { messages: [{ role: "system", content: system }, { role: "user", content: user }], temperature: 0.4, response_format: { type: "json_object" }, reasoning: { effort: "none" }, max_tokens: maxTokens },
+    { messages: [{ role: "system", content: system }, { role: "user", content: user }], temperature, response_format: { type: "json_object" }, reasoning: { effort: "none" }, max_tokens: maxTokens },
     model,
     timeoutMs,
   )) as { choices?: { message?: { content?: string } }[] };

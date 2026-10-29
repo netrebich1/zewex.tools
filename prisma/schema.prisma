@@ -2745,6 +2745,8 @@ model NewsCluster {
   /// Статья про это событие уже есть на сайте проекта (поиск WordPress по герою): { url, title, at }
   onSite           Json?
   onSiteAt         DateTime?
+  /// Кластеры, которые модель сочла другой новостью (шаг склейки дублей не спрашивает их снова)
+  notSame          Json?
   /// new | in_work | published | rejected
   status           String    @default("new")
   alertedAt        DateTime?

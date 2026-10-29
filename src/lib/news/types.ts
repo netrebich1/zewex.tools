@@ -283,6 +283,7 @@ export type RunStats = {
   budgetStop?: string;
   summarized?: number;
   onSite?: number;
+  clustersMerged?: number;
   embedFilterOn?: boolean;
   log?: string[];
 };

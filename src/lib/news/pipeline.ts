@@ -8,6 +8,7 @@ import { addToCentroid, centroid, cos, pack, unpack } from "./vec";
 import { priorityOf, scoreCluster } from "./score";
 import { summaryStep } from "./work";
 import { onSiteStep } from "./onsite";
+import { heroSkeleton, mergeStep } from "./merge";
 import { projectSpend } from "./runs";
 import { alertText, sendTelegram } from "./telegram";
 import { BASE_PATH, emptyStats, parseSettings, parseState, type NewsSettings, type ProjectState, type RunStats, type ScorePart } from "./types";
@@ -267,6 +268,10 @@ export async function runPipeline(runId: string, shouldStop: () => boolean = () 
     // ── 6–7. Кластеры и балл ──
     await step("Кластеры");
     await clusterStep(project.id, s, stats);
+    if (paid && !shouldStop()) {
+      await step("Склейка дублей");
+      await mergeStep(project.id, ctx, s, stats, log);
+    }
     await step("Балл");
     await scoreStep(project, s, stats, entities);
     await step("Є на сайті");
@@ -513,7 +518,8 @@ async function clusterStep(projectId: string, s: NewsSettings, stats: RunStats) 
     let bestSim = 0;
     for (const c of live) {
       const sim = v && c.vec ? cos(v, c.vec) : jaccard(toks, c.toks) + 0.3;
-      const need = me && c.row.mainEntity === me.key ? s.clusterSimEntity : s.clusterSim;
+      const sameHero = !!me && (c.row.mainEntity === me.key || (heroSkeleton(me.name).length >= 3 && heroSkeleton(me.name) === heroSkeleton(c.row.mainEntityName)));
+      const need = sameHero ? s.clusterSimEntity : s.clusterSim;
       if (sim >= need && sim > bestSim) {
         best = c;
         bestSim = sim;
