@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { hostOf } from "./text";
-import { addonOfBrief, makeAngles, makeBrief, ourArticles, summarizeClusters, type Angle, type ClusterForAi } from "./brief";
+import { makeAngles, makeBrief, ourArticles, summarizeClusters, type Angle, type ClusterForAi } from "./brief";
 import type { AiCtx } from "./llm";
 import { deepResearch, type ClusterResearch } from "./research";
 import { checkOnSite } from "./onsite";
@@ -132,9 +132,6 @@ export async function buildBrief(userId: string, clusterId: string, idx: number)
       /* ресёрч не обязателен для ТЗ */
     }
   }
-  // Типы добавок в последних ТЗ проекта: модель их не повторяет, чтобы статьи подряд были разными.
-  const recent = await prisma.newsCluster.findMany({ where: { projectId: row.projectId, brief: { not: null }, id: { not: clusterId } }, orderBy: { briefAt: "desc" }, take: 6, select: { brief: true } });
-  const recentAddons = recent.map((r) => addonOfBrief(r.brief)).filter((x): x is string => !!x);
-  const md = await withCostRun(project.id, userId, "brief", clusterId, project.teamId, (ctx) => makeBrief(ctx, s, site, c, angle, ours, summaryUk, research, recentAddons), s);
+  const md = await withCostRun(project.id, userId, "brief", clusterId, project.teamId, (ctx) => makeBrief(ctx, s, site, c, angle, ours, summaryUk, research), s);
   await prisma.newsCluster.update({ where: { id: clusterId }, data: { angleIdx: idx, brief: md, briefAt: new Date(), status: "in_work", workById: userId } });
 }

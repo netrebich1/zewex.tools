@@ -1,4 +1,4 @@
-/** Пробное ТЗ по карточке без записи в базу: углы + ТЗ по первому углу. Аргументы: <clusterId> [типы добавок через запятую, которые не брать]. */
+/** Пробное ТЗ по карточке без записи в базу: углы + ТЗ по первому углу. Аргумент: <clusterId>. */
 import { prisma } from "@/lib/db";
 import { clusterForAi } from "@/lib/news/work";
 import { makeAngles, makeBrief, ourArticles } from "@/lib/news/brief";
@@ -12,7 +12,7 @@ async function main() {
   const ctx = { userId: p.createdById!, teamId: p.teamId, runId: "brief-test", classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u: number) => (cost += u) };
   const ours = await ourArticles(p.siteUrl, c.entity ?? c.title);
   const a = await makeAngles(ctx, s, c, ours);
-  const md = await makeBrief(ctx, s, "beautydaily.com.ua", c, a.angles[0], ours, row.summaryUk, null, (process.argv[3] ?? "").split(",").filter(Boolean));
+  const md = await makeBrief(ctx, s, "beautydaily.com.ua", c, a.angles[0], ours, row.summaryUk, null);
   console.log(md.split("## Внутрішні посилання")[0]);
   console.log("COST", cost.toFixed(4));
   await prisma.$disconnect();
