@@ -117,6 +117,25 @@ export function RecipeFields({ r, data, scope }: { r: Recipe; data: RecipeFields
         </section>
 
         <section className="rounded-xl border border-line p-3 space-y-3">
+          <div className="text-[13px] font-semibold">Блоговые статьи <span className="help">· как сделать, советы, чек-листы, рецепты — не подборки идей</span></div>
+          <div className="grid gap-1.5">
+            {([
+              ["auto", "Определять по каждой статье", "Сначала ищем статью в нашем сервисе статей; если её там нет — смотрим устройство страницы (шаги, разделы, списки) и заголовок."],
+              ["all", "Все статьи прогона — блоговые", "Для отдельного блогового прогона."],
+              ["none", "Все статьи — подборки идей", "Блоговые шаблоны не используются."],
+            ] as const).map(([v, l, h]) => (
+              <label key={v} className="flex items-start gap-2 text-[13px]"><input type="radio" name="blogMode" value={v} defaultChecked={r.blog.mode === v} className="mt-0.5" /><span><b>{l}</b> <span className="help">— {h}</span></span></label>
+            ))}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {num("blogAi", "ИИ-пины (блог)", r.blog.ai)}
+            {num("blogCanvas", "Canvas (блог)", r.blog.canvas)}
+            {num("blogPhotos", "Готовых фото-пинов", r.blog.photos)}
+          </div>
+          <p className="help">Это набор на одну блоговую статью вместо «Пинов на одну ссылку». Готовые фото-пины — вертикальные фото статьи в формате пина: публикуются как есть, все со ссылкой на статью, не больше указанного числа; фото, которые сайт уже публиковал, второй раз не берутся. Pinora блоговым статьям не делается. Доски — из досок с пометкой [блог] и досок для всех. В расписании пины одной блоговой статьи расходятся по разным дням.</p>
+        </section>
+
+        <section className="rounded-xl border border-line p-3 space-y-3">
           <div className="text-[13px] font-semibold">Расписание</div>
           <ScheduleModeFields s={r.schedule} />
           <div className="grid grid-cols-2 gap-2">

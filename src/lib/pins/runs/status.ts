@@ -65,7 +65,19 @@ export async function runStatus(runId: string): Promise<RunStatusView | null> {
     // расход прогона — по журналу портала (воркер дублирует сумму в PinRun.costUsd после каждой задачи)
     prisma.usageLog.aggregate({ _sum: { costUsd: true }, where: { refId: runId } }),
   ]);
-  return buildView(run, rows, job, { total: pagesAgg, withKeyword: pagesKw, errors: pagesErr }, problemRows, cost._sum.costUsd);
+  const view = buildView(run, rows, job, { total: pagesAgg, withKeyword: pagesKw, errors: pagesErr }, problemRows, cost._sum.costUsd);
+  const problems = view.problems;
+  // Блоговые статьи есть, а досок с пометкой [блог] у сайта нет — пины уйдут на общие доски; подсказываем завести.
+  const blogPages = await prisma.pinRunPage.count({ where: { runId: run.id, articleKind: { notIn: ["", "ideas"] } } });
+  const siteId = run.siteId;
+  if (blogPages && siteId && !(await prisma.pinBoard.count({ where: { siteId, purpose: "blog" } }))) {
+    problems.push({ severity: "warning", count: blogPages, stage: "meta", kind: "no_blog_boards", raw: "",
+      title: `Блоговых статей: ${blogPages}, а досок для блога у сайта нет`,
+      meaning: "Пины блоговых статей (как сделать, советы, чек-листы) ставятся на общие доски сайта вместе с подборками идей.",
+      action: "Заведите в Pinterest доски под блог (например, «… Tips & Guides») и допишите их в настройках сайта с пометкой [блог]. Для уже размеченных статей доски не поменяются." });
+  }
+  view.health = healthOf(problems);
+  return view;
 }
 
 /** Собирает вид прогона из уже загруженных данных (общий код для одной страницы и доски). */

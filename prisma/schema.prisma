@@ -385,6 +385,8 @@ model PinBoard {
   id        String  @id @default(uuid()) @db.Char(36)
   siteId    String  @db.Char(36)
   name      String
+  /// all | ideas | blog — для каких статей доска (блоговые статьи выбирают из blog + all)
+  purpose   String  @default("all")
   sortOrder Int     @default(0)
   site      PinSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
 
@@ -577,6 +579,12 @@ model PinRunPage {
   canvasPinSetId    String?   @db.Char(36)
   canvasHooks       Json?
   featuredImage     String?   @db.VarChar(1000)
+  /// Тип статьи (lib/pins/articleKind.ts): "" — ещё не определён, "ideas" — подборка идей, иначе тип блоговой статьи (how_to, tips…)
+  articleKind       String    @default("")
+  /// Откуда тип: manual (сотрудник) | run (настройка прогона) | blog (наш Pin Blog Article) | analyzer (разбор страницы) | title
+  kindSource        String    @default("")
+  /// Снимок ArticleInfo (заголовок, пункты по разделам, число) — живёт с прогоном, даже если статью блога потом удалят
+  kindInfo          Json?
   status            String    @default("pending")
   error             String?   @db.Text
   metaAttempts      Int       @default(0)

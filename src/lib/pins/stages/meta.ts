@@ -1,4 +1,5 @@
 import { safeFetch } from "@/lib/pins/fetch";
+import { analyzeHtml, type PageStructure } from "@/lib/pins/articleAnalyzer";
 
 /**
  * Title / H1 / число контентных фото и H2-секций с фото (порт edge-функции bulk-extract-meta).
@@ -12,6 +13,8 @@ export type PageMeta = {
   sectionImageCount: number;
   lang?: string;
   ogImage?: string;
+  /** Устройство статьи (разделы, списки, schema.org) — для типа статьи, когда её нет в нашем блоге. */
+  structure?: PageStructure;
   error?: string;
 };
 
@@ -138,7 +141,7 @@ export function parsePageMeta(html: string): PageMeta {
   const { imageCount, sectionImageCount } = countImages(clean);
   const lang = clean.match(/<html\b[^>]*\blang\s*=\s*["']?([a-zA-Z-]{2,10})/i)?.[1]?.toLowerCase();
   const ogImage = metaContent(clean, "og:image") || metaContent(clean, "twitter:image");
-  const meta: PageMeta = { title, h1, imageCount, sectionImageCount };
+  const meta: PageMeta = { title, h1, imageCount, sectionImageCount, structure: analyzeHtml(html) };
   if (lang) meta.lang = lang;
   if (ogImage) meta.ogImage = ogImage;
   if (!title && !h1) meta.error = "No title/h1 found";

@@ -48,6 +48,8 @@ export const schedule: StageHandler = async (ctx) => {
       lastDate: rc.recipe.schedule.lastDate || undefined,
       windowDays: rc.recipe.schedule.windowDays,
       perPagePerDay: rc.recipe.schedule.perPagePerDay,
+      // Блоговая статья — не больше 1 пина в день (мягко: норма дня важнее), пины статьи расходятся по дням.
+      pageCaps: new Map(rc.pages.filter((p) => p.articleKind && p.articleKind !== "ideas").map((p) => [p.id, 1] as const)),
       firstPinWindowDays: rc.recipe.schedule.firstPinWindowDays,
       stepMinDays: rc.recipe.schedule.stepMinDays,
       stepMaxDays: rc.recipe.schedule.stepMaxDays,

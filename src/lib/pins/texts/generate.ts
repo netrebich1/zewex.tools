@@ -36,6 +36,8 @@ export type TextItem = {
   seasonWord?: string;
   /** Год для этого пина ("2027") или пусто — год не упоминать. Решение по проценту «Год» — то же, что для картинки. */
   year?: string;
+  /** Блоговая статья (2026-10-29): тип по-английски («how-to guide», «checklist»…), число пунктов и главные пункты. */
+  article?: { type: string; count: number | null; points: string[] };
 };
 
 export type TextInput = {
@@ -100,6 +102,9 @@ ${audience ? `Audience: ${audience === "women" ? "women" : audience === "men" ? 
       ? `write all copy strictly in ${language} (override the keyword language).`
       : "match the language of the KEYWORD (Ukrainian keyword -> Ukrainian copy, Russian -> Russian, otherwise English)."
   }
+If an item has ARTICLE (a blog / how-to article, not an ideas roundup): the title promises what the reader will learn or fix
+(the solution, result or method of that article type) — never "ideas", "inspo" or "looks"; use the article's number only if ARTICLE gives it;
+the description says what the article covers, using 1-2 of its key points; no facts that are not in the points or titles.
 Vary sentence structure, openings and tone between items — every item must be UNIQUE.
 
 Return STRICT JSON only — an object with a "results" array in input order, no prose, no markdown:
@@ -133,6 +138,7 @@ export function buildUserPrompt(chunk: TextItem[], flags: Map<string, boolean>):
    SOURCE TITLE: ${sourceTitleOf(it) || "(none)"}
    REQUIRED SEASONAL TERMS: ${terms.join(", ") || "none"}
    CONTEXT: ${contextOf(it).slice(0, 400) || "(none)"}
+   ARTICLE: ${it.article ? `${it.article.type}${it.article.count ? `, ${it.article.count} items` : ""}${it.article.points.length ? `; key points: ${it.article.points.slice(0, 5).join("; ")}` : ""}` : "no (ideas / inspiration page)"}
    BOARD: ${it.boardName.trim() || "(none)"}
    YEAR: ${it.year || "none"}
    HASHTAGS: ${flags.get(it.id) ? "yes" : "no"}`;

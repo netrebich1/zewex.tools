@@ -8,6 +8,13 @@ import { featuredOnlyFor } from "@/lib/pins/types";
 import { articleKindsFor } from "@/lib/pins/articleKind";
 import type { StageHandler } from "./index";
 import { loadRunCtx, runQueue } from "./_shared";
+import sharp from "sharp";
+import { cachedPhoto } from "@/lib/pins/canvas/photos";
+
+/** Вертикальное фото в формате пина (2:3, 1:2…): высота заметно больше ширины. */
+const PIN_RATIO = 1.25;
+/** Сколько фото статьи без размеров в разметке проверяем загрузкой (размер берётся из файла). */
+const PROBE_MAX = 12;
 
 /**
  * Этап photos: фото статей. Часть публикуется (status READY), остальное — пул для Canvas (POOL).
@@ -17,11 +24,13 @@ import { loadRunCtx, runQueue } from "./_shared";
 export const photos: StageHandler = async (ctx) => {
   const rc = await loadRunCtx(ctx);
   const perPage = rc.recipe.mix.photos;
-  const wantPool = rc.recipe.mix.canvas > 0;
+  // Блоговые статьи: свой лимит готовых фото-пинов (recipe.blog.photos), Canvas-пул — если Canvas включён хоть где-то.
+  const blogPhotos = rc.recipe.blog.photos;
+  const wantPool = rc.recipe.mix.canvas > 0 || rc.recipe.blog.canvas > 0;
   const todo = rc.pages.filter((p) => !p.photosAt && p.keyword);
   await ctx.tick({ done: 0, total: todo.length, label: "Фото из статей" });
   if (!todo.length) return { summary: "фото уже собраны" };
-  if (perPage <= 0 && !wantPool) {
+  if (perPage <= 0 && blogPhotos <= 0 && !wantPool) {
     await prisma.pinRunPage.updateMany({ where: { id: { in: todo.map((p) => p.id) } }, data: { photosAt: new Date() } });
     return { summary: "фото выключены в рецепте" };
   }
@@ -78,9 +87,45 @@ export const photos: StageHandler = async (ctx) => {
   const existing = await prisma.pinRunItem.findMany({ where: { runId: rc.run.id, engine: "PHOTO" }, select: { pageId: true, sourceImageUrl: true } });
   const have = new Set(existing.map((e) => `${e.pageId}|${e.sourceImageUrl}`));
 
+  // Блоговые статьи: фото, которые сайт уже публиковал в прошлых прогонах, второй раз не идут (Pinterest — дубль).
+  const blogUrls = todo.filter((p) => isBlogPage(p.id)).flatMap((p) => (found.get(p.id) || []).map((i) => i.url));
+  const usedBefore = new Set(blogUrls.length ? (await prisma.pinRunItem.findMany({
+    where: { siteId: rc.site.id, engine: "PHOTO", runId: { not: rc.run.id }, status: { notIn: ["POOL", "REMOVED"] }, sourceImageUrl: { in: [...new Set(blogUrls)] } },
+    select: { sourceImageUrl: true },
+  })).map((r) => r.sourceImageUrl) : []);
+  let blogPinPhotos = 0;
+
   let created = 0;
   for (const p of todo) {
     const imgs = (found.get(p.id) || []).filter((i) => featuredPages.has(p.id) || !frequent.has(i.url));
+    if (isBlogPage(p.id) && !featuredPages.has(p.id)) {
+      // Готовые фото-пины статьи (вертикальные, в формате пина): первые blog.photos по порядку статьи — как есть
+      // и всегда со ссылкой на статью; остальное (и горизонтальные фото) — пул для Canvas.
+      const pinLike: string[] = [];
+      let probed = 0;
+      for (const i of imgs) {
+        if (pinLike.length >= blogPhotos) break;
+        if (usedBefore.has(i.url)) continue;
+        let w = i.width ?? 0, h = i.height ?? 0;
+        if ((!w || !h) && probed < PROBE_MAX) {
+          probed++;
+          try { const m = await sharp(await cachedPhoto(i.url, ctx.signal)).metadata(); w = m.width ?? 0; h = m.height ?? 0; } catch { /* битое фото */ }
+        }
+        if (w && h && h / w >= PIN_RATIO) pinLike.push(i.url);
+      }
+      const pick = new Set(pinLike);
+      blogPinPhotos += pick.size;
+      const rows = imgs
+        .filter((i) => !have.has(`${p.id}|${i.url}`) && (pick.has(i.url) || wantPool))
+        .map((i, k) => ({
+          runId: rc.run.id, pageId: p.id, siteId: rc.site.id, kind: "photo", engine: "PHOTO" as const, sourceImageUrl: i.url,
+          targetLink: pick.has(i.url) ? (p.finalUrl || p.url) : "",
+          status: pick.has(i.url) ? ("READY" as const) : ("POOL" as const), sortOrder: 1000 + k,
+        }));
+      if (rows.length) { await prisma.pinRunItem.createMany({ data: rows }); created += rows.filter((r) => r.status === "READY").length; }
+      await prisma.pinRunPage.update({ where: { id: p.id }, data: { photosAt: new Date(), imageCount: Math.max(p.imageCount, imgs.length) } });
+      continue;
+    }
     const plan = planPhotos({ images: imgs.map((i) => i.url), perPage, linkPercent: rc.recipe.publishing.photoLinkPercent, seed: hash32(`${rc.settings.seed}|${p.id}|photos`) });
     const rows = plan
       .filter((x) => !have.has(`${p.id}|${x.url}`))
@@ -102,5 +147,5 @@ export const photos: StageHandler = async (ctx) => {
     }
     await prisma.pinRunPage.update({ where: { id: p.id }, data: { photosAt: new Date(), imageCount: Math.max(p.imageCount, imgs.length) } });
   }
-  return { summary: `фото: ${created} к публикации, страниц без фото: ${failed}${blogPages ? `; блоговых статей (все фото): ${blogPages}` : ""}${featuredPages.size ? `; только миниатюра: ${featuredPages.size} стр. (из WordPress: ${fromWp})` : ""}` };
+  return { summary: `фото: ${created} к публикации, страниц без фото: ${failed}${blogPages ? `; блоговых статей: ${blogPages}, готовых фото-пинов из них: ${blogPinPhotos} (лимит ${blogPhotos} на статью)` : ""}${featuredPages.size ? `; только миниатюра: ${featuredPages.size} стр. (из WordPress: ${fromWp})` : ""}` };
 };

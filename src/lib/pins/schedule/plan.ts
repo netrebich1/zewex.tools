@@ -51,6 +51,8 @@ export type ScheduleInput = {
   windowDays?: number;
   /** Максимум пинов одной страницы в день (0 = без ограничения). */
   perPagePerDay?: number;
+  /** Свой максимум пинов в день для отдельных страниц (блоговые статьи — 1: одна ссылка не повторяется в дне). */
+  pageCaps?: ReadonlyMap<string, number>;
   /** Первый пин страницы выходит в первые N дней окна. */
   firstPinWindowDays?: number;
   stepMinDays?: number;
@@ -236,8 +238,10 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
     const ownRoom = mode === "dates" ? Number.POSITIVE_INFINITY : capAt(off) - (own.get(keys[off]) ?? 0);
     return Math.max(0, Math.min(siteRoom, ownRoom));
   };
-  const pageFree = (off: number, pageId: string): boolean =>
-    perPageCap === 0 || (pageLoad.get(`${keys[off]}|${pageId}`) ?? 0) < perPageCap;
+  const pageFree = (off: number, pageId: string): boolean => {
+    const capOf = input.pageCaps?.get(pageId) ?? perPageCap;
+    return capOf === 0 || (pageLoad.get(`${keys[off]}|${pageId}`) ?? 0) < capOf;
+  };
   /** Последний день, куда уже поставлен пин страницы — более поздние пины страницы раньше него не уходят. */
   const lastByPage = new Map<string, number>();
   const noRoom = cap === 0 && !input.quotaAt;

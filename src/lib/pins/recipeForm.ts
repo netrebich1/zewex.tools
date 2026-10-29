@@ -56,6 +56,10 @@ export function recipeFromForm(f: FormData, base: unknown, opts: RecipeFormOptio
       limit: num(f, "pagesLimit", r.pages.limit, 1, MAX_RUN_PAGES),
       skipUsed: has("pagesSkipUsedPresent") ? f.get("pagesSkipUsed") === "on" : r.pages.skipUsed,
     } : r.pages,
+    blog: has("blogMode") ? {
+      mode: str(f, "blogMode") === "all" ? "all" : str(f, "blogMode") === "none" ? "none" : "auto",
+      ai: num(f, "blogAi", r.blog.ai, 0, 20), canvas: num(f, "blogCanvas", r.blog.canvas, 0, 20), photos: num(f, "blogPhotos", r.blog.photos, 0, 20),
+    } : r.blog,
     mix: has("mixAi") ? { ai: num(f, "mixAi", r.mix.ai, 0, 20), photos: num(f, "mixPhotos", r.mix.photos, 0, 20), canvas: num(f, "mixCanvas", r.mix.canvas, 0, 20), pinora: num(f, "mixPinora", r.mix.pinora, 0, 20) } : r.mix,
     photosMode: has("photosMode") ? ((["featured_only", "sections"] as const).find((v) => v === str(f, "photosMode")) ?? "auto") : r.photosMode,
     sets: {

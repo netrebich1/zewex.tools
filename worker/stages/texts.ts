@@ -9,6 +9,14 @@ import type { StageHandler } from "./index";
 import { chunk, failItem, loadRunCtx, notRetryYet, okPatch, type ItemOutcome } from "./_shared";
 
 /** Этап texts: заголовок, описание и alt для одобренных пинов с картинкой; затем уникализация заголовков прогона. */
+/** Тип блоговой статьи для текстов пина (сохранён на этапе meta); подборкам — ничего. */
+const ARTICLE_TYPES: Record<string, string> = { how_to: "step-by-step how-to guide", tips: "tips list", checklist: "checklist", fix: "problem and fix guide", explain: "explainer (why / what is)", compare: "comparison / buying guide", recipe: "recipe", plan: "plan / program" };
+function articleFor(page: { articleKind: string; kindInfo: unknown }): TextItem["article"] {
+  if (!page.articleKind || page.articleKind === "ideas") return undefined;
+  const info = (page.kindInfo ?? {}) as { count?: number | null; points?: string[] };
+  return { type: ARTICLE_TYPES[page.articleKind] ?? "how-to article", count: info.count ?? null, points: Array.isArray(info.points) ? info.points.map(String) : [] };
+}
+
 export const texts: StageHandler = async (ctx) => {
   const rc = await loadRunCtx(ctx);
   const items = await prisma.pinRunItem.findMany({
@@ -21,7 +29,7 @@ export const texts: StageHandler = async (ctx) => {
       ],
     },
     orderBy: { sortOrder: "asc" },
-    include: { page: { select: { keyword: true, topic: true, pageTitle: true, h1: true, url: true, finalUrl: true, season: true, seasonWord: true, boards: true } } },
+    include: { page: { select: { keyword: true, topic: true, pageTitle: true, h1: true, url: true, finalUrl: true, season: true, seasonWord: true, boards: true, articleKind: true, kindInfo: true } } },
   });
   await ctx.tick({ done: 0, total: items.length, label: "Тексты" });
   const acc: ItemOutcome = { retry: 0 };
@@ -43,6 +51,7 @@ export const texts: StageHandler = async (ctx) => {
       season: it.page.season || undefined,
       seasonWord: it.page.seasonWord || undefined,
       year: itemYear(it, it.page, rc.recipe.text),
+      article: articleFor(it.page),
     }));
     try {
       const res = await generatePinTexts(rc.ai, {

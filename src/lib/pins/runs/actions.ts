@@ -36,6 +36,8 @@ export function parseUrls(text: string): { urls: string[]; invalid: string[]; du
       invalid.push(s);
       continue;
     }
+    // «url», «pulish» и прочие слова без точки — не ссылки (так в прогон попадали заголовки таблиц).
+    if (!u.hostname.includes(".")) { invalid.push(s); continue; }
     u.hash = "";
     const norm = u.toString();
     if (seen.has(norm)) {
@@ -72,9 +74,9 @@ export async function createRun(me: CurrentUser, input: CreateRunInput): Promise
 
   const recipe = mergeRecipe(input.recipe ?? site.recipe);
   if (input.moderationMode) recipe.schedule.moderationMode = input.moderationMode;
-  const enabledKinds = Object.values(recipe.mix).filter((v) => v > 0).length;
+  const enabledKinds = Object.values(recipe.mix).filter((v) => v > 0).length + (recipe.blog.mode !== "none" ? [recipe.blog.ai, recipe.blog.canvas, recipe.blog.photos].filter((v) => v > 0).length : 0);
   if (!enabledKinds) throw new Error("В рецепте сайта выключены все типы пинов");
-  if (recipe.mix.ai > 0 && !recipe.sets.aiSetIds.length) throw new Error("В рецепте включены ИИ-пины, но не выбраны наборы стилей");
+  if (recipe.mix.ai > 0 && recipe.blog.mode !== "all" && !recipe.sets.aiSetIds.length) throw new Error("В рецепте включены ИИ-пины, но не выбраны наборы стилей");
 
   const open = await prisma.pinRun.findMany({ where: { siteId: site.id, status: { notIn: ["DONE", "FAILED"] } }, select: { id: true, name: true, pages: { select: { url: true } } } });
   for (const r of open) {
@@ -89,11 +91,11 @@ export async function createRun(me: CurrentUser, input: CreateRunInput): Promise
     if (used.length) warnings.push(`${used.length} ссылок уже использовались на этом сайте раньше; они включены в прогон.`);
   }
 
-  const seed = hash32(`${site.id}|${Date.now()}`);
-  const settings: RunSettings = { ...recipe, siteName: site.name, siteSlug: site.slug, seed, launchedAt: new Date().toISOString(), ...(estimate ? { estimate: estimate.reservation } : {}) };
   // Резерв под прогон: оценка по ключам команды сайта с учётом идущих прогонов. Сбой оценки запуск не останавливает.
   const estimate = await runEstimate(me, { pages: input.urls.length, mix: recipe.mix, teamId: site.teamId }).catch(() => null);
   if (estimate) warnings.push(...estimate.risks);
+  const seed = hash32(`${site.id}|${Date.now()}`);
+  const settings: RunSettings = { ...recipe, siteName: site.name, siteSlug: site.slug, seed, launchedAt: new Date().toISOString(), ...(estimate ? { estimate: estimate.reservation } : {}) };
   const run = await prisma.$transaction(async (tx) => {
     const run = await tx.pinRun.create({
       data: {

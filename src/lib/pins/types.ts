@@ -39,6 +39,9 @@ export const SCHEDULED_PER_DAY = 100;
 export const MAX_DAY_PINS = 200;
 /** Максимум статей (ссылок) в одном прогоне. */
 export const MAX_RUN_PAGES = 3000;
+export type BlogRecipe = { mode: "auto" | "all" | "none"; ai: number; canvas: number; photos: number };
+export const DEFAULT_BLOG: BlogRecipe = { mode: "auto", ai: 2, canvas: 1, photos: 2 };
+const clampInt = (v: unknown, min: number, max: number, def: number): number => { const n = Math.floor(Number(v)); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : def; };
 export type ScheduleMode = "fixed" | "dates" | "growth" | "insert";
 export const SCHEDULE_MODES: readonly ScheduleMode[] = ["fixed", "dates", "growth", "insert"];
 export const asScheduleMode = (v: unknown): ScheduleMode => (SCHEDULE_MODES.includes(v as ScheduleMode) ? (v as ScheduleMode) : "fixed");
@@ -102,6 +105,12 @@ export type Recipe = {
   pages: PagesSource;
   mix: { ai: number; photos: number; canvas: number; pinora: number };
   /**
+   * Блоговые статьи (уровень прогона, 2026-10-29): mode — auto (по статье) | all (все статьи прогона блоговые) | none (все подборки);
+   * свой набор пинов на статью: ai — блоговые ИИ-пины, canvas — блоговые Canvas, photos — сколько готовых фото-пинов
+   * (вертикальные фото статьи в формате пина) публиковать как есть, все со ссылкой; Pinora блоговым статьям не делается.
+   */
+  blog: BlogRecipe;
+  /**
    * Какие фото статьи брать: auto — для кулинарных статей только миниатюра записи из WordPress, для остальных фото из статьи;
    * sections — всегда фото из статьи (первое в каждом разделе H2); featured_only — всегда только миниатюра.
    * Старое значение "all" читается как auto.
@@ -156,6 +165,7 @@ export type Recipe = {
 export const DEFAULT_RECIPE: Recipe = {
   pages: { source: "manual", postType: "posts", categories: [], excludeCategories: false, period: "all", after: "", before: "", days: 30, limit: 100, skipUsed: true },
   mix: { ai: 3, photos: 4, canvas: 2, pinora: 0 },
+  blog: DEFAULT_BLOG,
   photosMode: "auto",
   sets: { aiSetIds: [], canvasSetIds: [], canvasStyleIds: [], pinoraTypes: [], pinoraNiche: "auto", canvasPhotoCounts: [] },
   text: {
@@ -274,7 +284,7 @@ export function runDefaultsFrom(siteRecipe: unknown, lastRunSettings: unknown | 
   const last = lastRunSettings ? mergeRecipe(lastRunSettings) : DEFAULT_RECIPE;
   return {
     ...site,
-    pages: last.pages, mix: last.mix, photosMode: last.photosMode,
+    pages: last.pages, mix: last.mix, blog: last.blog, photosMode: last.photosMode,
     // Число фото на Canvas-пине задаётся только в прогоне — берём из прошлого прогона, остальные наборы — из сайта.
     sets: { ...site.sets, canvasPhotoCounts: last.sets.canvasPhotoCounts },
     text: { ...site.text, percents: last.text.percents, numberSource: last.text.numberSource, hashtags: last.text.hashtags, variety: last.text.variety, elements: last.text.elements, year: last.text.year, yearRules: last.text.yearRules, siteName: last.text.siteName },
@@ -304,6 +314,7 @@ export function mergeRecipe(partial: unknown): Recipe {
   return {
     pages: mergePages(p.pages),
     mix: { ...d.mix, ...(p.mix ?? {}) },
+    blog: ((b) => ({ mode: b.mode === "all" || b.mode === "none" ? b.mode : "auto", ai: clampInt(b.ai, 0, 20, DEFAULT_BLOG.ai), canvas: clampInt(b.canvas, 0, 20, DEFAULT_BLOG.canvas), photos: clampInt(b.photos, 0, 20, DEFAULT_BLOG.photos) }))({ ...DEFAULT_BLOG, ...((p.blog as Partial<BlogRecipe> | undefined) ?? {}) }),
     photosMode: p.photosMode === "featured_only" || p.photosMode === "sections" ? p.photosMode : "auto",
     sets: {
       ...d.sets, ...(p.sets ?? {}),

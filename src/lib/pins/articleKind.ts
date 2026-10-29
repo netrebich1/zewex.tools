@@ -10,15 +10,21 @@
  *  2. Иначе — по заголовку страницы (title/H1/ключ): «How to…», «Why…», «… Checklist», «… Recipe», «X vs Y»…
  *     Заголовки-подборки («25 Fall Nail Ideas», «30 Outfits…») всегда остаются подборками.
  *  3. Ничего не подошло — подборка идей (как было до появления блоговых шаблонов).
+ *
+ * С 2026-10-29 тип решается ОДИН раз на этапе meta (`detectArticleKinds`) и хранится в странице прогона
+ * (`PinRunPage.articleKind / kindSource / kindInfo`): статья нашего блога → анализатор страницы
+ * (`articleAnalyzer.ts`, если статьи в блоге уже нет) → заголовок. Ручная отметка сотрудника и настройка
+ * прогона «все статьи блоговые / все подборки» сильнее автоматики. Остальные этапы читают сохранённое.
  */
 import { prisma } from "@/lib/db";
+import { kindFromStructure, type PageStructure } from "./articleAnalyzer";
 
 export const ARTICLE_KINDS = ["how_to", "tips", "checklist", "fix", "explain", "compare", "recipe", "plan"] as const;
 export type ArticleKind = (typeof ARTICLE_KINDS)[number];
 export type ArticleInfo = {
   kind: ArticleKind | null;
   count: number | null;
-  source: "blog" | "title" | "none";
+  source: "blog" | "title" | "none" | "analyzer" | "manual" | "run";
   /** Заголовок статьи (H1 нашей статьи или страницы) — основа заголовка пина. */
   title?: string;
   /** Короткие пункты статьи (шаги, ошибки, советы, что понадобится) — только у статей нашего блога. */
@@ -192,7 +198,56 @@ export function normUrl(u: string | null | undefined): string {
   return String(u ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/[?#].*$/, "").replace(/\/+$/, "");
 }
 
-type PageLike = { id: string; url: string; finalUrl?: string | null; pageTitle?: string | null; h1?: string | null; keyword?: string | null };
+type PageLike = { id: string; url: string; finalUrl?: string | null; pageTitle?: string | null; h1?: string | null; keyword?: string | null; articleKind?: string | null; kindSource?: string | null; kindInfo?: unknown };
+
+/** Режим прогона: auto — по статье; all — все статьи блоговые; none — все подборки идей. */
+export type BlogMode = "auto" | "all" | "none";
+export type StoredKind = { articleKind: string; kindSource: string; kindInfo: ArticleInfo | null };
+
+const isKind = (k: unknown): k is ArticleKind => ARTICLE_KINDS.includes(k as ArticleKind);
+
+/** Сохранённый тип страницы (или null, если ещё не определён). */
+export function storedKind(p: PageLike): ArticleInfo | null {
+  if (!p.articleKind) return null;
+  if (p.articleKind === "ideas") return { kind: null, count: null, source: (p.kindSource as ArticleInfo["source"]) || "none" };
+  const info = (p.kindInfo ?? null) as ArticleInfo | null;
+  return { ...(info ?? { count: null }), kind: isKind(p.articleKind) ? p.articleKind : "how_to", source: (p.kindSource as ArticleInfo["source"]) || info?.source || "title" } as ArticleInfo;
+}
+
+async function blogPostsByUrl(wpConnectionId: string | null | undefined): Promise<Map<string, ArticleInfo>> {
+  const out = new Map<string, ArticleInfo>();
+  if (!wpConnectionId) return out;
+  const posts = await prisma.blogPost.findMany({
+    where: { site: { accessId: wpConnectionId }, wpUrl: { not: null } },
+    select: { wpUrl: true, recipe: true, brief: true, outline: true, h1: true },
+  }).catch(() => []);
+  for (const p of posts) out.set(normUrl(p.wpUrl), kindFromBlogPost(p));
+  return out;
+}
+
+/**
+ * Решение типа для страниц прогона (этап meta): ручная отметка не трогается; режим прогона all/none;
+ * иначе наш блог → устройство страницы → заголовок. Возвращает то, что нужно записать в PinRunPage.
+ */
+export async function detectArticleKinds(wpConnectionId: string | null | undefined, pages: PageLike[], structures: ReadonlyMap<string, PageStructure | undefined>, mode: BlogMode = "auto"): Promise<Map<string, StoredKind>> {
+  const blog = pages.length ? await blogPostsByUrl(wpConnectionId) : new Map<string, ArticleInfo>();
+  const out = new Map<string, StoredKind>();
+  for (const p of pages) {
+    if (p.kindSource === "manual") continue;
+    const title = (p.h1 || p.pageTitle || "").trim() || undefined;
+    const byTitle = kindFromTitle(p.pageTitle, p.h1, p.keyword);
+    const hit = blog.get(normUrl(p.finalUrl || p.url)) ?? blog.get(normUrl(p.url));
+    const st = structures.get(p.id);
+    const byPage = !hit && st ? kindFromStructure(st, byTitle.kind) : null;
+    let info: ArticleInfo | null = hit ?? (byPage && byPage !== "ideas" ? { ...byPage, count: byPage.count ?? byTitle.count } : byPage === "ideas" ? null : byTitle.kind ? byTitle : null);
+    if (mode === "none") { out.set(p.id, { articleKind: "ideas", kindSource: "run", kindInfo: null }); continue; }
+    if (mode === "all" && !info) info = { ...byTitle, kind: byTitle.kind ?? "how_to", source: "run" };
+    if (!info?.kind) { out.set(p.id, { articleKind: "ideas", kindSource: byPage === "ideas" ? "analyzer" : "title", kindInfo: null }); continue; }
+    const full = { ...info, title: info.title || title };
+    out.set(p.id, { articleKind: info.kind, kindSource: info.source, kindInfo: full });
+  }
+  return out;
+}
 
 /**
  * Тип каждой страницы прогона: сначала ищем статью нашего блога по адресу (статьи сайтов, привязанных к тому же
@@ -200,15 +255,11 @@ type PageLike = { id: string; url: string; finalUrl?: string | null; pageTitle?:
  */
 export async function articleKindsFor(wpConnectionId: string | null | undefined, pages: PageLike[]): Promise<Map<string, ArticleInfo>> {
   const out = new Map<string, ArticleInfo>();
-  const blogByUrl = new Map<string, ArticleInfo>();
-  if (wpConnectionId && pages.length) {
-    const posts = await prisma.blogPost.findMany({
-      where: { site: { accessId: wpConnectionId }, wpUrl: { not: null } },
-      select: { wpUrl: true, recipe: true, brief: true, outline: true, h1: true },
-    }).catch(() => []);
-    for (const p of posts) blogByUrl.set(normUrl(p.wpUrl), kindFromBlogPost(p));
-  }
-  for (const p of pages) {
+  // Сначала сохранённое на этапе meta; старые прогоны (до 2026-10-29) — расчёт на лету, как раньше.
+  const rest: PageLike[] = [];
+  for (const p of pages) { const st = storedKind(p); if (st) out.set(p.id, { ...st, title: st.title || (p.h1 || p.pageTitle || "").trim() || undefined }); else rest.push(p); }
+  const blogByUrl = rest.length ? await blogPostsByUrl(wpConnectionId) : new Map<string, ArticleInfo>();
+  for (const p of rest) {
     const hit = blogByUrl.get(normUrl(p.finalUrl || p.url)) ?? blogByUrl.get(normUrl(p.url));
     const info = hit ?? kindFromTitle(p.pageTitle, p.h1, p.keyword);
     out.set(p.id, { ...info, title: info.title || (p.h1 || p.pageTitle || "").trim() || undefined });

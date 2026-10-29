@@ -28,7 +28,9 @@ const CANVAS_CONCURRENCY = Math.max(1, Number(process.env.PINS_CANVAS_CONCURRENC
  */
 export const canvasStage: StageHandler = async (ctx) => {
   const rc = await loadRunCtx(ctx);
-  const perPage = rc.recipe.mix.canvas;
+  // Подборки — mix.canvas, блоговые статьи — свой набор прогона (recipe.blog.canvas).
+  const perPageIdeas = rc.recipe.mix.canvas, perPageBlog = rc.recipe.blog.canvas;
+  const perPage = Math.max(perPageIdeas, perPageBlog);
   if (perPage <= 0) return { summary: "canvas выключен" };
   const styles = await approvedStylesForSite(rc.site.id, rc.recipe.sets.canvasSetIds, rc.recipe.sets.canvasStyleIds ?? []);
   if (!styles.length) return { fatal: (rc.recipe.sets.canvasStyleIds?.length || rc.recipe.sets.canvasSetIds.length)
@@ -64,12 +66,13 @@ export const canvasStage: StageHandler = async (ctx) => {
     if (!info.count) { const noNum = list.filter((s) => s.spec.number?.mode !== "required"); if (noNum.length) list = noNum; }
     return list;
   };
-  const groups = new Map<string, { styles: typeof styles; pages: typeof pages }>();
+  const groups = new Map<string, { styles: typeof styles; pages: typeof pages; perPage: number }>();
   for (const p of pages) {
     const info = kinds.get(p.id);
+    if ((info?.kind ? perPageBlog : perPageIdeas) <= 0) continue;
     const blog = info?.kind && allBlog.length ? blogStylesFor(info) : null;
-    const key = blog ? `blog:${info!.kind}:${info!.count ? 1 : 0}` : "ideas";
-    const g = groups.get(key) ?? { styles: blog ?? (ideaStyles.length ? ideaStyles : styles), pages: [] };
+    const key = blog ? `blog:${info!.kind}:${info!.count ? 1 : 0}` : info?.kind ? "blog-any" : "ideas";
+    const g = groups.get(key) ?? { styles: blog ?? (ideaStyles.length ? ideaStyles : styles), pages: [], perPage: info?.kind ? perPageBlog : perPageIdeas };
     g.pages.push(p);
     groups.set(key, g);
   }
@@ -79,7 +82,7 @@ export const canvasStage: StageHandler = async (ctx) => {
       pages: g.pages.map((p) => ({ id: p.id, poolPhotoCount: (poolByPage.get(p.id) ?? []).length, existingCanvasCount: existingCount(p.id), quota: p.canvasQuota })),
       // Число фото на пине ограничивается настройкой прогона (например, кулинария — только 1 фото).
       styles: g.styles.map((s) => ({ id: s.id, counts: s.spec.counts.filter((n) => !allowedCounts.length || allowedCounts.includes(n)) })),
-      perPage,
+      perPage: g.perPage,
       seed: rc.settings.seed,
     }));
   }

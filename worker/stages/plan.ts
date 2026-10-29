@@ -29,6 +29,7 @@ export const plan: StageHandler = async (ctx) => {
   const kinds = await articleKindsFor(rc.site.wpConnectionId, todo);
   const blogTodo = todo.filter((p) => kinds.get(p.id)?.kind);
   const ideaTodo = todo.filter((p) => !kinds.get(p.id)?.kind);
+  const perPageBlogAi = rc.recipe.blog.ai;
   if (perPageAi > 0 && !sets.length && ideaTodo.length) return { fatal: "В рецепте включены ИИ-пины, но не выбран ни один набор стилей. Откройте настройки сайта → Стили." };
   // Ниша Pinora: заданная в прогоне для всех статей, либо «авто» — по каждой статье; типы — только допустимые для ниши.
   const pinoraNiche = rc.recipe.sets.pinoraNiche && rc.recipe.sets.pinoraNiche !== "auto" ? rc.recipe.sets.pinoraNiche : "";
@@ -58,7 +59,8 @@ export const plan: StageHandler = async (ctx) => {
         usedCounts,
       })
     : [];
-  if (perPageAi > 0 && blogTodo.length) {
+  // Блоговые статьи — свой набор прогона (recipe.blog.ai), а не общий mix.ai.
+  if (perPageBlogAi > 0 && blogTodo.length) {
     const byKind = new Map<string, typeof blogTodo>();
     for (const p of blogTodo) { const k = kinds.get(p.id)!.kind!; byKind.set(k, [...(byKind.get(k) ?? []), p]); }
     for (const [kind, list] of byKind) {
@@ -66,7 +68,7 @@ export const plan: StageHandler = async (ctx) => {
         pages: list.map((p) => ({ id: p.id, topic: "", existingAiCount: countOf(p.id, "OPENAI"), quota: p.pinQuota })),
         sets: [{ id: "blog", name: "Blog", topic: "", styleIds: blogAiStylesFor(kind).map((s) => s.id) }],
         exclusions,
-        perPage: perPageAi,
+        perPage: perPageBlogAi,
         seed: hash32(`${rc.settings.seed}|blog|${kind}`),
         usedCounts,
         // у блоговых стилей по 5 подстилей — одной статье разные стили, а не два подстиля одного
@@ -75,7 +77,7 @@ export const plan: StageHandler = async (ctx) => {
     }
   }
   const pinoraRows = perPagePinora > 0
-    ? planPinoraPins({ pages: todo.map((p) => ({ id: p.id, niche: pinoraNiche || p.niche || rc.site.niche, existingPinoraCount: countOf(p.id, "PINORA") })), types: pinoraTypes, perPage: perPagePinora, seed: rc.settings.seed })
+    ? planPinoraPins({ pages: ideaTodo.map((p) => ({ id: p.id, niche: pinoraNiche || p.niche || rc.site.niche, existingPinoraCount: countOf(p.id, "PINORA") })), types: pinoraTypes, perPage: perPagePinora, seed: rc.settings.seed })
     : [];
 
   const siteName = pinSiteName(rc.recipe.text, { linkDomain: rc.recipe.publishing.linkDomain, siteName: rc.settings.siteName });

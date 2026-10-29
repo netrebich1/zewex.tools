@@ -3,6 +3,7 @@ import { Card, Field } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { saveBoards, saveRecipe } from "@/actions/pins";
+import { asBoardPurpose, boardLine } from "@/lib/pins/boards";
 import { mergeRecipe } from "@/lib/pins/types";
 import { PINORA_TYPES } from "@/lib/pins/prompts/pinora";
 import { approvedCatalogStyles } from "@/lib/pins/canvas/catalog";
@@ -50,9 +51,10 @@ export async function PinsSiteSettings({ site, wps }: Props) {
         </ActionForm>
       </Card>
 
-      <Card title="Доски Pinterest" description="По одной в строке. ИИ выбирает доску для каждой статьи из этого списка.">
+      <Card title="Доски Pinterest" description="По одной в строке. ИИ выбирает доску для каждой статьи из этого списка. Допишите в конце строки [блог] — доска только для блоговых статей (как сделать, советы, чек-листы), [идеи] — только для подборок идей; без пометки — для всех статей.">
         <ActionForm action={saveBoards} hidden={{ id }}>
-          <textarea name="boards" className="input font-mono text-[13px]" rows={Math.min(16, Math.max(5, site.boards.length + 1))} defaultValue={site.boards.map((b) => b.name).join("\n")} />
+          <textarea name="boards" className="input font-mono text-[13px]" rows={Math.min(16, Math.max(5, site.boards.length + 1))} defaultValue={site.boards.map(boardLine).join("\n")} placeholder={"Fall Nail Ideas [идеи]\nNail Care Tips [блог]\nNails"} />
+          <p className="help">Сейчас: для всех — {site.boards.filter((b) => asBoardPurpose(b.purpose) === "all").length}, только блог — {site.boards.filter((b) => asBoardPurpose(b.purpose) === "blog").length}, только идеи — {site.boards.filter((b) => asBoardPurpose(b.purpose) === "ideas").length}.</p>
           <SubmitButton pendingText="…">Сохранить доски</SubmitButton>
         </ActionForm>
       </Card>

@@ -48,6 +48,22 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteId]);
 
+  // Статьи нашего сервиса статей (Pin Blog Article) для этого сайта, по которым ещё не было пинов.
+  const [blogNote, setBlogNote] = useState("");
+  const loadBlogPosts = async () => {
+    setBlogNote("Загружаю…");
+    try {
+      const r = await fetch(`/api/pins/blog-posts?site=${siteId}`, { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Ошибка");
+      const urls: string[] = j.urls ?? [];
+      const have = new Set(manualUrls);
+      const add = urls.filter((u) => !have.has(u));
+      setManualText((t) => [t.trim(), ...add].filter(Boolean).join("\n"));
+      setBlogNote(j.total ? `Добавлено ${add.length} статей нашего блога (всего опубликовано ${j.total}, уже с пинами ${j.used}). Для отдельного блогового прогона в настройках ниже выберите «Все статьи прогона — блоговые».` : "У сайта нет опубликованных статей нашего сервиса статей.");
+    } catch (e) { setBlogNote((e as Error).message); }
+  };
+
   const loadPosts = async () => {
     setLoading(true); setWpError(""); setPosts(null); setPicked(new Set());
     try {
@@ -135,6 +151,10 @@ export function NewRunForm({ sites, presetSiteId }: { sites: NewRunSite[]; prese
         {source === "manual" ? (
           <>
             <input type="hidden" name="pagesSource" value="manual" />
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="btn-ghost btn-sm" onClick={loadBlogPosts} disabled={!siteId}>+ Статьи нашего блога без пинов</button>
+              {blogNote && <span className="help">{blogNote}</span>}
+            </div>
             <Field label="Ссылки" hint="По одной в строке. Дубли убираются автоматически.">
               <textarea name="urls" className="input font-mono text-[13px]" rows={10} required value={manualText} onChange={(e) => setManualText(e.target.value)} placeholder={"https://site.com/article-1\nhttps://site.com/article-2"} />
             </Field>

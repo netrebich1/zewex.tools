@@ -5,8 +5,18 @@ import { publicUrl } from "@/lib/pins/storage";
 import { ENGINE_LABELS, STAGE_LABELS } from "@/components/pins/labels";
 import { fmtDate } from "@/lib/utils";
 import type { PinStage } from "@/lib/pins/types";
+import { ActionForm } from "@/components/ActionForm";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { setPageKind } from "@/actions/pins";
+import { ARTICLE_KINDS, ARTICLE_KIND_LABELS, type ArticleKind } from "@/lib/pins/articleKind";
 
 const PAGE_SIZE = 20;
+
+/** Откуда тип статьи (PinRunPage.kindSource). */
+const KIND_SOURCE_LABELS: Record<string, string> = {
+  manual: "отмечено вручную", run: "по настройке прогона", blog: "статья нашего блога", analyzer: "по устройству страницы", title: "по заголовку", none: "",
+};
+const kindLabel = (k: string) => (!k ? "не определён" : k === "ideas" ? "подборка идей" : `блог · ${ARTICLE_KIND_LABELS[k as ArticleKind] ?? k}`);
 
 const itemTone = (status: string, moderation: string) =>
   status === "ERROR" ? "danger" : moderation === "REJECTED" ? "warn" : status === "READY" ? "ok" : "neutral";
@@ -18,7 +28,8 @@ export async function RunPins({ runId, page }: { runId: string; page: number }) 
   const total = await prisma.pinRunPage.count({ where: { runId } });
   const pages = await prisma.pinRunPage.findMany({
     where: { runId }, orderBy: { sortOrder: "asc" }, skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE,
-    include: { items: { where: { kind: "pin", status: { not: "REMOVED" } }, orderBy: { sortOrder: "asc" } } },
+    // Пины и опубликуемые фото статьи (готовые фото-пины блоговых статей тоже видно); резерв фото для Canvas не показываем.
+    include: { items: { where: { status: { notIn: ["REMOVED", "POOL"] } }, orderBy: { sortOrder: "asc" } } },
   });
   const last = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const nav = total > PAGE_SIZE && (
@@ -34,6 +45,16 @@ export async function RunPins({ runId, page }: { runId: string; page: number }) 
       {nav}
       {pages.map((p) => (
         <Card key={p.id} title={<a href={p.url} target="_blank" rel="noreferrer" className="hover:underline [overflow-wrap:anywhere]">{p.pageTitle || p.url}</a>} description={`${p.keyword ? `ключ: ${p.keyword} · ` : ""}${p.topic ? `тема: ${p.topic} · ` : ""}${p.niche ? `ниша: ${p.niche} · ` : ""}фото: ${p.imageCount} (в разделах ${p.sectionImageCount}) · доски: ${((p.boards as string[]) ?? []).join(", ") || "—"}${p.status === "error" ? ` · ОШИБКА: ${p.error ?? ""}` : ""}`}>
+          <ActionForm action={setPageKind} hidden={{ pageId: p.id }} className="mb-3 flex flex-wrap items-center gap-2 text-[12.5px]">
+            <span className="text-muted">Тип статьи:</span>
+            <Badge tone={p.articleKind && p.articleKind !== "ideas" ? "ok" : "neutral"}>{kindLabel(p.articleKind)}</Badge>
+            {p.kindSource && <span className="help">{KIND_SOURCE_LABELS[p.kindSource] ?? p.kindSource}</span>}
+            <select name="articleKind" className="input w-auto py-1 text-[12.5px]" defaultValue={p.articleKind || "ideas"} aria-label="Тип статьи">
+              <option value="ideas">Подборка идей</option>
+              {ARTICLE_KINDS.map((k) => <option key={k} value={k}>Блог: {ARTICLE_KIND_LABELS[k]}</option>)}
+            </select>
+            <SubmitButton className="btn-ghost btn-sm" pendingText="…">Сменить</SubmitButton>
+          </ActionForm>
           {p.items.length === 0 ? <p className="help">Пинов для этой статьи ещё нет.</p> : (
             <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
               {p.items.map((it) => {

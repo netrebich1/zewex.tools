@@ -3,8 +3,10 @@ import type { JobStage } from "../types";
 /** Следующий этап после успешно завершённого — по тому, что реально нужно прогону (рецепт). */
 export function nextStageAfter(stage: JobStage | string, settings: Record<string, unknown>): JobStage | "moderation" | "ready" | null {
   const mix = (settings.mix ?? {}) as { ai?: number; canvas?: number; pinora?: number; photos?: number };
-  const hasAi = (mix.ai ?? 0) > 0 || (mix.pinora ?? 0) > 0;
-  const hasCanvas = (mix.canvas ?? 0) > 0;
+  // Блоговые статьи со своим набором (settings.blog): этапы нужны, если пины включены хоть в одном наборе.
+  const blog = (settings.blog ?? {}) as { ai?: number; canvas?: number };
+  const hasAi = (mix.ai ?? 0) > 0 || (mix.pinora ?? 0) > 0 || (blog.ai ?? 0) > 0;
+  const hasCanvas = (mix.canvas ?? 0) > 0 || (blog.canvas ?? 0) > 0;
   switch (stage) {
     case "meta": return "photos";
     case "photos": return "plan";

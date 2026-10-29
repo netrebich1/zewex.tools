@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/db";
 import { checkRedirects } from "@/lib/pins/stages/redirects";
 import { extractMeta } from "@/lib/pins/stages/meta";
-import { detectKeywords, fallbackKeyword } from "@/lib/pins/stages/keywords";
+import { detectKeywords, fallbackKeyword, type KeywordResult } from "@/lib/pins/stages/keywords";
 import { AiError } from "@/lib/pins/ai/errors";
 import type { StageHandler } from "./index";
 import { loadRunCtx } from "./_shared";
+import { detectArticleKinds } from "@/lib/pins/articleKind";
+import { boardsFor } from "@/lib/pins/boards";
+import type { PageStructure } from "@/lib/pins/articleAnalyzer";
+import type { Prisma } from "@prisma/client";
 
 /**
  * Этап meta: конечные адреса (редиректы), title/H1/число фото, ключевое слово,
@@ -14,6 +18,8 @@ export const meta: StageHandler = async (ctx) => {
   const rc = await loadRunCtx(ctx);
   const boards = await prisma.pinBoard.findMany({ where: { siteId: rc.site.id }, orderBy: { sortOrder: "asc" } });
   const boardNames = boards.map((b) => b.name);
+  // Блоговые статьи выбирают из досок «для блога» и «для всех», подборки — из «для идей» и «для всех» (PinBoard.purpose).
+  const blogBoards = boardsFor(boards, "blog"), ideaBoards = boardsFor(boards, "ideas");
   if (!boardNames.length) return { fatal: "У сайта нет досок Pinterest. Добавьте доски в настройках сайта и нажмите «Продолжить»." };
 
   const todo = rc.pages.filter((p) => (!p.keyword || !(Array.isArray(p.boards) && (p.boards as unknown[]).length)) && p.metaAttempts < 3);
@@ -43,27 +49,46 @@ export const meta: StageHandler = async (ctx) => {
   }
   await ctx.tick({ label: "Заголовки прочитаны" });
 
+  // 2б. Тип статьи: наш блог → устройство страницы → заголовок (ручная отметка не трогается). Хранится в странице.
+  const structures = new Map<string, PageStructure | undefined>(todo.map((p) => [p.id, metaMap.get(p.finalUrl || p.url)?.structure]));
+  const kinds = await detectArticleKinds(rc.site.wpConnectionId || rc.recipe.publishing.wpConnectionId, todo, structures, rc.recipe.blog.mode);
+  for (const p of todo) {
+    const k = kinds.get(p.id);
+    if (!k) continue;
+    await prisma.pinRunPage.update({ where: { id: p.id }, data: { articleKind: k.articleKind, kindSource: k.kindSource, kindInfo: (k.kindInfo ?? undefined) as Prisma.InputJsonValue | undefined } });
+    Object.assign(p, { articleKind: k.articleKind, kindSource: k.kindSource, kindInfo: k.kindInfo });
+  }
+  const isBlogPage = (p: (typeof todo)[number]) => !!p.articleKind && p.articleKind !== "ideas";
+  const blogCount = todo.filter(isBlogPage).length;
+  if (blogCount) await ctx.tick({ label: `Блоговых статей: ${blogCount} из ${todo.length}` });
+
   // 3. ключи и доски пачками (внутри detectKeywords), прогресс через onBatch
   let done = 0;
-  let kw: Awaited<ReturnType<typeof detectKeywords>>;
+  const kw = new Map<string, KeywordResult>();
   try {
-    kw = await detectKeywords(
-      rc.ai,
-      {
-        pages: todo.map((p) => ({ url: p.finalUrl || p.url, title: p.pageTitle, h1: p.h1 })),
-        siteNiche: rc.site.niche,
-        language: rc.recipe.text.language,
-        boards: boardNames,
-        multiBoard: rc.recipe.boards.multiBoard,
-      },
-      {
-        signal: ctx.signal,
-        onBatch: async (d, t) => {
-          done = d;
-          await ctx.tick({ done: d, total: t, label: `Ключи и доски ${d}/${t}` });
+    const groups = [{ pages: todo.filter((p) => !isBlogPage(p)), boards: ideaBoards }, { pages: todo.filter(isBlogPage), boards: blogBoards }].filter((g) => g.pages.length);
+    let base = 0;
+    for (const g of groups) {
+      const res = await detectKeywords(
+        rc.ai,
+        {
+          pages: g.pages.map((p) => ({ url: p.finalUrl || p.url, title: p.pageTitle, h1: p.h1 })),
+          siteNiche: rc.site.niche,
+          language: rc.recipe.text.language,
+          boards: g.boards,
+          multiBoard: rc.recipe.boards.multiBoard,
         },
-      },
-    );
+        {
+          signal: ctx.signal,
+          onBatch: async (d) => {
+            done = base + d;
+            await ctx.tick({ done, total: todo.length, label: `Ключи и доски ${done}/${todo.length}` });
+          },
+        },
+      );
+      for (const [u, r] of res) kw.set(u, r);
+      base += g.pages.length;
+    }
   } catch (e) {
     if (e instanceof AiError && e.cls.kind === "fatal_run") return { fatal: e.cls.message };
     throw e;
@@ -73,8 +98,9 @@ export const meta: StageHandler = async (ctx) => {
   for (const p of todo) {
     const r = kw.get(p.finalUrl || p.url);
     const keyword = (r?.keyword || "").trim() || fallbackKeyword({ title: p.pageTitle, h1: p.h1, url: p.url });
-    const pageBoards = (r?.boards || []).filter((b) => boardNames.includes(b));
-    if (!pageBoards.length) pageBoards.push(boardNames[0]);
+    const allowed = isBlogPage(p) ? blogBoards : ideaBoards;
+    const pageBoards = (r?.boards || []).filter((b) => allowed.includes(b));
+    if (!pageBoards.length) pageBoards.push(allowed[0] ?? boardNames[0]);
     if (!keyword) withoutKeyword++;
     await prisma.pinRunPage.update({
       where: { id: p.id },

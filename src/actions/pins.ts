@@ -7,7 +7,11 @@ import { redirect } from "next/navigation";
 import { canManageTeam, requireUser } from "@/lib/auth";
 import { forSitesTab } from "@/lib/permissions";
 import { createRun, continueRun, deleteRun, parseUrls, redoMissing, skipFailed, stopRun } from "@/lib/pins/runs/actions";
+import { foreignHosts, siteDomains } from "@/lib/pins/siteDomains";
 import type { ModerationMode } from "@/lib/pins/types";
+import { parseBoardLine } from "@/lib/pins/boards";
+import { ARTICLE_KINDS, ARTICLE_KIND_LABELS, type ArticleInfo, type ArticleKind } from "@/lib/pins/articleKind";
+import { Prisma } from "@prisma/client";
 
 export type FormState = { error?: string; ok?: string };
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -24,7 +28,7 @@ export async function launchRun(_p: FormState, f: FormData): Promise<FormState> 
   let runId: string;
   try {
     const siteId = str(f, "siteId");
-    const site = await prisma.pinSite.findUnique({ where: { id: siteId }, select: { recipe: true, teamId: true, wpConnectionId: true, isActive: true, sets: { select: { id: true } } } });
+    const site = await prisma.pinSite.findUnique({ where: { id: siteId }, select: { name: true, recipe: true, teamId: true, wpConnectionId: true, isActive: true, sets: { select: { id: true } } } });
     if (!site || !(await canAccessPinSite(me, site))) return { error: "Сайт не найден" };
     if (!site.isActive) return { error: "Сайт в архиве: верните его из архива в разделе «Сайты»" };
     // Настройки этого прогона: рецепт сайта как основа, поля формы — поверх.
@@ -40,6 +44,15 @@ export async function launchRun(_p: FormState, f: FormData): Promise<FormState> 
       urls = got.urls;
     }
     if (!urls.length) return { error: "Добавьте хотя бы одну ссылку" };
+    // Ссылки на чужой домен (статьи другого сайта) — только с явным подтверждением в форме.
+    const conn = site.wpConnectionId || recipe.publishing.wpConnectionId
+      ? await prisma.siteAccess.findUnique({ where: { id: (recipe.publishing.wpConnectionId || site.wpConnectionId)! }, select: { baseUrl: true, linkDomain: true, mediaDomain: true } })
+      : null;
+    const foreign = foreignHosts(urls, siteDomains([site.name, conn?.baseUrl, conn?.linkDomain, recipe.publishing.linkDomain]));
+    if (foreign.length && f.get("foreignOk") !== "on") {
+      const n = foreign.reduce((s, x) => s + x.count, 0);
+      return { error: `${n} из ${urls.length} ссылок ведут не на сайт ${site.name}: ${foreign.slice(0, 3).map((x) => `${x.host} (${x.count})`).join(", ")}. Проверьте сайт и ссылки. Если так и задумано — отметьте подтверждение в форме.` };
+    }
     const r = await createRun(me, { siteId, urls, name: str(f, "name"), recipe, moderationMode: ["required", "auto", "sample"].includes(mode) ? mode : undefined, stepByStep: f.get("stepByStep") === "on" });
     runId = r.runId;
   } catch (e) { return fail(e); }
@@ -154,10 +167,16 @@ export async function saveBoards(_p: FormState, f: FormData): Promise<FormState>
   const id = str(f, "id");
   try {
     await siteForUser(me, id);
-    const names = [...new Set(str(f, "boards").split(/\r?\n/).map((s) => s.trim()).filter(Boolean))];
+    // «Название [блог]» / «Название [идеи]» — для каких статей доска (PinBoard.purpose), без пометки — для всех.
+    const seen = new Set<string>();
+    const rows = str(f, "boards").split(/\r?\n/).map(parseBoardLine).filter((b): b is NonNullable<typeof b> => {
+      if (!b || seen.has(b.name)) return false;
+      seen.add(b.name);
+      return true;
+    });
     await prisma.$transaction(async (tx) => {
       await tx.pinBoard.deleteMany({ where: { siteId: id } });
-      if (names.length) await tx.pinBoard.createMany({ data: names.map((name, i) => ({ siteId: id, name, sortOrder: i })) });
+      if (rows.length) await tx.pinBoard.createMany({ data: rows.map((b, i) => ({ siteId: id, name: b.name, purpose: b.purpose, sortOrder: i })) });
     });
   } catch (e) { return fail(e); }
   revalidatePath(`/sites/${id}`);
@@ -331,4 +350,24 @@ export async function saveCanvasSet(_p: FormState, f: FormData): Promise<FormSta
   } catch (e) { return fail(e); }
   revalidatePath("/pinterest/pins/styles");
   return { ok: "Canvas-набор сохранён" };
+}
+
+/**
+ * Ручной тип статьи в прогоне («Идеи» / тип блоговой статьи): сильнее автоматики, действует на этапы, которые ещё не прошли
+ * (доски — на этапе meta, ИИ- и Canvas-пины — на этапах plan/canvas, тексты — на этапе texts).
+ */
+export async function setPageKind(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  const id = str(f, "pageId");
+  const kind = str(f, "articleKind");
+  try {
+    const page = await prisma.pinRunPage.findUnique({ where: { id }, include: { run: { include: { site: { select: { teamId: true, wpConnectionId: true } } } } } });
+    if (!page || !(await canAccessRun(me, page.run))) throw new Error("Страница не найдена");
+    if (kind !== "ideas" && !(ARTICLE_KINDS as readonly string[]).includes(kind)) throw new Error("Неизвестный тип статьи");
+    const prev = (page.kindInfo ?? null) as ArticleInfo | null;
+    const info: ArticleInfo | null = kind === "ideas" ? null : { ...(prev ?? { count: null }), kind: kind as ArticleKind, source: "manual", title: prev?.title || page.h1 || page.pageTitle || undefined };
+    await prisma.pinRunPage.update({ where: { id }, data: { articleKind: kind, kindSource: "manual", kindInfo: info ? (info as object) : Prisma.DbNull } });
+    revalidatePath(`/pinterest/pins/runs/${page.runId}`);
+  } catch (e) { return fail(e); }
+  return { ok: kind === "ideas" ? "Отмечено: подборка идей" : `Отмечено: блоговая статья — ${ARTICLE_KIND_LABELS[kind as ArticleKind]}` };
 }
