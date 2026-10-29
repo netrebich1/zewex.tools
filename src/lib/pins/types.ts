@@ -40,7 +40,9 @@ export const MAX_DAY_PINS = 200;
 /** Максимум статей (ссылок) в одном прогоне. */
 export const MAX_RUN_PAGES = 3000;
 export type BlogRecipe = { mode: "auto" | "all" | "none"; ai: number; canvas: number; photos: number };
-export const DEFAULT_BLOG: BlogRecipe = { mode: "auto", ai: 2, canvas: 1, photos: 2 };
+// Canvas блогу по умолчанию выключен (пробный прогон 2026-10-29): фото наших статей — уже пины с надписями,
+// Canvas режет их и надписи выходят обрубками («OOTHE DRY SCAL…»).
+export const DEFAULT_BLOG: BlogRecipe = { mode: "auto", ai: 2, canvas: 0, photos: 2 };
 const clampInt = (v: unknown, min: number, max: number, def: number): number => { const n = Math.floor(Number(v)); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : def; };
 export type ScheduleMode = "fixed" | "dates" | "growth" | "insert";
 export const SCHEDULE_MODES: readonly ScheduleMode[] = ["fixed", "dates", "growth", "insert"];

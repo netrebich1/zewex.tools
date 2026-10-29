@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { planAiPins } from "@/lib/pins/plan/aiPlan";
+import { planAiPins, resolveAiQuota } from "@/lib/pins/plan/aiPlan";
 import { planPinoraPins } from "@/lib/pins/plan/pinoraPlan";
 import { buildPinoraParams } from "@/lib/pins/prompts/pinora";
 import { decideElements, pinYearFor, pinSiteName } from "@/lib/pins/prompts/elements";
@@ -8,7 +8,7 @@ import { nicheLabel } from "@/lib/pins/prompts/pinoraTypes";
 import { ideaCountFor } from "@/lib/pins/types";
 import { hash32 } from "@/lib/pins/plan/seed";
 import { articleKindsFor } from "@/lib/pins/articleKind";
-import { blogAiStylesFor, getAiStyle, isBlogAiStyle } from "@/lib/pins/prompts/aiStyles";
+import { blogAiStylesFor, blogNarrowStylesFor, blogUniversalStyles, getAiStyle, isBlogAiStyle, universalShare } from "@/lib/pins/prompts/aiStyles";
 import type { StageHandler } from "./index";
 import { loadRunCtx } from "./_shared";
 
@@ -34,7 +34,8 @@ export const plan: StageHandler = async (ctx) => {
   // Ниша Pinora: заданная в прогоне для всех статей, либо «авто» — по каждой статье; типы — только допустимые для ниши.
   const pinoraNiche = rc.recipe.sets.pinoraNiche && rc.recipe.sets.pinoraNiche !== "auto" ? rc.recipe.sets.pinoraNiche : "";
   const pinoraTypes = rc.recipe.sets.pinoraTypes.filter((t) => allowedPinoraTypes(pinoraNiche || "auto").includes(t));
-  if (perPagePinora > 0 && !pinoraTypes.length) return { fatal: `В настройках прогона включены Pinora-пины, но не выбран ни один тип Pinora${pinoraNiche ? ` для ниши «${nicheLabel(pinoraNiche)}»` : " (для ниши «авто» нужны универсальные типы)"}.` };
+  // Pinora делается только подборкам: в чисто блоговом прогоне типы Pinora не нужны.
+  if (perPagePinora > 0 && ideaTodo.length && !pinoraTypes.length) return { fatal: `В настройках прогона включены Pinora-пины, но не выбран ни один тип Pinora${pinoraNiche ? ` для ниши «${nicheLabel(pinoraNiche)}»` : " (для ниши «авто» нужны универсальные типы)"}.` };
   const exclusions = await prisma.pinStyleExclusion.findMany({ where: { siteId: rc.site.id, kind: "ai" }, select: { topic: true, styleId: true } });
 
   const existing = await prisma.pinRunItem.groupBy({ by: ["pageId", "engine"], where: { runId: rc.run.id, status: { notIn: ["REMOVED"] } }, _count: { _all: true } });
@@ -63,16 +64,36 @@ export const plan: StageHandler = async (ctx) => {
   if (perPageBlogAi > 0 && blogTodo.length) {
     const byKind = new Map<string, typeof blogTodo>();
     for (const p of blogTodo) { const k = kinds.get(p.id)!.kind!; byKind.set(k, [...(byKind.get(k) ?? []), p]); }
+    // у блоговых стилей по 5 подстилей — одной статье разные стили, а не два подстиля одного
+    const familyOf = (id: string) => getAiStyle(id)?.variantOf ?? id;
+    const universal = blogUniversalStyles().map((s) => s.id);
     for (const [kind, list] of byKind) {
+      // Не меньше половины ИИ-пинов статьи — универсальные стили (каркас + подстройка под тему), остальное — узкие
+      // стили под тип статьи; узких под тип нет — все из универсальных. Без универсальных в библиотеке — как раньше.
+      const narrow = blogNarrowStylesFor(kind).map((s) => s.id);
+      if (!universal.length) {
+        aiRows.push(...planAiPins({
+          pages: list.map((p) => ({ id: p.id, topic: "", existingAiCount: countOf(p.id, "OPENAI"), quota: p.pinQuota })),
+          sets: [{ id: "blog", name: "Blog", topic: "", styleIds: blogAiStylesFor(kind).map((s) => s.id) }],
+          exclusions, perPage: perPageBlogAi, seed: hash32(`${rc.settings.seed}|blog|${kind}`), usedCounts, familyOf,
+        }));
+        continue;
+      }
+      const quotaOf = (p: (typeof list)[number]) => resolveAiQuota({ quota: p.pinQuota }, perPageBlogAi);
+      const uniRows = planAiPins({
+        pages: list.map((p) => ({ id: p.id, topic: "", existingAiCount: countOf(p.id, "OPENAI"), quota: narrow.length ? universalShare(quotaOf(p)) : quotaOf(p) })),
+        sets: [{ id: "blog", name: "Blog", topic: "", styleIds: universal }],
+        exclusions, perPage: perPageBlogAi, seed: hash32(`${rc.settings.seed}|blog-uni|${kind}`), usedCounts, familyOf,
+      });
+      aiRows.push(...uniRows);
+      if (!narrow.length) continue;
       aiRows.push(...planAiPins({
-        pages: list.map((p) => ({ id: p.id, topic: "", existingAiCount: countOf(p.id, "OPENAI"), quota: p.pinQuota })),
-        sets: [{ id: "blog", name: "Blog", topic: "", styleIds: blogAiStylesFor(kind).map((s) => s.id) }],
-        exclusions,
-        perPage: perPageBlogAi,
-        seed: hash32(`${rc.settings.seed}|blog|${kind}`),
-        usedCounts,
-        // у блоговых стилей по 5 подстилей — одной статье разные стили, а не два подстиля одного
-        familyOf: (id) => getAiStyle(id)?.variantOf ?? id,
+        pages: list.map((p) => {
+          const mine = uniRows.filter((r) => r.pageId === p.id);
+          return { id: p.id, topic: "", existingAiCount: countOf(p.id, "OPENAI") + mine.length, quota: quotaOf(p), existingStyleIds: mine.map((r) => r.styleId) };
+        }),
+        sets: [{ id: "blog", name: "Blog", topic: "", styleIds: narrow }],
+        exclusions, perPage: perPageBlogAi, seed: hash32(`${rc.settings.seed}|blog|${kind}`), usedCounts, familyOf,
       }));
     }
   }

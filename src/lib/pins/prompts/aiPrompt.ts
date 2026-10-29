@@ -300,7 +300,11 @@ function buildStyleBlock(input: AiPromptInput, rs: ResolvedStyle): string {
     ? `\nFEW-SHOT EXAMPLES (structure & quality reference — adapt to TOPIC, do NOT copy wording):\n${s.examples.map((ex, i) => `Example ${i + 1}: ${ex}`).join("\n")}`
     : "";
   const articleBlock = blog ? `\n${buildArticleBlock(blog)}` : "";
-  return `### styleId: ${s.id} | ${s.name} | category: ${s.category}${articleBlock}
+  // Универсальные блоговые стили (blog-uni-*): фиксирован только каркас, всё наполнение — из темы этой статьи.
+  const universalLine = s.universal
+    ? `\nUNIVERSAL FRAME (this style fixes ONLY the composition and type hierarchy): build the background, props, photo or illustration subject, textures, icons and exact hues from THIS article — topic "${input.keyword.trim()}"${input.niche ? `, niche "${input.niche}"` : ""}${blog?.title ? `, article "${blog.title}"` : ""} and its content labels. A viewer must see at a glance what the article is about. The GOLD example is from another niche — never reuse its objects, scene or words.`
+    : "";
+  return `### styleId: ${s.id} | ${s.name} | category: ${s.category}${articleBlock}${universalLine}
 CONCEPT (invariant): ${s.concept}
 LAYOUT (archetype): ${s.layout}
 TYPOGRAPHY (behavior): ${s.typography}

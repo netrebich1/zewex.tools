@@ -14,6 +14,23 @@ export function boardsFor(boards: ReadonlyArray<{ name: string; purpose?: string
   return fit.length ? fit : boards.map((b) => b.name);
 }
 
+/**
+ * Запасная доска, когда модель не выбрала ни одной из списка: больше всего общих слов с ключом / заголовком
+ * («repair damaged hair» → «… Hair …»), при равенстве — первая по порядку. Раньше бралась просто первая доска сайта.
+ */
+const STOP = new Set(["and", "the", "for", "with", "your", "you", "how", "what", "why", "best", "ideas", "idea", "inspo", "board", "look", "tips", "guide", "that", "this", "from", "over"]);
+const tokens = (s: string) => s.toLowerCase().split(/[^\p{L}\p{N}]+/u).map((w) => w.replace(/s$/, "")).filter((w) => w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w));
+
+export function bestBoard(names: readonly string[], ...texts: Array<string | null | undefined>): string | undefined {
+  const words = new Set(tokens(texts.join(" ")));
+  let best: string | undefined, top = 0;
+  for (const n of names) {
+    const hit = tokens(n).filter((w) => words.has(w)).length;
+    if (hit > top) { top = hit; best = n; }
+  }
+  return best ?? names[0];
+}
+
 /** Есть ли у сайта хоть одна доска именно под блог (иначе прогон подскажет завести). */
 export const hasBlogBoards = (boards: ReadonlyArray<{ purpose?: string | null }>): boolean => boards.some((b) => asBoardPurpose(b.purpose) === "blog");
 

@@ -6,7 +6,7 @@ import { AiError } from "@/lib/pins/ai/errors";
 import type { StageHandler } from "./index";
 import { loadRunCtx } from "./_shared";
 import { detectArticleKinds } from "@/lib/pins/articleKind";
-import { boardsFor } from "@/lib/pins/boards";
+import { bestBoard, boardsFor } from "@/lib/pins/boards";
 import type { PageStructure } from "@/lib/pins/articleAnalyzer";
 import type { Prisma } from "@prisma/client";
 
@@ -100,7 +100,7 @@ export const meta: StageHandler = async (ctx) => {
     const keyword = (r?.keyword || "").trim() || fallbackKeyword({ title: p.pageTitle, h1: p.h1, url: p.url });
     const allowed = isBlogPage(p) ? blogBoards : ideaBoards;
     const pageBoards = (r?.boards || []).filter((b) => allowed.includes(b));
-    if (!pageBoards.length) pageBoards.push(allowed[0] ?? boardNames[0]);
+    if (!pageBoards.length) pageBoards.push(bestBoard(allowed.length ? allowed : boardNames, keyword, p.h1 || p.pageTitle) ?? boardNames[0]);
     if (!keyword) withoutKeyword++;
     await prisma.pinRunPage.update({
       where: { id: p.id },

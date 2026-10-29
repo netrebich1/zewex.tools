@@ -34,6 +34,11 @@ export type AiStyle = {
   pointsFrom?: string[];
   /** Блоговые стили: цифра на пине — число пунктов показанного раздела («6 Steps», «5 Mistakes»). */
   countable?: boolean;
+  /**
+   * Блоговые «Universal» (blog-uni-*, 2026-10-29): стиль задаёт только каркас (заголовок, пункты, фото/иллюстрация,
+   * плашки), а фон, предметы, цвета и иконки строятся по теме статьи — подходят любому типу статьи и любой нише.
+   */
+  universal?: boolean;
 };
 
 /** Подписи ниш стилей для фильтра. */
@@ -74,6 +79,7 @@ function normalizeStyle(s: RawStyle): AiStyle | null {
     articleKinds: Array.isArray(s.articleKinds) ? s.articleKinds.filter((n): n is string => typeof n === "string" && n !== "") : undefined,
     pointsFrom: Array.isArray(s.pointsFrom) ? s.pointsFrom.filter((n): n is string => typeof n === "string" && n !== "") : undefined,
     countable: s.countable === true,
+    universal: s.universal === true,
   };
 }
 
@@ -113,6 +119,19 @@ export function blogAiStylesFor(kind: string | null | undefined): AiStyle[] {
   const fit = kind ? all.filter((s) => (s.articleKinds ?? []).includes(kind)) : [];
   return fit.length ? fit : all;
 }
+
+/** Универсальные блоговые стили (каркас + подстройка под тему) — годятся для любого типа статьи. */
+export function blogUniversalStyles(): AiStyle[] {
+  return STYLES.filter((s) => s.category === BLOG_AI_CATEGORY && s.universal);
+}
+
+/** Узкие блоговые стили под тип статьи (без универсальных); пусто — если под тип ничего нет. */
+export function blogNarrowStylesFor(kind: string | null | undefined): AiStyle[] {
+  return STYLES.filter((s) => s.category === BLOG_AI_CATEGORY && !s.universal && !!kind && (s.articleKinds ?? []).includes(kind));
+}
+
+/** Сколько ИИ-пинов блоговой статьи — универсальные: не меньше половины (с округлением вверх). */
+export const universalShare = (perPage: number): number => Math.ceil(Math.max(0, perPage) / 2);
 
 export function getAiStyle(id: string): AiStyle | undefined {
   return BY_ID.get(id);

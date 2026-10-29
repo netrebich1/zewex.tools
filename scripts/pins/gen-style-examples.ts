@@ -50,6 +50,28 @@ const BLOG_SAMPLES: Record<ArticleKind, { title: string; niche: string; count: n
     list_item: ["Hundred", "Roll up", "Single leg stretch", "Bridge", "Side kicks"], steps: ["Warm up 5 minutes", "Core series", "Cool down stretch"] } },
 };
 
+/**
+ * Статьи-образцы для универсальных блоговых стилей (blog-uni-*): разные ниши, чтобы на примерах было видно,
+ * как один каркас подстраивается под тему. Подстили одного стиля получают разные темы (по кругу).
+ */
+const UNIVERSAL_SAMPLES: Array<{ kind: ArticleKind; title: string; niche: string; count: number | null; points: Record<string, string[]> }> = [
+  { kind: "tips", title: "Tips for Glowing Skin", niche: "skincare", count: 6, points: { tips: ["Double cleanse at night", "SPF every morning", "Hydrate from inside", "Exfoliate twice a week", "Sleep on silk", "Add vitamin C"] } },
+  { kind: "plan", title: "How to Budget Your First Paycheck", niche: "personal finance", count: 4, points: { steps: ["List fixed bills", "Set a savings goal", "Cap fun money", "Track every week"] } },
+  { kind: "checklist", title: "Weekly Cleaning Checklist", niche: "home cleaning", count: 8, points: { list_group: ["Wipe kitchen counters", "Clean bathroom sink", "Vacuum floors", "Change bed sheets", "Dust shelves", "Empty trash bins", "Mop the floor", "Clean mirrors"] } },
+  { kind: "plan", title: "4-Week Beginner Workout Plan", niche: "fitness", count: 4, points: { plan_table: ["Week 1: Walk daily", "Week 2: Add squats", "Week 3: Light weights", "Week 4: Full circuit"] } },
+  { kind: "checklist", title: "Carry-On Packing Checklist", niche: "travel", count: 7, points: { list_group: ["Passport and documents", "Chargers", "Toiletries bag", "Change of clothes", "Snacks", "Neck pillow", "Reusable bottle"] } },
+  { kind: "recipe", title: "Easy One-Pan Chicken Dinner", niche: "cooking", count: 5, points: { steps: ["Season the chicken", "Sear until golden", "Add vegetables", "Roast 25 minutes", "Finish with herbs"] } },
+  { kind: "how_to", title: "How to Start a Vegetable Garden", niche: "gardening", count: 5, points: { steps: ["Pick a sunny spot", "Build a raised bed", "Add rich compost", "Plant easy crops", "Water deeply"] } },
+  { kind: "how_to", title: "How to Leash Train Your Puppy", niche: "pets / dogs", count: 4, points: { steps: ["Start indoors", "Reward calm walking", "Stop when it pulls", "Keep walks short"] } },
+  { kind: "explain", title: "Why You Procrastinate (and How to Stop)", niche: "psychology / self-help", count: null, points: { why_it_happens: ["Fear of failure", "Unclear first step", "Too many distractions"], tips: ["Start tiny", "Set a timer", "Remove distractions"] } },
+  { kind: "fix", title: "How to Fix a Leaky Faucet", niche: "home repair / DIY", count: 4, points: { methods: ["Shut off the water", "Replace the washer", "Tighten the packing nut", "Check the O-ring"] } },
+  { kind: "compare", title: "Linen vs Cotton Sheets: Which to Choose", niche: "home / bedding", count: null, points: { comparison_table: ["Linen: cool and breathable", "Cotton: soft and smooth", "Linen: lasts longer", "Cotton: easier care"] } },
+  { kind: "tips", title: "Capsule Wardrobe Tips for Beginners", niche: "fashion", count: 5, points: { tips: ["Pick a neutral palette", "Choose 30 key pieces", "Mix textures", "Invest in shoes", "Edit every season"] } },
+  { kind: "fix", title: "Why Houseplant Leaves Turn Yellow", niche: "houseplants", count: 4, points: { methods: ["Water less often", "Move to brighter light", "Check drainage holes", "Feed once a month"] } },
+  { kind: "tips", title: "Toddler Bedtime Routine Tips", niche: "parenting", count: 5, points: { tips: ["Same time every night", "Warm bath first", "Dim the lights", "Read one book", "Keep goodbyes short"] } },
+  { kind: "how_to", title: "How to Paint a Room Like a Pro", niche: "home improvement", count: 5, points: { steps: ["Prep the walls", "Tape the edges", "Cut in first", "Roll in a W shape", "Add a second coat"] } },
+];
+
 const flag = (k: string, def = "") => (process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=").slice(1).join("=") ?? (process.argv.includes(`--${k}`) ? "1" : def));
 
 async function main() {
@@ -80,8 +102,33 @@ async function main() {
   let prompts: Awaited<ReturnType<typeof generateAiPrompts>>;
   if (category === BLOG_AI_CATEGORY) {
     prompts = [];
+    // Универсальные: каждому подстилю — своя тема из UNIVERSAL_SAMPLES (по кругу со сдвигом на стиль), без «замка ниши», как в прогоне.
+    const uni = styles.filter((s) => s.universal);
+    const families = [...new Set(listAiStyles(BLOG_AI_CATEGORY).filter((s) => s.universal).map((s) => s.variantOf ?? s.id))];
+    const bySample = new Map<number, typeof styles>();
+    for (const s of uni) {
+      const fi = families.indexOf(s.variantOf ?? s.id);
+      const vi = Math.max(0, Number((s.id.match(/-(\d)$/) ?? [])[1] ?? 1) - 1);
+      // соседние стили — соседние темы, подстили одного стиля — через 3 темы: темы разные и в строке, и в столбце галереи
+      const k = (fi + vi * 3) % UNIVERSAL_SAMPLES.length;
+      bySample.set(k, [...(bySample.get(k) ?? []), s]);
+    }
+    for (const [k, list] of bySample) {
+      const b = UNIVERSAL_SAMPLES[k];
+      const info: ArticleInfo = { kind: b.kind, count: b.count, source: "blog", title: b.title, pointsBy: b.points, sizes: Object.fromEntries(Object.entries(b.points).map(([x, v]) => [x, v.length])) };
+      for (const s of list) sampleOf.set(s.id, { keyword: b.title, niche: b.niche });
+      for (let i = 0; i < list.length; i += 4) {
+        prompts.push(...await generateAiPrompts(ctx, {
+          keyword: b.title, topic: b.title, niche: "", language: "en", audience: "women", siteName: "", year, ideaCount: b.count ?? undefined,
+          styles: list.slice(i, i + 4).map((s) => {
+            const pts = pointsForStyle(info, s);
+            return { id: s.id, tags: { season: false, year: false, number: false, siteName: false, cta: true }, article: { kind: b.kind, label: ARTICLE_KIND_LABELS[b.kind], kicker: kindKicker(b.kind, "en"), count: pts.count, title: b.title, points: pts.points, section: pts.section } };
+          }),
+        }));
+      }
+    }
     const byKind = new Map<ArticleKind, typeof styles>();
-    for (const s of styles) { const k = (s.articleKinds?.[0] ?? "how_to") as ArticleKind; byKind.set(k, [...(byKind.get(k) ?? []), s]); }
+    for (const s of styles.filter((x) => !x.universal)) { const k = (s.articleKinds?.[0] ?? "how_to") as ArticleKind; byKind.set(k, [...(byKind.get(k) ?? []), s]); }
     for (const [kind, list] of byKind) {
       const b = BLOG_SAMPLES[kind];
       const info: ArticleInfo = { kind, count: b.count, source: "blog", title: b.title, pointsBy: b.points, sizes: Object.fromEntries(Object.entries(b.points).map(([k, v]) => [k, v.length])) };

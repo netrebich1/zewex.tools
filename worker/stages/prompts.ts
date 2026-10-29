@@ -54,7 +54,9 @@ export const prompts: StageHandler = async (ctx) => {
         const res = await generateAiPrompts(rc.ai, {
           keyword: page.keyword,
           topic: page.topic,
-          niche: page.niche || rc.site.niche,
+          // Блоговая статья: без «замка ниши» — ниш у пинов всего пять (декор, ногти, волосы, одежда, кулинария),
+          // а статьи бывают про финансы, сад, питомцев; модель определяет тему по ключу и пунктам статьи сама.
+          niche: group.every((it) => isBlogAiStyle(it.styleId)) && kinds.get(page.id)?.kind ? "" : page.niche || rc.site.niche,
           language: rc.recipe.text.language,
           audience: rc.recipe.text.audience,
           siteName,
