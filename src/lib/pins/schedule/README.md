@@ -9,6 +9,8 @@
 | `math.ts` | ключи дня `YYYY-MM-DD` в поясе (`dayKey`, `addDays`, `daysBetween`, `zonedToUtc`, `startOfDay`), форматы (`formatPinterestDate`, `formatRu`), раскладка минут (`spreadEven`, `spreadDayTimes`, `nearestFreeMinute`) |
 | `plan.ts` | `scheduleItems(input)` — раскладка пинов прогона по окну 30 дней |
 | `fixer.ts` | `fixSchedule(rows, mode, opts)` — режимы `today` / `all` / `clear` над `{ id, scheduledAt }` |
+| `growth.ts` | «плавный рост»: ступени `{ days, perDay }`, `growthQuota(steps, off)`, подписи для UI |
+| `redistribute.ts` | `redistribute(input)` — перераспределение уже запланированных пинов сайта под новую норму (ровную или ступенями), порядок пинов сохраняется; `overDays` — дни больше 100 |
 | `capacity.ts` | `capacity(perDay, target, from, days)` — заполненность календаря сайта: запас дней, недозаполненные и пустые дни |
 
 ## Правила планировщика (`plan.ts`)

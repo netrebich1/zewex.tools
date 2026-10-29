@@ -8,7 +8,7 @@ import { nicheLabel } from "@/lib/pins/prompts/pinoraTypes";
 import { ideaCountFor } from "@/lib/pins/types";
 import { hash32 } from "@/lib/pins/plan/seed";
 import { articleKindsFor } from "@/lib/pins/articleKind";
-import { blogAiStylesFor, isBlogAiStyle } from "@/lib/pins/prompts/aiStyles";
+import { blogAiStylesFor, getAiStyle, isBlogAiStyle } from "@/lib/pins/prompts/aiStyles";
 import type { StageHandler } from "./index";
 import { loadRunCtx } from "./_shared";
 
@@ -69,6 +69,8 @@ export const plan: StageHandler = async (ctx) => {
         perPage: perPageAi,
         seed: hash32(`${rc.settings.seed}|blog|${kind}`),
         usedCounts,
+        // у блоговых стилей по 5 подстилей — одной статье разные стили, а не два подстиля одного
+        familyOf: (id) => getAiStyle(id)?.variantOf ?? id,
       }));
     }
   }

@@ -30,6 +30,8 @@ export interface AiPlanInput {
   seed: number;
   /** Сколько раз каждый шаблон уже использован в прогоне (для баланса между дозаполнениями). */
   usedCounts?: Map<string, number>;
+  /** «Семья» шаблона (подстили одного стиля): внутри страницы стараемся не брать два шаблона одной семьи. */
+  familyOf?: (styleId: string) => string;
 }
 
 export interface AiPlanRow {
@@ -68,7 +70,7 @@ export function planAiPins(input: AiPlanInput): AiPlanRow[] {
     const allowed = set.styleIds.filter((id) => !excluded.has(`${topic.trim()}|${id}`));
     const pool = allowed.length ? allowed : set.styleIds;
     const have = (page.existingStyleIds ?? []).filter(Boolean);
-    const picked = picker.pick(pool, need, have);
+    const picked = picker.pick(pool, need, have, input.familyOf);
     picked.forEach((styleId, i) => {
       out.push({ pageId: page.id, styleId, setId: set.id, sortOrder: existing + i });
     });

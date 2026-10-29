@@ -110,7 +110,7 @@ function buildProblems(run: { status: PinRunStatus; stage: string; blockedReason
   for (const r of rows) out.push(explainItemError(r.kind, r.stage, r.raw, r.count));
   if (pageErrors > 0) out.push(explainPageErrors(pageErrors));
   const rep = (run.settings as { scheduleReport?: ScheduleReport | null } | null | undefined)?.scheduleReport;
-  if (rep && typeof rep === "object") out.push(...explainSchedule({ moved: Number(rep.moved) || 0, days: Array.isArray(rep.days) ? rep.days.map(String) : [], limit: Number(rep.limit) || 100, unscheduled: Number(rep.unscheduled) || 0, lastDay: rep.lastDay }));
+  if (rep && typeof rep === "object") out.push(...explainSchedule({ moved: Number(rep.moved) || 0, days: Array.isArray(rep.days) ? rep.days.map(String) : [], limit: Number(rep.limit) || 100, unscheduled: Number(rep.unscheduled) || 0, lastDay: rep.lastDay, shifted: Number(rep.shifted) || 0, overDays: Array.isArray(rep.overDays) ? rep.overDays.map(String) : [], immediate: Number(rep.immediate) || 0 }));
   return out.sort((a, b) => (a.severity === b.severity ? b.count - a.count : a.severity === "critical" ? -1 : 1));
 }
 

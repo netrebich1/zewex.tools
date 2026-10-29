@@ -2,7 +2,8 @@
  * Разбор полей формы рецепта (общий для настроек сайта, нового прогона и правки прогона).
  * Без обращений к базе: проверку принадлежности наборов/доступа делает вызывающий код.
  */
-import { MAX_RUN_PAGES, cleanYearRules, mergeRecipe, type Recipe } from "./types";
+import { MAX_DAY_PINS, MAX_RUN_PAGES, asScheduleMode, cleanYearRules, mergeRecipe, type Recipe } from "./types";
+import { cleanGrowth } from "./schedule/growth";
 import { PINORA_NICHES, PINORA_TYPES, typesForNiche } from "./prompts/pinoraTypes";
 
 /** Типы Pinora, допустимые для ниши: «авто» — только универсальные (без привязки к нише), как в старом сервисе. */
@@ -91,7 +92,10 @@ export function recipeFromForm(f: FormData, base: unknown, opts: RecipeFormOptio
       photoLinkPercent: num(f, "photoLinkPercent", r.publishing.photoLinkPercent, 0, 100),
     },
     schedule: {
-      dailyMode: has("dailyMode") ? (str(f, "dailyMode") === "dates" ? "dates" : "fixed") : r.schedule.dailyMode,
+      dailyMode: has("dailyMode") ? asScheduleMode(str(f, "dailyMode")) : r.schedule.dailyMode,
+      // Ступени «плавного роста»: пары полей growthDays/growthPerDay; пустые строки отбрасываются.
+      growth: has("growthPresent") ? ((g) => (g.length ? g : r.schedule.growth))(cleanGrowth(f.getAll("growthDays").map((d, i) => ({ days: d, perDay: f.getAll("growthPerDay")[i] })))) : r.schedule.growth,
+      insertTotal: has("insertTotalPresent") ? (f.get("insertKeepTotal") === "on" ? num(f, "insertTotal", 100, 1, MAX_DAY_PINS) : 0) : r.schedule.insertTotal,
       lastDate: day("lastDate", r.schedule.lastDate),
       pinsPerDay: num(f, "pinsPerDay", r.schedule.pinsPerDay, 1, 100),
       startFrom: has("startFrom") ? (/^\d{4}-\d{2}-\d{2}$/.test(str(f, "startFrom")) ? str(f, "startFrom") : "next_free_day") : r.schedule.startFrom,

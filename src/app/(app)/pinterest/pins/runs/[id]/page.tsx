@@ -14,6 +14,7 @@ import { mergeRecipe } from "@/lib/pins/types";
 import { RunLog, RunPins, RunSchedule } from "@/components/pins/RunDetails";
 import Link from "next/link";
 import { type SearchParams, sp } from "@/components/ui";
+import { describeSchedule } from "@/lib/pins/schedule/growth";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export default async function RunPage({ params, searchParams }: { params: Promis
 
   return (
     <>
-      <PageHeader back={{ href: "/pinterest/pins/runs", label: "Прогоны" }} title={run.name || `Прогон ${id.slice(0, 8)}`} subtitle={`${run.site?.name ?? "—"} · ИИ ${r.mix.ai}, фото ${r.mix.photos}, canvas ${r.mix.canvas}, pinora ${r.mix.pinora} на ссылку · ${r.schedule.pinsPerDay}/день · модерация: ${r.schedule.moderationMode === "auto" ? "авто" : "обязательна"} · режим: ${run.stepByStep ? "пошаговый" : "автопилот"}`} />
+      <PageHeader back={{ href: "/pinterest/pins/runs", label: "Прогоны" }} title={run.name || `Прогон ${id.slice(0, 8)}`} subtitle={`${run.site?.name ?? "—"} · ИИ ${r.mix.ai}, фото ${r.mix.photos}, canvas ${r.mix.canvas}, pinora ${r.mix.pinora} на ссылку · ${describeSchedule(r.schedule)} · модерация: ${r.schedule.moderationMode === "auto" ? "авто" : "обязательна"} · режим: ${run.stepByStep ? "пошаговый" : "автопилот"}`} />
       <div className="mb-4 flex flex-wrap gap-2">
         {[["overview", "Обзор"], ["pins", `Страницы и пины · ${view.pages.total}/${view.total.planned}`], ["schedule", `Расписание · ${view.total.scheduled}`], ["log", "Журнал этапов"], ["settings", "Настройки"]].map(([k, l]) => (
           <Link key={k} href={`/pinterest/pins/runs/${id}?tab=${k}`} className={`badge px-3 py-1 max-sm:!py-1.5 max-sm:min-h-8 ${tab === k ? "bg-ink text-bg" : "bg-ink/5 hover:bg-ink/10"}`}>{l}</Link>

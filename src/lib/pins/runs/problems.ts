@@ -78,7 +78,13 @@ export function explainPageErrors(count: number): Problem {
   return { severity: "warning", count, stage: "meta", kind: "page", raw: "", title: `Не открылись статьи: ${count}`, meaning: "Страница не ответила или закрыта от роботов. Для этих статей пинов нет.", action: "Работать можно. Проверьте ссылки; при необходимости запустите их отдельным прогоном." };
 }
 
-export type ScheduleReport = { moved: number; days: string[]; limit: number; unscheduled: number; lastDay?: string };
+export type ScheduleReport = {
+  moved: number; days: string[]; limit: number; unscheduled: number; lastDay?: string;
+  /** «Вклинить в график»: сколько пинов других прогонов сдвинуто вперёд. */
+  shifted?: number;
+  /** Дни сайта, где больше 100 пинов, и сколько из них уйдёт «сразу». */
+  overDays?: string[]; immediate?: number;
+};
 
 const ru = (k: string) => k.split("-").reverse().join(".");
 
@@ -91,6 +97,19 @@ export function explainSchedule(r: ScheduleReport): Problem[] {
       title: `Превышен общий лимит ${r.limit} пинов в день: ${pins(r.moved)} перенесено`,
       meaning: `На ${days} у сайта уже стояли пины других прогонов. Вместе с этим прогоном выходило больше ${r.limit} в день, поэтому лишние пины поставлены на ближайшие свободные дни${r.lastDay ? `, последний день прогона теперь ${ru(r.lastDay)}` : ""}.`,
       action: "Ничего делать не нужно. Если нужны другие даты, измените расписание во вкладке «Настройки» и нажмите «Продолжить»." });
+  }
+  if (r.immediate && r.overDays?.length) {
+    const days = r.overDays.length <= 4 ? r.overDays.map(ru).join(", ") : `${ru(r.overDays[0])} — ${ru(r.overDays[r.overDays.length - 1])} (${r.overDays.length} дн.)`;
+    out.push({ severity: "warning", count: r.immediate, stage: "schedule", kind: "publish_now", raw: "",
+      title: `Больше 100 пинов в день: ${pins(r.immediate)} опубликуется сразу`,
+      meaning: `На ${days} у сайта больше 100 пинов. Pinterest ставит по времени только 100 пинов файла дня, поэтому первые 100 идут по расписанию, а остальные выгружаются без даты и выходят сразу, как только файл загружен.`,
+      action: "Если так и задумано — ничего делать не нужно. Если нет — на странице сайта нажмите «Перераспределить график» и задайте меньше пинов в день." });
+  }
+  if (r.shifted) {
+    out.push({ severity: "warning", count: r.shifted, stage: "schedule", kind: "shifted", raw: "",
+      title: `Прогон вклинен в график: ${pins(r.shifted)} других прогонов сдвинуто`,
+      meaning: "Чтобы в дне не было больше заданного общего числа пинов, пины других прогонов сайта с этих дат переставлены на следующие дни. Залитые в Pinterest дни и закреплённые пины не трогались.",
+      action: "Ничего делать не нужно. График сайта видно на странице сайта, вкладка «Обзор»." });
   }
   if (r.unscheduled > 0) {
     out.push({ severity: "warning", count: r.unscheduled, stage: "schedule", kind: "no_date", raw: "",

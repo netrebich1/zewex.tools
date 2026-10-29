@@ -3,6 +3,8 @@
  * Этапы прогона выполняет только воркер; Next.js ставит задачи и читает агрегаты.
  */
 
+import { cleanGrowth, DEFAULT_GROWTH, type GrowthStep } from "@/lib/pins/schedule/growth";
+
 export const PIN_STAGES = [
   "pages",
   "meta",
@@ -31,8 +33,15 @@ export const SLOT_IMAGE_MAIN = "image_main";
 /** Лимиты Pinterest на тексты пина. */
 export const LIMITS = { title: 100, alt: 490, description: 500, descriptionWithTags: 350 } as const;
 export const MAX_PINS_PER_DAY = 100;
+/** Pinterest ставит по времени не больше 100 пинов в файле дня: всё сверх 100 в этот день публикуется сразу при загрузке файла. */
+export const SCHEDULED_PER_DAY = 100;
+/** Потолок пинов сайта в день при перераспределении и «вклинивании» (100 по времени + до 100 сразу; файл Pinterest — до 200 строк). */
+export const MAX_DAY_PINS = 200;
 /** Максимум статей (ссылок) в одном прогоне. */
 export const MAX_RUN_PAGES = 3000;
+export type ScheduleMode = "fixed" | "dates" | "growth" | "insert";
+export const SCHEDULE_MODES: readonly ScheduleMode[] = ["fixed", "dates", "growth", "insert"];
+export const asScheduleMode = (v: unknown): ScheduleMode => (SCHEDULE_MODES.includes(v as ScheduleMode) ? (v as ScheduleMode) : "fixed");
 export const SCHEDULE = { windowDays: 30, perPagePerDay: 2, firstPinWindowDays: 3, stepMinDays: 2, stepMaxDays: 5, hourFrom: 8, hourTo: 21 } as const;
 
 export type ModerationMode = "required" | "auto" | "sample";
@@ -127,8 +136,15 @@ export type Recipe = {
    * firstPinWindowDays — первый пин статьи в первые N дней; stepMinDays/stepMaxDays — шаг между пинами одной статьи.
    */
   schedule: {
-    /** fixed — строго pinsPerDay в день (окно растёт само); dates — равномерно от startFrom до lastDate. */
-    dailyMode: "fixed" | "dates";
+    /**
+     * fixed — строго pinsPerDay в день (окно растёт само); dates — равномерно от startFrom до lastDate;
+     * growth — «плавный рост» по ступеням growth (после последней — её норма);
+     * insert — «вклинить в график»: pinsPerDay этого прогона в день поверх уже стоящих пинов сайта;
+     * insertTotal > 0 — пины других прогонов с этих дней сдвигаются, чтобы в дне было не больше insertTotal.
+     */
+    dailyMode: ScheduleMode;
+    growth: GrowthStep[];
+    insertTotal: number;
     pinsPerDay: number; startFrom: "next_free_day" | string; lastDate: string;
     moderationMode: ModerationMode; samplePercent: number;
     /** Мягкие предпочтения раскладки (норма дня важнее): окно (только старое поле), пинов статьи в день, первый пин, шаг. */
@@ -155,7 +171,7 @@ export const DEFAULT_RECIPE: Recipe = {
     siteName: "",
   },
   publishing: { wpConnectionId: null, linkDomain: "", photoLinkPercent: 40 },
-  schedule: { dailyMode: "fixed", pinsPerDay: 90, startFrom: "next_free_day", lastDate: "", moderationMode: "required", samplePercent: 20, windowDays: SCHEDULE.windowDays, perPagePerDay: SCHEDULE.perPagePerDay, firstPinWindowDays: SCHEDULE.firstPinWindowDays, stepMinDays: SCHEDULE.stepMinDays, stepMaxDays: SCHEDULE.stepMaxDays },
+  schedule: { dailyMode: "fixed", pinsPerDay: 90, startFrom: "next_free_day", lastDate: "", growth: DEFAULT_GROWTH, insertTotal: 0, moderationMode: "required", samplePercent: 20, windowDays: SCHEDULE.windowDays, perPagePerDay: SCHEDULE.perPagePerDay, firstPinWindowDays: SCHEDULE.firstPinWindowDays, stepMinDays: SCHEDULE.stepMinDays, stepMaxDays: SCHEDULE.stepMaxDays },
   boards: { multiBoard: false },
 };
 
@@ -263,7 +279,14 @@ export function runDefaultsFrom(siteRecipe: unknown, lastRunSettings: unknown | 
     sets: { ...site.sets, canvasPhotoCounts: last.sets.canvasPhotoCounts },
     text: { ...site.text, percents: last.text.percents, numberSource: last.text.numberSource, hashtags: last.text.hashtags, variety: last.text.variety, elements: last.text.elements, year: last.text.year, yearRules: last.text.yearRules, siteName: last.text.siteName },
     publishing: { ...site.publishing, photoLinkPercent: last.publishing.photoLinkPercent },
-    schedule: { ...last.schedule, startFrom: "next_free_day" },
+    // «Вклинить» и «плавный рост» — разовые решения под конкретный прогон: следующий прогон начинается
+    // со «строго N в день» (после роста — с нормой последней ступени), ступени запоминаются для формы.
+    schedule: {
+      ...last.schedule, startFrom: "next_free_day",
+      ...(last.schedule.dailyMode === "insert" || last.schedule.dailyMode === "growth"
+        ? { dailyMode: "fixed" as const, pinsPerDay: last.schedule.dailyMode === "growth" ? (last.schedule.growth.at(-1)?.perDay ?? last.schedule.pinsPerDay) : last.schedule.pinsPerDay, insertTotal: 0 }
+        : {}),
+    },
     boards: last.boards,
   };
 }
@@ -289,7 +312,11 @@ export function mergeRecipe(partial: unknown): Recipe {
     },
     text: mergeText(p.text),
     publishing: { ...d.publishing, ...(p.publishing ?? {}) },
-    schedule: { ...d.schedule, ...(p.schedule ?? {}), dailyMode: (p.schedule as Partial<Recipe["schedule"]> | undefined)?.dailyMode === "dates" ? "dates" : "fixed", lastDate: isoDay((p.schedule as Partial<Recipe["schedule"]> | undefined)?.lastDate) },
+    schedule: (() => {
+      const ps = p.schedule as Partial<Recipe["schedule"]> | undefined;
+      const growth = cleanGrowth(ps?.growth);
+      return { ...d.schedule, ...(ps ?? {}), dailyMode: asScheduleMode(ps?.dailyMode), lastDate: isoDay(ps?.lastDate), growth: growth.length ? growth : DEFAULT_GROWTH, insertTotal: Math.max(0, Math.min(MAX_DAY_PINS, Math.floor(Number(ps?.insertTotal) || 0))) };
+    })(),
     boards: { ...d.boards, ...(p.boards ?? {}) },
   };
 }

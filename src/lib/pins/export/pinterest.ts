@@ -34,7 +34,8 @@ export type PinterestRow = {
   thumbnail?: string;
   description: string;
   link: string;
-  publishDate: Date;
+  /** null — пустая колонка Publish date: Pinterest публикует пин сразу при загрузке файла (сверх 100 в дне). */
+  publishDate: Date | null;
   keywords?: string;
 };
 
@@ -295,7 +296,7 @@ export function rowToCsvLine(row: PinterestRow, tz: string): string {
     row.thumbnail ?? "",
     row.description,
     row.link,
-    formatPinterestDate(row.publishDate, tz),
+    row.publishDate ? formatPinterestDate(row.publishDate, tz) : "",
     row.keywords ?? "",
   ]
     .map(csvEscape)

@@ -7,6 +7,7 @@
 
 import { fixSchedule, type FixRow } from "@/lib/pins/schedule/fixer";
 import { startOfDay } from "@/lib/pins/schedule/math";
+import { SCHEDULED_PER_DAY } from "@/lib/pins/types";
 import {
   buildPinterestCsv,
   dedupeTitles,
@@ -40,7 +41,7 @@ export type DayExportResult = {
   issues: PinterestIssue[];
   /** Сведения preflight по строкам, попавшим в файл. */
   textFixes: PinterestFix[];
-  fixes: { retimed: number; linksReplaced: number; titlesRenamed: number };
+  fixes: { retimed: number; linksReplaced: number; titlesRenamed: number; immediate: number };
   /** Новые даты из fixer (id → Date) — их нужно записать в БД. */
   retimedAt: Map<string, Date>;
   count: number;
@@ -74,8 +75,11 @@ export function buildDayFiles(input: DayExportInput): DayExportResult {
   // 3) Preflight: для прошлых/будущих дней точка отсчёта — полночь дня, чтобы даты не сдвигались.
   const report = preparePinterestExport(items, { tz, now: input.isToday ? now : startOfDay(day, tz) });
 
-  // 4) Уникальные заголовки и CSV.
+  // 4) Уникальные заголовки. Сверх 100 пинов в дне Pinterest по времени не ставит: первые 100 (по времени)
+  // идут с датой, остальные — с пустой датой и публикуются сразу при загрузке файла.
   const titled = dedupeTitles(report.rows);
+  const immediate = Math.max(0, titled.rows.length - SCHEDULED_PER_DAY);
+  if (immediate) titled.rows = titled.rows.map((r, i) => (i < SCHEDULED_PER_DAY ? r : { ...r, publishDate: null }));
   const csv = buildPinterestCsv(titled.rows, tz);
 
   return {
@@ -84,7 +88,7 @@ export function buildDayFiles(input: DayExportInput): DayExportResult {
     rows: titled.rows,
     issues: report.issues,
     textFixes: report.fixes,
-    fixes: { retimed, linksReplaced, titlesRenamed: titled.renamed },
+    fixes: { retimed, linksReplaced, titlesRenamed: titled.renamed, immediate },
     retimedAt,
     count: titled.rows.length,
   };

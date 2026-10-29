@@ -8,7 +8,7 @@
  */
 
 import { hash32, mulberry32, randIntWith } from "@/lib/pins/plan/seed";
-import { MAX_PINS_PER_DAY, SCHEDULE } from "@/lib/pins/types";
+import { MAX_DAY_PINS, MAX_PINS_PER_DAY, SCHEDULE } from "@/lib/pins/types";
 import {
   DAY_END_MIN,
   DAY_START_MIN,
@@ -64,6 +64,13 @@ export type ScheduleInput = {
    */
   mode?: "fixed" | "dates";
   lastDate?: string;
+  /**
+   * Норма этого прогона на день по смещению от первого дня окна (режим fixed): «плавный рост» —
+   * 15 в день первую неделю, 20 вторую… Без неё каждый день — pinsPerDay.
+   */
+  quotaAt?: (off: number) => number;
+  /** Общий потолок сайта в день (по умолчанию 100). «Вклинить в график» поднимает его до 200: сверх 100 — публикация сразу. */
+  siteDayLimit?: number;
   /** Служебное: посчитать раскладку без общего лимита сайта (для отчёта «сколько пинов пришлось перенести»). */
   ignoreSiteLimit?: boolean;
 };
@@ -117,7 +124,8 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
   const usedMinutes = new Map<string, Set<number>>();
   /** Пины этого прогона по дням (закреплённые + новые): норма «N в день» считается по ним, а не по всему сайту. */
   const own = new Map<string, number>();
-  const HARD = input.ignoreSiteLimit ? Number.POSITIVE_INFINITY : MAX_PINS_PER_DAY;
+  const HARD = input.ignoreSiteLimit ? Number.POSITIVE_INFINITY : Math.max(1, Math.min(MAX_DAY_PINS, Math.floor(input.siteDayLimit ?? MAX_PINS_PER_DAY)));
+  const capAt = (off: number): number => (input.quotaAt ? Math.min(MAX_PINS_PER_DAY, Math.max(0, Math.floor(input.quotaAt(off)))) : cap);
   const bump = (map: Map<string, number>, key: string): void => {
     map.set(key, (map.get(key) ?? 0) + 1);
   };
@@ -172,7 +180,14 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
     windowDays = Math.min(MAX_START_SEARCH_DAYS, datesDays + Math.ceil(flexibleCount / Math.max(1, MAX_PINS_PER_DAY)) + 31);
   } else {
     // с запасом: часть дней может быть занята другими прогонами до общего лимита
-    windowDays = Math.min(MAX_START_SEARCH_DAYS, Math.max(windowDaysPref, Math.ceil(flexibleCount / Math.max(1, cap)) + 62));
+    let need = Math.ceil(flexibleCount / Math.max(1, cap));
+    if (input.quotaAt) {
+      // плавный рост: сколько дней уйдёт при растущей норме
+      let left = flexibleCount;
+      need = 0;
+      while (left > 0 && need < MAX_START_SEARCH_DAYS) left -= Math.max(1, capAt(need++));
+    }
+    windowDays = Math.min(MAX_START_SEARCH_DAYS, Math.max(windowDaysPref, need + 62));
   }
   const lastOffset = windowDays - 1;
   const keys: string[] = [];
@@ -218,15 +233,16 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
    * если нормы не хватает — ослабляем «со статьи в день»; порядок пинов внутри статьи не нарушается. */
   const dayFree = (off: number): number => {
     const siteRoom = HARD - (load.get(keys[off]) ?? 0);
-    const ownRoom = mode === "dates" ? Number.POSITIVE_INFINITY : cap - (own.get(keys[off]) ?? 0);
+    const ownRoom = mode === "dates" ? Number.POSITIVE_INFINITY : capAt(off) - (own.get(keys[off]) ?? 0);
     return Math.max(0, Math.min(siteRoom, ownRoom));
   };
   const pageFree = (off: number, pageId: string): boolean =>
     perPageCap === 0 || (pageLoad.get(`${keys[off]}|${pageId}`) ?? 0) < perPageCap;
   /** Последний день, куда уже поставлен пин страницы — более поздние пины страницы раньше него не уходят. */
   const lastByPage = new Map<string, number>();
-  const pending: Task[] = cap === 0 ? [] : [...tasks];
-  const unscheduled: string[] = cap === 0 ? tasks.map((t) => t.id) : [];
+  const noRoom = cap === 0 && !input.quotaAt;
+  const pending: Task[] = noRoom ? [] : [...tasks];
+  const unscheduled: string[] = noRoom ? tasks.map((t) => t.id) : [];
   const placed = new Map<number, string[]>();
   let lastUsed = 0;
   let carry = 0; // недобор прошлых дней в режиме dates
@@ -295,7 +311,7 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
       const got = newPerDay.get(day) ?? 0;
       if (want > got) { moved += want - got; days.push(day); }
     }
-    if (moved > 0) limitReport = { moved, days: days.sort(), limit: MAX_PINS_PER_DAY };
+    if (moved > 0) limitReport = { moved, days: days.sort(), limit: Number.isFinite(HARD) ? HARD : MAX_PINS_PER_DAY };
   }
 
   return {

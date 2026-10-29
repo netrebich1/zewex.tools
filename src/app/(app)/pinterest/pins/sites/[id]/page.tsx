@@ -13,6 +13,10 @@ import { PinsSiteSettings } from "@/components/sites/PinsRecipeForm";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { toggleSiteActive } from "@/actions/pins";
+import { RescheduleTool } from "@/components/pins/RescheduleTool";
+import { siteOverDays } from "@/lib/pins/runs/reschedule";
+import { todayKey } from "@/lib/pins/schedule/math";
+import { TZ } from "@/lib/pins/runs/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -24,13 +28,16 @@ export default async function SitePage({ params, searchParams }: { params: Promi
   const site = await prisma.pinSite.findUnique({ where: { id }, include: { boards: { orderBy: { sortOrder: "asc" } }, sets: { orderBy: { name: "asc" } }, team: true, _count: { select: { runs: true } } } });
   if (!site || !(await canAccessPinSite(me, site))) notFound();
   const r = mergeRecipe(site.recipe);
-  const [runs, stock, lastRun, wps] = await Promise.all([
+  const [runs, stock, lastRun, wps, over] = await Promise.all([
     prisma.pinRun.findMany({ where: { siteId: id, NOT: { name: "__system__" } }, orderBy: { createdAt: "desc" }, take: 50 }),
     siteStock(id, 35),
     prisma.pinRun.findFirst({ where: { siteId: id, NOT: { name: "__system__" } }, orderBy: { createdAt: "desc" }, select: { settings: true } }),
     site.wpConnectionId ? Promise.resolve([]) : prisma.siteAccess.findMany({ where: { ...(await siteAccessWhere(me)), kind: "wordpress" }, orderBy: { name: "asc" }, select: { id: true, name: true, projects: true } })
       .then((rows) => rows.filter((w) => { const pr = (w.projects as string[] | null) ?? []; return !pr.length || pr.includes(PROJECT_SLUG); })),
+    tab === "overview" ? siteOverDays(id) : Promise.resolve([]),
   ]);
+  const immediate = over.reduce((n, d) => n + d.immediate, 0);
+  const fmtDay = (k: string) => k.split("-").reverse().slice(0, 2).join(".");
   const target = runDefaultsFrom(site.recipe, lastRun?.settings ?? null).schedule.pinsPerDay;
   const tabs = [["overview", "Обзор"], ["runs", "Прогоны"], ["settings", "Настройки"]];
   const styles = [r.sets.aiSetIds.length && `наборов ИИ ${r.sets.aiSetIds.length}`, `Canvas-стилей ${r.sets.canvasStyleIds.length || "все"}`, r.sets.pinoraTypes.length && `Pinora ${r.sets.pinoraTypes.length}`].filter(Boolean).join(" · ");
@@ -45,7 +52,16 @@ export default async function SitePage({ params, searchParams }: { params: Promi
       {tab === "overview" && (
         <div className="space-y-4">
           <Card title="Запас пинов по дням" description={`Ориентир: ${target} в день (из последнего прогона). Серым — дни без пинов, жёлтым — недобор, зелёным — норма.`}>
+            {immediate > 0 && (
+              <div className="mb-3 rounded-lg bg-warn-soft px-3 py-2 text-[13px] text-warn">
+                <b>В {over.length} дн. больше 100 пинов: {immediate} опубликуются сразу.</b> Pinterest ставит по времени только 100 пинов файла дня — первые 100 идут по расписанию, остальные выгружаются без даты и выходят сразу при загрузке файла.
+                {" "}Дни: {over.slice(0, 6).map((d) => `${fmtDay(d.day)} (${d.total})`).join(", ")}{over.length > 6 ? "…" : ""}. Если так не задумано — перераспределите график ниже.
+              </div>
+            )}
             <SiteCalendar days={stock} target={target} />
+          </Card>
+          <Card title="Перераспределить график" description="Изменить, сколько пинов сайта выходит в день, для уже запланированных пинов: ровно N в день или «плавный рост» ступенями. Сначала покажем «было → станет», запишем только после подтверждения.">
+            <RescheduleTool siteId={id} today={todayKey(new Date(), TZ)} current={target} />
           </Card>
           <div className="grid gap-4 sm:grid-cols-2">
             <Card title="Настройки сайта" description={`Досок: ${site.boards.length}. ${styles}. Доски, стили и язык — на вкладке «Настройки».`}>
