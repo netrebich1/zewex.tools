@@ -13,7 +13,7 @@ async function main() {
   const ours = await ourArticles(p.siteUrl, c.entity ?? c.title);
   const a = await makeAngles(ctx, s, c, ours);
   const md = await makeBrief(ctx, s, "beautydaily.com.ua", c, a.angles[0], ours, row.summaryUk, null);
-  console.log(md.split("## Внутрішні посилання")[0]);
+  console.log(md);
   console.log("COST", cost.toFixed(4));
   await prisma.$disconnect();
 }
