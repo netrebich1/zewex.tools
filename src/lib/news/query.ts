@@ -48,19 +48,21 @@ export type FeedCard = {
 export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: FeedCard[]; hidden: number; total: number; lastRunAt: Date | null }> {
   const p = await prisma.newsProject.findUniqueOrThrow({ where: { id: projectId } });
   const s = parseSettings(p.settings);
-  // «Свежее»: окно в часах по времени последней публикации, без отсечки по топ-N.
+  // Свежесть считаем по первой публикации инфоповода, а не по последней перепечатке (решение владельца 29.10:
+  // тема, начавшаяся 12 часов назад, не свежая, даже если её только что дописал ещё один сайт).
+  // «Свежее»: окно в часах, без отсечки по топ-N; «Топ»: инфоповоды не старше суток.
   const fresh = f.sort === "fresh";
   const hours = fresh ? Math.max(1, Math.min(72, f.hours || 6)) : 24;
   const since = new Date(Date.now() - hours * 3600_000);
   const lastRun = await prisma.newsRun.findFirst({ where: { projectId, kind: { in: ["scheduled", "manual"] }, status: "done" }, orderBy: { finishedAt: "desc" }, select: { startedAt: true } });
   const rows = await prisma.newsCluster.findMany({
     where: {
-      projectId, lastItemAt: { gte: f.status || f.fav || f.onSite ? new Date(Date.now() - 14 * 86_400_000) : since }, score: { gte: f.status || f.fav || f.onSite ? 0 : s.minScore }, category: f.cat ? f.cat : { in: s.targetCategories }, ...(f.priority ? { priority: f.priority } : {}),
+      projectId, ...(f.status || f.fav || f.onSite ? { lastItemAt: { gte: new Date(Date.now() - 14 * 86_400_000) } } : { firstPublishedAt: { gte: since } }), score: { gte: f.status || f.fav || f.onSite ? 0 : s.minScore }, category: f.cat ? f.cat : { in: s.targetCategories }, ...(f.priority ? { priority: f.priority } : {}),
       status: f.status ? f.status : { not: "rejected" }, ...(f.urgent ? { urgent: true } : {}), ...(f.notUa ? { uaCount: 0, worldCount: { gt: 0 } } : {}), ...(f.fav ? { starred: true } : {}),
       // Статья уже есть на сайте — карточка уходит из ленты во вкладку «Уже на сайте» (в «Избранном» и «В работе» остаётся).
       ...(f.onSite ? { onSite: { not: Prisma.DbNull } } : f.fav || f.status ? {} : { onSite: { equals: Prisma.DbNull } }),
     },
-    orderBy: fresh ? [{ lastItemAt: "desc" }, { score: "desc" }] : [{ score: "desc" }, { lastItemAt: "desc" }],
+    orderBy: fresh ? [{ firstPublishedAt: "desc" }, { score: "desc" }] : [{ score: "desc" }, { lastItemAt: "desc" }],
     take: 300,
   });
   const total = rows.length;
@@ -108,8 +110,8 @@ export async function summary(projectId: string) {
     prisma.newsRun.findMany({ where: { projectId, createdAt: { gte: since } }, select: { stats: true } }),
     projectSpend(projectId),
     prisma.newsItem.count({ where: { projectId, status: "queued" } }),
-    prisma.newsCluster.count({ where: { projectId, lastItemAt: { gte: since }, urgent: true, status: { not: "rejected" } } }),
-    prisma.newsCluster.count({ where: { projectId, lastItemAt: { gte: since }, score: { gte: s.minScore }, category: { in: s.targetCategories }, status: { not: "rejected" } } }),
+    prisma.newsCluster.count({ where: { projectId, firstPublishedAt: { gte: since }, urgent: true, status: { not: "rejected" } } }),
+    prisma.newsCluster.count({ where: { projectId, firstPublishedAt: { gte: since }, score: { gte: s.minScore }, category: { in: s.targetCategories }, status: { not: "rejected" } } }),
     prisma.newsRun.findFirst({ where: { projectId, status: { in: ["done", "failed"] }, kind: { in: ["scheduled", "manual"] } }, orderBy: { createdAt: "desc" } }),
     prisma.newsRun.findFirst({ where: { projectId, status: { in: ["queued", "running"] }, kind: { in: ["scheduled", "manual"] } }, orderBy: { createdAt: "desc" } }),
   ]);

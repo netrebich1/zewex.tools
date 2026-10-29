@@ -94,7 +94,7 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
 
       <div className="mb-4 flex flex-wrap items-center gap-2 text-[14px]">
         <span className="help">Показывать:</span>
-        <Link href={link({ sort: undefined, h: undefined, all: undefined })} className={`tab ${filter.sort !== "fresh" ? "active" : ""}`}>Топ по баллу за сутки</Link>
+        <Link href={link({ sort: undefined, h: undefined, all: undefined })} className={`tab ${filter.sort !== "fresh" ? "active" : ""}`}>Топ по баллу: инфоповоды за сутки</Link>
         <Link href={link({ sort: "fresh", h: undefined, all: undefined })} className={`tab ${filter.sort === "fresh" ? "active" : ""}`}>Свежее, новые сверху</Link>
         {filter.sort === "fresh" && (
           <span className="flex items-center gap-1">
@@ -118,7 +118,7 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
             <div className="text-center"><Link href={link({ all: "1" })} className="btn-ghost">Показать ещё {hidden} ниже топ-{sum.settings.topN}</Link></div>
           )}
           {filter.all && filter.sort !== "fresh" && total > sum.settings.topN && <p className="help text-center">Показаны все {total} кластеров за сутки.</p>}
-          {filter.sort === "fresh" && cards.length > 0 && <p className="help text-center">Показаны все {total} кластеров с публикациями за последние {filter.hours} ч, новые сверху.</p>}
+          {filter.sort === "fresh" && cards.length > 0 && <p className="help text-center">Показаны все {total} инфоповодов, появившихся за последние {filter.hours} ч, новые сверху. Темы, начавшиеся раньше, сюда не попадают, даже если их кто-то перепечатал сейчас.</p>}
         </div>
 
         <div className="space-y-4">
@@ -195,7 +195,7 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
             {c.onSite && <a href={c.onSite.url} target="_blank" rel="noopener noreferrer" className="badge bg-ok-soft text-ok hover:underline" title={c.onSite.title}>✓ есть на сайте</a>}
             {c.isNew && <span className="badge bg-info-soft text-info">нове</span>}
             {!c.isNew && c.newSources > 0 && <span className="badge bg-info-soft text-info">+{c.newSources} {c.newSources === 1 ? "источник" : "источника"}</span>}
-            {fresh && <span className="text-[12px] text-muted">последняя публикация {agoText(c.lastItemAt)}</span>}
+            {fresh && <span className="text-[12px] text-muted">инфоповод {agoText(c.firstPublishedAt)}</span>}
             {c.priority && <span className={`badge ${PRIORITY_TONE[c.priority] ?? ""}`}>{PRIORITY_LABELS[c.priority] ?? c.priority}</span>}
             {notUa && <Badge tone="brand">Ещё нет в UA</Badge>}
             {c.category && <Badge>{CATEGORY_LABELS[c.category] ?? c.category}</Badge>}
