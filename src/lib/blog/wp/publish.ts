@@ -37,6 +37,14 @@ async function loadPhotoBytes(photo: BlogPhoto, signal: AbortSignal): Promise<Bu
   } catch { return null; }
 }
 
+/**
+ * JSON-LD в текст записи не отправляем: WordPress без unfiltered_html вырезает <script>, и разметка видна читателю
+ * текстом с «кривыми» кавычками (zentrosy.com, 29.10). Разметку страницы даёт Yoast; JSON-LD остаётся в портале (post.schema).
+ */
+export function stripJsonLd(html: string): string {
+  return html.replace(/\s*<script\b[^>]*application\/ld\+json[^>]*>[\s\S]*?<\/script>\s*/gi, "\n").trim();
+}
+
 const isAuthError = (e: unknown) => e instanceof WpError && (e.status === 401 || e.status === 403);
 
 export async function publishPost(ctx: PublishCtx): Promise<PublishOutcome> {
@@ -168,7 +176,7 @@ export async function publishPost(ctx: PublishCtx): Promise<PublishOutcome> {
   if (post.metaDescription) meta._yoast_wpseo_metadesc = post.metaDescription;
   if (focusKw) meta._yoast_wpseo_focuskw = focusKw;
   const body: WpPostInput = {
-    title: h1, content: `${articleMarker(post.id)}\n${html}`, slug, status, excerpt: post.metaDescription || undefined,
+    title: h1, content: `${articleMarker(post.id)}\n${stripJsonLd(html)}`, slug, status, excerpt: post.metaDescription || undefined,
     ...(categoryId ? { categories: [categoryId] } : {}), ...(featured ? { featured_media: featured } : {}), ...(Object.keys(meta).length ? { meta } : {}),
   };
   let created = false;
