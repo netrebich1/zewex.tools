@@ -182,7 +182,7 @@ export async function processPost(post: BlogPost, workerId: string, shuttingDown
       } else {
         next = nextStage(stage);
         if (stage === "assemble" && !cursor.reviewApproved) {
-          const review = mergeSiteSettings(site.settings).review;
+          const review = recipe.run?.review ?? mergeSiteSettings(site.settings).review;
           if (review === "before_publish") wait = { wait: "REVIEW_PENDING", note: "Статья собрана, ждёт проверки" };
         }
       }

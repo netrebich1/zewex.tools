@@ -46,6 +46,7 @@ export function BlogSiteSettingsForm({ site, settings: s, categories, recipes }:
       </section>
       <section className={box}>
         <div className="flex flex-wrap items-baseline gap-2"><div className="text-[13px] font-semibold">Категории WordPress</div><span className="help">{categories.length ? `В кэше ${categories.length} категорий.` : "Категории ещё не загружены — нажмите «Синхронизировать категории» ниже."}</span></div>
+        <Field label="Раздел для статей блога" hint="Все статьи публикуются в эту категорию WordPress (ищется по имени, «Blog» и «Блог» — одно и то же); если её нет на сайте, портал создаст её при первой публикации. Пусто — правила, ИИ и категория по умолчанию ниже."><input name="catSection" className="input" defaultValue={s.categories.section} placeholder="Blog" maxLength={100} /></Field>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Категория по умолчанию">
             <select name="catDefaultId" className="input" defaultValue={s.categories.defaultId ?? ""}>

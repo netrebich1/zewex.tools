@@ -164,7 +164,8 @@ export type BlogSiteSettings = {
   concurrency: number;
   review: ReviewMode;
   publishMode: PublishMode;
-  categories: { defaultId: number | null; rules: Array<{ pattern: string; categoryId: number }>; useAi: boolean };
+  /** section — раздел сайта для всех статей блога (категория WordPress по имени, нет — создаётся); пусто — правила → ИИ → по умолчанию */
+  categories: { section: string; defaultId: number | null; rules: Array<{ pattern: string; categoryId: number }>; useAi: boolean };
   search: { country: string; language: string };
   yearInUrlPercent: number | null;
   /** Google Таблица с ключами и темами (вкладка = домен сайта); туда же пишется отчёт */
@@ -175,7 +176,7 @@ export const DEFAULT_SITE_SETTINGS: BlogSiteSettings = {
   concurrency: 3,
   review: "before_publish",
   publishMode: "publish_then_edit",
-  categories: { defaultId: null, rules: [], useAi: true },
+  categories: { section: "Blog", defaultId: null, rules: [], useAi: true },
   search: { country: "", language: "" },
   yearInUrlPercent: null,
   sheetUrl: "",
@@ -195,7 +196,7 @@ export function mergeSiteSettings(raw: unknown): BlogSiteSettings {
     concurrency: clampTo(r.concurrency, SITE_LIMITS.concurrency, d.concurrency),
     review: r.review === "none" ? "none" : "before_publish",
     publishMode: r.publishMode === "moderate_first" ? "moderate_first" : "publish_then_edit",
-    categories: { ...d.categories, ...(r.categories ?? {}), rules: r.categories?.rules ?? [] },
+    categories: { ...d.categories, ...(r.categories ?? {}), rules: r.categories?.rules ?? [], section: typeof r.categories?.section === "string" ? r.categories.section.trim().slice(0, 100) : d.categories.section },
     search: { ...d.search, ...(r.search ?? {}) },
     yearInUrlPercent: r.yearInUrlPercent ?? d.yearInUrlPercent,
     sheetUrl: typeof r.sheetUrl === "string" ? r.sheetUrl.trim().slice(0, 1000) : d.sheetUrl,

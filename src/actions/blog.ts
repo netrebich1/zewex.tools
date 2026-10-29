@@ -80,7 +80,7 @@ function settingsFromForm(f: FormData, prev: BlogSiteSettings): BlogSiteSettings
     concurrency: num(f, "concurrency", prev.concurrency, SITE_LIMITS.concurrency[0], SITE_LIMITS.concurrency[1]),
     review: (str(f, "review") === "none" ? "none" : "before_publish") as ReviewMode,
     publishMode,
-    categories: { defaultId: str(f, "catDefaultId") ? num(f, "catDefaultId", 0, 0) || null : null, rules, useAi: flag(f, "catUseAi") },
+    categories: { section: has(f, "catSection") ? str(f, "catSection").slice(0, 100) : prev.categories.section, defaultId: str(f, "catDefaultId") ? num(f, "catDefaultId", 0, 0) || null : null, rules, useAi: flag(f, "catUseAi") },
     search: { country: str(f, "searchCountry").toLowerCase().slice(0, 8), language: str(f, "searchLanguage").toLowerCase().slice(0, 8) },
     yearInUrlPercent: yearRaw === "" ? null : num(f, "yearInUrlPercent", 0, 0, 100),
     sheetUrl: has(f, "sheetUrl") ? str(f, "sheetUrl").slice(0, 1000) : prev.sheetUrl,

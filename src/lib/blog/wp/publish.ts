@@ -9,7 +9,7 @@ import { Prisma, type BlogPhoto, type BlogPost, type BlogSite } from "@prisma/cl
 import { prisma } from "@/lib/db";
 import type { AiCtx } from "@/lib/blog/ai";
 import { absPath, publicUrl, toWpJpeg } from "@/lib/blog/storage";
-import type { BlogRecipeSnapshot, PublishMode } from "@/lib/blog/types";
+import { mergeSiteSettings, type BlogRecipeSnapshot, type PublishMode } from "@/lib/blog/types";
 import { WpError, mapLimited, safeFilename, uploadMedia, type WpCreds } from "@/lib/pins/wp/client";
 import { slugify } from "@/lib/utils";
 import { articleMarker, createPost, findMediaBySlug, lookupPostSlug, pickFreeSlug, updatePost, type WpPostInput, type WpPostStatus } from "@/lib/articles/wp/posts";
@@ -81,6 +81,8 @@ export async function publishPost(ctx: PublishCtx): Promise<PublishOutcome> {
       ctx.log(`категория: ${categoryId ?? "—"} (${category.source}${category.detail ? `, ${category.detail}` : ""})`);
       if (categoryId) await prisma.blogPost.update({ where: { id: post.id }, data: { wpCategoryId: categoryId } });
     } catch (e) {
+      // Раздел сайта задан, но не найден и не создан — повтор публикации, а не запись без раздела
+      if (isAuthError(e) || mergeSiteSettings(ctx.site.settings).categories.section) throw e;
       ctx.log(`категория не выбрана: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
