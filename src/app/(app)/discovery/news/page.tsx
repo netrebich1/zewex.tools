@@ -145,6 +145,14 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
           </Card>
           <Card title="Очередь">
             <p className="help">Ждут классификации: <b className="text-ink">{sum.waiting}</b>. Классифицировано за сутки: {sum.classified} из лимита {sum.settings.classifyPerDay}.</p>
+            <p className="help mt-2">
+              {sum.active ? (sum.active.status === "running" ? "Анализ идёт сейчас — карточки появятся в ленте сами." : "Анализ в очереди, начнётся через минуту.") : sum.nextRunAt ? `Следующий плановый анализ в ${fmtKyiv(sum.nextRunAt, false)}.` : ""}
+            </p>
+            {!sum.active && (
+              <ActionForm action={runNow} className="mt-3" hidden={{ project: project.id, scope: "all" }}>
+                <SubmitButton className="btn-brand btn-sm w-full" pendingText="Ставлю…">Запустить анализ сейчас</SubmitButton>
+              </ActionForm>
+            )}
           </Card>
         </div>
       </div>
