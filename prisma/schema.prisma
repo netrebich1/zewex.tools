@@ -2643,6 +2643,9 @@ model NewsEntity {
   /// Варианты написания (укр/рус/англ); совпадение по основе слова, окончания отрезаются
   aliases   Json
   isActive  Boolean  @default(true)
+  /// Конкуренты за 30 дней (только сайты с открытыми просмотрами): статей, просмотров, по сайтам, лучшая статья, события
+  compStats   Json?
+  compStatsAt DateTime?
   createdAt DateTime @default(now())
   project   NewsProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 

@@ -199,6 +199,8 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
             {c.priority && <span className={`badge ${PRIORITY_TONE[c.priority] ?? ""}`}>{PRIORITY_LABELS[c.priority] ?? c.priority}</span>}
             {notUa && <Badge tone="brand">Ещё нет в UA</Badge>}
             {c.category && <Badge>{CATEGORY_LABELS[c.category] ?? c.category}</Badge>}
+            {c.uaCount > 0 && <span className="badge bg-info-soft text-info" title="Украинские СМИ, которые уже написали">UA · {c.uaCount}</span>}
+            {c.worldCount > 0 && <span className="badge bg-ink/5 text-ink-2" title="Англоязычные и другие мировые СМИ">EN · {c.worldCount}</span>}
             {c.sensitive && <Badge tone="warn">Чувствительная тема</Badge>}
             {c.status !== "new" && <Badge tone="ok">{CLUSTER_STATUS_LABELS[c.status]}{c.brief ? " · ТЗ готово" : c.angles ? " · углы готовы" : ""}</Badge>}
           </div>
@@ -262,7 +264,7 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
               <li key={s.url} className="flex flex-wrap gap-x-2">
                 <span className="w-12 shrink-0 tabular-nums text-muted">{fmtKyiv(s.at, false)}</span>
                 <span className="font-medium">{s.domain}</span>
-                {s.tier === "world" && <Badge>мир</Badge>}
+                <span className={`badge ${s.tier === "world" ? "bg-ink/5 text-ink-2" : "bg-info-soft text-info"}`}>{s.tier === "world" ? "EN" : "UA"}</span>
                 <a href={s.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate text-ink-2 hover:underline">{s.title}</a>
               </li>
             ))}
