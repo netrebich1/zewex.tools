@@ -12,6 +12,7 @@ import { embedCode } from "@/lib/news/research";
 import { EmbedPreview } from "@/components/news/EmbedPreview";
 import { requireProject } from "@/lib/news/access";
 import { agoText, feed, fmtKyiv, spendByDay, summary, trendsOf, type FeedCard } from "@/lib/news/query";
+import { isQuietHour, QUIET_FROM, QUIET_TO } from "@/lib/news/runs";
 import { BASE_PATH, CATEGORY_LABELS, CLUSTER_STATUS_LABELS, PRIORITY_LABELS, RUN_SCOPES } from "@/lib/news/types";
 import { fmtMoney } from "@/lib/utils";
 
@@ -58,7 +59,7 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
       />
       <p className="help -mt-4 mb-4">
         Последний прогон: {sum.lastRun ? `${agoText(sum.lastRun.finishedAt ?? sum.lastRun.createdAt)}${sum.lastRun.status === "failed" ? " — с ошибкой" : ""}` : "ещё не было"}
-        {sum.nextRunAt && !sum.active ? ` · следующий плановый в ${fmtKyiv(sum.nextRunAt, false)}` : ""}
+        {!sum.active && isQuietHour() ? ` · ночная пауза до 0${QUIET_TO}:00 (плановые с ${QUIET_FROM}:00 до 0${QUIET_TO}:00 не идут)` : sum.nextRunAt && !sum.active ? ` · следующий плановый в ${fmtKyiv(sum.nextRunAt, false)}` : ""}
         {spend.avgRun != null ? ` · средний прогон ${fmtMoney(spend.avgRun)}` : ""}
       </p>
       <LiveRefresh projectId={project.id} />
@@ -146,7 +147,7 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
           <Card title="Очередь">
             <p className="help">Ждут классификации: <b className="text-ink">{sum.waiting}</b>. Классифицировано за сутки: {sum.classified} из лимита {sum.settings.classifyPerDay}.</p>
             <p className="help mt-2">
-              {sum.active ? (sum.active.status === "running" ? "Анализ идёт сейчас — карточки появятся в ленте сами." : "Анализ в очереди, начнётся через минуту.") : sum.nextRunAt ? `Следующий плановый анализ в ${fmtKyiv(sum.nextRunAt, false)}.` : ""}
+              {sum.active ? (sum.active.status === "running" ? "Анализ идёт сейчас — карточки появятся в ленте сами." : "Анализ в очереди, начнётся через минуту.") : isQuietHour() ? `Ночная пауза: плановый анализ не идёт с ${QUIET_FROM}:00 до 0${QUIET_TO}:00 по Киеву. Вручную запустить можно.` : sum.nextRunAt ? `Следующий плановый анализ в ${fmtKyiv(sum.nextRunAt, false)}.` : ""}
             </p>
             {!sum.active && (
               <ActionForm action={runNow} className="mt-3" hidden={{ project: project.id, scope: "all" }}>

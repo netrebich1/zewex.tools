@@ -27,8 +27,17 @@ export async function requestRun(projectId: string, userId: string, scope: strin
   return { ok: true, id: run.id };
 }
 
-/** Плановые прогоны: активным проектам, у которых подошло время и нет идущего прогона. */
+/** Ночная пауза плановых прогонов по Киеву (решение владельца 29.10): с 23:00 до 07:00 не анализируем. Ручной запуск работает всегда. */
+export const QUIET_FROM = 23;
+export const QUIET_TO = 7;
+export function isQuietHour(d = new Date()): boolean {
+  const h = Number(d.toLocaleString("en-GB", { timeZone: "Europe/Kyiv", hour: "2-digit", hour12: false })) % 24;
+  return h >= QUIET_FROM || h < QUIET_TO;
+}
+
+/** Плановые прогоны: активным проектам, у которых подошло время и нет идущего прогона. Ночью не ставим: в 07:00 просроченные пойдут сразу. */
 export async function scheduleDue(): Promise<number> {
+  if (isQuietHour()) return 0;
   const due = await prisma.newsProject.findMany({ where: { isActive: true, OR: [{ nextRunAt: null }, { nextRunAt: { lte: new Date() } }] }, select: { id: true, settings: true } });
   let n = 0;
   for (const p of due) {
