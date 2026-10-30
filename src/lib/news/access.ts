@@ -11,8 +11,7 @@ export function projectWhere(me: CurrentUser) {
 }
 
 export async function visibleProjects(me: CurrentUser) {
-  // Рейтинг просмотров (сотни КБ) нужен только странице «Просмотры» — она читает его сама.
-  return prisma.newsProject.findMany({ where: projectWhere(me), orderBy: { createdAt: "asc" }, omit: { viewsReport: true } });
+  return prisma.newsProject.findMany({ where: projectWhere(me), orderBy: { createdAt: "asc" } });
 }
 
 export async function requireProject(me: CurrentUser, id: string | null | undefined) {

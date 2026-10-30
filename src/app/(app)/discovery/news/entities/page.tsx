@@ -29,11 +29,16 @@ const GROUPS: Record<string, string> = {
 };
 const TYPES: Record<string, string> = { person: "персона", brand: "бренд", event: "событие", trend: "тренд", product: "продукт" };
 const aliasList = (v: unknown) => (Array.isArray(v) ? (v as string[]) : []);
-/** Статистика конкурентов за 30 дней (scripts/news/views-analyze.ts): только сайты с открытыми просмотрами. */
-type CompStats = { period: string; rank: number; articles: number; views: number; avg: number; index: number; sites: Record<string, { n: number; v: number }>; events: { label: string; n: number }[]; top: { title: string; url: string; site: string; views: number } | null };
+/** Статистика конкурентов за последний посчитанный месяц (scripts/news/views-analyze.ts): только сайты с открытыми просмотрами. */
+type CompStats = { period: string; origin?: "ua" | "world" | null; rank: number; articles: number; views: number; avg: number; index: number; sites: Record<string, { n: number; v: number }>; events: { label: string; n: number }[]; top: { title: string; url: string; site: string; views: number } | null };
 const comp = (v: unknown) => (v && typeof v === "object" ? (v as CompStats) : null);
 const fmtN = (n: number) => n.toLocaleString("ru-RU");
 const sitesText = (c: CompStats) => Object.entries(c.sites).sort((a, b) => b[1].v - a[1].v).map(([k, x]) => `${k}: ${x.n} ст., ${fmtN(x.v)}`).join(" · ");
+type Origin = "ua" | "world" | "other";
+/** Украинская персона, иностранная или не персона (бренды, события, тренды): по группе, для спортсменов и «без группы» — по рейтингу просмотров. */
+const originOf = (r: { type: string; grp: string; compStats: unknown }): Origin =>
+  r.type !== "person" ? "other" : r.grp.startsWith("ua_") ? "ua" : r.grp.startsWith("world") || r.grp === "royal" ? "world" : (comp(r.compStats)?.origin ?? "other");
+const ORIGIN_TABS: Record<string, string> = { all: "Все", ua: "Украинские", world: "Иностранные", other: "Бренды, события, прочее" };
 
 export default async function NewsEntitiesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const me = await requireUser();
@@ -57,8 +62,13 @@ export default async function NewsEntitiesPage({ searchParams }: { searchParams:
     }
   }
   const editing = rows.find((r) => r.id === sp(q, "edit")) ?? null;
-  const leaders = rows.map((r) => ({ r, c: comp(r.compStats) })).filter((x): x is { r: (typeof rows)[number]; c: CompStats } => !!x.c).sort((a, b) => b.c.views - a.c.views);
-  const groups = Object.keys(GROUPS).map((g) => ({ g, rows: rows.filter((r) => (GROUPS[r.grp] ? r.grp : "") === g) })).filter((x) => x.rows.length);
+  const tab = (["ua", "world", "other"].includes(sp(q, "o") ?? "") ? sp(q, "o") : "all") as "all" | Origin;
+  const byViews = sp(q, "sort") === "views";
+  const tabLink = (o: string, sort = byViews) => `${BASE_PATH}/entities?project=${project.id}${o !== "all" ? `&o=${o}` : ""}${sort ? "&sort=views" : ""}`;
+  const shownRows = rows.filter((r) => tab === "all" || originOf(r) === tab).sort((a, b) => (byViews ? (comp(b.compStats)?.views ?? -1) - (comp(a.compStats)?.views ?? -1) : 0));
+  const tabCount = (o: Origin) => rows.filter((r) => originOf(r) === o).length;
+  const groups = Object.keys(GROUPS).map((g) => ({ g, rows: shownRows.filter((r) => (GROUPS[r.grp] ? r.grp : "") === g) })).filter((x) => x.rows.length);
+  const withStats = rows.filter((r) => comp(r.compStats)).length;
 
   return (
     <>
@@ -105,39 +115,28 @@ export default async function NewsEntitiesPage({ searchParams }: { searchParams:
                 <li>Сущность с латинским написанием ловит новости мировых медиа — так появляется сигнал «ещё нет в UA».</li>
                 <li>Короткие имена (Зара, Діор) совпадают только с близкими формами слова, чтобы не ловить «зарплату».</li>
                 <li>Счётчик «За 7 дней» — сколько материалов нашёл бесплатный фильтр и сколько из них LLM признал нашей темой.</li>
-                <li>«Конкуренты, 30 дн.» — сколько статей о персоне вышло на сайтах с открытыми просмотрами и сколько они собрали. Наведите курсор — разбивка по сайтам.</li>
+                <li>«Конкуренты, месяц» — сколько статей о персоне вышло на сайтах с открытыми просмотрами и сколько они собрали. Наведите курсор — разбивка по сайтам.</li>
               </ul>
             </Card>
           )}
         </div>
       )}
 
-      {leaders.length > 0 && (
-        <Card
-          className="mb-5"
-          title={`Кто собирает просмотры у конкурентов (${leaders[0].c.period})`}
-          description="Статьи в разделах «шоубиз/звёзды» сайтов, где просмотры видны публично: TSN, УНИАН, Главред, 24 Канал, Lux FM. Масштаб сайтов разный: у TSN и УНИАН тысячи просмотров на статью, у 24 Канала десятки. Поэтому есть индекс — сумма просмотров каждой статьи относительно средней статьи того же сайта. Lux FM у части статей прячет счётчик: такие статьи посчитаны, просмотры нет. Свежие статьи ещё добирают просмотры."
-        >
-          <div className="table-wrap">
-            <table className="table">
-              <thead><tr><th className="col-sm">#</th><th>Персона</th><th className="col-sm">Статей</th><th className="col-sm">Просмотров</th><th className="col-sm">В среднем</th><th className="col-sm">Индекс</th><th className="col-md">О чём пишут</th><th className="col-md">Лучшая статья</th></tr></thead>
-              <tbody>
-                {leaders.slice(0, 60).map(({ r, c }, i) => (
-                  <tr key={r.id}>
-                    <td className="col-sm tabular-nums text-muted">{i + 1}</td>
-                    <td><span className="font-medium">{r.name}</span> <span className="help">{GROUPS[r.grp] ?? ""}</span><div className="help">{sitesText(c)}</div></td>
-                    <td className="col-sm tabular-nums">{c.articles}</td>
-                    <td className="col-sm tabular-nums font-medium">{fmtN(c.views)}</td>
-                    <td className="col-sm tabular-nums">{fmtN(c.avg)}</td>
-                    <td className="col-sm tabular-nums">{c.index}</td>
-                    <td className="col-md help">{c.events.map((e) => `${e.label} (${e.n})`).join(", ")}</td>
-                    <td className="col-md help max-w-[320px]">{c.top ? <a href={c.top.url} target="_blank" rel="noopener noreferrer" className="line-clamp-2 hover:underline">{c.top.title}</a> : "—"}{c.top ? <span> · {c.top.site}, {fmtN(c.top.views)}</span> : null}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        {Object.entries(ORIGIN_TABS).map(([k, label]) => (
+          <Link key={k} href={tabLink(k)} className={`tab ${tab === k ? "active" : ""}`}>{label} ({k === "all" ? rows.length : tabCount(k as Origin)})</Link>
+        ))}
+        <span className="ml-auto flex items-center gap-1.5 text-[13px] text-muted">
+          Порядок:
+          <Link href={tabLink(tab, false)} className={`tab ${!byViews ? "active" : ""}`}>по весу</Link>
+          <Link href={tabLink(tab, true)} className={`tab ${byViews ? "active" : ""}`}>по просмотрам у конкурентов</Link>
+        </span>
+      </div>
+      {withStats > 0 && (
+        <p className="help mb-4">
+          Просмотры у конкурентов есть у {withStats} сущностей. Полный рейтинг всех звёзд, включая тех, кого мы ещё не отслеживаем, с разбивкой на украинских и иностранных, новыми и растущими — на странице{" "}
+          <Link href={`${BASE_PATH}/views?project=${project.id}`} className="font-medium underline">«Просмотры»</Link>.
+        </p>
       )}
 
       {rows.length === 0 ? <Empty title="Сущностей пока нет" hint="Добавьте звёзд, бренды и события, которые важны сайту." /> : (
@@ -146,7 +145,7 @@ export default async function NewsEntitiesPage({ searchParams }: { searchParams:
             <Card key={g} title={`${GROUPS[g]} (${rs.length})`}>
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>Сущность</th><th className="col-sm">Вес</th><th className="col-md">Варианты</th><th className="col-sm">За 7 дней</th><th className="col-sm">Конкуренты, 30 дн.</th><th className="col-sm"></th></tr></thead>
+                  <thead><tr><th>Сущность</th><th className="col-sm">Вес</th><th className="col-md">Варианты</th><th className="col-sm">За 7 дней</th><th className="col-sm">Конкуренты, месяц</th><th className="col-sm"></th></tr></thead>
                   <tbody>
                     {rs.map((r) => {
                       const c = count.get(r.id);

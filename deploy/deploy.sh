@@ -51,9 +51,9 @@ chmod 644 /etc/cron.d/zewex-tools-backup
 install -m 755 deploy/prune-photo-cache.sh /usr/local/bin/zewex-prune-photo-cache
 printf '40 4 * * * root /usr/local/bin/zewex-prune-photo-cache 5 >> /var/log/zewex-prune.log 2>&1\n' > /etc/cron.d/zewex-tools-prune
 chmod 644 /etc/cron.d/zewex-tools-prune
-# Рейтинг просмотров у конкурентов: каждый понедельник в 05:15 (около 20 минут, страница «Просмотры» в Новостях).
+# Рейтинг просмотров у конкурентов за прошлый месяц: 1-го числа в 05:15 (около получаса, страница «Просмотры» в Новостях).
 install -m 755 deploy/news-views.sh /usr/local/bin/zewex-news-views
-printf '15 5 * * 1 root /usr/local/bin/zewex-news-views >> /var/log/zewex-news-views.log 2>&1\n' > /etc/cron.d/zewex-news-views
+printf '15 5 1 * * root /usr/local/bin/zewex-news-views >> /var/log/zewex-news-views.log 2>&1\n' > /etc/cron.d/zewex-news-views
 chmod 644 /etc/cron.d/zewex-news-views
 /usr/local/bin/zewex-backup-db predeploy
 # Reproducible install: npm ci when a lockfile is committed, otherwise npm install and bring the lockfile back.

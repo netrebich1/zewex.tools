@@ -1,10 +1,12 @@
 /**
- * Кто и что собирает просмотры у конкурентов: персоны и типы событий за 30 дней по выгрузке views-collect.ts.
+ * Кто и что собирает просмотры у конкурентов: персоны и типы событий за календарный месяц по выгрузке views-collect.ts.
  * 1) LLM по заголовку называет героев статьи и тип события; 2) считаем статьи и просмотры по персоне и по событию;
  * 3) пишем статистику в существующие сущности (compStats) и готовим файл новых сущностей для import-expansion.ts.
  * Lux FM прячет часть счётчиков (показывает 0) — нули Lux считаем «нет данных», статью учитываем, просмотры нет.
  * 4) --new: файл new-entities.json — персоны, которые собирают просмотры, но мы их не отслеживаем (варианты написания от LLM).
- * Запуск: npx tsx scripts/news/views-analyze.ts <month.jsonl> <outDir> [--write] [--new]
+ * --month 2026-10: только статьи, опубликованные в этом месяце (по Киеву); --write сохраняет месяц в NewsViewsMonth,
+ * а статистику сущностей (compStats) — только если это самый свежий посчитанный месяц.
+ * Запуск: npx tsx scripts/news/views-analyze.ts <views.jsonl> <outDir> --month 2026-10 [--write] [--new]
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Prisma } from "@prisma/client";
@@ -50,7 +52,10 @@ async function main() {
   const [file, outDir] = process.argv.slice(2);
   const write = process.argv.includes("--write");
   const makeNew = process.argv.includes("--new");
-  const rows = [...new Map(readFileSync(file, "utf8").trim().split("\n").map((l) => JSON.parse(l) as Row).map((r) => [r.url, r])).values()];
+  const month = process.argv[process.argv.indexOf("--month") + 1] ?? "";
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new Error("укажите --month ГГГГ-ММ");
+  const kyivMonth = (iso: string) => new Date(iso).toLocaleString("sv-SE", { timeZone: "Europe/Kyiv" }).slice(0, 7);
+  const rows = [...new Map(readFileSync(file, "utf8").trim().split("\n").map((l) => JSON.parse(l) as Row).map((r) => [r.url, r])).values()].filter((r) => kyivMonth(r.publishedAt) === month);
   const p = await prisma.newsProject.findFirstOrThrow({ where: { siteUrl: { contains: "beautydaily" } } });
   const s = parseSettings(p.settings);
   let cost = 0;
@@ -173,7 +178,7 @@ async function main() {
       top: a.top ? { title: a.top.title, url: a.top.url, site: a.top.site, views: a.top.v } : null,
     };
   });
-  const report = { period, sites: siteList.map((st) => ({ site: st, articles: tagged.filter((r) => r.site === st).length, median: siteMedian[st] })), articles: tagged.length, people: people2, events, topArticles: tagged.filter((r) => r.v != null).sort((x, y) => (y.v! / (siteMedian[y.site] || 1)) - (x.v! / (siteMedian[x.site] || 1))).slice(0, 40).map((r) => ({ site: r.site, title: r.title, url: r.url, views: r.v, index: +(r.v! / (siteMedian[r.site] || 1)).toFixed(1), event: EVENTS[r.event], origin: tOrigin.get(r.url) ?? null, persons: r.persons.map((x) => x.name) })) };
+  const report = { month, period, sites: siteList.map((st) => ({ site: st, articles: tagged.filter((r) => r.site === st).length, median: siteMedian[st] })), articles: tagged.length, people: people2, events, topArticles: tagged.filter((r) => r.v != null).sort((x, y) => (y.v! / (siteMedian[y.site] || 1)) - (x.v! / (siteMedian[x.site] || 1))).slice(0, 40).map((r) => ({ site: r.site, title: r.title, url: r.url, views: r.v, index: +(r.v! / (siteMedian[r.site] || 1)).toFixed(1), event: EVENTS[r.event], origin: tOrigin.get(r.url) ?? null, persons: r.persons.map((x) => x.name) })) };
   writeFileSync(`${outDir}/report.json`, JSON.stringify(report, null, 1));
   const csv = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   writeFileSync(`${outDir}/people.csv`, "﻿" + [["#", "Персона", "Кто", "Отслеживаем", "Статей", "Просмотров", "В среднем", "Индекс", ...siteList.map((x) => `${x}: статей/просм.`), "Главные события", "Лучшая статья", "Её просмотры"].map(csv).join(";"),
@@ -185,16 +190,17 @@ async function main() {
   if (makeNew) await newEntities(ctx, s.classifyModel, people2.filter((x) => !x.tracked && x.articles >= 4 && x.kind !== "politic" && deathShare(x) < 0.5).slice(0, 120), `${outDir}/new-entities.json`);
   console.log(`LLM всего $${cost.toFixed(3)}`);
   if (!write) return;
-  // Статистика в наши сущности; у сущностей без статей за период — обнуляем, чтобы не висели старые цифры.
+  const data = report as unknown as Prisma.InputJsonValue;
+  await prisma.newsViewsMonth.upsert({ where: { projectId_month: { projectId: p.id, month } }, create: { projectId: p.id, month, data }, update: { data } });
+  console.log(`месяц ${month} записан`);
+  // Статистика в наши сущности — по самому свежему месяцу; у сущностей без статей за месяц обнуляем, чтобы не висели старые цифры.
+  if (await prisma.newsViewsMonth.count({ where: { projectId: p.id, month: { gt: month } } })) return;
   const at = new Date();
   await prisma.newsEntity.updateMany({ where: { projectId: p.id }, data: { compStats: Prisma.DbNull, compStatsAt: at } });
   for (const x of people2.filter((y) => y.entityId)) {
-    await prisma.newsEntity.update({ where: { id: x.entityId! }, data: { compStats: { period, rank: x.rank, articles: x.articles, views: x.views, avg: x.avg, index: x.index, sites: x.sites, events: x.events, top: x.top }, compStatsAt: at } });
+    await prisma.newsEntity.update({ where: { id: x.entityId! }, data: { compStats: { period, origin: x.origin, rank: x.rank, articles: x.articles, views: x.views, avg: x.avg, index: x.index, sites: x.sites, events: x.events, top: x.top }, compStatsAt: at } });
   }
   console.log("compStats записаны");
-  // Весь рейтинг — на страницу «Просмотры» (Discover → Новости).
-  await prisma.newsProject.update({ where: { id: p.id }, data: { viewsReport: report as unknown as Prisma.InputJsonValue, viewsReportAt: at } });
-  console.log("рейтинг записан в проект");
 }
 
 main().finally(() => prisma.$disconnect());
