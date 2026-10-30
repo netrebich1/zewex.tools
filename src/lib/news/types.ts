@@ -126,7 +126,12 @@ export type NewsSettings = {
   autoSummaryPerDay: number;
   /** Суффикс, который CMS дописывает к Title (например « - Beauty Daily UA»): ТЗ считает лимит с его учётом. Лучше выключить в Yoast. */
   titleSuffix: string;
+  /** Сайты, под которые пишем ТЗ (кнопки «+ ТЗ для сайта»): одна новость → разные углы на разные сайты. Пусто — адрес проекта. */
+  sites: NewsSite[];
 };
+
+/** Сайт для ТЗ: домен без www — ключ, название — подпись кнопки, «о сайте» — подставляется в углы и ТЗ вместо siteAbout. */
+export type NewsSite = { host: string; name: string; about: string };
 
 export const DEFAULT_STOP_WORDS = [
   // война и армия
@@ -209,6 +214,7 @@ export const DEFAULT_SETTINGS: NewsSettings = {
   briefModel: DEFAULT_BRIEF_MODEL,
   autoSummaryPerDay: 300,
   titleSuffix: "",
+  sites: [],
 };
 
 const num = (v: unknown, d: number, min: number, max: number) => {
@@ -257,8 +263,40 @@ export function parseSettings(raw: unknown): NewsSettings {
     briefModel: str(r.briefModel, d.briefModel),
     autoSummaryPerDay: num(r.autoSummaryPerDay, d.autoSummaryPerDay, 0, 2000),
     titleSuffix: typeof r.titleSuffix === "string" ? r.titleSuffix : d.titleSuffix,
+    sites: Array.isArray(r.sites) ? (r.sites as Partial<NewsSite>[]).map((x) => ({ host: siteHost(String(x.host ?? "")), name: String(x.name ?? "").trim(), about: String(x.about ?? "").trim() })).filter((x) => x.host) : d.sites,
   };
 }
+
+/** Домен сайта без схемы и www: «https://www.site.ua/» → «site.ua». */
+export function siteHost(url: string): string {
+  return url.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[/?#\s]/)[0];
+}
+
+/** Сайты проекта для ТЗ: из настроек, а если список пуст — сам сайт проекта. */
+export function projectSites(p: { name: string; siteUrl: string }, s: NewsSettings): NewsSite[] {
+  if (s.sites.length) return s.sites.map((x) => ({ ...x, name: x.name || x.host }));
+  const host = siteHost(p.siteUrl);
+  return host ? [{ host, name: p.name || host, about: "" }] : [];
+}
+
+/** Строки настроек «Название | адрес | о сайте» ↔ список сайтов. */
+export function parseSitesText(text: string): NewsSite[] {
+  const out: NewsSite[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const parts = line.split("|").map((x) => x.trim());
+    if (!parts.some(Boolean)) continue;
+    // «site.ua» одной строкой — тоже можно: название = домен.
+    const [a, b, ...rest] = parts;
+    const host = siteHost(b || a);
+    if (!host || !host.includes(".")) throw new Error(`Сайты: в строке «${line.trim()}» нет адреса`);
+    if (out.some((x) => x.host === host)) continue;
+    out.push({ host, name: b ? a : host, about: rest.join(" | ") });
+  }
+  return out;
+}
+export const sitesText = (sites: NewsSite[]) => sites.map((x) => [x.name, x.host, x.about].filter((v, i) => v || i < 2).join(" | ")).join("\n");
+
+export const BRIEF_STATUS_LABELS: Record<string, string> = { draft: "углы", ready: "ТЗ готово", published: "опубликовано" };
 
 /** Состояние проекта между прогонами (курсор ротации Google News, отметки алертов). */
 export type ProjectState = { gnewsCursor?: number; budgetAlertDay?: string };
@@ -289,7 +327,6 @@ export type RunStats = {
   proxied: number;
   budgetStop?: string;
   summarized?: number;
-  onSite?: number;
   clustersMerged?: number;
   embedFilterOn?: boolean;
   log?: string[];

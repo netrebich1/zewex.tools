@@ -220,9 +220,14 @@ export async function mergeStep(projectId: string, ctx: AiCtx, s: NewsSettings, 
       } else vec = vec ?? ov;
       n += o.itemCount;
     }
+    // Избранное и ТЗ по сайтам склеенных карточек переходят к оставшейся (ТЗ сайта, который уже есть у неё, не дублируем).
+    const starredFrom = others.find((o) => o.starred);
+    const hasSites = new Set((await prisma.newsBrief.findMany({ where: { clusterId: t.id }, select: { site: true } })).map((b) => b.site));
+    const moveBriefs = (await prisma.newsBrief.findMany({ where: { clusterId: { in: others.map((o) => o.id) } }, orderBy: { updatedAt: "desc" } })).filter((b) => (hasSites.has(b.site) ? false : (hasSites.add(b.site), true)));
     const keepNs = [...new Set([...(Array.isArray(t.notSame) ? (t.notSame as string[]) : []), ...others.flatMap((o) => (Array.isArray(o.notSame) ? (o.notSame as string[]) : []))])].slice(-300);
     await prisma.$transaction([
       prisma.newsItem.updateMany({ where: { clusterId: { in: others.map((o) => o.id) } }, data: { clusterId: t.id } }),
+      prisma.newsBrief.updateMany({ where: { id: { in: moveBriefs.map((b) => b.id) } }, data: { clusterId: t.id } }),
       prisma.newsCluster.update({
         where: { id: t.id },
         data: {
@@ -231,8 +236,7 @@ export async function mergeStep(projectId: string, ctx: AiCtx, s: NewsSettings, 
           firstPublishedAt: new Date(Math.min(+t.firstPublishedAt, ...others.map((o) => +o.firstPublishedAt))),
           lastItemAt: new Date(Math.max(+t.lastItemAt, ...others.map((o) => +o.lastItemAt))),
           imageUrl: t.imageUrl ?? others.find((o) => o.imageUrl)?.imageUrl ?? null,
-          onSite: (t.onSite ?? others.find((o) => o.onSite)?.onSite ?? undefined) as never,
-          onSiteAt: t.onSiteAt ?? others.find((o) => o.onSiteAt)?.onSiteAt ?? null,
+          ...(!t.starred && starredFrom ? { starred: true, starredById: starredFrom.starredById, starredAt: starredFrom.starredAt } : {}),
           notSame: keepNs,
         },
       }),

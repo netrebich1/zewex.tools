@@ -8,9 +8,9 @@ import { encryptSecret } from "@/lib/crypto";
 import { canManageProject, loadProjectFor } from "@/lib/news/access";
 import { requestRun } from "@/lib/news/runs";
 import { testTelegram } from "@/lib/news/pipeline";
-import { buildBrief, startWork } from "@/lib/news/work";
+import { buildSiteBrief, startSiteWork } from "@/lib/news/work";
 import { fetchText } from "@/lib/news/fetch";
-import { BASE_PATH, CATEGORIES, DEFAULT_SETTINGS, parseSettings, SOURCE_KINDS, TIERS, type NewsSettings } from "@/lib/news/types";
+import { BASE_PATH, CATEGORIES, DEFAULT_SETTINGS, parseSettings, parseSitesText, SOURCE_KINDS, TIERS, type NewsSettings } from "@/lib/news/types";
 
 export type FormState = { error?: string; ok?: string };
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -35,29 +35,48 @@ export async function runNow(_p: FormState, f: FormData): Promise<FormState> {
   }
 }
 
-/** «В работу»: модель предлагает 3 угла (op=again — другие углы). */
+/** «+ ТЗ для сайта»: модель предлагает 3 угла под этот сайт (op=again — другие углы). */
 export async function takeToWork(_p: FormState, f: FormData): Promise<FormState> {
   try {
     const me = await requireUser();
     const c = await prisma.newsCluster.findUniqueOrThrow({ where: { id: str(f, "id") } });
     await loadProjectFor(me, c.projectId);
-    await startWork(me.id, c.id, str(f, "op") === "again");
+    await startSiteWork(me.id, c.id, str(f, "site"), str(f, "op") === "again");
     done();
-    return { ok: "Углы готовы — выберите один, и модуль соберёт ТЗ" };
+    return { ok: "Углы готовы — выберите один, и модуль соберёт ТЗ для этого сайта" };
   } catch (e) {
     return fail(e);
   }
 }
 
-/** ТЗ по выбранному углу. */
+/** ТЗ сайта по выбранному углу. */
 export async function makeBriefAction(_p: FormState, f: FormData): Promise<FormState> {
   try {
     const me = await requireUser();
-    const c = await prisma.newsCluster.findUniqueOrThrow({ where: { id: str(f, "id") } });
-    await loadProjectFor(me, c.projectId);
-    await buildBrief(me.id, c.id, Number(str(f, "idx")));
+    const b = await prisma.newsBrief.findUniqueOrThrow({ where: { id: str(f, "brief") } });
+    await loadProjectFor(me, b.projectId);
+    await buildSiteBrief(me.id, b.id, Number(str(f, "idx")));
     done();
-    return { ok: "ТЗ готово — скопируйте его и отдайте Claude" };
+    return { ok: "ТЗ готово — новость перешла во вкладку «ТЗ готово». Скопируйте ТЗ и отдайте Claude" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** ТЗ сайта: отметить «опубликовано» / вернуть / удалить. */
+export async function setBriefStatus(_p: FormState, f: FormData): Promise<FormState> {
+  try {
+    const me = await requireUser();
+    const b = await prisma.newsBrief.findUniqueOrThrow({ where: { id: str(f, "brief") } });
+    await loadProjectFor(me, b.projectId);
+    const op = str(f, "op");
+    if (op === "delete") await prisma.newsBrief.delete({ where: { id: b.id } });
+    else if (op === "published" || op === "ready") {
+      if (!b.brief) throw new Error("Сначала соберите ТЗ");
+      await prisma.newsBrief.update({ where: { id: b.id }, data: { status: op } });
+    } else throw new Error("Неизвестное действие");
+    done();
+    return { ok: op === "delete" ? "ТЗ для сайта удалено" : op === "published" ? "Отмечено: опубликовано" : "Сохранено" };
   } catch (e) {
     return fail(e);
   }
@@ -123,6 +142,7 @@ export async function saveSettings(_p: FormState, f: FormData): Promise<FormStat
       const raw = str(f, k);
       next[k] = raw ? list(raw) : DEFAULT_SETTINGS[k];
     }
+    if (f.has("sites")) next.sites = parseSitesText(String(f.get("sites") ?? ""));
     const settings = parseSettings(next);
     const token = str(f, "tgToken");
     const data: Prisma.NewsProjectUpdateInput = {

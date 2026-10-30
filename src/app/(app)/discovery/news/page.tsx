@@ -5,15 +5,15 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { NewsNav } from "@/components/news/NewsNav";
 import { LiveRefresh } from "@/components/news/LiveRefresh";
-import { makeBriefAction, researchAction, runNow, setClusterStatus, takeToWork, toggleStar, trendSearch } from "@/actions/news";
+import { makeBriefAction, researchAction, runNow, setBriefStatus, setClusterStatus, takeToWork, toggleStar, trendSearch } from "@/actions/news";
 import { CopyButton } from "@/components/news/CopyButton";
 import { FORMATS } from "@/lib/news/brief";
 import { embedCode } from "@/lib/news/research";
 import { EmbedPreview } from "@/components/news/EmbedPreview";
 import { requireProject } from "@/lib/news/access";
-import { agoText, favCounts, feed, fmtKyiv, spendByDay, summary, trendsOf, type FeedCard } from "@/lib/news/query";
+import { agoText, favCounts, feed, fmtKyiv, readyCounts, spendByDay, summary, trendsOf, type FeedCard, type SiteBrief } from "@/lib/news/query";
 import { isQuietHour, QUIET_FROM, QUIET_TO } from "@/lib/news/runs";
-import { BASE_PATH, CATEGORY_LABELS, CLUSTER_STATUS_LABELS, PRIORITY_LABELS, RUN_SCOPES } from "@/lib/news/types";
+import { BASE_PATH, BRIEF_STATUS_LABELS, CATEGORY_LABELS, CLUSTER_STATUS_LABELS, parseSettings, PRIORITY_LABELS, projectSites, RUN_SCOPES, type NewsSite } from "@/lib/news/types";
 import { fmtMoney } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -32,11 +32,12 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
       </>
     );
   }
-  const filter = { cat: sp(q, "cat") || undefined, urgent: sp(q, "urgent") === "1", notUa: sp(q, "notua") === "1", all: sp(q, "all") === "1", status: sp(q, "status") || undefined, priority: sp(q, "pr") || undefined, sort: (sp(q, "sort") === "fresh" ? "fresh" : "score") as "fresh" | "score", hours: Number(sp(q, "h")) || 6, fav: sp(q, "fav") === "1", favDay: Math.min(2, Math.max(0, Number(sp(q, "fd")) || 0)), onSite: sp(q, "site") === "1" };
-  const [{ cards, hidden, total, lastRunAt }, sum, trends, spend, favN] = await Promise.all([feed(project.id, filter), summary(project.id), trendsOf(project.id), spendByDay(project.id), favCounts(project.id)]);
+  const filter = { cat: sp(q, "cat") || undefined, urgent: sp(q, "urgent") === "1", notUa: sp(q, "notua") === "1", all: sp(q, "all") === "1", status: sp(q, "status") || undefined, priority: sp(q, "pr") || undefined, sort: (sp(q, "sort") === "fresh" ? "fresh" : "score") as "fresh" | "score", hours: Number(sp(q, "h")) || 6, fav: sp(q, "fav") === "1", favDay: Math.min(2, Math.max(0, Number(sp(q, "fd")) || 0)), ready: sp(q, "ready") === "1", site: sp(q, "site") || undefined, pub: (["wait", "done"].includes(sp(q, "pub") ?? "") ? sp(q, "pub") : undefined) as "wait" | "done" | undefined };
+  const sites = projectSites(project, parseSettings(project.settings));
+  const [{ cards, hidden, total, lastRunAt }, sum, trends, spend, favN, readyN] = await Promise.all([feed(project.id, filter), summary(project.id), trendsOf(project.id), spendByDay(project.id), favCounts(project.id), readyCounts(project.id)]);
   const link = (patch: Record<string, string | undefined>) => {
     const u = new URLSearchParams({ project: project.id });
-    const merged = { cat: filter.cat, urgent: filter.urgent ? "1" : undefined, notua: filter.notUa ? "1" : undefined, all: filter.all ? "1" : undefined, status: filter.status, pr: filter.priority, sort: filter.sort === "fresh" ? "fresh" : undefined, h: filter.sort === "fresh" && filter.hours !== 6 ? String(filter.hours) : undefined, fav: filter.fav ? "1" : undefined, fd: filter.fav && filter.favDay ? String(filter.favDay) : undefined, site: filter.onSite ? "1" : undefined, ...patch };
+    const merged = { cat: filter.cat, urgent: filter.urgent ? "1" : undefined, notua: filter.notUa ? "1" : undefined, all: filter.all ? "1" : undefined, status: filter.status, pr: filter.priority, sort: filter.sort === "fresh" ? "fresh" : undefined, h: filter.sort === "fresh" && filter.hours !== 6 ? String(filter.hours) : undefined, fav: filter.fav ? "1" : undefined, fd: filter.fav && filter.favDay ? String(filter.favDay) : undefined, ready: filter.ready ? "1" : undefined, site: filter.ready ? filter.site : undefined, pub: filter.ready ? filter.pub : undefined, ...patch };
     for (const [k, v] of Object.entries(merged)) if (v) u.set(k, v);
     return `${BASE_PATH}?${u.toString()}`;
   };
@@ -88,8 +89,8 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
         <Link href={link({ urgent: filter.urgent ? undefined : "1" })} className={`tab ${filter.urgent ? "active" : ""}`}>Только срочные</Link>
         <Link href={link({ notua: filter.notUa ? undefined : "1" })} className={`tab ${filter.notUa ? "active" : ""}`}>Ещё нет в UA</Link>
         <Link href={link({ status: filter.status === "in_work" ? undefined : "in_work" })} className={`tab ${filter.status === "in_work" ? "active" : ""}`}>В работе</Link>
-        <Link href={link({ fav: filter.fav ? undefined : "1", fd: undefined })} className={`tab ${filter.fav ? "active" : ""}`}>★ Избранное</Link>
-        <Link href={link({ site: filter.onSite ? undefined : "1" })} className={`tab ${filter.onSite ? "active" : ""}`}>✓ Уже на сайте</Link>
+        <Link href={link({ fav: filter.fav ? undefined : "1", fd: undefined, ready: undefined, site: undefined, pub: undefined })} className={`tab ${filter.fav ? "active" : ""}`}>★ Избранное</Link>
+        <Link href={link({ ready: filter.ready ? undefined : "1", fav: undefined, fd: undefined, site: undefined, pub: undefined })} className={`tab ${filter.ready ? "active" : ""}`}>✓ ТЗ готово ({readyN.total})</Link>
       </div>
 
       {filter.fav && (
@@ -98,7 +99,26 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
           {["Сегодня", "Вчера", "Позавчера"].map((label, d) => (
             <Link key={d} href={link({ fd: d ? String(d) : undefined })} className={`tab ${filter.favDay === d ? "active" : ""}`}>{label} ({favN[d]})</Link>
           ))}
-          <span className="help">По дню, когда отмечено. Старше трёх дней избранное очищается вместе с инфоповодами.</span>
+          <span className="help">По дню, когда отмечено. Как только готово ТЗ хоть для одного сайта, новость переходит во вкладку «ТЗ готово». Старше трёх дней избранное очищается вместе с инфоповодами.</span>
+        </div>
+      )}
+
+      {filter.ready && (
+        <div className="mb-4 space-y-2 text-[14px]">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="help">Сайт:</span>
+            <Link href={link({ site: undefined })} className={`tab ${!filter.site ? "active" : ""}`}>Все</Link>
+            {[...new Set([...sites.map((x) => x.host), ...Object.keys(readyN.bySite)])].map((h) => (
+              <Link key={h} href={link({ site: h })} className={`tab ${filter.site === h ? "active" : ""}`}>{sites.find((x) => x.host === h)?.name ?? h} ({readyN.bySite[h] ?? 0})</Link>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="help">Публикация:</span>
+            <Link href={link({ pub: undefined })} className={`tab ${!filter.pub ? "active" : ""}`}>Все</Link>
+            <Link href={link({ pub: "wait" })} className={`tab ${filter.pub === "wait" ? "active" : ""}`}>Ждут публикации</Link>
+            <Link href={link({ pub: "done" })} className={`tab ${filter.pub === "done" ? "active" : ""}`}>Опубликовано ({readyN.published})</Link>
+            <span className="help">Свежие ТЗ сверху. В карточке можно добавить ТЗ для другого сайта под другим углом.</span>
+          </div>
         </div>
       )}
 
@@ -119,10 +139,12 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-3">
-          {cards.length === 0 ? (
+          {cards.length === 0 && filter.ready ? (
+            <Empty title="Готовых ТЗ пока нет" hint="В карточке новости нажмите «+ ТЗ для сайта», выберите угол — ТЗ появится здесь." />
+          ) : cards.length === 0 ? (
             <Empty title={sum.lastRun ? "За сутки подходящих новостей нет" : "Лента появится после первого прогона"} hint={sum.lastRun ? "Снимите фильтры или проверьте источники и сущности." : "Нажмите «Прогнать сейчас» — первый прогон займёт несколько минут."} />
           ) : (
-            cards.map((c, i) => <ClusterCard key={c.id} c={c} rank={i + 1} fresh={filter.sort === "fresh"} />)
+            cards.map((c, i) => <ClusterCard key={c.id} c={c} rank={i + 1} fresh={filter.sort === "fresh"} sites={sites} />)
           )}
           {hidden > 0 && !filter.all && (
             <div className="text-center"><Link href={link({ all: "1" })} className="btn-ghost">Показать ещё {hidden} ниже топ-{sum.settings.topN}</Link></div>
@@ -181,14 +203,15 @@ function StatusButton({ id, status, label, tone = "btn-ghost" }: { id: string; s
   );
 }
 
-function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: boolean }) {
+function ClusterCard({ c, rank, fresh, sites }: { c: FeedCard; rank: number; fresh?: boolean; sites: NewsSite[] }) {
   const notUa = c.worldCount > 0 && c.uaCount === 0;
   const title = c.titleUk || c.title;
   const showOriginal = !!c.titleUk && c.titleUk.trim() !== c.title.trim();
   const firstWhy = c.priorityWhy[0] ?? [...c.parts].filter((p) => p.points > 0).sort((a, b) => b.points - a.points).map((p) => `${p.label}: ${p.why}`)[0];
-  const angles = c.angles?.angles ?? [];
+  const siteName = (h: string) => sites.find((x) => x.host === h)?.name ?? h;
+  const competitorsAngle = c.briefs.find((b) => b.angles?.competitorsAngle)?.angles?.competitorsAngle;
   return (
-    <details id={`c-${c.id}`} className={`card group overflow-hidden ${c.starred ? "!border-brand/60 !bg-brand-soft/25" : ""}`} open={!!c.angles && c.status === "in_work"}>
+    <details id={`c-${c.id}`} className={`card group overflow-hidden ${c.starred ? "!border-brand/60 !bg-brand-soft/25" : ""}`} open={c.briefs.some((b) => b.status === "draft")}>
       <summary className="flex cursor-pointer list-none gap-3 p-3 sm:p-4 [&::-webkit-details-marker]:hidden">
         <div className="relative h-20 w-24 shrink-0 overflow-hidden rounded-lg bg-ink/5 sm:h-24 sm:w-32">
           {c.imageUrl ? (
@@ -202,7 +225,7 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
             <span className="text-[12px] text-muted">#{rank}</span>
             {c.starred && <span className="badge bg-brand-soft text-warn">★ в избранном</span>}
-            {c.onSite && <a href={c.onSite.url} target="_blank" rel="noopener noreferrer" className="badge bg-ok-soft text-ok hover:underline" title={c.onSite.title}>✓ есть на сайте</a>}
+            {c.briefs.map((b) => <span key={b.id} className={`badge ${b.status === "draft" ? "bg-ink/5 text-ink-2" : "bg-ok-soft text-ok"}`}>{siteName(b.site)}: {BRIEF_STATUS_LABELS[b.status] ?? b.status}</span>)}
             {c.isNew && <span className="badge bg-info-soft text-info">нове</span>}
             {!c.isNew && c.newSources > 0 && <span className="badge bg-info-soft text-info">+{c.newSources} {c.newSources === 1 ? "источник" : "источника"}</span>}
             {fresh && <span className="text-[12px] text-muted">инфоповод {agoText(c.firstPublishedAt)}</span>}
@@ -212,7 +235,7 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
             {c.uaCount > 0 && <span className="badge bg-info-soft text-info" title="Украинские СМИ, которые уже написали">UA · {c.uaCount}</span>}
             {c.worldCount > 0 && <span className="badge bg-ink/5 text-ink-2" title="Англоязычные и другие мировые СМИ">EN · {c.worldCount}</span>}
             {c.sensitive && <Badge tone="warn">Чувствительная тема</Badge>}
-            {c.status !== "new" && <Badge tone="ok">{CLUSTER_STATUS_LABELS[c.status]}{c.brief ? " · ТЗ готово" : c.angles ? " · углы готовы" : ""}</Badge>}
+            {c.status !== "new" && !c.briefs.length && <Badge tone="ok">{CLUSTER_STATUS_LABELS[c.status]}</Badge>}
           </div>
           <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug sm:text-[16px]">{title}</h3>
           {showOriginal && <p className="line-clamp-1 text-[12.5px] text-muted">Оригинал: {c.title}</p>}
@@ -268,7 +291,7 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
 
         <div>
           <h4 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted">Что уже написали ({c.sources.length})</h4>
-          {c.angles?.competitorsAngle && <p className="mb-2 text-[14px] text-ink-2">Общий угол конкурентов: {c.angles.competitorsAngle}</p>}
+          {competitorsAngle && <p className="mb-2 text-[14px] text-ink-2">Общий угол конкурентов: {competitorsAngle}</p>}
           <ul className="space-y-1.5 text-[14px]">
             {c.sources.slice(0, 12).map((s) => (
               <li key={s.url} className="flex flex-wrap gap-x-2">
@@ -321,45 +344,20 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
         )}
 
         <div className="rounded-xl border border-line bg-surface-2 p-3 sm:p-4">
-          <h4 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted">Как писать</h4>
-          {angles.length === 0 ? (
-            <div className="space-y-2">
-              <p className="text-[14px] text-ink-2">Нажмите «В работу» — модуль предложит 3 угла с учётом того, что уже написали конкуренты, и стиля редакции. Выберете угол — получите ТЗ для Claude.</p>
-              <ActionForm action={takeToWork} className="inline" hidden={{ id: c.id }}>
-                <SubmitButton className="btn-brand" pendingText="Думаю над углами… ~20 с">В работу — предложить углы</SubmitButton>
-              </ActionForm>
+          <h4 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-muted">ТЗ по сайтам</h4>
+          {c.briefs.length === 0 && <p className="mb-2 text-[14px] text-ink-2">Выберите сайт — модуль предложит 3 угла под него с учётом того, что уже написали конкуренты. Выберете угол — получите ТЗ для Claude. Ту же новость можно написать на другие сайты: у каждого свои углы, уже взятые не повторяются.</p>}
+          <div className="space-y-3">
+            {c.briefs.map((b) => <SiteBriefBlock key={b.id} b={b} clusterId={c.id} name={siteName(b.site)} />)}
+          </div>
+          {sites.some((x) => !c.briefs.some((b) => b.site === x.host)) ? (
+            <div className={`flex flex-wrap items-center gap-2 ${c.briefs.length ? "mt-3" : ""}`}>
+              {sites.filter((x) => !c.briefs.some((b) => b.site === x.host)).map((x) => (
+                <ActionForm key={x.host} action={takeToWork} className="inline" hidden={{ id: c.id, site: x.host }}>
+                  <SubmitButton className={c.briefs.length ? "btn-ghost btn-sm" : "btn-brand btn-sm"} pendingText="Думаю над углами… ~20 с">+ ТЗ для {x.name}</SubmitButton>
+                </ActionForm>
+              ))}
             </div>
-          ) : (
-            <div className="space-y-3">
-              {c.angles?.gaps && c.angles.gaps.length > 0 && <p className="text-[14px] text-ink-2">Чего нет ни у кого: {c.angles.gaps.join("; ")}</p>}
-              <ol className="space-y-2">
-                {angles.map((a, i) => (
-                  <li key={i} className={`rounded-lg border p-3 ${c.angleIdx === i ? "border-brand bg-brand-soft/40" : "border-line bg-surface"}`}>
-                    <div className="mb-0.5 text-[12px] text-muted">Угол {i + 1}{a.kind ? ` · ${a.kind}` : ""}{a.format && FORMATS[a.format] ? ` · ${FORMATS[a.format].words}` : ""} · новизна {a.novelty}/5 · польза {a.usefulness}/5</div>
-                    <div className="font-semibold">{a.title}</div>
-                    <p className="mt-1 text-[14px]">{a.angle}</p>
-                    <p className="mt-1 text-[13px] text-ink-2">Почему сработает: {a.why}</p>
-                    <ActionForm action={makeBriefAction} className="mt-2" hidden={{ id: c.id, idx: String(i) }}>
-                      <SubmitButton className={c.angleIdx === i ? "btn-ghost btn-sm" : "btn-primary btn-sm"} pendingText="Пишу ТЗ… ~30 с">{c.angleIdx === i ? "Пересобрать ТЗ по этому углу" : "Беру этот угол → ТЗ"}</SubmitButton>
-                    </ActionForm>
-                  </li>
-                ))}
-              </ol>
-              <ActionForm action={takeToWork} className="inline" hidden={{ id: c.id, op: "again" }}>
-                <SubmitButton className="btn-ghost btn-sm" pendingText="Думаю…">Предложить другие углы</SubmitButton>
-              </ActionForm>
-            </div>
-          )}
-          {c.brief && (
-            <div className="mt-4">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span className="font-semibold">ТЗ для Claude</span>
-                <span className="help">собрано {agoText(c.briefAt)}</span>
-                <span className="ml-auto"><CopyButton text={c.brief} label="Скопировать ТЗ" /></span>
-              </div>
-              <pre className="max-h-[480px] overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-surface p-3 text-[13px] leading-relaxed">{c.brief}</pre>
-            </div>
-          )}
+          ) : sites.length === 0 ? <p className="help">Сайты для ТЗ не заданы — добавьте их в настройках проекта.</p> : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -368,6 +366,64 @@ function ClusterCard({ c, rank, fresh }: { c: FeedCard; rank: number; fresh?: bo
           {c.status !== "rejected" && <StatusButton id={c.id} status="rejected" label="Не наша тема" />}
           {c.status !== "new" && <StatusButton id={c.id} status="new" label="Вернуть в новые" />}
         </div>
+      </div>
+    </details>
+  );
+}
+
+function SiteBriefBlock({ b, clusterId, name }: { b: SiteBrief; clusterId: string; name: string }) {
+  const angles = b.angles?.angles ?? [];
+  return (
+    <details className="rounded-lg border border-line bg-surface" open={b.status === "draft"}>
+      <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+        <span className="font-semibold">{name}</span>
+        <span className={`badge ${b.status === "draft" ? "bg-ink/5 text-ink-2" : "bg-ok-soft text-ok"}`}>{BRIEF_STATUS_LABELS[b.status] ?? b.status}</span>
+        {b.angleIdx != null && angles[b.angleIdx] && <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">Угол: {angles[b.angleIdx].title}</span>}
+        {b.briefAt && <span className="help">ТЗ {agoText(b.briefAt)}</span>}
+      </summary>
+      <div className="space-y-3 border-t border-line px-3 py-3">
+        {b.angles?.gaps && b.angles.gaps.length > 0 && <p className="text-[14px] text-ink-2">Чего нет ни у кого: {b.angles.gaps.join("; ")}</p>}
+        <ol className="space-y-2">
+          {angles.map((a, i) => (
+            <li key={i} className={`rounded-lg border p-3 ${b.angleIdx === i ? "border-brand bg-brand-soft/40" : "border-line bg-surface-2"}`}>
+              <div className="mb-0.5 text-[12px] text-muted">Угол {i + 1}{a.kind ? ` · ${a.kind}` : ""}{a.format && FORMATS[a.format] ? ` · ${FORMATS[a.format].words}` : ""} · новизна {a.novelty}/5 · польза {a.usefulness}/5</div>
+              <div className="font-semibold">{a.title}</div>
+              <p className="mt-1 text-[14px]">{a.angle}</p>
+              <p className="mt-1 text-[13px] text-ink-2">Почему сработает: {a.why}</p>
+              <ActionForm action={makeBriefAction} className="mt-2" hidden={{ brief: b.id, idx: String(i) }}>
+                <SubmitButton className={b.angleIdx === i ? "btn-ghost btn-sm" : "btn-primary btn-sm"} pendingText="Пишу ТЗ… ~30 с">{b.angleIdx === i ? "Пересобрать ТЗ по этому углу" : "Беру этот угол → ТЗ"}</SubmitButton>
+              </ActionForm>
+            </li>
+          ))}
+        </ol>
+        <div className="flex flex-wrap items-center gap-2">
+          <ActionForm action={takeToWork} className="inline" hidden={{ id: clusterId, site: b.site, op: "again" }}>
+            <SubmitButton className="btn-ghost btn-sm" pendingText="Думаю…">Предложить другие углы</SubmitButton>
+          </ActionForm>
+          {b.brief && b.status !== "published" && (
+            <ActionForm action={setBriefStatus} className="inline" hidden={{ brief: b.id, op: "published" }}>
+              <SubmitButton className="btn-ghost btn-sm" pendingText="…">Опубликовано на {name}</SubmitButton>
+            </ActionForm>
+          )}
+          {b.status === "published" && (
+            <ActionForm action={setBriefStatus} className="inline" hidden={{ brief: b.id, op: "ready" }}>
+              <SubmitButton className="btn-ghost btn-sm" pendingText="…">Ещё не опубликовано</SubmitButton>
+            </ActionForm>
+          )}
+          <ActionForm action={setBriefStatus} className="ml-auto inline" hidden={{ brief: b.id, op: "delete" }}>
+            <SubmitButton className="btn-ghost btn-sm text-danger" pendingText="…">Убрать ТЗ для {name}</SubmitButton>
+          </ActionForm>
+        </div>
+        {b.brief && (
+          <div>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="font-semibold">ТЗ для Claude — {name}</span>
+              <span className="help">собрано {agoText(b.briefAt)}</span>
+              <span className="ml-auto"><CopyButton text={b.brief} label="Скопировать ТЗ" /></span>
+            </div>
+            <pre className="max-h-[480px] overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-surface-2 p-3 text-[13px] leading-relaxed">{b.brief}</pre>
+          </div>
+        )}
       </div>
     </details>
   );

@@ -2781,9 +2781,35 @@ model NewsCluster {
   updatedAt        DateTime  @updatedAt
   project          NewsProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   items            NewsItem[]
+  briefs           NewsBrief[]
 
   @@index([projectId, lastItemAt])
   @@index([projectId, score])
+}
+
+/// ТЗ под конкретный сайт (решение владельца 30.10): одна новость пишется на несколько сайтов, у каждого свои углы и ТЗ.
+/// Сайты — список в настройках проекта (NewsSettings.sites). Готовое ТЗ уводит новость из «Избранного» во вкладку «ТЗ готово».
+model NewsBrief {
+  id          String    @id @default(uuid()) @db.Char(36)
+  projectId   String    @db.Char(36)
+  clusterId   String    @db.Char(36)
+  /// Домен сайта без www (ключ из списка сайтов проекта)
+  site        String    @db.VarChar(191)
+  /// {angles, competitorsAngle, gaps, ours} — как раньше у кластера
+  angles      Json?
+  anglesAt    DateTime?
+  angleIdx    Int?
+  brief       String?   @db.MediumText
+  briefAt     DateTime?
+  /// draft (углы, ТЗ ещё нет) | ready (ТЗ готово) | published (статья вышла)
+  status      String    @default("draft")
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  cluster     NewsCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+
+  @@unique([clusterId, site])
+  @@index([projectId, status])
 }
 
 /// Прогон конвейера: плановый или ручной. Расход — UsageLog с refId = id прогона.

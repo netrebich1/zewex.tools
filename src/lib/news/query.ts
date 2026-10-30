@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { KEEP_DAYS, parseSettings, type RunStats, type ScorePart } from "./types";
 import type { ClusterResearch } from "./research";
@@ -6,7 +5,7 @@ import { projectSpend } from "./runs";
 
 /** Выборки для экранов модуля: лента, сводка, прогоны и расход. */
 
-export type FeedFilter = { cat?: string; urgent?: boolean; notUa?: boolean; all?: boolean; status?: string; priority?: string; sort?: "score" | "fresh"; hours?: number; fav?: boolean; favDay?: number; onSite?: boolean };
+export type FeedFilter = { cat?: string; urgent?: boolean; notUa?: boolean; all?: boolean; status?: string; priority?: string; sort?: "score" | "fresh"; hours?: number; fav?: boolean; favDay?: number; ready?: boolean; site?: string; pub?: "wait" | "done" };
 
 /** Начало дня по Киеву: back = 0 — сегодня, 1 — вчера, 2 — позавчера. */
 export function kyivDayStart(back = 0): Date {
@@ -57,8 +56,17 @@ export type FeedCard = {
   starred: boolean;
   research: ClusterResearch | null;
   newSources: number;
-  onSite: { url: string; title: string; at: string } | null;
+  briefs: SiteBrief[];
 };
+export type SiteBrief = { id: string; site: string; angles: FeedCard["angles"]; angleIdx: number | null; brief: string | null; briefAt: Date | null; status: string };
+
+/** Сколько новостей с готовыми ТЗ по каждому сайту (вкладка «ТЗ готово»). */
+export async function readyCounts(projectId: string): Promise<{ total: number; bySite: Record<string, number>; published: number }> {
+  const rows = await prisma.newsBrief.findMany({ where: { projectId, status: { in: ["ready", "published"] } }, select: { clusterId: true, site: true, status: true } });
+  const bySite: Record<string, number> = {};
+  for (const r of rows) bySite[r.site] = (bySite[r.site] ?? 0) + 1;
+  return { total: new Set(rows.map((r) => r.clusterId)).size, bySite, published: rows.filter((r) => r.status === "published").length };
+}
 
 export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: FeedCard[]; hidden: number; total: number; lastRunAt: Date | null }> {
   const p = await prisma.newsProject.findUniqueOrThrow({ where: { id: projectId } });
@@ -72,18 +80,28 @@ export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: F
   const lastRun = await prisma.newsRun.findFirst({ where: { projectId, kind: { in: ["scheduled", "manual"] }, status: "done" }, orderBy: { finishedAt: "desc" }, select: { startedAt: true } });
   const rows = await prisma.newsCluster.findMany({
     where: {
-      // Вкладки «В работе», «Уже на сайте», «Избранное» — инфоповоды не старше KEEP_DAYS; избранное ещё и по дню, когда отмечено.
-      projectId, ...(f.status || f.fav || f.onSite ? { firstPublishedAt: { gte: new Date(Date.now() - KEEP_DAYS * 86_400_000) } } : { firstPublishedAt: { gte: since } }),
-      ...(f.fav ? { starredAt: { gte: kyivDayStart(f.favDay ?? 0), ...(f.favDay ? { lt: kyivDayStart(f.favDay - 1) } : {}) } } : {}), score: { gte: f.status || f.fav || f.onSite ? 0 : s.minScore }, category: f.cat ? f.cat : { in: s.targetCategories }, ...(f.priority ? { priority: f.priority } : {}),
+      // Вкладки «В работе», «Избранное» — инфоповоды не старше KEEP_DAYS; избранное ещё и по дню, когда отмечено.
+      // «ТЗ готово» — пока новость хранится (до MEMORY_DAYS), без фильтров ленты.
+      projectId, ...(f.ready ? {} : f.status || f.fav ? { firstPublishedAt: { gte: new Date(Date.now() - KEEP_DAYS * 86_400_000) } } : { firstPublishedAt: { gte: since } }),
+      ...(f.fav ? { starredAt: { gte: kyivDayStart(f.favDay ?? 0), ...(f.favDay ? { lt: kyivDayStart(f.favDay - 1) } : {}) } } : {}),
+      ...(f.ready ? {} : { score: { gte: f.status || f.fav ? 0 : s.minScore }, category: f.cat ? f.cat : { in: s.targetCategories } }), ...(f.priority ? { priority: f.priority } : {}),
       status: f.status ? f.status : { not: "rejected" }, ...(f.urgent ? { urgent: true } : {}), ...(f.notUa ? { uaCount: 0, worldCount: { gt: 0 } } : {}), ...(f.fav ? { starred: true } : {}),
-      // Статья уже есть на сайте — карточка уходит из ленты во вкладку «Уже на сайте» (в «Избранном» и «В работе» остаётся).
-      ...(f.onSite ? { onSite: { not: Prisma.DbNull } } : f.fav || f.status ? {} : { onSite: { equals: Prisma.DbNull } }),
+      // Готовое ТЗ хоть для одного сайта уводит новость из «Избранного» во вкладку «ТЗ готово» (там можно добавить ТЗ для других сайтов).
+      ...(f.ready
+        ? { briefs: { some: { status: f.pub === "done" ? "published" : f.pub === "wait" ? "ready" : { in: ["ready", "published"] }, ...(f.site ? { site: f.site } : {}) } } }
+        : f.fav ? { briefs: { none: { status: { in: ["ready", "published"] } } } } : {}),
     },
     orderBy: fresh ? [{ firstPublishedAt: "desc" }, { score: "desc" }] : [{ score: "desc" }, { lastItemAt: "desc" }],
     take: 300,
+    include: { briefs: { orderBy: { createdAt: "asc" } } },
   });
+  // «ТЗ готово»: свежие ТЗ сверху.
+  if (f.ready) {
+    const last = (r: (typeof rows)[number]) => Math.max(0, ...r.briefs.map((b) => b.briefAt?.getTime() ?? 0));
+    rows.sort((a, b) => last(b) - last(a));
+  }
   const total = rows.length;
-  const shown = f.all || fresh || f.fav || f.onSite ? rows : rows.slice(0, s.topN);
+  const shown = f.all || fresh || f.fav || f.ready ? rows : rows.slice(0, s.topN);
   const runStart = lastRun?.startedAt ?? null;
   const items = await prisma.newsItem.findMany({
     where: { clusterId: { in: shown.map((r) => r.id) } },
@@ -112,7 +130,8 @@ export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: F
       angles: (c.angles as FeedCard["angles"]) ?? null, angleIdx: c.angleIdx, brief: c.brief, briefAt: c.briefAt,
       // Что изменилось в последнем прогоне: кластер новый или к нему добавились источники.
       isNew: !!runStart && c.createdAt >= runStart,
-      starred: c.starred, research: (c.research as ClusterResearch | null) ?? null, onSite: (c.onSite as FeedCard["onSite"]) ?? null,
+      starred: c.starred, research: (c.research as ClusterResearch | null) ?? null,
+      briefs: c.briefs.map((b) => ({ id: b.id, site: b.site, angles: (b.angles as FeedCard["angles"]) ?? null, angleIdx: b.angleIdx, brief: b.brief, briefAt: b.briefAt, status: b.status })),
       newSources: runStart && c.createdAt < runStart ? sources.filter((x) => x.at >= runStart).length : 0,
     };
   });

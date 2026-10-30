@@ -7,7 +7,6 @@ import { classifyBatch, embedTexts, NewsAiError, type AiCtx } from "./llm";
 import { addToCentroid, centroid, cos, pack, unpack } from "./vec";
 import { priorityOf, scoreCluster } from "./score";
 import { summaryStep } from "./work";
-import { onSiteStep } from "./onsite";
 import { heroSkeleton, mergeStep } from "./merge";
 import { projectSpend } from "./runs";
 import { alertText, sendTelegram } from "./telegram";
@@ -274,8 +273,6 @@ export async function runPipeline(runId: string, shouldStop: () => boolean = () 
     }
     await step("Балл");
     await scoreStep(project, s, stats, entities);
-    await step("Є на сайті");
-    await onSiteStep(project, s, stats, log);
     if (paid && !shouldStop()) {
       await step("Суть карточек");
       await summaryStep(project, ctx, s, stats, log);

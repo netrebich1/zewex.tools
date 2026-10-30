@@ -7,7 +7,7 @@ import { NewsNav } from "@/components/news/NewsNav";
 import { createProject, saveProxy, saveSettings, testBot } from "@/actions/news";
 import { canManageProject, requireProject } from "@/lib/news/access";
 import { agoText } from "@/lib/news/query";
-import { CATEGORIES, CATEGORY_LABELS, DEFAULT_SETTINGS, parseSettings } from "@/lib/news/types";
+import { CATEGORIES, CATEGORY_LABELS, DEFAULT_SETTINGS, parseSettings, projectSites, sitesText } from "@/lib/news/types";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +70,14 @@ export default async function NewsSettingsPage({ searchParams }: { searchParams:
               )}
               <label className="flex items-center gap-2 pt-6 text-[14px]"><input type="checkbox" name="isActive" defaultChecked={project.isActive} /> Проект включён (плановые прогоны идут)</label>
             </div>
+          </Card>
+
+          <Card title="Сайты для ТЗ" description="Под каждый сайт в карточке новости появится кнопка «+ ТЗ для сайта»: у сайта свои углы и своё ТЗ, углы другого сайта не повторяются. Одна строка — один сайт: Название | адрес | о сайте и аудитории (необязательно, иначе — общее «о сайте» ниже). Новостей сайты не касаются: лента одна на проект.">
+            <label className="block">
+              <span className="label">Сайты ({projectSites(project, s).length})</span>
+              <textarea name="sites" className="input min-h-[110px] text-[13.5px]" defaultValue={sitesText(projectSites(project, s))} placeholder={"Beauty Daily | beautydaily.com.ua\nДругой сайт | site.ua | українське медіа про …"} />
+              <span className="help mt-0.5 block">Первый сайт — основной. Удалите строку, чтобы убрать кнопку; уже готовые ТЗ этого сайта останутся.</span>
+            </label>
           </Card>
 
           <Card title="Расписание и лента">

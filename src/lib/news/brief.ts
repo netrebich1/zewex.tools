@@ -124,8 +124,8 @@ const ANTI_AI = `Пиши як живий редактор, не як ШІ. За
 - загальні слова замість деталі: не «стильний образ», а що саме (колір, крій, бренд, де і коли); не «емоційний допис», а що написала.
 Починай не з загальної фрази, а з факту, деталі, сцени, цитати або цифри. Фінал — «Нагадаємо, …» про конкретну попередню подію з героєм, якщо така є в ТЗ чи джерелах; якщо немає — закінчуй цитатою героя або фактом. Ніколи — мораллю чи узагальненням.`;
 
-/** 3 угла с форматом (кнопка «В работу»). */
-export async function makeAngles(ctx: AiCtx, st: NewsSettings, c: ClusterForAi, ours: OurArticle[]): Promise<{ angles: Angle[]; competitorsAngle: string; gaps: string[] }> {
+/** 3 угла с форматом (кнопка «+ ТЗ для сайта»); taken — углы, уже взятые для других наших сайтов, их не повторяем. */
+export async function makeAngles(ctx: AiCtx, st: NewsSettings, c: ClusterForAi, ours: OurArticle[], taken: string[] = []): Promise<{ angles: Angle[]; competitorsAngle: string; gaps: string[] }> {
   const system = `Ти шеф-редактор українського жіночого медіа для Google Discover. Про сайт: ${st.siteAbout}
 ${DISCOVER_RULES}
 
@@ -143,7 +143,7 @@ ${BAIT_RULES}
 Якщо в публікаціях лише загальні слова без конкретики (немає цитати, цифри, назви, дати) — перший кут усе одно найближчий до події, але в fit напиши «мало фактів: автору відкрити першоджерело».
 Якщо інформаційний привід слабкий для нашої читачки (другорядна подія, герой маловідомий в Україні), скажи це в fit: «слабкий привід: …», інакше fit: «ok».
 Поверни лише JSON: {"fit":"…","competitors_angle":"…","gaps":["…"],"angles":[{"format":"moment","title":"…","angle":"…","why":"…","novelty":4,"usefulness":4}]}`;
-  const user = `Тема: ${c.title}\nКатегорія: ${c.category ? CATEGORY_LABELS[c.category] ?? c.category : "—"}${c.subcategory ? ` (${c.subcategory})` : ""}${c.entity ? `\nГерой: ${c.entity}` : ""}\nСигнали: ${c.signals.join("; ") || "—"}\n\nПублікації:\n${srcText(c, 700)}\n\nНаші схожі статті:\n${ours.map((o) => `- ${o.title} (${o.url})`).join("\n") || "— немає"}`;
+  const user = `Тема: ${c.title}\nКатегорія: ${c.category ? CATEGORY_LABELS[c.category] ?? c.category : "—"}${c.subcategory ? ` (${c.subcategory})` : ""}${c.entity ? `\nГерой: ${c.entity}` : ""}\nСигнали: ${c.signals.join("; ") || "—"}\n\nПублікації:\n${srcText(c, 700)}\n\nНаші схожі статті:\n${ours.map((o) => `- ${o.title} (${o.url})`).join("\n") || "— немає"}${taken.length ? `\n\nЦю новину вже пишуть інші наші сайти під такими кутами — не повторюй їх (ні формат+подачу, ні заголовок), запропонуй 3 інші, помітно відмінні:\n${taken.map((t) => `- ${t}`).join("\n")}` : ""}`;
   const j = await chatJson(ctx, SLOT_BRIEF, system, user, st.briefModel, 2500);
   const angles = (Array.isArray(j.angles) ? (j.angles as Record<string, unknown>[]) : []).slice(0, 3).map((a) => {
     const f = s(a.format, 20).toLowerCase();
