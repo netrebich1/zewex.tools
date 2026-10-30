@@ -16,6 +16,7 @@ import { parseSettings, SLOT_CLASSIFY } from "@/lib/news/types";
 type Row = { site: string; url: string; title: string; publishedAt: string; views: number };
 type Person = { name: string; kind: string };
 type Tagged = Row & { v: number | null; persons: Person[]; event: string };
+type Origin = "ua" | "world";
 
 export const EVENTS: Record<string, string> = {
   birth: "Рождение, беременность",
@@ -123,23 +124,56 @@ async function main() {
   const best = (m: Map<string, number>) => [...m.entries()].sort((x, y) => y[1] - x[1])[0]?.[0] ?? "";
   const ranked = [...people.values()].filter((a) => a.articles >= 2).sort((x, y) => y.views - x.views);
 
+  // Украинец или иностранец: по группе нашей сущности, потом по типу от LLM; спортсменов, политиков и «другое» уточняет LLM (кэш origin.json).
+  const entGrp = (a: Agg) => (a.entityId ? ents.find((x) => x.id === a.entityId)?.grp ?? "" : "");
+  const quick = (a: Agg): Origin | null => {
+    const g = entGrp(a);
+    if (g.startsWith("ua_")) return "ua";
+    if (g.startsWith("world") || g === "royal") return "world";
+    const k = best(a.kinds);
+    return k.startsWith("ua_") ? "ua" : k.startsWith("world_") || k === "royal" ? "world" : null;
+  };
+  const originFile = `${outDir}/origin.json`;
+  const originCache: Record<string, Origin> = existsSync(originFile) ? JSON.parse(readFileSync(originFile, "utf8")) : {};
+  const unsure = ranked.filter((a) => !quick(a) && !originCache[best(a.names)]).map((a) => best(a.names));
+  for (let i = 0; i < unsure.length; i += 60) {
+    const b = unsure.slice(i, i + 60);
+    try {
+      const j = await chatJson(ctx, SLOT_CLASSIFY, `Для кожної людини скажи, чи вона з України (ua), чи іноземна (world). Українські спортсмени, політики, військові, блогери — ua. Поверни лише JSON: {"items":[{"i":0,"o":"ua"}]}`, b.map((n, k) => `${k}. ${n}`).join("\n"), s.classifyModel, 2000, 120_000, 0);
+      for (const it of (j.items as { i: number; o?: string }[]) ?? []) if (b[it.i] && (it.o === "ua" || it.o === "world")) originCache[b[it.i]] = it.o;
+    } catch (e) {
+      console.error("origin", String((e as Error).message).slice(0, 100));
+    }
+  }
+  writeFileSync(originFile, JSON.stringify(originCache));
+  const originOf = (a: Agg): Origin | null => quick(a) ?? originCache[best(a.names)] ?? null;
+
+  // События отдельно по украинцам и иностранцам: статья про украинца (хотя бы один герой) — украинская, иначе про иностранца.
+  const articleOrigin = (r: Tagged): Origin | null => {
+    const os = r.persons.map((x) => people.get(resolve(x.name))).filter((a): a is Agg => !!a).map(originOf);
+    return os.includes("ua") ? "ua" : os.includes("world") ? "world" : null;
+  };
+  const tOrigin = new Map(tagged.map((r) => [r.url, articleOrigin(r)]));
+  const eventStat = (rs: Tagged[]) => {
+    const withV = rs.filter((r) => r.v != null);
+    return { articles: rs.length, views: withV.reduce((x, r) => x + r.v!, 0), avg: withV.length ? Math.round(withV.reduce((x, r) => x + r.v!, 0) / withV.length) : 0, index: withV.length ? +(withV.reduce((x, r) => x + r.v! / (siteMedian[r.site] || 1), 0) / withV.length).toFixed(2) : 0 };
+  };
   const events = Object.keys(EVENTS).map((k) => {
     const rs = tagged.filter((r) => r.event === k);
-    const withV = rs.filter((r) => r.v != null);
-    return { code: k, label: EVENTS[k], articles: rs.length, views: withV.reduce((x, r) => x + r.v!, 0), avg: withV.length ? Math.round(withV.reduce((x, r) => x + r.v!, 0) / withV.length) : 0, index: withV.length ? +(withV.reduce((x, r) => x + r.v! / (siteMedian[r.site] || 1), 0) / withV.length).toFixed(2) : 0 };
+    return { code: k, label: EVENTS[k], ...eventStat(rs), ua: eventStat(rs.filter((r) => tOrigin.get(r.url) === "ua")), world: eventStat(rs.filter((r) => tOrigin.get(r.url) === "world")) };
   }).sort((x, y) => y.index - x.index);
 
   const period = `${tagged.map((r) => r.publishedAt).sort()[0]?.slice(0, 10)} — ${tagged.map((r) => r.publishedAt).sort().at(-1)?.slice(0, 10)}`;
   const people2 = ranked.map((a, i) => {
     const e = a.entityId ? ents.find((x) => x.id === a.entityId) ?? null : null;
     return {
-      rank: i + 1, name: e?.name ?? best(a.names), kind: best(a.kinds), entityId: e?.id ?? null, entityGrp: e?.grp ?? null, tracked: !!e,
+      rank: i + 1, name: e?.name ?? best(a.names), kind: best(a.kinds), origin: originOf(a), entityId: e?.id ?? null, entityGrp: e?.grp ?? null, tracked: !!e,
       articles: a.articles, views: a.views, avg: Math.round(a.views / a.articles), index: +a.index.toFixed(1),
       sites: a.sites, events: Object.entries(a.events).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([k, n]) => ({ code: k, label: EVENTS[k], n })),
       top: a.top ? { title: a.top.title, url: a.top.url, site: a.top.site, views: a.top.v } : null,
     };
   });
-  const report = { period, sites: siteList.map((st) => ({ site: st, articles: tagged.filter((r) => r.site === st).length, median: siteMedian[st] })), articles: tagged.length, people: people2, events, topArticles: tagged.filter((r) => r.v != null).sort((x, y) => (y.v! / (siteMedian[y.site] || 1)) - (x.v! / (siteMedian[x.site] || 1))).slice(0, 40).map((r) => ({ site: r.site, title: r.title, url: r.url, views: r.v, event: EVENTS[r.event], persons: r.persons.map((x) => x.name) })) };
+  const report = { period, sites: siteList.map((st) => ({ site: st, articles: tagged.filter((r) => r.site === st).length, median: siteMedian[st] })), articles: tagged.length, people: people2, events, topArticles: tagged.filter((r) => r.v != null).sort((x, y) => (y.v! / (siteMedian[y.site] || 1)) - (x.v! / (siteMedian[x.site] || 1))).slice(0, 40).map((r) => ({ site: r.site, title: r.title, url: r.url, views: r.v, index: +(r.v! / (siteMedian[r.site] || 1)).toFixed(1), event: EVENTS[r.event], origin: tOrigin.get(r.url) ?? null, persons: r.persons.map((x) => x.name) })) };
   writeFileSync(`${outDir}/report.json`, JSON.stringify(report, null, 1));
   const csv = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   writeFileSync(`${outDir}/people.csv`, "﻿" + [["#", "Персона", "Кто", "Отслеживаем", "Статей", "Просмотров", "В среднем", "Индекс", ...siteList.map((x) => `${x}: статей/просм.`), "Главные события", "Лучшая статья", "Её просмотры"].map(csv).join(";"),
@@ -158,6 +192,9 @@ async function main() {
     await prisma.newsEntity.update({ where: { id: x.entityId! }, data: { compStats: { period, rank: x.rank, articles: x.articles, views: x.views, avg: x.avg, index: x.index, sites: x.sites, events: x.events, top: x.top }, compStatsAt: at } });
   }
   console.log("compStats записаны");
+  // Весь рейтинг — на страницу «Просмотры» (Discover → Новости).
+  await prisma.newsProject.update({ where: { id: p.id }, data: { viewsReport: report as unknown as Prisma.InputJsonValue, viewsReportAt: at } });
+  console.log("рейтинг записан в проект");
 }
 
 main().finally(() => prisma.$disconnect());

@@ -6,6 +6,7 @@ const ITEMS = [
   { href: "/discovery/news", label: "Лента", exact: true },
   { href: "/discovery/news/sources", label: "Источники" },
   { href: "/discovery/news/entities", label: "Сущности" },
+  { href: "/discovery/news/views", label: "Просмотры" },
   { href: "/discovery/news/runs", label: "Прогоны и расход" },
   { href: "/discovery/news/settings", label: "Настройки" },
 ];

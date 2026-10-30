@@ -2580,6 +2580,9 @@ model NewsProject {
   tgChatId     String?
   /// Служебное: курсор ротации запросов Google News, отметки алертов бюджета
   state        Json?
+  /// Рейтинг просмотров у конкурентов за 30 дней (scripts/news/views-analyze.ts --write, раз в неделю): персоны, события, лучшие статьи
+  viewsReport   Json?
+  viewsReportAt DateTime?
   nextRunAt    DateTime?
   createdById  String?
   createdAt    DateTime  @default(now())
