@@ -147,13 +147,17 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
       });
     });
     if (cfg.headings.enabled && cfg.headings.prompt.trim()) {
-      plan.push({ id: "headings#0", stage: "headings", label: "Заголовки H2", run: (h) => runHeadings(ai, h, cfg.headings.prompt, { title, h1 }) });
+      plan.push({ id: "headings#0", stage: "headings", label: "Заголовки H2", run: (h) => runHeadings({ ...ai, model: cfg.headingsModel || cfg.model }, h, cfg.headings.prompt, { title, h1 }) });
     }
     if (cfg.postEdit.enabled && cfg.postEdit.prompt.trim()) {
       plan.push({
         id: "post_edit#0", stage: "post_edit", label: "Постредактура", critical: true, allowPartial: true, reviewNoop: true,
         // Только язык: ключи сюда намеренно не передаются, их вписывает следующий независимый этап.
-        run: (h) => runEdit(ai, h, cfg.postEdit.prompt, { title, h1, lightTouch: true, anchors: anchorTexts }, true, { sections: 3, maxTextGrowthPct: 12, maxRewritePct: 22 }),
+        run: (h) => runEdit(ai, h, cfg.postEdit.prompt, { title, h1, lightTouch: true, anchors: anchorTexts }, true, {
+          sections: 3, maxTextGrowthPct: 12, maxRewritePct: 22,
+          // Оригинал той же секции — сверить термины, факты и обращение после цепочки переводов (формулировки не возвращаются).
+          referenceHtml: steps.length ? protectHtml(sourceHtml).text : undefined,
+        }),
       });
       if (seoOn) {
         plan.push({

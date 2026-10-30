@@ -34,7 +34,7 @@ export default async function DeeplRunPage({ params }: { params: Promise<{ id: s
         subtitle={
           <>
             <Badge tone={JOB_TONE[job.status] ?? "neutral"}>{JOB_STATUS_LABELS[job.status] ?? job.status}</Badge>
-            <span className="ml-2">{job.siteName} · {describeSettings(settings)}{settings.model ? ` · модель ${settings.model}` : ""} · создан {fmtDate(job.createdAt)}{job.finishedAt ? ` · завершён ${fmtDate(job.finishedAt)}` : ""}</span>
+            <span className="ml-2">{job.siteName} · {describeSettings(settings)}{settings.model ? ` · модель ${settings.model}` : ""}{settings.headingsModel && settings.headingsModel !== settings.model ? `, H2 ${settings.headingsModel}` : ""} · создан {fmtDate(job.createdAt)}{job.finishedAt ? ` · завершён ${fmtDate(job.finishedAt)}` : ""}</span>
           </>
         }
         actions={

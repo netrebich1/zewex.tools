@@ -19,6 +19,8 @@ const PER_KEY_CONCURRENCY = Number(process.env.DEEPL_PER_KEY_CONCURRENCY || 2);
 const REQUEST_TIMEOUT_MS = 90_000;
 /** Ключи перечитываются из базы не чаще раза в 30 с (новые ключи, лимиты, включение/выключение на странице ключей). */
 const POOL_TTL_MS = 30_000;
+/** Дольше ждать свободный ключ нет смысла: запрос DeepL длится максимум REQUEST_TIMEOUT_MS. Лучше ошибка, чем вечное «В работе». */
+const KEY_WAIT_MS = 10 * 60_000;
 
 type PoolKey = { id: string; label: string; secret: string; sortOrder: number; charLimit: number | null; charUsed: number; reserved: number; inflight: number; dead: boolean };
 
@@ -30,19 +32,18 @@ async function loadPool(force = false): Promise<PoolKey[]> {
   const rows = await prisma.deeplKey.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
   const prev = new Map((pool ?? []).map((k) => [k.id, k]));
   pool = rows.map((r) => {
-    const old = prev.get(r.id);
-    return {
-      id: r.id,
-      label: r.label,
-      secret: decryptSecret(r.secretEnc),
-      sortOrder: r.sortOrder,
-      charLimit: r.charLimit,
-      // Расход пишется в базу сразу после каждого ответа, поэтому база — главный источник; в памяти только резерв идущих запросов.
-      charUsed: r.charUsed,
-      reserved: old?.reserved ?? 0,
-      inflight: old?.inflight ?? 0,
-      dead: false,
-    };
+    // Тот же объект, а не копия: идущий запрос держит ссылку на ключ и освобождает именно её (releaseKey).
+    // С копией счётчики inflight/reserved утекали при каждом перечитывании (раз в 30 с), через пару минут
+    // все ключи считались занятыми навсегда и пакет вставал после первых статей.
+    const k: PoolKey = prev.get(r.id) ?? { id: r.id, label: "", secret: "", sortOrder: 0, charLimit: null, charUsed: 0, reserved: 0, inflight: 0, dead: false };
+    k.label = r.label;
+    k.secret = decryptSecret(r.secretEnc);
+    k.sortOrder = r.sortOrder;
+    k.charLimit = r.charLimit;
+    // Расход пишется в базу сразу после каждого ответа, поэтому база — главный источник; в памяти только резерв идущих запросов.
+    k.charUsed = r.charUsed;
+    k.dead = false;
+    return k;
   });
   poolAt = Date.now();
   return pool;
@@ -59,7 +60,9 @@ const remaining = (k: PoolKey) => (k.charLimit == null ? Infinity : k.charLimit 
  * Все ключи заняты — ждём освобождения; ни у одного не хватает остатка — null.
  */
 async function takeKey(chars: number, skip: Set<string>): Promise<PoolKey | null> {
+  const giveUpAt = Date.now() + KEY_WAIT_MS;
   for (;;) {
+    if (Date.now() > giveUpAt) throw new Error(`Все ключи DeepL заняты дольше ${KEY_WAIT_MS / 60_000} мин — статья встала в ожидании ключа`);
     const keys = (await loadPool()).filter((k) => !k.dead && !skip.has(k.id) && remaining(k) >= chars);
     if (!keys.length) return null;
     const free = keys.filter((k) => k.inflight < PER_KEY_CONCURRENCY);
@@ -86,6 +89,17 @@ async function markDead(k: PoolKey, note: string): Promise<void> {
 async function addUsage(k: PoolKey, chars: number): Promise<void> {
   k.charUsed += chars;
   await prisma.deeplKey.update({ where: { id: k.id }, data: { charUsed: { increment: chars }, lastError: null } }).catch(() => {});
+}
+
+/**
+ * Подсказка ключа DeepL «37c5…cb43:fx». Общая secretHint не подходит: всё до двоеточия она показывает как логин
+ * (так устроен ключ DataForSEO «логин:пароль»), а у DeepL до «:fx» стоит весь секрет.
+ */
+export function deeplHint(secret: string): string {
+  const s = secret.trim();
+  const fx = s.endsWith(":fx");
+  const core = fx ? s.slice(0, -3) : s;
+  return core.length <= 8 ? `••••${fx ? ":fx" : ""}` : `${core.slice(0, 4)}…${core.slice(-4)}${fx ? ":fx" : ""}`;
 }
 
 export function deeplBase(secret: string): string {

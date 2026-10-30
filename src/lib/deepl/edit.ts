@@ -8,7 +8,7 @@ import { AiError, classifyAiError } from "@/lib/pins/ai/errors";
 import { acquire } from "@/lib/pins/ai/limiter";
 import {
   changedWordCount, chunkBySections, chunkHtml, chunkIsFatal, countKeyword, detectMasculineVoice, protectHtml, repairPlaceholders,
-  restoreHtml, rewritePct, validateChunk, visibleTextLength, type QualityIssue,
+  restoreHtml, rewritePct, validateChunk, visibleText, visibleTextLength, type QualityIssue,
 } from "./html";
 import { mapLimit } from "./deepl";
 import { EDIT_SLOT, PROJECT_SLUG } from "./types";
@@ -20,7 +20,7 @@ const CHUNK_CONCURRENCY = Number(process.env.DEEPL_EDIT_CHUNK_CONCURRENCY || 4);
 
 export type AiCtx = { userId: string; teamId?: string | null; refId?: string; model?: string; onCost?: (usd: number) => void };
 
-const EDIT_SYSTEM = `Ты — профессиональный редактор HTML-статей.
+export const EDIT_SYSTEM = `Ты — профессиональный редактор HTML-статей.
 СТРОГИЕ ПРАВИЛА:
 1. Возвращай ТОЛЬКО HTML-фрагмент, без markdown-обёрток и пояснений.
 2. Сохраняй всю разметку, порядок и структуру тегов один в один.
@@ -55,9 +55,33 @@ export interface EditContext {
   anchors?: string[];
   /** ключи, которых не хватает в тексте: сколько вхождений нужно добавить */
   keywordDeficits?: { key: string; need: number }[];
+  /** оригинал этого же фрагмента до цепочки переводов (видимый текст) — только для сверки смысла и терминов */
+  reference?: string;
 }
 
-function contextBlock(ctx?: EditContext): string {
+/**
+ * Что именно искать после цепочки переводов. Без этого списка и без оригинала модели возвращали текст почти без правок
+ * (стенд 2026-10-15: 0–1 правка на секцию у 10 моделей из 11), а смысловые сдвиги перевода оставались.
+ */
+const REFERENCE_RULE = `СВЕРКА С ОРИГИНАЛОМ (обязательно):
+Ниже дан оригинал этого же фрагмента ДО цепочки машинных переводов. Текст после перевода специально перефразирован — так и должно остаться: формулировки оригинала НЕ возвращай и предложения из него НЕ копируй.
+Сверяйся с оригиналом только чтобы найти и исправить искажения перевода:
+- предмет или термин подменён (было «каблучка» — стало «обручка»; «плащ» → «дощовик»; «мигдаль» как форма нігтів) — верни правильный термин;
+- цвет, материал, число, бренд, название, ситуация передаёт другое (было «рудий» — стало «червоний») — верни как в оригинале;
+- обращение к читателю изменилось (в оригинале «ви» — в тексте «ти», или наоборот) — приведи к оригиналу во всём фрагменте;
+- появилось то, чего в оригинале нет («на моєму пальці», лишнее «я»), или пропало важное уточнение — исправь коротко, в пределах предложения;
+- разорванные или лишние кавычки вокруг названий («Vogue Ukraine без закрывающей) — исправь.
+Если фрагмент передаёт смысл оригинала верно — меняй только язык.`;
+
+const FIX_CHECKLIST = `ЧТО ИСПРАВЛЯТЬ (пройди фрагмент по каждому пункту):
+1. Кальки и машинные обороты после перевода («є гарною відправною точкою», «у зоні кутикули», «привертає погляд уздовж»), русизмы, неестественная сочетаемость.
+2. Термины тематики (мода, волосся, нігті, догляд) — как говорят в живих українських фешн-медіа.
+3. Граматика, відмінки, узгодження роду й числа.
+4. Женский род автора в формах первого лица.
+5. Смысловые искажения против оригинала (если оригинал дан).
+Правок обычно несколько в каждом абзаце: машинный перевод почти никогда не бывает чистым.`;
+
+export function contextBlock(ctx?: EditContext): string {
   if (!ctx) return "";
   const lines: string[] = [];
   if (ctx.title) lines.push(`Title статьи: ${ctx.title}`);
@@ -71,10 +95,13 @@ function contextBlock(ctx?: EditContext): string {
 - Это НЕ рерайт. Запрещено переписывать предложения своими словами, пересказывать, укорачивать, объединять или разбивать их, менять порядок предложений и абзацев.
 - Каркас каждого предложения остаётся прежним: не менее 80% слов фрагмента должны остаться дословно на своих местах.
 - Разрешена ТОЛЬКО замена отдельных слов и коротких словосочетаний ради чистоты языка: грамматика, падежи, согласование, кальки и машинные обороты после перевода, неестественная сочетаемость.
-- Запрещено «улучшать стиль» там, где фраза и так читается нормально: если предложение корректно — верни его посимвольно без изменений.
+- Не «улучшай стиль» ради стиля: правка нужна там, где есть ошибка, калька, искажение смысла или неестественная фраза.
 - ОСОБО РАЗРЕШЕНО и обязательно: исправлять формы первого лица на ЖЕНСКИЙ род (автор — девушка): «я обрав/був/зробив» → «я обрала/була/зробила» и т.п. во всём фрагменте.
-- Ключевые слова и LSI из Title/H1 сохраняй и используй в естественной форме, не переспамливай.
-- Если фрагмент уже корректен — верни его без изменений.\n\n`;
+- Ключевые слова и LSI из Title/H1 сохраняй и используй в естественной форме, не переспамливай.\n\n`;
+    if (!ctx.keywordDeficits?.length) block += `${FIX_CHECKLIST}\n\n`;
+  }
+  if (ctx.reference?.trim()) {
+    block += `${REFERENCE_RULE}\nОРИГИНАЛ ФРАГМЕНТА (только для сверки, не копировать):\n"""\n${ctx.reference.trim().slice(0, 8000)}\n"""\n\n`;
   }
   if (ctx.anchors?.length) {
     block += `${ANCHOR_RULE}\nАнкоры в статье:\n${ctx.anchors.slice(0, 40).map((a, i) => `${i + 1}. ${a}`).join("\n")}\n\n`;
@@ -170,7 +197,32 @@ export type EditOpts = {
   /** ключи пересчитываются после каждого фрагмента (фрагменты идут по очереди) */
   retryKeywordDeficits?: boolean;
   relaxTags?: boolean;
+  /** исходная статья до переводов (защищённый HTML): каждому фрагменту даётся его же секция для сверки */
+  referenceHtml?: string;
 };
+
+/** Статья по секциям: [0] — всё до первого H2, дальше по одной секции на каждый H2. */
+export function sectionsOf(html: string): string[] {
+  const idx = [...html.matchAll(/<h2\b/gi)].map((m) => m.index ?? 0);
+  if (!idx.length) return [html];
+  return [html.slice(0, idx[0]), ...idx.map((s, i) => html.slice(s, idx[i + 1] ?? html.length))];
+}
+
+/** Оригинал для каждого фрагмента по номерам H2; если число H2 не совпало — сверки нет. */
+export function referencesFor(chunks: string[], referenceHtml: string): (string | undefined)[] {
+  const ref = sectionsOf(referenceHtml);
+  const h2 = (h: string) => (h.match(/<h2\b/gi) ?? []).length;
+  if (ref.length - 1 !== chunks.reduce((a, c) => a + h2(c), 0)) return chunks.map(() => undefined);
+  let before = 0;
+  return chunks.map((c) => {
+    const n = h2(c);
+    const start = /^\s*<h2\b/i.test(c) ? before + 1 : before;
+    const part = ref.slice(start, before + n + 1).join("");
+    before += n;
+    const text = visibleText(part);
+    return text || undefined;
+  });
+}
 
 export type EditResult = { html: string; warnings: QualityIssue[]; done: number; total: number; rolledBack: number; changedWords: number };
 
@@ -199,8 +251,9 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
     });
   }
   const keywordTargets = new Map(deficits.map((d) => [d.key, countKeyword(protectedHtml, d.key) + d.need]));
+  const refs = opts.referenceHtml ? referencesFor(chunks, opts.referenceHtml) : [];
   const ctxFor = (i: number): EditContext | undefined => {
-    if (!deficits.length) return ectx;
+    if (!deficits.length) return refs[i] ? { ...(ectx ?? {}), reference: refs[i] } : ectx;
     if (!opts.retryKeywordDeficits) return { ...(ectx as EditContext), keywordDeficits: perChunk[i] };
     // Пересчёт после каждого фрагмента: ключ, пропущенный в одной секции, предлагается следующим.
     const current = out.join("");
@@ -235,11 +288,15 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
       out[i] = first;
       return;
     }
-    const note = issues.some((x) => x.code === "rewrite")
+    const rewrote = issues.some((x) => x.code === "rewrite");
+    const note = rewrote
       ? "ВАЖНО: предыдущий ответ переписал текст. Верни ПОЛНЫЙ фрагмент целиком, меняя ТОЛЬКО отдельные слова и словосочетания; структуру предложений и их порядок сохрани дословно.\n\n"
       : "Верни ПОЛНЫЙ фрагмент целиком.\n\n";
+    // Пересказ при сверке с оригиналом — обычно модель вернула формулировки оригинала (стенд: до 79% слов).
+    // Второй заход без оригинала: только чистка языка, уникализация перевода сохраняется.
+    const retryCtx = rewrote && kctx?.reference ? { ...kctx, reference: undefined } : kctx;
     try {
-      const retry = repairPlaceholders(src, await editChunk(ctx, prompt, src, note, kctx));
+      const retry = repairPlaceholders(src, await editChunk(ctx, prompt, src, note, retryCtx));
       const retryIssues = grade(retry);
       if (!chunkIsFatal(retryIssues, opts.relaxTags)) {
         warnings.push(...retryIssues.map((x) => ({ ...x, detail: `фрагмент ${i + 1}: ${x.detail}` })));
@@ -275,7 +332,7 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
 
 /* ---------------- H2 ---------------- */
 
-const HEADINGS_SYSTEM = `Ты — редактор заголовков H2 в статье.
+export const HEADINGS_SYSTEM = `Ты — редактор заголовков H2 в статье.
 СТРОГИЕ ПРАВИЛА:
 1. Тебе дан нумерованный список заголовков. Верни РОВНО столько же строк в том же порядке и той же нумерации.
 2. Формат строки: "N. новый заголовок". Без markdown, без пояснений, без пустых строк.

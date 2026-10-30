@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { checkIntegrity, chunkBySections, protectHtml, restoreHtml, countKeyword } from "../../src/lib/deepl/html";
-import { parseHeadings } from "../../src/lib/deepl/edit";
+import { parseHeadings, referencesFor } from "../../src/lib/deepl/edit";
 import { parseSettings, describeSettings } from "../../src/lib/deepl/types";
 
 const html = `<p>Вступ з <a href="https://x.ua/a">гарним анкором</a> і текстом.</p>
@@ -49,4 +49,11 @@ assert.deepEqual(parseHeadings("1. Один\n2. Два", 2), ["Один", "Дв�
 
 const s = parseSettings({ translateSteps: [{ source: "uk", target: "en-gb" }, { source: "EN", target: "DE" }, { source: "DE", target: "UK" }], headings: { enabled: true }, postEdit: { enabled: true }, seo: { enabled: true, minPct: 25, maxPct: 70 } });
 assert.equal(describeSettings(s), "UK → EN-GB → DE → UK · H2 · постредактура · ключи 25–70%");
+const tr = "<p>Intro tr</p><h2>A</h2><p>a tr</p><h2>B</h2><p>b tr</p><h2>C</h2><p>c tr</p><h2>D</h2><p>d tr</p>";
+const src = "<p>Вступ</p><h2>А</h2><p>а ориг</p><h2>Б</h2><p>б ориг</p><h2>В</h2><p>в ориг</p><h2>Г</h2><p>г ориг</p>";
+const refs = referencesFor(chunkBySections(tr, 3), src);
+assert.equal(refs.length, 2);
+assert.ok(refs[0]!.includes("Вступ") && refs[0]!.includes("б ориг") && !refs[0]!.includes("в ориг"), "1-й фрагмент: вступ + 2 секции");
+assert.ok(refs[1]!.includes("в ориг") && refs[1]!.includes("г ориг") && !refs[1]!.includes("Вступ"), "2-й фрагмент: секции 3–4");
+assert.deepEqual(referencesFor(chunkBySections(tr, 3), "<p>x</p><h2>1</h2>"), [undefined, undefined], "разное число H2 — без сверки");
 console.log("deepl selftest ok");

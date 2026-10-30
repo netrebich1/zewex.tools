@@ -15,14 +15,24 @@ export const MAX_JOB_ITEMS = 500;
 
 export type TranslateStep = { source: string; target: string };
 
+/**
+ * Модели OpenRouter по стенду 2026-10-15 (scripts/deepl/model-bench.ts, статьи после UK→EN→DE→UK, 10 моделей):
+ * постредактура — deepseek-v4-flash ($0.09/$0.18 за 1M): точечно чинит искажения перевода по оригиналу, ни одного отказа проверки,
+ * самая дешёвая; H2 — gpt-6-luna ($0.10/$0.50): держит формулу промта «сущность + кут», без выдуманных обещаний и штампов.
+ * Модели, переписывающие текст обратно к оригиналу (qwen3.7/3.8-flash, gemini-3.1-flash-lite, deepseek-v4.1-flash), не брать.
+ */
+export const RECOMMENDED_MODELS = { edit: "deepseek/deepseek-v4-flash", headings: "openai/gpt-6-luna" } as const;
+
 export type DeeplSettings = {
   translateSteps: TranslateStep[];
   headings: { enabled: boolean; promptId: string; prompt: string };
   postEdit: { enabled: boolean; promptId: string; prompt: string };
   /** Добор ключей после постредактуры: авто-ключи из исходника + ручной список, коридор % от числа вхождений в исходнике */
   seo: { enabled: boolean; auto: boolean; keywords: string[]; minPct: number; maxPct: number };
-  /** Модель OpenRouter для редактуры (`google/gemini-2.5-flash`); пусто — модель правила ключа */
+  /** Модель OpenRouter для постредактуры и добора ключей; пусто — модель правила ключа */
   model: string;
+  /** Модель OpenRouter для заголовков H2; пусто — как `model` */
+  headingsModel: string;
   publish: { enabled: boolean; target: "source" | "new"; status: "draft" | "pending" | "publish" };
 };
 
@@ -35,7 +45,8 @@ export const DEFAULT_SETTINGS: DeeplSettings = {
   headings: { enabled: true, promptId: "", prompt: "" },
   postEdit: { enabled: true, promptId: "", prompt: "" },
   seo: { enabled: true, auto: true, keywords: [], minPct: 25, maxPct: 70 },
-  model: "",
+  model: RECOMMENDED_MODELS.edit,
+  headingsModel: RECOMMENDED_MODELS.headings,
   publish: { enabled: false, target: "source", status: "draft" },
 };
 
@@ -155,6 +166,7 @@ export function parseSettings(json: unknown): DeeplSettings {
       maxPct: Math.max(minPct, clamp(seo.maxPct, DEFAULT_SETTINGS.seo.maxPct, 0, 200)),
     },
     model: typeof s.model === "string" ? s.model.trim() : "",
+    headingsModel: typeof s.headingsModel === "string" ? s.headingsModel.trim() : "",
     publish: {
       enabled: bool(pub.enabled, false),
       target: pub.target === "new" ? "new" : "source",

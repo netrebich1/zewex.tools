@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { decryptSecret, encryptSecret, secretHint } from "@/lib/crypto";
+import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { createJob, deleteJob, publishItem, publishReady, resumeJob, retryItems, revertItem, stopJob, type LaunchPost } from "@/lib/deepl/jobs";
-import { checkDeeplKey, mapLimit, refreshDeeplUsage, resetDeeplPool } from "@/lib/deepl/deepl";
+import { checkDeeplKey, deeplHint, mapLimit, refreshDeeplUsage, resetDeeplPool } from "@/lib/deepl/deepl";
 import { BASE_PATH, parseSettings, type DeeplSettings } from "@/lib/deepl/types";
 
 export type FormState = { error?: string; ok?: string };
@@ -145,8 +145,8 @@ export async function revertDeeplItem(_p: FormState, f: FormData): Promise<FormS
 /* ---------- Ключи DeepL (только внутри инструмента; управляет любой, кому открыт DeepL Articler) ---------- */
 
 const KEYS_PATH = `${BASE_PATH}/keys`;
-/** Лимит бесплатного ключа DeepL в месяц — значение по умолчанию исходного сервиса. */
-const DEFAULT_FREE_LIMIT = 500_000;
+/** Лимит символов на ключ по умолчанию (правило владельца 2026-10-16: 1 000 000). */
+const DEFAULT_KEY_LIMIT = 1_000_000;
 /** «500 000», «500000», «0,5 млн» → число символов; пусто или мусор — null. */
 function parseLimit(v: string): number | null {
   const t = v.toLowerCase().replace(/\s+/g, "").replace(",", ".");
@@ -188,15 +188,15 @@ export async function addDeeplKeys(_p: FormState, f: FormData): Promise<FormStat
     for (const [i, k] of fresh.entries()) {
       const c = checks[i]!;
       if (!c.ok) {
-        rejected.push(`${secretHint(k.secret)} — ${c.note}`);
+        rejected.push(`${deeplHint(k.secret)} — ${c.note}`);
         continue;
       }
       await prisma.deeplKey.create({
         data: {
-          label: k.label || `DeepL ${k.secret.endsWith(":fx") ? "Free" : "Pro"} ${secretHint(k.secret)}`,
+          label: k.label || `DeepL ${k.secret.endsWith(":fx") ? "Free" : "Pro"} ${deeplHint(k.secret)}`,
           secretEnc: encryptSecret(k.secret),
-          hint: secretHint(k.secret),
-          charLimit: manualLimit ?? c.limit ?? DEFAULT_FREE_LIMIT,
+          hint: deeplHint(k.secret),
+          charLimit: manualLimit ?? c.limit ?? DEFAULT_KEY_LIMIT,
           limitManual: manualLimit != null || c.limit == null,
           charUsed: c.used ?? 0,
           usageAt: new Date(),
@@ -238,7 +238,7 @@ export async function updateDeeplKey(_p: FormState, f: FormData): Promise<FormSt
       await prisma.deeplKey.update({ where: { id }, data: { label: str(f, "label").slice(0, 80) || "DeepL" } });
     } else if (op === "limit" || op === "limit_all") {
       const limit = parseLimit(str(f, "limit"));
-      if (limit == null) throw new Error("Укажите лимит символов числом, например 500000");
+      if (limit == null) throw new Error("Укажите лимит символов числом, например 1000000");
       if (op === "limit") await prisma.deeplKey.update({ where: { id }, data: { charLimit: limit, limitManual: true } });
       else await prisma.deeplKey.updateMany({ data: { charLimit: limit, limitManual: true } });
     } else if (op === "limit_auto") {

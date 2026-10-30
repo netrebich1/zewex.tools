@@ -9,6 +9,7 @@ import { publishDeeplItem, publishDeeplReady, retryDeeplItems, revertDeeplItem }
 import { ITEM_STATUS_LABELS, STAGE_LABELS, type DeeplSettings } from "@/lib/deepl/types";
 import type { JobItemRow } from "@/lib/deepl/jobs";
 import { ITEM_TONE } from "./DeeplNav";
+import { DiffView } from "./DiffView";
 
 const LIVE = new Set(["QUEUED", "RUNNING"]);
 type Stage = { key: string; label: string; html: string; chars: number; changedWords?: number; status?: string };
@@ -175,7 +176,8 @@ function ItemPanel({ jobId, item, publishDefaults }: { jobId: string; item: JobI
   const [stages, setStages] = useState<Stage[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<string>("final");
-  const [mode, setMode] = useState<"view" | "side" | "html">("view");
+  const [mode, setMode] = useState<"diff" | "view" | "side" | "html">("diff");
+  const [base, setBase] = useState<"prev" | "source">("prev");
   const [copied, setCopied] = useState(false);
   const stageSig = item.stageKeys.join("|") + item.status;
 
@@ -199,6 +201,9 @@ function ItemPanel({ jobId, item, publishDefaults }: { jobId: string; item: JobI
   const idx = stages?.findIndex((s) => s.key === active) ?? -1;
   const cur = stages && idx >= 0 ? stages[idx] : null;
   const prev = stages && idx > 0 ? stages[idx - 1] : null;
+  const source = stages?.find((s) => s.key === "source") ?? null;
+  // «Итоговый» совпадает с последним этапом — для него сравнение всегда с исходником (весь путь статьи).
+  const against = !cur || cur.key === "source" ? null : cur.key === "final" || base === "source" ? source : prev;
   const warns = item.warnings.filter((w) => !QUIET.has(w.code));
 
   async function copy() {
@@ -223,15 +228,26 @@ function ItemPanel({ jobId, item, publishDefaults }: { jobId: string; item: JobI
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {(["view", "side", "html"] as const).map((m) => (
+            {(["diff", "view", "side", "html"] as const).map((m) => (
               <button key={m} type="button" className={`btn-ghost btn-sm ${mode === m ? "!bg-ink/10" : ""}`} onClick={() => setMode(m)}>
-                {m === "view" ? "Текст" : m === "side" ? "Рядом с предыдущей" : "HTML"}
+                {m === "diff" ? "Сравнение" : m === "view" ? "Текст" : m === "side" ? "Рядом с предыдущей" : "HTML"}
               </button>
             ))}
+            {mode === "diff" && cur && cur.key !== "final" && cur.key !== "source" && (
+              <select className="input w-auto !py-1 text-[13px]" value={base} onChange={(e) => setBase(e.target.value as "prev" | "source")}>
+                <option value="prev">с предыдущим этапом</option>
+                <option value="source">с исходным</option>
+              </select>
+            )}
             <span className="help">{cur ? `${cur.chars.toLocaleString("ru-RU")} знаков с разметкой` : ""}</span>
             <button type="button" className="btn-primary btn-sm ml-auto" onClick={copy} disabled={!cur}>{copied ? "Скопировано" : "Копировать HTML"}</button>
           </div>
-          {cur && mode === "html" && <textarea readOnly className="input h-[420px] font-mono text-[12px]" value={cur.html} />}
+          {cur && mode === "diff" && (
+            against
+              ? <DiffView oldHtml={against.html} newHtml={cur.html} oldLabel={against.label} newLabel={cur.label} keywords={item.keywordReport.map((k) => k.key)} />
+              : <p className="help">Это исходная версия — выберите этап, чтобы увидеть правки относительно неё.</p>
+          )}
+          {cur && mode === "html" &&<textarea readOnly className="input h-[420px] font-mono text-[12px]" value={cur.html} />}
           {cur && mode === "view" && <Preview html={cur.html} />}
           {cur && mode === "side" && (
             <div className="grid gap-3 lg:grid-cols-2">

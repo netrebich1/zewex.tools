@@ -50,12 +50,13 @@
      "minPct": 25,
      "maxPct": 70
     },
-    "model": "",
+    "model": "deepseek/deepseek-v4-flash",
     "publish": {
      "enabled": false,
      "target": "source",
      "status": "draft"
-    }
+    },
+    "headingsModel": "openai/gpt-6-luna"
    }
   },
   {
@@ -86,12 +87,13 @@
      "minPct": 50,
      "maxPct": 100
     },
-    "model": "",
+    "model": "deepseek/deepseek-v4-flash",
     "publish": {
      "enabled": false,
      "target": "source",
      "status": "draft"
-    }
+    },
+    "headingsModel": "openai/gpt-6-luna"
    }
   }
  ]
