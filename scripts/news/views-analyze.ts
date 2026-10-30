@@ -59,7 +59,7 @@ async function main() {
   const p = await prisma.newsProject.findFirstOrThrow({ where: { siteUrl: { contains: "beautydaily" } } });
   const s = parseSettings(p.settings);
   let cost = 0;
-  const ctx = { userId: p.createdById!, teamId: p.teamId, runId: "views-analyze", classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u: number) => (cost += u) };
+  const ctx = { userId: p.createdById!, teamId: p.teamId, projectId: p.id, op: "views" as const, runId: `views-${month}`, classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u: number) => (cost += u) };
 
   // Разметка заголовков — с кэшем, чтобы повторный запуск не платил заново.
   const cacheFile = `${outDir}/tags.json`;

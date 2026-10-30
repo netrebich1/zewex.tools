@@ -9,7 +9,7 @@ async function main() {
   const id = process.argv[2];
   const { c, row } = await clusterForAi(id);
   let cost = 0;
-  const ctx = { userId: p.createdById!, teamId: p.teamId, runId: "brief-test", classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u: number) => (cost += u) };
+  const ctx = { userId: p.createdById!, teamId: p.teamId, projectId: p.id, op: "dev" as const, runId: "brief-test", classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u: number) => (cost += u) };
   const ours = await ourArticles(p.siteUrl, c.entity ?? c.title);
   const a = await makeAngles(ctx, s, c, ours);
   const md = await makeBrief(ctx, s, "beautydaily.com.ua", c, a.angles[0], ours, row.summaryUk, null);

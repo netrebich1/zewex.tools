@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { chatJson, type AiCtx } from "./llm";
+import { chatJson, withOp, type AiCtx } from "./llm";
 import { cos, pack, unpack } from "./vec";
 import { SLOT_CLASSIFY, type NewsSettings, type RunStats } from "./types";
 
@@ -149,7 +149,7 @@ export async function mergeStep(projectId: string, ctx: AiCtx, s: NewsSettings, 
   for (let b = 0; b < todo.length; b += 20) {
     const batch = todo.slice(b, b + 20);
     try {
-      const r = await chatJson(ctx, SLOT_CLASSIFY, SYSTEM, JSON.stringify(batch.map((p, n) => ({ pair: n, A: desc(p.i), B: desc(p.j) }))), ctx.classifyModel, 2500, 90_000, 0);
+      const r = await chatJson(withOp(ctx, "merge"), SLOT_CLASSIFY, SYSTEM, JSON.stringify(batch.map((p, n) => ({ pair: n, A: desc(p.i), B: desc(p.j) }))), ctx.classifyModel, 2500, 90_000, 0);
       const ans = new Map<number, boolean>();
       for (const x of Array.isArray(r.pairs) ? (r.pairs as { pair?: unknown; same?: unknown; showA?: unknown; showB?: unknown }[]) : []) ans.set(Number(x.pair), x.same === true || (!!batch[Number(x.pair)]?.hero && sameShow(x.showA, x.showB)));
       // Пара без ответа — не решена, спросим в следующий прогон.

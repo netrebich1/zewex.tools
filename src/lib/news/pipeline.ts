@@ -89,7 +89,7 @@ export async function runPipeline(runId: string, shouldStop: () => boolean = () 
   const userId = run.userId ?? project.createdById;
   try {
     if (!userId) throw new Error("У проекта нет автора — некому списывать расход. Откройте настройки проекта и сохраните их.");
-    const ctx: AiCtx = { userId, teamId: project.teamId, runId, classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u) => (cost += u) };
+    const ctx: AiCtx = { userId, teamId: project.teamId, projectId: project.id, runId, classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u) => (cost += u) };
 
     // Бюджет: при 100% платные шаги не идут, материалы ждут в очереди; при 80% — алерт раз в сутки.
     const spend = await projectSpend(project.id);

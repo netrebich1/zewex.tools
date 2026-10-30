@@ -68,7 +68,7 @@ export async function summaryStep(project: { id: string }, ctx: AiCtx, s: NewsSe
 async function withCostRun<T>(projectId: string, userId: string, kind: "angles" | "brief", clusterId: string, teamId: string, fn: (ctx: AiCtx) => Promise<T>, s: NewsSettings): Promise<T> {
   const run = await prisma.newsRun.create({ data: { projectId, kind, scope: `cluster:${clusterId}`, userId, status: "running", startedAt: new Date() } });
   let cost = 0;
-  const ctx: AiCtx = { userId, teamId, runId: run.id, classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u) => (cost += u) };
+  const ctx: AiCtx = { userId, teamId, projectId, runId: run.id, classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u) => (cost += u) };
   try {
     const out = await fn(ctx);
     await prisma.newsRun.update({ where: { id: run.id }, data: { status: "done", finishedAt: new Date(), costUsd: cost } });

@@ -4,10 +4,10 @@ import { Alert, Badge, Card, PageHeader, sp, type SearchParams } from "@/compone
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { NewsNav } from "@/components/news/NewsNav";
-import { createProject, saveProxy, saveSettings, testBot } from "@/actions/news";
+import { createProject, saveProxy, saveSettings, saveSite, testBot } from "@/actions/news";
 import { canManageProject, requireProject } from "@/lib/news/access";
 import { agoText } from "@/lib/news/query";
-import { CATEGORIES, CATEGORY_LABELS, DEFAULT_SETTINGS, parseSettings, projectSites, sitesText } from "@/lib/news/types";
+import { CATEGORIES, CATEGORY_LABELS, DEFAULT_SETTINGS, parseSettings, projectSites } from "@/lib/news/types";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +52,46 @@ export default async function NewsSettingsPage({ searchParams }: { searchParams:
       {project && !manage && <div className="mb-4"><Alert tone="warn">Менять настройки может администратор или лидер команды проекта — здесь только просмотр.</Alert></div>}
 
       {project && (
+        <Card
+          className="mb-5"
+          title={`Сайты для ТЗ (${projectSites(project, s).length})`}
+          description="Под каждый сайт в карточке новости есть кнопка «+ ТЗ для сайта»: у сайта свои углы и своё ТЗ, углы другого сайта не повторяются. «О сайте» подставляется в углы и ТЗ — чем точнее аудитория и тон, тем точнее угол. Новостей сайты не касаются: лента одна на проект."
+        >
+          <div className="space-y-2">
+            {projectSites(project, s).map((x, i) => (
+              <div key={x.host} className="flex flex-wrap items-start gap-1.5 rounded-lg border border-line p-2">
+                <ActionForm action={saveSite} className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[170px_190px_minmax(0,1fr)_auto]" hidden={{ project: project.id, op: "update", host: x.host }}>
+                  <input name="name" className="input" defaultValue={x.name} aria-label="Название" disabled={!manage} />
+                  <input name="url" className="input" defaultValue={x.host} aria-label="Адрес" disabled={!manage} />
+                  <input name="about" className="input" defaultValue={x.about} placeholder={i === 0 ? "пусто — общее «о сайте» из блока «Стиль редакции»" : "о сайте и аудитории: тема, кто читает, тон"} aria-label="О сайте" disabled={!manage} />
+                  {manage && <SubmitButton className="btn-ghost btn-sm" pendingText="…">Сохранить</SubmitButton>}
+                </ActionForm>
+                {manage && i > 0 && (
+                  <ActionForm action={saveSite} className="inline" hidden={{ project: project.id, op: "up", host: x.host }}>
+                    <SubmitButton className="btn-ghost btn-sm" pendingText="…">↑ выше</SubmitButton>
+                  </ActionForm>
+                )}
+                {manage && (
+                  <ActionForm action={saveSite} className="inline" hidden={{ project: project.id, op: "delete", host: x.host }}>
+                    <SubmitButton className="btn-ghost btn-sm text-danger" pendingText="…" confirm={`Убрать сайт «${x.name}»? Готовые ТЗ для него останутся.`}>Убрать</SubmitButton>
+                  </ActionForm>
+                )}
+              </div>
+            ))}
+            {projectSites(project, s).length > 0 && <p className="help">Первый сайт — основной: ему без описания подставляется общее «о сайте».</p>}
+          </div>
+          {manage && (
+            <ActionForm action={saveSite} className="mt-3 grid gap-2 sm:grid-cols-[180px_200px_minmax(0,1fr)_auto]" hidden={{ project: project.id, op: "add" }}>
+              <input name="name" className="input" placeholder="Название" />
+              <input name="url" className="input" placeholder="site.ua" required />
+              <input name="about" className="input" placeholder="о сайте и аудитории (необязательно)" />
+              <SubmitButton className="btn-brand btn-sm" pendingText="Добавляю…">+ Добавить сайт</SubmitButton>
+            </ActionForm>
+          )}
+        </Card>
+      )}
+
+      {project && (
         <ActionForm action={saveSettings} className="space-y-5" hidden={{ project: project.id }}>
           <Card title="Проект">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -70,14 +110,6 @@ export default async function NewsSettingsPage({ searchParams }: { searchParams:
               )}
               <label className="flex items-center gap-2 pt-6 text-[14px]"><input type="checkbox" name="isActive" defaultChecked={project.isActive} /> Проект включён (плановые прогоны идут)</label>
             </div>
-          </Card>
-
-          <Card title="Сайты для ТЗ" description="Под каждый сайт в карточке новости появится кнопка «+ ТЗ для сайта»: у сайта свои углы и своё ТЗ, углы другого сайта не повторяются. Одна строка — один сайт: Название | адрес | о сайте и аудитории (необязательно, иначе — общее «о сайте» ниже). Новостей сайты не касаются: лента одна на проект.">
-            <label className="block">
-              <span className="label">Сайты ({projectSites(project, s).length})</span>
-              <textarea name="sites" className="input min-h-[110px] text-[13.5px]" defaultValue={sitesText(projectSites(project, s))} placeholder={"Beauty Daily | beautydaily.com.ua\nДругой сайт | site.ua | українське медіа про …"} />
-              <span className="help mt-0.5 block">Первый сайт — основной. Удалите строку, чтобы убрать кнопку; уже готовые ТЗ этого сайта останутся.</span>
-            </label>
           </Card>
 
           <Card title="Расписание и лента">

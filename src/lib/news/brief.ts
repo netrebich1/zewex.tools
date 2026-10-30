@@ -1,4 +1,4 @@
-import { chatJson, type AiCtx } from "./llm";
+import { chatJson, withOp, type AiCtx } from "./llm";
 import { fetchText } from "./fetch";
 import { CATEGORY_LABELS, SLOT_BRIEF, SLOT_CLASSIFY, type NewsSettings } from "./types";
 import { embedCode, type ClusterResearch } from "./research";
@@ -29,7 +29,7 @@ export async function summarizeClusters(ctx: AiCtx, st: NewsSettings, list: Clus
 - why_us: 1–2 речення українською — чому це зайде саме нашій аудиторії і на чому зробити акцент (практична користь, впізнаваний герой, образ, ціна, тренд). Якщо тема слабка для нас — чесно скажи чому.
 Поверни лише JSON: {"items":[{"id":"…","title_uk":"…","summary_uk":"…","why_us":"…"}]}`;
   const user = list.map((c) => `### id: ${c.id}\nКатегорія: ${c.category ? CATEGORY_LABELS[c.category] ?? c.category : "—"}${c.entity ? `; герой: ${c.entity}` : ""}\nСигнали: ${c.signals.join("; ") || "—"}\nДжерела:\n${srcText(c, 400)}`).join("\n\n");
-  const j = await chatJson(ctx, SLOT_BRIEF, system, user, st.briefModel, 2500);
+  const j = await chatJson(withOp(ctx, "summary"), SLOT_BRIEF, system, user, st.briefModel, 2500);
   const items = Array.isArray(j.items) ? (j.items as Record<string, unknown>[]) : [];
   return items
     .map((r) => ({ id: s(r.id, 64), titleUk: s(r.title_uk, 300), summaryUk: s(r.summary_uk, 1500), whyUs: s(r.why_us, 1000) }))
@@ -144,7 +144,7 @@ ${BAIT_RULES}
 Якщо інформаційний привід слабкий для нашої читачки (другорядна подія, герой маловідомий в Україні), скажи це в fit: «слабкий привід: …», інакше fit: «ok».
 Поверни лише JSON: {"fit":"…","competitors_angle":"…","gaps":["…"],"angles":[{"format":"moment","title":"…","angle":"…","why":"…","novelty":4,"usefulness":4}]}`;
   const user = `Тема: ${c.title}\nКатегорія: ${c.category ? CATEGORY_LABELS[c.category] ?? c.category : "—"}${c.subcategory ? ` (${c.subcategory})` : ""}${c.entity ? `\nГерой: ${c.entity}` : ""}\nСигнали: ${c.signals.join("; ") || "—"}\n\nПублікації:\n${srcText(c, 700)}\n\nНаші схожі статті:\n${ours.map((o) => `- ${o.title} (${o.url})`).join("\n") || "— немає"}${taken.length ? `\n\nЦю новину вже пишуть інші наші сайти під такими кутами — не повторюй їх (ні формат+подачу, ні заголовок), запропонуй 3 інші, помітно відмінні:\n${taken.map((t) => `- ${t}`).join("\n")}` : ""}`;
-  const j = await chatJson(ctx, SLOT_BRIEF, system, user, st.briefModel, 2500);
+  const j = await chatJson(withOp(ctx, "angles"), SLOT_BRIEF, system, user, st.briefModel, 2500);
   const angles = (Array.isArray(j.angles) ? (j.angles as Record<string, unknown>[]) : []).slice(0, 3).map((a) => {
     const f = s(a.format, 20).toLowerCase();
     const format = FORMAT_KEYS.includes(f) ? f : "news";
@@ -242,7 +242,7 @@ ${addonList.map((k) => `- ${k} (${ADDONS[k].label}): ${ADDONS[k].what}`).join("\
   c = { ...c, sources: allSources };
   const user = `Тема: ${c.title}${summaryUk ? `\nСуть (чернетка, перепиши чистою українською): ${summaryUk}` : ""}\nОбраний кут (${angle.kind}): ${angle.title} — ${angle.angle}\nЧому клікнуть: ${angle.why}\n\nПублікації (номер — джерело):\n${allSources.map((x, i) => `${i + 1}. [${isUaSource(x) ? "UA" : "світ"}] ${x.domain}${x.tier === "search" ? " (знайдено пошуком)" : ""} — ${x.title}${x.lead ? `: ${x.lead.slice(0, 900)}` : ""}`).join("\n")}\n\nНаші статті для посилань:\n${ours.map((o) => `- ${o.title} (${o.url})`).join("\n") || "— немає"}`;
   // Температура 0.2: решение «нужна ли добавка и какая» должно зависеть от новости, а не от случайности ответа.
-  const j = await chatJson(ctx, SLOT_BRIEF, system, user, st.briefModel, 4000, 150_000, 0.2);
+  const j = await chatJson(withOp(ctx, "brief"), SLOT_BRIEF, system, user, st.briefModel, 4000, 150_000, 0.2);
   // Модель иногда отдаёт строки объектами {text, bait} по образцу headlines — берём text.
   const list = (v: unknown, max = 300) => (Array.isArray(v) ? v.map((x) => s(x && typeof x === "object" ? (x as Record<string, unknown>).text ?? (x as Record<string, unknown>).title : x, max)).filter(Boolean) : []);
   const arr = <T>(v: unknown, f: (x: Record<string, unknown>) => T) => (Array.isArray(v) ? (v as Record<string, unknown>[]).map(f) : []);

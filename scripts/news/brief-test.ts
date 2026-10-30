@@ -16,7 +16,7 @@ async function main() {
   const p = await prisma.newsProject.findUniqueOrThrow({ where: { id: row.projectId } });
   const s = parseSettings(p.settings);
   let cost = 0;
-  const ctx = { userId: p.createdById!, teamId: p.teamId, runId: "news-brief-test", classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u: number) => (cost += u) };
+  const ctx = { userId: p.createdById!, teamId: p.teamId, projectId: p.id, op: "dev" as const, runId: "news-brief-test", classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u: number) => (cost += u) };
   console.log("КЛАСТЕР:", c.title, "| источников", c.sources.length, "| сигналы:", c.signals.slice(0, 3).join(" / "));
   const t0 = Date.now();
   const sum = skipSummary && row.summaryUk ? [{ id, titleUk: row.titleUk ?? "", summaryUk: row.summaryUk, whyUs: row.whyUs ?? "" }] : await summarizeClusters(ctx, s, [c]);

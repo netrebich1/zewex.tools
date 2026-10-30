@@ -279,22 +279,6 @@ export function projectSites(p: { name: string; siteUrl: string }, s: NewsSettin
   return host ? [{ host, name: p.name || host, about: "" }] : [];
 }
 
-/** Строки настроек «Название | адрес | о сайте» ↔ список сайтов. */
-export function parseSitesText(text: string): NewsSite[] {
-  const out: NewsSite[] = [];
-  for (const line of text.split(/\r?\n/)) {
-    const parts = line.split("|").map((x) => x.trim());
-    if (!parts.some(Boolean)) continue;
-    // «site.ua» одной строкой — тоже можно: название = домен.
-    const [a, b, ...rest] = parts;
-    const host = siteHost(b || a);
-    if (!host || !host.includes(".")) throw new Error(`Сайты: в строке «${line.trim()}» нет адреса`);
-    if (out.some((x) => x.host === host)) continue;
-    out.push({ host, name: b ? a : host, about: rest.join(" | ") });
-  }
-  return out;
-}
-export const sitesText = (sites: NewsSite[]) => sites.map((x) => [x.name, x.host, x.about].filter((v, i) => v || i < 2).join(" | ")).join("\n");
 
 export const BRIEF_STATUS_LABELS: Record<string, string> = { draft: "углы", ready: "ТЗ готово", published: "опубликовано" };
 

@@ -7,7 +7,8 @@ const ITEMS = [
   { href: "/discovery/news/sources", label: "Источники" },
   { href: "/discovery/news/entities", label: "Сущности" },
   { href: "/discovery/news/views", label: "Просмотры" },
-  { href: "/discovery/news/runs", label: "Прогоны и расход" },
+  { href: "/discovery/news/costs", label: "Расходы" },
+  { href: "/discovery/news/runs", label: "Прогоны" },
   { href: "/discovery/news/settings", label: "Настройки" },
 ];
 

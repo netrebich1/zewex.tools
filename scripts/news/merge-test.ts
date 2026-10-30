@@ -6,7 +6,7 @@ async function main() {
   const p = await prisma.newsProject.findFirstOrThrow({ where: { siteUrl: { contains: "beautydaily" } } });
   const s = parseSettings(p.settings);
   let cost = 0;
-  const ctx = { userId: p.createdById!, teamId: p.teamId, runId: "merge-test", classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u: number) => (cost += u) };
+  const ctx = { userId: p.createdById!, teamId: p.teamId, projectId: p.id, op: "dev" as const, runId: "merge-test", classifyModel: s.classifyModel, embedModel: s.embedModel, onCost: (u: number) => (cost += u) };
   const stats = emptyStats();
   await mergeStep(p.id, ctx, s, stats, (m) => console.log(m), process.argv[2] !== "--real");
   console.log("cost", cost.toFixed(4), "merged", stats.clustersMerged ?? "-");

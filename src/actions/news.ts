@@ -10,7 +10,7 @@ import { requestRun } from "@/lib/news/runs";
 import { testTelegram } from "@/lib/news/pipeline";
 import { buildSiteBrief, startSiteWork } from "@/lib/news/work";
 import { fetchText } from "@/lib/news/fetch";
-import { BASE_PATH, CATEGORIES, DEFAULT_SETTINGS, parseSettings, parseSitesText, SOURCE_KINDS, TIERS, type NewsSettings } from "@/lib/news/types";
+import { BASE_PATH, CATEGORIES, DEFAULT_SETTINGS, parseSettings, projectSites, siteHost, SOURCE_KINDS, TIERS, type NewsSettings } from "@/lib/news/types";
 
 export type FormState = { error?: string; ok?: string };
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -127,6 +127,48 @@ const SETTING_NUMBERS: (keyof NewsSettings)[] = [
   "gnewsEntitiesPerQuery", "gnewsGroupsPerRun", "topEntityWeight", "autoSummaryPerDay",
 ];
 
+/** Сайты для ТЗ: добавить, изменить, поднять выше, убрать (готовые ТЗ убранного сайта остаются). */
+export async function saveSite(_p: FormState, f: FormData): Promise<FormState> {
+  try {
+    const me = await requireUser();
+    const p = await loadProjectFor(me, str(f, "project"), true);
+    const cur = parseSettings(p.settings);
+    // Пока список пуст, в нём неявно стоит сайт проекта — делаем его явным, чтобы не потерять.
+    const sites = [...projectSites(p, cur)];
+    const op = str(f, "op");
+    const host = str(f, "host");
+    const idx = sites.findIndex((x) => x.host === host);
+    const row = () => {
+      const h = siteHost(str(f, "url"));
+      if (!h || !h.includes(".")) throw new Error("Укажите адрес сайта, например site.ua");
+      if (sites.some((x, i) => x.host === h && i !== idx)) throw new Error(`Сайт ${h} уже есть в списке`);
+      return { host: h, name: str(f, "name") || h, about: str(f, "about") };
+    };
+    let msg = "Сохранено";
+    if (op === "add") {
+      sites.push(row());
+      msg = "Сайт добавлен — кнопка «+ ТЗ» появится в карточках новостей";
+    } else {
+      if (idx < 0) throw new Error("Сайт не найден — обновите страницу");
+      if (op === "update") {
+        const next = row();
+        // Сменили адрес — готовые ТЗ переезжают на новый, чтобы не потеряться.
+        if (next.host !== host) await prisma.newsBrief.updateMany({ where: { projectId: p.id, site: host }, data: { site: next.host } });
+        sites[idx] = next;
+      } else if (op === "up" && idx > 0) [sites[idx - 1], sites[idx]] = [sites[idx], sites[idx - 1]];
+      else if (op === "delete") {
+        sites.splice(idx, 1);
+        msg = "Сайт убран";
+      }
+    }
+    await prisma.newsProject.update({ where: { id: p.id }, data: { settings: { ...cur, sites } as unknown as Prisma.InputJsonValue } });
+    done();
+    return { ok: msg };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 export async function saveSettings(_p: FormState, f: FormData): Promise<FormState> {
   try {
     const me = await requireUser();
@@ -142,7 +184,6 @@ export async function saveSettings(_p: FormState, f: FormData): Promise<FormStat
       const raw = str(f, k);
       next[k] = raw ? list(raw) : DEFAULT_SETTINGS[k];
     }
-    if (f.has("sites")) next.sites = parseSitesText(String(f.get("sites") ?? ""));
     const settings = parseSettings(next);
     const token = str(f, "tgToken");
     const data: Prisma.NewsProjectUpdateInput = {

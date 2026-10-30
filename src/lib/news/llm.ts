@@ -1,6 +1,7 @@
 import { disableKey, resolveSlot, runSlot } from "@/lib/run";
 import { classifyAiError } from "@/lib/pins/ai/errors";
-import { CATEGORIES, PROJECT_SLUG, SLOT_CLASSIFY, SLOT_EMBED } from "./types";
+import { prisma } from "@/lib/db";
+import { CATEGORIES, PROJECT_SLUG, SLOT_BRIEF, SLOT_CLASSIFY, SLOT_EMBED } from "./types";
 import { normalize } from "./vec";
 
 /**
@@ -8,7 +9,27 @@ import { normalize } from "./vec";
  * Расход списывается с ключей команды проекта (teamId), модели — из настроек проекта или правила слота.
  */
 
-export type AiCtx = { userId: string; teamId: string; runId: string; classifyModel?: string; embedModel?: string; onCost: (usd: number) => void };
+/** projectId и op — для журнала расходов NewsCost (страница «Расходы»): без projectId вызов в журнал не пишется. */
+export type AiCtx = { userId: string; teamId: string; runId: string; classifyModel?: string; embedModel?: string; onCost: (usd: number) => void; projectId?: string; op?: CostOp };
+
+/** Статьи расхода: на что ушёл вызов модели. */
+export const COST_OPS = {
+  classify: "Классификация материалов",
+  embed: "Эмбеддинги (кластеризация, фильтр)",
+  merge: "Склейка дублей",
+  summary: "Суть карточек и «почему зайдёт»",
+  angles: "Углы",
+  brief: "ТЗ",
+  research: "Ресёрч в вебе (без ИИ, бесплатно)",
+  views: "Просмотры конкурентов (разметка)",
+  dev: "Тесты и настройка модуля",
+  other: "Прочее",
+} as const;
+export type CostOp = keyof typeof COST_OPS;
+const SLOT_OP: Record<string, CostOp> = { [SLOT_CLASSIFY]: "classify", [SLOT_EMBED]: "embed", [SLOT_BRIEF]: "brief" };
+
+/** Тот же контекст, но расход идёт в другую статью (onCost и прогон — общие). */
+export const withOp = (ctx: AiCtx, op: CostOp): AiCtx => ({ ...ctx, op });
 
 export class NewsAiError extends Error {
   constructor(message: string, readonly fatal: boolean) {
@@ -21,6 +42,14 @@ async function call(ctx: AiCtx, slotKey: string, payload: Record<string, unknown
   if (!r.ok) throw new NewsAiError(r.error, true);
   const res = await runSlot({ userId: ctx.userId, projectSlug: PROJECT_SLUG, slotKey, payload, model: model || undefined, timeoutMs, meta: { teamId: ctx.teamId, refId: ctx.runId }, pre: r.value });
   if (res.meta?.costUsd) ctx.onCost(res.meta.costUsd);
+  if (ctx.projectId) {
+    await prisma.newsCost.create({
+      data: {
+        projectId: ctx.projectId, runId: ctx.runId.slice(0, 64), op: ctx.op ?? SLOT_OP[slotKey] ?? "other", model: res.meta?.model?.slice(0, 191) ?? model ?? null,
+        inputTokens: res.meta?.inputTokens ?? 0, outputTokens: res.meta?.outputTokens ?? 0, costUsd: res.meta?.costUsd ?? 0, ok: res.ok,
+      },
+    }).catch(() => undefined);
+  }
   if (!res.ok) {
     const cls = classifyAiError(res.status, res.error ?? "");
     if (cls.kind === "fatal_run" && (cls.code === "no_credits" || cls.code === "auth")) {

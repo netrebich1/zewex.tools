@@ -359,7 +359,9 @@ export async function deepResearch(clusterId: string): Promise<ClusterResearch> 
   const f = await filterEmbeds(topic, found, (from) => okDomains.has(from));
   const embeds = [...base.embeds, ...f.kept].filter((e, i, a) => a.findIndex((x) => x.url === e.url) === i).slice(0, 4);
   const out: ClusterResearch = { ...base, pages: [...base.pages, ...extra], images: base.images.slice(0, 20), embeds, deep: true, queries, rejected: (base.rejected ?? 0) + f.rejected };
-  await prisma.newsCluster.update({ where: { id: clusterId }, data: { research: out as unknown as Prisma.InputJsonValue, researchAt: new Date() } });
+  const saved = await prisma.newsCluster.update({ where: { id: clusterId }, data: { research: out as unknown as Prisma.InputJsonValue, researchAt: new Date() }, select: { projectId: true } });
+  // Ресёрч бесплатный (поиск и страницы без ИИ), но в «Расходах» виден счётчиком.
+  await prisma.newsCost.create({ data: { projectId: saved.projectId, runId: `research:${clusterId}`.slice(0, 64), op: "research", costUsd: 0 } }).catch(() => undefined);
   return out;
 }
 
