@@ -85,7 +85,9 @@ async function main() {
 
   // Русские версии статей (у 24 Канала каждая новость выходит дважды) не считаем: иначе статьи о герое удваиваются.
   const russian = (t: string) => /[ыэъё]/i.test(t);
-  const tagged: Tagged[] = rows.filter((r) => cache[r.url] && !russian(r.title)).map((r) => ({ ...r, v: r.site === "lux.fm" && !r.views ? null : r.views, ...cache[r.url] }));
+  // Lux FM прячет часть счётчиков, у Хочу их нет на свежих статьях: ноль там — «нет данных».
+  const zeroHidden = new Set(["lux.fm", "hochu.ua"]);
+  const tagged: Tagged[] = rows.filter((r) => cache[r.url] && !russian(r.title)).map((r) => ({ ...r, v: zeroHidden.has(r.site) && !r.views ? null : r.views, ...cache[r.url] }));
   const siteList = [...new Set(tagged.map((r) => r.site))].sort();
   const median = (a: number[]) => (a.length ? [...a].sort((x, y) => x - y)[a.length >> 1] : 0);
   // Масштаб сайтов разный (у TSN медиана в тысячи, у 24 Канала в десятки) — индекс = просмотры / медиана сайта.

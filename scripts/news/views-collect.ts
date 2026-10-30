@@ -1,11 +1,13 @@
 /**
  * Сбор статей конкурентов с просмотрами за последние N дней (по умолчанию 30).
- * Только сайты, где число просмотров видно публично: TSN, 24 Канал, Lux FM, Главред, УНИАН.
- * Viva не берём: её счётчик сам прибавляет просмотр при запросе.
+ * Только сайты, где число просмотров видно публично: TSN, 24 Канал, Lux FM, Главред, УНИАН, Блік, Хочу, УНН Lite.
+ * Только чтение: Viva, Фокус, Zaxid и др. отдают число лишь вместе с накруткой просмотра — их не берём.
+ * Табло ІД (tabloid.pravda.com.ua), NV Life, Обозреватель счётчики показывают, но сервер блокирует Cloudflare (нужен прокси).
  * Результат — JSONL (одна статья на строку), запуск можно повторять: уже собранные адреса пропускаются.
  * Запуск: npx tsx scripts/news/views-collect.ts <out.jsonl> [days]
  */
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 
 type Row = { site: string; url: string; title: string; publishedAt: string; views: number };
 const out = process.argv[2] ?? "views.jsonl";
@@ -41,6 +43,8 @@ type Site = {
   views: (url: string, html: string) => Promise<number>;
   /** Архив по страницам от новых к старым: можно остановиться, когда страница целиком старше отсечки. */
   archive?: boolean;
+  /** Сайт отдаёт статьи с просмотрами сразу списком (API): страницы статей не открываем. */
+  list?: () => AsyncGenerator<Row[]>;
 };
 
 const fromSitemaps = (maps: string[], keep: RegExp) =>
@@ -68,6 +72,17 @@ const months = (() => {
   }
   return [...new Set(a)].filter((m) => m <= `${new Date().getUTCFullYear()}${String(new Date().getUTCMonth() + 1).padStart(2, "0")}`);
 })();
+/** Карта сайта в .xml.gz (у Бліка помесячные). */
+const fromGzSitemaps = (maps: string[], keep: RegExp) =>
+  async function* () {
+    for (const m of maps) {
+      const r = await fetch(m, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(60_000) }).catch(() => null);
+      if (!r?.ok) continue;
+      const buf = Buffer.from(await r.arrayBuffer());
+      const x = (buf[0] === 0x1f && buf[1] === 0x8b ? gunzipSync(buf) : buf).toString("utf8");
+      yield [...x.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((r2) => r2[1]).filter((u) => keep.test(u));
+    }
+  };
 const ajaxViews = (host: string) => async (url: string) => num(JSON.parse((await get(`${host}/ajax/views/${url.match(/-(\d{7,})\.html/)?.[1]}`).catch(() => "{}")) || "{}").views?.toString());
 
 const SITES: Site[] = [
@@ -100,10 +115,58 @@ const SITES: Site[] = [
     archive: true,
     views: ajaxViews("https://www.unian.ua"),
   })),
+  {
+    name: "blik.ua",
+    urls: fromGzSitemaps(months.map((m) => `https://blik.ua/sitemap-${m.slice(0, 4)}-${m.slice(4)}.xml.gz`), /blik\.ua\/show-biz\//),
+    // В JSON-LD статьи первый userInteractionCount — её просмотры (второй — чужой), запасной вариант — блок под заголовком.
+    views: async (_u, h) => num(h.match(/"userInteractionCount"\s*:\s*"?(\d+)/)?.[1] ?? h.match(/tpl_one_news_mcrr_views">\s*([\d\s]+)/)?.[1]),
+  },
+  {
+    name: "hochu.ua",
+    // API рубрики «Знаменитості»: html карточек по 14, от новых к старым; в списке бывают другие рубрики — берём только cat-stars.
+    urls: async function* () {
+      for (let n = 1; n <= 80; n++) {
+        const j = JSON.parse((await get(`https://hochu.ua/ukr/api/rubric/znamenitosti/page=${n}/`).catch(() => "")) || "{}") as { content?: string };
+        const found = [...new Set([...(j.content ?? "").matchAll(/href="(https:\/\/news\.hochu\.ua\/ukr\/cat-stars\/[^"]+article-\d+[^"]*)"/g)].map((r) => r[1]))];
+        if (!found.length) return;
+        yield found;
+      }
+    },
+    archive: true,
+    // У совсем свежих статей блока просмотров нет — это «нет данных», как нули Lux FM.
+    views: async (_u, h) => num(h.match(/c-article-header__viewed">\s*([\d\s ]+?)\s*</)?.[1]),
+  },
+  {
+    name: "unn.ua",
+    urls: async function* () {},
+    // Раздел Lite (звёзды и курьёзы) — API со списком и просмотрами. Число на странице статьи — устаревший кэш, его не берём.
+    list: async function* () {
+      for (let n = 1; n <= 60; n++) {
+        const j = JSON.parse((await get(`https://unn.ua/api/app/news/list?locale=uk&category=lite&page=${n}&take=30`).catch(() => "")) || "{}") as { news?: { views?: number; publishedAt?: string; uk?: { slug?: string; title?: string } }[] };
+        const rows = (j.news ?? []).filter((x) => x.uk?.slug && x.publishedAt).map((x) => ({ site: "unn.ua", url: `https://unn.ua/news/${x.uk!.slug}`, title: x.uk!.title ?? "", publishedAt: x.publishedAt!, views: x.views ?? 0 }));
+        if (!rows.length) return;
+        yield rows;
+      }
+    },
+  },
 ];
 
 async function runSite(s: Site) {
   let saved = 0, old = 0;
+  if (s.list) {
+    for await (const rows of s.list()) {
+      const fresh = rows.filter((r) => new Date(r.publishedAt).getTime() >= cutoff);
+      for (const r of fresh.filter((x) => !seen.has(x.url))) {
+        seen.add(r.url);
+        appendFileSync(out, JSON.stringify(r) + "\n");
+        saved++;
+      }
+      old += rows.length - fresh.length;
+      if (!fresh.length) break;
+    }
+    console.log(`${s.name}: сохранено ${saved}, старше отсечки ${old}`);
+    return;
+  }
   for await (const batch of s.urls()) {
     const todo = batch.filter((u) => !seen.has(u));
     let olderInBatch = 0;
