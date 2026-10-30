@@ -1,5 +1,6 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { parseSettings } from "./types";
+import { KEEP_DAYS, MEMORY_DAYS, parseSettings } from "./types";
 
 /**
  * Очередь прогонов: один прогон на проект одновременно. Плановые ставит воркер по nextRunAt,
@@ -67,14 +68,24 @@ export async function failStaleRuns(hostPrefix?: string): Promise<number> {
   return r.count;
 }
 
-/** Уборка: отсечённые и дубли старше 14 дней, эмбеддинги старше 30 дней, тренды старше 30 дней. Кластеры и материалы в них — бессрочно. */
-export async function purgeOld(): Promise<{ items: number; vectors: number; trends: number }> {
-  const d14 = new Date(Date.now() - 14 * 86_400_000);
+/**
+ * Уборка (KEEP_DAYS / MEMORY_DAYS в types.ts). Старше 3 дней: у кластеров стираем карточку, ТЗ, ресёрч, историю баллов
+ * и снимаем «избранное», у материалов — лид, сущности и эмбеддинг. Остаются заголовки, адреса и центр кластера:
+ * по ним рерайт старой темы узнаётся и не попадает в ленту. Старше 7 дней — материалы и кластеры удаляются. Тренды — 30 дней.
+ */
+export async function purgeOld(): Promise<{ items: number; clusters: number; stripped: number; trends: number }> {
+  const keep = new Date(Date.now() - KEEP_DAYS * 86_400_000);
+  const memory = new Date(Date.now() - MEMORY_DAYS * 86_400_000);
   const d30 = new Date(Date.now() - 30 * 86_400_000);
-  const items = await prisma.newsItem.deleteMany({ where: { foundAt: { lt: d14 }, status: { in: ["cut", "dup", "error"] }, clusterId: null } });
-  const vectors = await prisma.newsItem.updateMany({ where: { foundAt: { lt: d30 }, embedding: { not: null } }, data: { embedding: null } });
+  const stripped = await prisma.newsCluster.updateMany({
+    where: { firstPublishedAt: { lt: keep }, OR: [{ starred: true }, { brief: { not: null } }, { summaryUk: { not: null } }, { scoreHistory: { not: Prisma.DbNull } }] },
+    data: { starred: false, scoreParts: Prisma.DbNull, scoreHistory: Prisma.DbNull, priorityWhy: Prisma.DbNull, summaryUk: null, whyUs: null, angles: Prisma.DbNull, brief: null, research: Prisma.DbNull },
+  });
+  await prisma.newsItem.updateMany({ where: { foundAt: { lt: keep }, OR: [{ lead: { not: null } }, { embedding: { not: null } }] }, data: { lead: null, embedding: null, entities: Prisma.DbNull, matched: Prisma.DbNull, extraSources: Prisma.DbNull } });
+  const items = await prisma.newsItem.deleteMany({ where: { foundAt: { lt: memory } } });
+  const clusters = await prisma.newsCluster.deleteMany({ where: { lastItemAt: { lt: memory } } });
   const trends = await prisma.newsTrend.deleteMany({ where: { lastSeenAt: { lt: d30 } } });
-  return { items: items.count, vectors: vectors.count, trends: trends.count };
+  return { items: items.count, clusters: clusters.count, stripped: stripped.count, trends: trends.count };
 }
 
 const dayStartUtc = () => {

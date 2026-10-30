@@ -11,7 +11,7 @@ import { onSiteStep } from "./onsite";
 import { heroSkeleton, mergeStep } from "./merge";
 import { projectSpend } from "./runs";
 import { alertText, sendTelegram } from "./telegram";
-import { BASE_PATH, emptyStats, parseSettings, parseState, type NewsSettings, type ProjectState, type RunStats, type ScorePart } from "./types";
+import { BASE_PATH, MEMORY_DAYS, emptyStats, parseSettings, parseState, type NewsSettings, type ProjectState, type RunStats, type ScorePart } from "./types";
 import { wellFormed, type FeedItem } from "./parse";
 
 /**
@@ -507,8 +507,10 @@ async function clusterStep(projectId: string, s: NewsSettings, stats: RunStats) 
   const items = await prisma.newsItem.findMany({ where: { projectId, status: "classified", clusterId: null }, orderBy: [{ publishedAt: "asc" }, { foundAt: "asc" }], take: 500 });
   if (!items.length) return;
   const since = new Date(Date.now() - s.clusterWindowHours * HOUR);
-  const clusters = await prisma.newsCluster.findMany({ where: { projectId, lastItemAt: { gte: since } } });
-  type C = { row: (typeof clusters)[number]; vec: Float32Array | null; toks: string[]; n: number; dirty: boolean; isNew: boolean; uaTitle: boolean | null };
+  // «Память» за неделю: рерайт старой темы приклеивается к ней (первая публикация старая — в ленту не попадёт).
+  // Для старых кластеров только строгий порог по смыслу: новая новость о той же звезде не должна туда уйти.
+  const clusters = await prisma.newsCluster.findMany({ where: { projectId, lastItemAt: { gte: new Date(Math.min(+since, Date.now() - MEMORY_DAYS * 86_400_000)) } } });
+  type C ={ row: (typeof clusters)[number]; vec: Float32Array | null; toks: string[]; n: number; dirty: boolean; isNew: boolean; uaTitle: boolean | null };
   const live: C[] = clusters.map((c) => ({ row: c, vec: unpack(c.centroid), toks: [...new Set(keyTokens(c.title))], n: c.itemCount, dirty: false, isNew: false, uaTitle: null }));
   for (const it of items) {
     const v = unpack(it.embedding);
@@ -517,9 +519,11 @@ async function clusterStep(projectId: string, s: NewsSettings, stats: RunStats) 
     let best: C | null = null;
     let bestSim = 0;
     for (const c of live) {
+      const memory = c.row.lastItemAt < since;
+      if (memory && !(v && c.vec)) continue;
       const sim = v && c.vec ? cos(v, c.vec) : jaccard(toks, c.toks) + 0.3;
       const sameHero = !!me && (c.row.mainEntity === me.key || (heroSkeleton(me.name).length >= 3 && heroSkeleton(me.name) === heroSkeleton(c.row.mainEntityName)));
-      const need = sameHero ? s.clusterSimEntity : s.clusterSim;
+      const need = memory ? Math.max(s.clusterSim, s.clusterSimEntity) : sameHero ? s.clusterSimEntity : s.clusterSim;
       if (sim >= need && sim > bestSim) {
         best = c;
         bestSim = sim;

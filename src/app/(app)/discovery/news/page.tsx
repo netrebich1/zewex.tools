@@ -11,7 +11,7 @@ import { FORMATS } from "@/lib/news/brief";
 import { embedCode } from "@/lib/news/research";
 import { EmbedPreview } from "@/components/news/EmbedPreview";
 import { requireProject } from "@/lib/news/access";
-import { agoText, feed, fmtKyiv, spendByDay, summary, trendsOf, type FeedCard } from "@/lib/news/query";
+import { agoText, favCounts, feed, fmtKyiv, spendByDay, summary, trendsOf, type FeedCard } from "@/lib/news/query";
 import { isQuietHour, QUIET_FROM, QUIET_TO } from "@/lib/news/runs";
 import { BASE_PATH, CATEGORY_LABELS, CLUSTER_STATUS_LABELS, PRIORITY_LABELS, RUN_SCOPES } from "@/lib/news/types";
 import { fmtMoney } from "@/lib/utils";
@@ -32,11 +32,11 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
       </>
     );
   }
-  const filter = { cat: sp(q, "cat") || undefined, urgent: sp(q, "urgent") === "1", notUa: sp(q, "notua") === "1", all: sp(q, "all") === "1", status: sp(q, "status") || undefined, priority: sp(q, "pr") || undefined, sort: (sp(q, "sort") === "fresh" ? "fresh" : "score") as "fresh" | "score", hours: Number(sp(q, "h")) || 6, fav: sp(q, "fav") === "1", onSite: sp(q, "site") === "1" };
-  const [{ cards, hidden, total, lastRunAt }, sum, trends, spend] = await Promise.all([feed(project.id, filter), summary(project.id), trendsOf(project.id), spendByDay(project.id)]);
+  const filter = { cat: sp(q, "cat") || undefined, urgent: sp(q, "urgent") === "1", notUa: sp(q, "notua") === "1", all: sp(q, "all") === "1", status: sp(q, "status") || undefined, priority: sp(q, "pr") || undefined, sort: (sp(q, "sort") === "fresh" ? "fresh" : "score") as "fresh" | "score", hours: Number(sp(q, "h")) || 6, fav: sp(q, "fav") === "1", favDay: Math.min(2, Math.max(0, Number(sp(q, "fd")) || 0)), onSite: sp(q, "site") === "1" };
+  const [{ cards, hidden, total, lastRunAt }, sum, trends, spend, favN] = await Promise.all([feed(project.id, filter), summary(project.id), trendsOf(project.id), spendByDay(project.id), favCounts(project.id)]);
   const link = (patch: Record<string, string | undefined>) => {
     const u = new URLSearchParams({ project: project.id });
-    const merged = { cat: filter.cat, urgent: filter.urgent ? "1" : undefined, notua: filter.notUa ? "1" : undefined, all: filter.all ? "1" : undefined, status: filter.status, pr: filter.priority, sort: filter.sort === "fresh" ? "fresh" : undefined, h: filter.sort === "fresh" && filter.hours !== 6 ? String(filter.hours) : undefined, fav: filter.fav ? "1" : undefined, site: filter.onSite ? "1" : undefined, ...patch };
+    const merged = { cat: filter.cat, urgent: filter.urgent ? "1" : undefined, notua: filter.notUa ? "1" : undefined, all: filter.all ? "1" : undefined, status: filter.status, pr: filter.priority, sort: filter.sort === "fresh" ? "fresh" : undefined, h: filter.sort === "fresh" && filter.hours !== 6 ? String(filter.hours) : undefined, fav: filter.fav ? "1" : undefined, fd: filter.fav && filter.favDay ? String(filter.favDay) : undefined, site: filter.onSite ? "1" : undefined, ...patch };
     for (const [k, v] of Object.entries(merged)) if (v) u.set(k, v);
     return `${BASE_PATH}?${u.toString()}`;
   };
@@ -88,9 +88,19 @@ export default async function NewsFeedPage({ searchParams }: { searchParams: Pro
         <Link href={link({ urgent: filter.urgent ? undefined : "1" })} className={`tab ${filter.urgent ? "active" : ""}`}>Только срочные</Link>
         <Link href={link({ notua: filter.notUa ? undefined : "1" })} className={`tab ${filter.notUa ? "active" : ""}`}>Ещё нет в UA</Link>
         <Link href={link({ status: filter.status === "in_work" ? undefined : "in_work" })} className={`tab ${filter.status === "in_work" ? "active" : ""}`}>В работе</Link>
-        <Link href={link({ fav: filter.fav ? undefined : "1" })} className={`tab ${filter.fav ? "active" : ""}`}>★ Избранное</Link>
+        <Link href={link({ fav: filter.fav ? undefined : "1", fd: undefined })} className={`tab ${filter.fav ? "active" : ""}`}>★ Избранное</Link>
         <Link href={link({ site: filter.onSite ? undefined : "1" })} className={`tab ${filter.onSite ? "active" : ""}`}>✓ Уже на сайте</Link>
       </div>
+
+      {filter.fav && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-[14px]">
+          <span className="help">Избранное за:</span>
+          {["Сегодня", "Вчера", "Позавчера"].map((label, d) => (
+            <Link key={d} href={link({ fd: d ? String(d) : undefined })} className={`tab ${filter.favDay === d ? "active" : ""}`}>{label} ({favN[d]})</Link>
+          ))}
+          <span className="help">По дню, когда отмечено. Старше трёх дней избранное очищается вместе с инфоповодами.</span>
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-2 text-[14px]">
         <span className="help">Показывать:</span>

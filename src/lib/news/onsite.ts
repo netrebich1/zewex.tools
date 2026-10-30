@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { fetchText } from "./fetch";
 import { pageRelevant, topicOf } from "./research";
-import type { NewsSettings, RunStats } from "./types";
+import { KEEP_DAYS, type NewsSettings, type RunStats } from "./types";
 
 /**
  * Метка «є на сайті»: ищем в WordPress сайта проекта статью про это событие — по герою, не раньше чем за 2 дня
@@ -54,7 +54,7 @@ export async function onSiteStep(project: { id: string; siteUrl: string }, s: Ne
   if (!project.siteUrl) return;
   const rows = await prisma.newsCluster.findMany({
     where: {
-      projectId: project.id, lastItemAt: { gte: new Date(Date.now() - 24 * 3600_000) }, score: { gte: s.minScore }, category: { in: s.targetCategories }, status: { not: "rejected" },
+      projectId: project.id, lastItemAt: { gte: new Date(Date.now() - 24 * 3600_000) }, firstPublishedAt: { gte: new Date(Date.now() - KEEP_DAYS * 86_400_000) }, score: { gte: s.minScore }, category: { in: s.targetCategories }, status: { not: "rejected" },
       mainEntityName: { not: null }, OR: [{ onSiteAt: null }, { onSiteAt: { lt: new Date(Date.now() - 4 * 3600_000) }, onSite: { equals: Prisma.DbNull } }],
     },
     orderBy: { score: "desc" },

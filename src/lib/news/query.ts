@@ -1,12 +1,27 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { parseSettings, type RunStats, type ScorePart } from "./types";
+import { KEEP_DAYS, parseSettings, type RunStats, type ScorePart } from "./types";
 import type { ClusterResearch } from "./research";
 import { projectSpend } from "./runs";
 
 /** Выборки для экранов модуля: лента, сводка, прогоны и расход. */
 
-export type FeedFilter = { cat?: string; urgent?: boolean; notUa?: boolean; all?: boolean; status?: string; priority?: string; sort?: "score" | "fresh"; hours?: number; fav?: boolean; onSite?: boolean };
+export type FeedFilter = { cat?: string; urgent?: boolean; notUa?: boolean; all?: boolean; status?: string; priority?: string; sort?: "score" | "fresh"; hours?: number; fav?: boolean; favDay?: number; onSite?: boolean };
+
+/** Начало дня по Киеву: back = 0 — сегодня, 1 — вчера, 2 — позавчера. */
+export function kyivDayStart(back = 0): Date {
+  const now = new Date();
+  const k = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Kyiv" }));
+  const shift = k.getTime() - now.getTime();
+  k.setHours(0, 0, 0, 0);
+  return new Date(k.getTime() - shift - back * 86_400_000);
+}
+
+/** Сколько отмечено в избранное за сегодня, вчера и позавчера (по Киеву). */
+export async function favCounts(projectId: string): Promise<number[]> {
+  const rows = await prisma.newsCluster.findMany({ where: { projectId, starred: true, starredAt: { gte: kyivDayStart(KEEP_DAYS - 1) } }, select: { starredAt: true } });
+  return [0, 1, 2].map((d) => rows.filter((r) => r.starredAt! >= kyivDayStart(d) && (d === 0 || r.starredAt! < kyivDayStart(d - 1))).length);
+}
 
 export type FeedSource = { domain: string; title: string; url: string; at: Date; tier: string };
 export type FeedCard = {
@@ -57,7 +72,9 @@ export async function feed(projectId: string, f: FeedFilter): Promise<{ cards: F
   const lastRun = await prisma.newsRun.findFirst({ where: { projectId, kind: { in: ["scheduled", "manual"] }, status: "done" }, orderBy: { finishedAt: "desc" }, select: { startedAt: true } });
   const rows = await prisma.newsCluster.findMany({
     where: {
-      projectId, ...(f.status || f.fav || f.onSite ? { lastItemAt: { gte: new Date(Date.now() - 14 * 86_400_000) } } : { firstPublishedAt: { gte: since } }), score: { gte: f.status || f.fav || f.onSite ? 0 : s.minScore }, category: f.cat ? f.cat : { in: s.targetCategories }, ...(f.priority ? { priority: f.priority } : {}),
+      // Вкладки «В работе», «Уже на сайте», «Избранное» — инфоповоды не старше KEEP_DAYS; избранное ещё и по дню, когда отмечено.
+      projectId, ...(f.status || f.fav || f.onSite ? { firstPublishedAt: { gte: new Date(Date.now() - KEEP_DAYS * 86_400_000) } } : { firstPublishedAt: { gte: since } }),
+      ...(f.fav ? { starredAt: { gte: kyivDayStart(f.favDay ?? 0), ...(f.favDay ? { lt: kyivDayStart(f.favDay - 1) } : {}) } } : {}), score: { gte: f.status || f.fav || f.onSite ? 0 : s.minScore }, category: f.cat ? f.cat : { in: s.targetCategories }, ...(f.priority ? { priority: f.priority } : {}),
       status: f.status ? f.status : { not: "rejected" }, ...(f.urgent ? { urgent: true } : {}), ...(f.notUa ? { uaCount: 0, worldCount: { gt: 0 } } : {}), ...(f.fav ? { starred: true } : {}),
       // Статья уже есть на сайте — карточка уходит из ленты во вкладку «Уже на сайте» (в «Избранном» и «В работе» остаётся).
       ...(f.onSite ? { onSite: { not: Prisma.DbNull } } : f.fav || f.status ? {} : { onSite: { equals: Prisma.DbNull } }),

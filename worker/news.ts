@@ -52,7 +52,7 @@ export async function newsStartup(hostPrefix: string): Promise<void> {
 export async function newsDaily(): Promise<void> {
   await failStaleRuns();
   const r = await purgeOld();
-  if (r.items || r.vectors || r.trends) log.info(`news: purged ${r.items} items, ${r.vectors} vectors, ${r.trends} trends`);
+  if (r.items || r.clusters || r.stripped || r.trends) log.info(`news: purged ${r.items} items, ${r.clusters} clusters, stripped ${r.stripped} clusters, ${r.trends} trends`);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

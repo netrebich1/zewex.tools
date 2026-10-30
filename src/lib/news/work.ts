@@ -5,7 +5,7 @@ import { makeAngles, makeBrief, ourArticles, summarizeClusters, type Angle, type
 import type { AiCtx } from "./llm";
 import { deepResearch, type ClusterResearch } from "./research";
 import { checkOnSite } from "./onsite";
-import { parseSettings, type NewsSettings, type RunStats, type ScorePart } from "./types";
+import { KEEP_DAYS, parseSettings, type NewsSettings, type RunStats, type ScorePart } from "./types";
 
 /** Кластер для ИИ: источники (украинские первыми), сигналы балла и причины важности словами. */
 export async function clusterForAi(clusterId: string): Promise<{ c: ClusterForAi; row: Prisma.NewsClusterGetPayload<object> }> {
@@ -38,7 +38,7 @@ export async function summaryStep(project: { id: string }, ctx: AiCtx, s: NewsSe
   if (left <= 0) return;
   // Все кластеры нашей ниши за сутки (не только топ-N): перевод и «почему зайдёт» нужны и в режиме «Свежее».
   const top = await prisma.newsCluster.findMany({
-    where: { projectId: project.id, lastItemAt: { gte: new Date(Date.now() - 24 * 3600_000) }, score: { gte: s.minScore }, category: { in: s.targetCategories }, status: { not: "rejected" } },
+    where: { projectId: project.id, lastItemAt: { gte: new Date(Date.now() - 24 * 3600_000) }, firstPublishedAt: { gte: new Date(Date.now() - KEEP_DAYS * 86_400_000) }, score: { gte: s.minScore }, category: { in: s.targetCategories }, status: { not: "rejected" } },
     orderBy: { score: "desc" },
     take: 200,
     select: { id: true, aiAt: true, aiSourceCount: true, sourceCount: true },

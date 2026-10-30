@@ -5,6 +5,13 @@
 
 export const BASE_PATH = "/discovery/news";
 export const PROJECT_SLUG = "news";
+/**
+ * Хранение (решение владельца 30.10): инфоповоды старше 3 дней по первой публикации не нужны — пропадают из ленты
+ * и избранного, тяжёлые поля чистятся. Ещё до 7 дней держим «память» (адреса, заголовки, центр кластера),
+ * чтобы рерайт старой темы приклеился к ней, а не всплыл как свежий. Потом удаляем совсем.
+ */
+export const KEEP_DAYS = 3;
+export const MEMORY_DAYS = 7;
 /** Слоты проекта `news`: классификация пачками (CHAT) и эмбеддинги заголовков (EMBEDDING). */
 export const SLOT_CLASSIFY = "text_main";
 export const SLOT_EMBED = "embed";
