@@ -1,12 +1,12 @@
 /** Копия протокола портала (src/lib/uploader/types.ts) — ровно то, что нужно агенту. При изменении протокола править оба файла. */
 
-export const AGENT_VERSION = "0.1.4";
+export const AGENT_VERSION = "0.1.5";
 export const PROTOCOL = 1;
 
 export type StepKind = "upload_csv" | "check_history" | "analytics";
 export type Step = { kind: StepKind };
 
-export type ErrorKind = "dolphin_offline" | "dolphin_auth" | "profile_not_found" | "profile_busy" | "not_logged_in" | "pinterest_rejected" | "rate_limited" | "upload_form_changed" | "no_file" | "network" | "stopped" | "unknown";
+export type ErrorKind = "dolphin_offline" | "dolphin_auth" | "profile_not_found" | "profile_busy" | "proxy_failed" | "browser_missing" | "not_logged_in" | "pinterest_rejected" | "rate_limited" | "upload_form_changed" | "no_file" | "network" | "stopped" | "unknown";
 
 export type UplHumanize = {
   betweenSites: [number, number];

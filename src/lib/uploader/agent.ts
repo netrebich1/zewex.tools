@@ -9,6 +9,7 @@ import { decryptSecret, randomToken } from "@/lib/crypto";
 import { canUseTool, resolvePermissions } from "@/lib/permissions";
 import { writeFileAtomic, publicUrl } from "@/lib/pins/storage";
 import { eventText, logEventByPinSite } from "@/lib/projects/events";
+import { matchScore } from "./match";
 import { applyVerify, leaseUntil, settleRun, uplSettings } from "./runs";
 import { ERROR_LABELS, MAX_ATTEMPTS, PAUSE_HOURS, PROTOCOL, TRANSIENT, UPLOADER, parseHumanize, type AgentTask, type ErrorKind, type Step, type TaskResult, type VerifyResult } from "./types";
 
@@ -198,6 +199,13 @@ export async function finish(ctx: Ctx, b: Body) {
     const note = `авто · агент ${ctx.agent.name}${t.rows != null ? ` · ${t.rows} пинов` : ""}${shot ? ` · ${shot}` : ""}`;
     await prisma.prjUpload.upsert({ where: { pinSiteId_day: { pinSiteId: t.pinSiteId, day: t.day } }, update: { uploadedAt: now, uploadedById: null, source: "auto", note }, create: { pinSiteId: t.pinSiteId, day: t.day, uploadedById: null, source: "auto", note } });
     await prisma.uplAccount.updateMany({ where: { pinSiteId: t.pinSiteId }, data: { lastUploadAt: now, agentId: ctx.agent.id, status: "ok", pausedUntil: null, blockStep: 0, lastError: null } });
+    // Залил профиль-двойник (основной не открылся) — дальше сайт работает через него.
+    const acc = await prisma.uplAccount.findUnique({ where: { pinSiteId: t.pinSiteId }, select: { profileId: true, profileName: true } });
+    if (acc && acc.profileId !== t.profileId) {
+      const p = await prisma.uplProfile.findUnique({ where: { id: t.profileId }, select: { name: true } });
+      await prisma.uplAccount.updateMany({ where: { pinSiteId: t.pinSiteId }, data: { profileId: t.profileId, profileName: p?.name ?? null } });
+      await event(t.pinSiteId, t.id, "visit", "ok", `профиль сайта заменён: ${acc.profileName ?? ""} (${acc.profileId}) не открывался → ${p?.name ?? ""} (${t.profileId})`);
+    }
     void logEventByPinSite(t.pinSiteId, { kind: "export_uploaded", refId: `${t.pinSiteId}|${t.day}`, summary: eventText.exportUploadedAuto(t.day, t.rows ?? 0, ctx.agent.name), payload: { taskId: t.id, runId: t.runId, screenshot: shot } });
     await event(t.pinSiteId, t.id, "upload", "ok", `${t.day}: файл ${t.fileName ?? ""} принят${rows != null ? `, строк ${rows}` : ""}`);
   } else {
@@ -219,12 +227,25 @@ export async function fail(ctx: Ctx, b: Body) {
   await touch(ctx, b);
   const t = await leasedTask(b.taskId);
   const now = new Date();
-  const kind = (typeof b.kind === "string" && b.kind in ERROR_LABELS ? b.kind : "unknown") as ErrorKind;
+  let kind = (typeof b.kind === "string" && b.kind in ERROR_LABELS ? b.kind : "unknown") as ErrorKind;
   const msg = str(b.error, 255) ?? ERROR_LABELS[kind];
+  // Агенты до 0.1.5 присылали мёртвый прокси и недокачанное ядро как dolphin_offline / profile_not_found.
+  if ((kind === "dolphin_offline" || kind === "profile_not_found") && /proxy|operation timed out/i.test(msg)) kind = "proxy_failed";
+  else if ((kind === "dolphin_offline" || kind === "profile_not_found") && /executable not found|anty\.exe/i.test(msg)) kind = "browser_missing";
   const shot = await saveShot(t.id, b.screenshot, "fail");
   const prev = (t.result as TaskResult | null) ?? {};
   const result: TaskResult = { ...prev, message: msg, screenshot: shot ?? prev.screenshot ?? null, html: kind === "unknown" || kind === "upload_form_changed" ? str(b.html, 200_000) : prev.html ?? null };
   const stopped = kind === "stopped";
+  // Профиль не открылся (прокси, ядро, не тот аккаунт) — пробуем другой профиль Dolphin с тем же доменом сайта.
+  if (kind === "proxy_failed" || kind === "browser_missing" || kind === "profile_not_found") {
+    const tried = [...(prev.triedProfiles ?? []), t.profileId];
+    const twin = await twinProfile(t.pinSiteId, tried);
+    if (twin) {
+      await prisma.uplTask.update({ where: { id: t.id }, data: { status: "QUEUED", profileId: twin.id, attempts: 0, leaseUntil: null, step: null, error: msg, errorKind: kind, result: { ...result, triedProfiles: tried } as Prisma.InputJsonValue } });
+      await event(t.pinSiteId, t.id, "fail", "error", `${t.day}: ${msg}; пробую другой профиль ${twin.name} (${twin.id})`);
+      return { ok: true, retry: true };
+    }
+  }
   const retry = !stopped && TRANSIENT.has(kind) && t.attempts < MAX_ATTEMPTS;
   await prisma.uplTask.update({
     where: { id: t.id },
@@ -249,6 +270,21 @@ export async function fail(ctx: Ctx, b: Body) {
   }
   if (!retry) await settleRun(t.runId);
   return { ok: true, retry };
+}
+
+/**
+ * Другой профиль Dolphin для сайта: полный домен в имени/тегах/заметке, ещё не пробовали в этом задании
+ * и он не привязан к другому сайту. Свежие (виденные агентом позже) — первыми.
+ */
+async function twinProfile(pinSiteId: string, tried: string[]): Promise<{ id: string; name: string } | null> {
+  const site = await prisma.pinSite.findUnique({ where: { id: pinSiteId }, select: { id: true, name: true } });
+  if (!site) return null;
+  const [profiles, taken] = await Promise.all([
+    prisma.uplProfile.findMany({ where: { id: { notIn: tried } }, orderBy: { seenAt: "desc" }, select: { id: true, name: true, tags: true } }),
+    prisma.uplAccount.findMany({ where: { pinSiteId: { not: pinSiteId }, profileId: { not: null } }, select: { profileId: true } }),
+  ]);
+  const busy = new Set(taken.map((a) => a.profileId));
+  return profiles.find((p) => !busy.has(p.id) && matchScore(site, p) === 2) ?? null;
 }
 
 /** Строка состояния агента (что делает сейчас). */

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { Card, PageHeader } from "@/components/ui";
 import { AutoForm } from "@/components/projects/AutoForm";
 import { requireUploader, visiblePinSites } from "@/lib/uploader/access";
-import { suggestProfiles } from "@/lib/uploader/match";
+import { matchScore, suggestProfiles } from "@/lib/uploader/match";
 import { uplSettings } from "@/lib/uploader/runs";
 import { setAccountStatusAction, setProfileAction } from "@/actions/uploader";
 import { AccountBadge, dt } from "@/components/uploader/ui";
@@ -34,6 +34,10 @@ export default async function UploaderMappingPage() {
   const suggestions = suggestProfiles(sites, profiles, allAccounts);
   const sure = [...suggestions.values()].filter((l) => l[0]?.sure).length;
   const settings = await uplSettings();
+  // Одинаковые имена профилей (старый и новый профиль сайта) — в списке показываем id, иначе их не различить.
+  const nameCount = new Map<string, number>();
+  for (const p of profiles) nameCount.set(p.name.toLowerCase(), (nameCount.get(p.name.toLowerCase()) ?? 0) + 1);
+  const label = (p: { id: string; name: string }) => ((nameCount.get(p.name.toLowerCase()) ?? 0) > 1 ? `${p.name} · ${p.id}` : p.name);
 
   return (
     <>
@@ -48,13 +52,15 @@ export default async function UploaderMappingPage() {
               const a = accBy.get(s.id);
               const options = profiles.filter((p) => !takenBy.has(p.id) || takenBy.get(p.id) === s.id);
               const sug = suggestions.get(s.id)?.[0];
+              const twins = options.filter((p) => matchScore(s, p) === 2);
               return (
                 <tr key={s.id} className={a?.profileId ? "" : "bg-warn-soft/40"}>
                   <td className="font-medium">{s.wpConnectionId ? <Link href={`/pinterest/projects/${s.wpConnectionId}`} className="hover:underline">{s.name}</Link> : s.name}</td>
                   <td className="min-w-[260px]">
                     <AutoForm action={setProfileAction} hidden={{ pinSiteId: s.id }} showOk>
-                      <ProfileSelect name="profileId" value={a?.profileId ?? ""} options={options.map((p) => ({ id: p.id, name: p.name }))} />
+                      <ProfileSelect name="profileId" value={a?.profileId ?? ""} options={options.map((p) => ({ id: p.id, name: label(p) }))} />
                     </AutoForm>
+                    {twins.length > 1 && <div className="mt-1 text-[12px] text-warn">В Dolphin {twins.length} профиля с этим доменом ({twins.map((p) => p.id).join(", ")}). Лишний лучше удалить или переименовать; если выбранный не откроется, агент сам попробует другой и перепривяжет сайт.</div>}
                   </td>
                   <td>{!a?.profileId && sug ? <AcceptSuggestion pinSiteId={s.id} profileId={sug.profileId} profileName={sug.profileName} sure={sug.sure} /> : <span className="help">{a?.profileId ? "" : "—"}</span>}</td>
                   <td className="help">{a?.pinUsername ? `@${a.pinUsername}` : "—"}</td>

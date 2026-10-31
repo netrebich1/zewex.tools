@@ -27,7 +27,7 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = { QUEUED: "ждё�
 export type StepKind = "upload_csv" | "check_history" | "analytics";
 export type Step = { kind: StepKind };
 
-export type ErrorKind = "dolphin_offline" | "dolphin_auth" | "profile_not_found" | "profile_busy" | "not_logged_in" | "pinterest_rejected" | "rate_limited" | "upload_form_changed" | "no_file" | "network" | "stopped" | "unknown";
+export type ErrorKind = "dolphin_offline" | "dolphin_auth" | "profile_not_found" | "profile_busy" | "proxy_failed" | "browser_missing" | "not_logged_in" | "pinterest_rejected" | "rate_limited" | "upload_form_changed" | "no_file" | "network" | "stopped" | "unknown";
 /** Временные сбои: задание возвращается в очередь, аккаунт не трогаем. */
 export const TRANSIENT: ReadonlySet<string> = new Set<ErrorKind>(["dolphin_offline", "dolphin_auth", "profile_busy", "network", "stopped"]);
 
@@ -36,6 +36,8 @@ export const ERROR_LABELS: Record<ErrorKind, string> = {
   dolphin_auth: "Dolphin не принял токен API — проверьте токен в настройках",
   profile_not_found: "Профиль Dolphin не найден — проверьте сопоставление",
   profile_busy: "Профиль уже открыт в Dolphin — закройте его и повторите",
+  proxy_failed: "Прокси профиля не отвечает — смените прокси в Dolphin или выберите другой профиль",
+  browser_missing: "В Dolphin не скачано ядро браузера — откройте профиль вручную один раз",
   not_logged_in: "В профиле нет входа в Pinterest — войдите в аккаунт вручную",
   pinterest_rejected: "Pinterest отклонил файл",
   rate_limited: "Pinterest ограничил аккаунт",
@@ -126,6 +128,8 @@ export type TaskResult = {
   message?: string | null;
   verify?: VerifyResult;
   timings?: Record<string, number>;
+  /** Профили Dolphin, которые уже не открылись для этого задания (портал пробует двойника — см. agent.ts fail) */
+  triedProfiles?: string[];
   /** Снимок HTML страницы при неизвестной ошибке (для правки селекторов) */
   html?: string | null;
 };

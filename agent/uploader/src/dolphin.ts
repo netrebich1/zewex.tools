@@ -108,6 +108,10 @@ export class Dolphin {
     if (!j?.automation?.port || !j.automation.wsEndpoint) {
       const msg = String(j?.error ?? j?.message ?? `HTTP ${r.status}`);
       if (/already|running|запущен/i.test(msg)) throw new AgentError("profile_busy", `профиль уже открыт: ${msg}`);
+      // Dolphin перед стартом 3 раза проверяет прокси профиля; мёртвый прокси → «Operation timed out» / E_PROXY_CHECK_ERROR.
+      if (/proxy|operation timed out/i.test(msg)) throw new AgentError("proxy_failed", `прокси профиля не отвечает: ${msg}`);
+      // Ядро браузера нужной версии не докачано: «Browser executable not found …\browser\1520\anty.exe».
+      if (/executable not found|anty\.exe/i.test(msg)) throw new AgentError("browser_missing", `нет ядра браузера Dolphin: ${msg}`);
       if (/not found|не найден/i.test(msg)) throw new AgentError("profile_not_found", msg);
       throw new AgentError("dolphin_offline", `Dolphin не запустил профиль: ${msg}`);
     }

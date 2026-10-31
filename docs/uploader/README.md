@@ -67,9 +67,14 @@
 
 1. **Фаза проверки ничего не читает.** На странице bulk-create-pins нет истории загрузок, все `verify.published = null`; Pinterest сообщает итог письмом.
    Варианты: найти страницу истории в Business Hub, или считать подтверждением «Upload successful» и заменить проверку на «пины появились в профиле».
-2. **Сбои Dolphin при старте профиля:** `Operation timed out` (zentrosy.com 26–27.10), `E_PROXY_CHECK_ERROR` (woman-trend.com, thepinkgoose.com — прокси профиля),
-   `Browser executable not found …\dolphin_anty\browser\1520\anty.exe` (beautydaily.com.ua — в Dolphin не скачано ядро браузера; классифицируется как
-   profile_not_found, лучше отдельный вид `dolphin_browser_missing`). Все три — на стороне Dolphin/прокси, агент только сообщает.
+2. **Сбои Dolphin при старте профиля (исправлено 2026-10-31, агент 0.1.5).** `Operation timed out` у zentrosy.com — это Dolphin
+   3×15 с проверял мёртвый SOCKS5-прокси профиля 204691625; в Dolphin было два профиля «zentrosy.com», рабочий — 888577814 (так же
+   дубли у 4homeideas.com и interior-inspo.com). Теперь: виды `proxy_failed` (Operation timed out / E_PROXY_CHECK_ERROR) и
+   `browser_missing` (Browser executable not found …\anty.exe) вместо ложного «Dolphin не запущен»; портал переклассифицирует и
+   сообщения старых агентов. При `proxy_failed` / `browser_missing` / `profile_not_found` портал (`fail` → `twinProfile`) пробует другой
+   профиль Dolphin с полным доменом сайта, не занятый другим сайтом (`result.triedProfiles`), и после успешной заливки перепривязывает
+   сайт к нему (`finish`, событие «профиль сайта заменён»). На «Сопоставлении» дубли подписаны id и предупреждением. Нет двойника —
+   задание падает сразу с понятной причиной (смените прокси в Dolphin).
 3. **beautydaily.com.ua 25–26.10:** «после выбора файла Pinterest не показал ни подтверждения, ни ошибки за 90 с» — смотреть скриншот и HTML в карточке запуска.
 4. Иконка в трее и запуск без .cmd (один exe) — не сделаны. Скриншоты в инструкцию не вставлены. Наборы сайтов пока не используются.
 5. Следующий этап по плану — шаг `analytics`: снятие статистики из Pinterest Analytics в тот же визит.
