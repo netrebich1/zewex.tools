@@ -1,0 +1,181 @@
+/**
+ * Примеры для ИИ-стилей: промт через штатный конвейер (generateAiPrompts) → картинка (aiImage)
+ * → PinExample + файл pins/examples/<id>.jpg. Ключи и расход — через портал (правила пользователя).
+ *
+ *   npx tsx scripts/pins/gen-style-examples.ts --user=<userId> --team=<teamId> --category=modern2027 \
+ *     --keyword="trendy outfits 2027" --niche=outfit [--styles=id1,id2] [--season=winter] [--year=2027] [--force] [--concurrency=4] [--dry]
+ *
+ * Варианты, у которых пример уже есть, пропускаются (кроме --force).
+ */
+import { setDefaultResultOrder } from "dns";
+import { prisma } from "@/lib/db";
+import { BLOG_AI_CATEGORY, listAiStyles } from "@/lib/pins/prompts/aiStyles";
+import { ARTICLE_KIND_LABELS, kindKicker, pointsForStyle, type ArticleInfo, type ArticleKind } from "@/lib/pins/articleKind";
+import { generateAiPrompts } from "@/lib/pins/prompts/aiPrompt";
+import { aiImage, type AiCtx } from "@/lib/pins/ai/client";
+import { toCleanJpeg } from "@/lib/pins/images";
+import { exampleRel, writeFileAtomic } from "@/lib/pins/storage";
+
+setDefaultResultOrder("ipv4first");
+
+/** Статьи-образцы для примеров блоговых стилей (--category=blog): по одной на тип, пункты по разделам. */
+const BLOG_SAMPLES: Record<ArticleKind, { title: string; niche: string; count: number | null; points: Record<string, string[]> }> = {
+  how_to: { title: "How to Curl Hair with a Flat Iron", niche: "hair", count: 6, points: {
+    steps: ["Prep with heat protectant", "Section dry hair", "Twist the iron away", "Glide slowly down", "Let curls cool", "Finish with light spray"],
+    methods: ["Twist and glide", "Ribbon curls", "Flat waves"], what_you_need: ["Flat iron", "Heat protectant", "Clips", "Light hairspray"], tips: ["Use medium heat", "Work in small sections", "Don't brush hot curls"] } },
+  tips: { title: "Tips for Glowing Skin", niche: "skincare", count: 8, points: {
+    tips: ["Double cleanse at night", "SPF every morning", "Hydrate from inside", "Exfoliate gently twice a week", "Sleep on silk", "Add vitamin C serum", "Don't skip moisturizer", "Remove makeup before bed"],
+    mistakes: ["Over-exfoliating", "Skipping SPF", "Sleeping in makeup", "Hot water rinses"], list_item: ["Morning routine", "Night routine", "Weekly masks"] } },
+  checklist: { title: "Moving Day Checklist", niche: "home", count: 10, points: {
+    list_group: ["Book the movers", "Pack an essentials box", "Label every box", "Change your address", "Set up utilities", "Defrost the fridge", "Photograph meter readings", "Clean the old place", "Keep keys together", "Check every room"],
+    list_item: ["Tape and boxes", "Markers", "Snacks and water"], steps: ["Plan two weeks ahead", "Pack room by room", "Load heavy items first"] } },
+  fix: { title: "How to Fix Frizzy Hair", niche: "hair", count: 5, points: {
+    methods: ["Switch to sulfate-free shampoo", "Use a leave-in conditioner", "Air-dry with a microfiber towel", "Seal ends with oil", "Sleep on a silk pillowcase"],
+    why_it_happens: ["Dry, thirsty strands", "Humidity in the air", "Rough towel drying"], prevention: ["Deep condition weekly", "Avoid hot tools daily", "Trim split ends"],
+    tips: ["Don't brush dry curls", "Apply products on damp hair", "Use cool water rinse"], mistakes: ["Rubbing hair with a towel", "Skipping conditioner", "Over-washing"],
+    myths: ["Frizz means damage", "Oil makes hair greasy"], quick_answer: ["Frizz is dry hair seeking moisture"] } },
+  explain: { title: "Why Your Nail Polish Chips So Fast", niche: "nails", count: null, points: {
+    why_it_happens: ["Oils left on the nail", "Coats applied too thick", "No top coat on the tip", "Hot water soon after painting"],
+    quick_answer: ["Oil and thick coats stop polish from bonding"], myths: ["More coats last longer", "Base coat is optional"],
+    tips: ["Wipe nails with alcohol", "Paint thin layers", "Cap the free edge"], what_you_need: ["Base coat", "Thin color coats", "Quick-dry top coat"] } },
+  compare: { title: "Gel vs Acrylic Nails: Which Is Better", niche: "nails", count: null, points: {
+    comparison_table: ["Gel: natural look", "Acrylic: extra length", "Gel: flexible and light", "Acrylic: very strong", "Gel: 2–3 weeks wear", "Acrylic: 3–4 weeks wear"],
+    what_you_need: ["Short natural nails → gel", "Long dramatic nails → acrylic", "Weak nails → gel"], tips: ["Ask for a patch test", "Never peel them off", "Moisturize cuticles"],
+    methods: ["Choose gel for natural nails", "Choose acrylic for length"] } },
+  recipe: { title: "Easy Banana Bread Recipe", niche: "food", count: 6, points: {
+    steps: ["Mash ripe bananas", "Whisk butter and sugar", "Add eggs and vanilla", "Fold in flour", "Pour into loaf pan", "Bake until golden"],
+    recipe_card: ["Mash bananas", "Mix wet ingredients", "Fold in dry", "Bake 55 minutes"], what_you_need: ["Ripe bananas", "Flour", "Eggs", "Butter", "Brown sugar", "Cinnamon"] } },
+  plan: { title: "30-Day Beginner Pilates Plan", niche: "fitness", count: 4, points: {
+    plan_table: ["Week 1: Core basics", "Week 2: Add control", "Week 3: Build strength", "Week 4: Full flow"],
+    list_item: ["Hundred", "Roll up", "Single leg stretch", "Bridge", "Side kicks"], steps: ["Warm up 5 minutes", "Core series", "Cool down stretch"] } },
+};
+
+/**
+ * Статьи-образцы для универсальных блоговых стилей (blog-uni-*): разные ниши, чтобы на примерах было видно,
+ * как один каркас подстраивается под тему. Подстили одного стиля получают разные темы (по кругу).
+ */
+const UNIVERSAL_SAMPLES: Array<{ kind: ArticleKind; title: string; niche: string; count: number | null; points: Record<string, string[]> }> = [
+  { kind: "tips", title: "Tips for Glowing Skin", niche: "skincare", count: 6, points: { tips: ["Double cleanse at night", "SPF every morning", "Hydrate from inside", "Exfoliate twice a week", "Sleep on silk", "Add vitamin C"] } },
+  { kind: "plan", title: "How to Budget Your First Paycheck", niche: "personal finance", count: 4, points: { steps: ["List fixed bills", "Set a savings goal", "Cap fun money", "Track every week"] } },
+  { kind: "checklist", title: "Weekly Cleaning Checklist", niche: "home cleaning", count: 8, points: { list_group: ["Wipe kitchen counters", "Clean bathroom sink", "Vacuum floors", "Change bed sheets", "Dust shelves", "Empty trash bins", "Mop the floor", "Clean mirrors"] } },
+  { kind: "plan", title: "4-Week Beginner Workout Plan", niche: "fitness", count: 4, points: { plan_table: ["Week 1: Walk daily", "Week 2: Add squats", "Week 3: Light weights", "Week 4: Full circuit"] } },
+  { kind: "checklist", title: "Carry-On Packing Checklist", niche: "travel", count: 7, points: { list_group: ["Passport and documents", "Chargers", "Toiletries bag", "Change of clothes", "Snacks", "Neck pillow", "Reusable bottle"] } },
+  { kind: "recipe", title: "Easy One-Pan Chicken Dinner", niche: "cooking", count: 5, points: { steps: ["Season the chicken", "Sear until golden", "Add vegetables", "Roast 25 minutes", "Finish with herbs"] } },
+  { kind: "how_to", title: "How to Start a Vegetable Garden", niche: "gardening", count: 5, points: { steps: ["Pick a sunny spot", "Build a raised bed", "Add rich compost", "Plant easy crops", "Water deeply"] } },
+  { kind: "how_to", title: "How to Leash Train Your Puppy", niche: "pets / dogs", count: 4, points: { steps: ["Start indoors", "Reward calm walking", "Stop when it pulls", "Keep walks short"] } },
+  { kind: "explain", title: "Why You Procrastinate (and How to Stop)", niche: "psychology / self-help", count: null, points: { why_it_happens: ["Fear of failure", "Unclear first step", "Too many distractions"], tips: ["Start tiny", "Set a timer", "Remove distractions"] } },
+  { kind: "fix", title: "How to Fix a Leaky Faucet", niche: "home repair / DIY", count: 4, points: { methods: ["Shut off the water", "Replace the washer", "Tighten the packing nut", "Check the O-ring"] } },
+  { kind: "compare", title: "Linen vs Cotton Sheets: Which to Choose", niche: "home / bedding", count: null, points: { comparison_table: ["Linen: cool and breathable", "Cotton: soft and smooth", "Linen: lasts longer", "Cotton: easier care"] } },
+  { kind: "tips", title: "Capsule Wardrobe Tips for Beginners", niche: "fashion", count: 5, points: { tips: ["Pick a neutral palette", "Choose 30 key pieces", "Mix textures", "Invest in shoes", "Edit every season"] } },
+  { kind: "fix", title: "Why Houseplant Leaves Turn Yellow", niche: "houseplants", count: 4, points: { methods: ["Water less often", "Move to brighter light", "Check drainage holes", "Feed once a month"] } },
+  { kind: "tips", title: "Toddler Bedtime Routine Tips", niche: "parenting", count: 5, points: { tips: ["Same time every night", "Warm bath first", "Dim the lights", "Read one book", "Keep goodbyes short"] } },
+  { kind: "how_to", title: "How to Paint a Room Like a Pro", niche: "home improvement", count: 5, points: { steps: ["Prep the walls", "Tape the edges", "Cut in first", "Roll in a W shape", "Add a second coat"] } },
+];
+
+const flag = (k: string, def = "") => (process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=").slice(1).join("=") ?? (process.argv.includes(`--${k}`) ? "1" : def));
+
+async function main() {
+  const userId = flag("user"), teamId = flag("team");
+  const category = flag("category", "modern2027");
+  const keyword = flag("keyword", "trendy outfits 2027");
+  const niche = flag("niche", "outfit");
+  const only = flag("styles").split(",").map((s) => s.trim()).filter(Boolean);
+  const force = flag("force") === "1";
+  const dry = flag("dry") === "1";
+  const concurrency = Number(flag("concurrency", "4"));
+  const season = flag("season", "fall");
+  const year = flag("year", "2027");
+  if (!userId || !teamId) throw new Error("--user и --team обязательны");
+
+  let styles = listAiStyles(category || undefined);
+  if (only.length) styles = styles.filter((s) => only.includes(s.id) || only.includes(s.variantOf ?? ""));
+  if (!force) {
+    const have = new Set((await prisma.pinExample.findMany({ where: { styleId: { in: styles.map((s) => s.id) }, imagePath: { not: "" } }, select: { styleId: true } })).map((e) => e.styleId));
+    styles = styles.filter((s) => !have.has(s.id));
+  }
+  console.log(`styles to render: ${styles.length}`);
+  if (!styles.length) return;
+
+  const ctx: AiCtx = { userId, teamId };
+  // Блоговые стили: пример на статью своего типа (первый из articleKinds) с пунктами, как в прогоне.
+  const sampleOf = new Map<string, { keyword: string; niche: string }>();
+  let prompts: Awaited<ReturnType<typeof generateAiPrompts>>;
+  if (category === BLOG_AI_CATEGORY) {
+    prompts = [];
+    // Универсальные: каждому подстилю — своя тема из UNIVERSAL_SAMPLES (по кругу со сдвигом на стиль), без «замка ниши», как в прогоне.
+    const uni = styles.filter((s) => s.universal);
+    const families = [...new Set(listAiStyles(BLOG_AI_CATEGORY).filter((s) => s.universal).map((s) => s.variantOf ?? s.id))];
+    const bySample = new Map<number, typeof styles>();
+    for (const s of uni) {
+      const fi = families.indexOf(s.variantOf ?? s.id);
+      const vi = Math.max(0, Number((s.id.match(/-(\d)$/) ?? [])[1] ?? 1) - 1);
+      // соседние стили — соседние темы, подстили одного стиля — через 3 темы: темы разные и в строке, и в столбце галереи
+      const k = (fi + vi * 3) % UNIVERSAL_SAMPLES.length;
+      bySample.set(k, [...(bySample.get(k) ?? []), s]);
+    }
+    for (const [k, list] of bySample) {
+      const b = UNIVERSAL_SAMPLES[k];
+      const info: ArticleInfo = { kind: b.kind, count: b.count, source: "blog", title: b.title, pointsBy: b.points, sizes: Object.fromEntries(Object.entries(b.points).map(([x, v]) => [x, v.length])) };
+      for (const s of list) sampleOf.set(s.id, { keyword: b.title, niche: b.niche });
+      for (let i = 0; i < list.length; i += 4) {
+        prompts.push(...await generateAiPrompts(ctx, {
+          keyword: b.title, topic: b.title, niche: "", language: "en", audience: "women", siteName: "", year, ideaCount: b.count ?? undefined,
+          styles: list.slice(i, i + 4).map((s) => {
+            const pts = pointsForStyle(info, s);
+            return { id: s.id, tags: { season: false, year: false, number: false, siteName: false, cta: true }, article: { kind: b.kind, label: ARTICLE_KIND_LABELS[b.kind], kicker: kindKicker(b.kind, "en"), count: pts.count, title: b.title, points: pts.points, section: pts.section } };
+          }),
+        }));
+      }
+    }
+    const byKind = new Map<ArticleKind, typeof styles>();
+    for (const s of styles.filter((x) => !x.universal)) { const k = (s.articleKinds?.[0] ?? "how_to") as ArticleKind; byKind.set(k, [...(byKind.get(k) ?? []), s]); }
+    for (const [kind, list] of byKind) {
+      const b = BLOG_SAMPLES[kind];
+      const info: ArticleInfo = { kind, count: b.count, source: "blog", title: b.title, pointsBy: b.points, sizes: Object.fromEntries(Object.entries(b.points).map(([k, v]) => [k, v.length])) };
+      for (const s of list) sampleOf.set(s.id, { keyword: b.title, niche: b.niche });
+      prompts.push(...await generateAiPrompts(ctx, {
+        keyword: b.title, topic: b.title, niche: b.niche, language: "en", audience: "women", siteName: "", year, ideaCount: b.count ?? undefined,
+        styles: list.map((s) => {
+          const pts = pointsForStyle(info, s);
+          return { id: s.id, tags: { season: false, year: false, number: false, siteName: false, cta: true }, article: { kind, label: ARTICLE_KIND_LABELS[kind], kicker: kindKicker(kind, "en"), count: pts.count, title: b.title, points: pts.points, section: pts.section } };
+        }),
+      }));
+    }
+  } else {
+    prompts = await generateAiPrompts(ctx, {
+      keyword, topic: keyword, niche, language: "en", audience: "women", siteName: "",
+      year, season, seasonWord: season, ideaCount: 12,
+      styles: styles.map((s) => ({ id: s.id, tags: { season: false, year: true, number: s.type === "listicle", siteName: false, cta: true } })),
+    });
+  }
+  console.log(`prompts: ${prompts.length}/${styles.length}`);
+  if (dry) { for (const p of prompts) console.log(`\n--- ${p.styleId}\n${p.prompt}`); return; }
+
+  let ok = 0, fail = 0, i = 0;
+  const queue = [...prompts];
+  const worker = async () => {
+    for (;;) {
+      const p = queue.shift();
+      if (!p) return;
+      const n = ++i;
+      try {
+        const img = await aiImage(ctx, { prompt: p.prompt, size: "1024x1536", quality: "medium" });
+        const jpeg = await toCleanJpeg(img.bytes, { maxSide: 1536, quality: 90 });
+        const smp = sampleOf.get(p.styleId) ?? { keyword, niche };
+        const ex = await prisma.pinExample.create({ data: { niche: smp.niche, styleId: p.styleId, topic: smp.keyword, caption: p.prompt, sortOrder: 0 } });
+        const rel = exampleRel(ex.id, "jpg");
+        await writeFileAtomic(rel, jpeg.data);
+        await prisma.pinExample.update({ where: { id: ex.id }, data: { imagePath: rel } });
+        ok++;
+        console.log(`[${n}/${prompts.length}] ok ${p.styleId}`);
+      } catch (e) {
+        fail++;
+        console.log(`[${n}/${prompts.length}] FAIL ${p.styleId}: ${(e as Error).message}`);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  console.log(`done: ok ${ok}, fail ${fail}`);
+}
+
+main().catch((e) => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());

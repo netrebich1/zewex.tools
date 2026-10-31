@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function RegisterPage() {
   if (await getCurrentUser()) redirect("/");
-  // Once the owner has registered, the page disappears: everyone else comes in by invitation.
+  // Once the owner has registered, the page disappears: everyone else gets an account from the admin.
   if (!(await registrationOpen())) redirect("/login");
   return <AuthForm mode="register" action={registerAction} />;
 }

@@ -1,0 +1,11 @@
+# Сервер на Linux: в рабочей папке всегда LF, в том числе на Windows
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.ico binary

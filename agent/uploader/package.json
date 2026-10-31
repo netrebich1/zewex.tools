@@ -1,0 +1,22 @@
+{
+  "name": "zewex-uploader",
+  "version": "0.1.5",
+  "private": true,
+  "description": "Агент «Zewex Uploader»: заливает CSV-выгрузки пинов в Pinterest через профили Dolphin Anty по заданиям портала zewex.tools",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.0"
+  }
+}
