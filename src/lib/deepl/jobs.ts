@@ -93,8 +93,18 @@ export async function claimItem(workerId: string): Promise<(DeeplItem & { job: D
 
 /** Статьи, чей воркер умер (аренда истекла) или остались от прошлого процесса этого хоста, — снова в очередь. */
 export async function requeueStaleItems(hostPrefix?: string): Promise<number> {
-  return prisma.$executeRaw`UPDATE DeeplItem SET status = 'pending', workerId = NULL, leaseUntil = NULL
-    WHERE status = 'processing' AND (leaseUntil < NOW(3) ${hostPrefix ? Prisma.sql`OR workerId LIKE ${hostPrefix + "-%"}` : Prisma.empty})`;
+  const stale = Prisma.sql`i.status = 'processing' AND (i.leaseUntil < NOW(3) ${hostPrefix ? Prisma.sql`OR i.workerId LIKE ${hostPrefix + "-%"}` : Prisma.empty})`;
+  // Прогон остановлен, пока статья висела в работе: статья встаёт «Остановлена», а не в очередь —
+  // иначе она «Ждёт» в прогоне с флагом остановки, который воркер не берёт и никто не завершает.
+  await prisma.$executeRaw`UPDATE DeeplItem i JOIN DeeplJob j ON j.id = i.jobId SET i.status = 'stopped', i.workerId = NULL, i.leaseUntil = NULL
+    WHERE ${stale} AND (j.stopRequested = 1 OR j.status = 'STOPPED')`;
+  const n = await prisma.$executeRaw`UPDATE DeeplItem i SET i.status = 'pending', i.workerId = NULL, i.leaseUntil = NULL WHERE ${stale}`;
+  // Прогоны «останавливается», в которых ничего уже не в работе, — довести до «Остановлен» (тогда появится «Продолжить»).
+  const hanging = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT j.id FROM DeeplJob j WHERE j.status IN ('QUEUED', 'RUNNING') AND j.stopRequested = 1
+      AND NOT EXISTS (SELECT 1 FROM DeeplItem i WHERE i.jobId = j.id AND i.status = 'processing')`;
+  for (const j of hanging) await refreshJobStatus(j.id);
+  return n;
 }
 
 export async function failItem(id: string, message: string): Promise<void> {

@@ -44,7 +44,7 @@ export default async function DeeplRunPage({ params }: { params: Promise<{ id: s
                 <SubmitButton className="btn-danger" pendingText="…" confirm="Остановить прогон? Готовые этапы сохранятся, продолжить можно позже.">Остановить</SubmitButton>
               </ActionForm>
             )}
-            {!live && stopped && (
+            {(!live || job.stopRequested) && stopped && (
               <ActionForm action={resumeDeeplJob} className="inline" hidden={{ id }}>
                 <SubmitButton className="btn-primary" pendingText="…">Продолжить</SubmitButton>
               </ActionForm>
