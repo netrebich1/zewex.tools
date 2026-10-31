@@ -113,7 +113,7 @@ export function buildSnapshot(recipe: BlogRecipeShape, s: BlogRunSettings): Blog
       ...(s.search.language ? { language: s.search.language } : {}),
     },
     publish: { ...recipe.publish, mode: s.publishMode, seoYearUrlPercent: yearPct },
-    run: { review: s.review, publishMode: s.publishMode, yearInUrlPercent: yearPct, testLabel: s.testLabel ?? "" },
+    run: { review: s.review, publishMode: s.publishMode, yearInUrlPercent: yearPct, testLabel: s.testLabel ?? "", fixedLength: !!s.length, fixedImages: !!s.images },
   };
 }
 

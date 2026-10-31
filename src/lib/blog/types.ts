@@ -221,7 +221,8 @@ export type KeywordInput = { keyword: string; topic?: string; focusKeyword?: str
 
 /** Снимок сценария и настроек запуска, который сохраняется в BlogPost.recipe и исполняется воркером. */
 export type BlogRecipeSnapshot = BlogRecipeShape & {
-  run: { review: ReviewMode; publishMode: PublishMode; yearInUrlPercent: number; testLabel: string };
+  /** fixedLength / fixedImages — объём или фото заданы в форме запуска: автоподбор (sizing.ts) их не трогает */
+  run: { review: ReviewMode; publishMode: PublishMode; yearInUrlPercent: number; testLabel: string; fixedLength?: boolean; fixedImages?: boolean };
   /** Выбранный сценарий (этап scenario) */
   scenario?: AppliedScenario;
 };

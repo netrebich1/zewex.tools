@@ -40,6 +40,10 @@ export type Scenario = {
 const has = (s: string, re: RegExp) => re.test(s);
 const FOOD = /\b(recipes?|meals?|dinners?|lunch(?:es)?|breakfasts?|brunch|snacks?|soups?|salads?|desserts?|smoothies?|drinks?|mocktails?|cocktails?|casseroles?|appetizers?|side dishes|sides|bowls?|sandwich(?:es)?|wraps?|pasta|chicken|beef|pork|salmon|shrimp|tofu|vegan|vegetarian|keto|low carb|high protein|meal prep|crockpot|slow cooker|air fryer|instant pot|cookies|cakes?|muffins?|bars|dips?|sauces?)\b/i;
 const VISUAL = /\b(organi[sz]ation|organi[sz]ing|storage|decor|room|closet|pantry|kitchen|bathroom|bedroom|living room|garden|patio|porch|party|birthday|gift|basket|board|charcuterie|nails?|manicure|hair(?:styles?)?|braids?|outfits?|tattoos?|makeup looks?|centerpieces?|wreaths?|shelf|shelves|drawer|laundry|garage|entryway)\b/i;
+/** Тема, где читатель хочет видеть результат (ногти, волосы, декор, макияж, еда): фото больше (sizing.ts). */
+export function isVisualTopic(text: string): boolean {
+  return VISUAL.test(text) || /\b(makeup|eyeliner|eyebrows?|brows|lashes|contour|lipstick|hairstyles?|curls?|waves|updo|bun|ponytail|crafts?|diy|cakes?|cookies|desserts?|fashion|wedding|christmas|halloween|nail art|tattoo)\b/i.test(text);
+}
 const BIG = /\b(questions?|prompts?|affirmations?|quotes?|captions?|sayings?|names?|words?|things to (?:do|say|write|ask)|bucket list|hobbies|goals?|journal(?:ing)? (?:ideas|prompts)|conversation starters|would you rather|dares?|truth or dare|pick[- ]up lines|bible verses|mantras|ideas for (?:a )?journal)\b/i;
 const NUMBERED_NOUNS = /\b(tips|ways|habits|signs|hacks|tricks|things|foods|mistakes|rules|secrets|remedies|benefits|reasons|products|uses|steps|ideas|lessons|facts|symptoms|causes|essentials|staples|swaps|rituals|boundaries|skills|routines?|techniques|changes|methods|exercises|oils|treatments|items|practices|strategies|questions|affirmations|prompts|quotes|phrases|goals|hobbies|activities|drinks|teas|herbs|supplements|vitamins|nutrients|plants|ingredients|stretches|poses|jobs|side hustles|upgrades|templates|apps|books|podcasts|gifts)\b/i;
 const RECIPE_PLURAL = "recipes|meals|dinners|lunches|lunch ideas|breakfasts|breakfast ideas|snacks|snack ideas|soups|salads|desserts|smoothies|mocktails|cocktails|casseroles|appetizers|side dishes|sides|bowls|sandwiches|wraps|dinner ideas|meal ideas|meal prep ideas|shot recipes|tea recipes|water recipes|drink recipes|juices";
@@ -181,6 +185,8 @@ export type AppliedScenario = {
   n?: number | null;
   /** Надстройка «здоровье, деньги, безопасность» */
   ymyl?: boolean;
+  /** Объём и фото этой статьи (src/lib/blog/sizing.ts): цель, пределы и почему */
+  sizing?: { words: number; length: { min: number; max: number }; images: { min: number; max: number }; median: number | null; pages: Array<{ url: string; words: number }>; reason: string };
 };
 
 /** Число в начале темы: «25 Clear Skin Tips» → 25, «250+ Bucket List Ideas» → 250. */

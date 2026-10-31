@@ -95,11 +95,11 @@ export function NewBlogRunForm({ sites, recipes, presetSiteId, sheets }: { sites
               <select name="publishMode" className="input py-1.5" defaultValue={site.settings.publishMode}>{PUBLISH_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}</select>
             </Field>
             <Field label="Год в адресе статьи, %" hint="Пусто — как в настройках сайта или сценарии."><input name="yearInUrlPercent" type="number" min={0} max={100} className="input py-1.5" defaultValue={site.settings.yearInUrlPercent ?? ""} placeholder="как в сценарии" /></Field>
-            <Field label="Объём статьи, слов (от – до)" hint={recipe ? `В сценарии ${recipe.length.min}–${recipe.length.max}. Пусто — как в сценарии.` : undefined}>
-              <div className="grid grid-cols-2 gap-2"><input name="lengthMin" type="number" min={300} max={6000} className="input py-1.5" placeholder={recipe ? String(recipe.length.min) : ""} /><input name="lengthMax" type="number" min={300} max={6000} className="input py-1.5" placeholder={recipe ? String(recipe.length.max) : ""} /></div>
+            <Field label="Объём статьи, слов (от – до)" hint="Пусто — авто: для каждой статьи по конкурентам из топа Google и формату. Число — одно на весь запуск.">
+              <div className="grid grid-cols-2 gap-2"><input name="lengthMin" type="number" min={300} max={6000} className="input py-1.5" placeholder="авто" /><input name="lengthMax" type="number" min={300} max={6000} className="input py-1.5" placeholder="авто" /></div>
             </Field>
-            <Field label="Картинок (от – до)" hint={recipe ? `В сценарии ${recipe.images.min}–${recipe.images.max}.` : undefined}>
-              <div className="grid grid-cols-2 gap-2"><input name="imagesMin" type="number" min={1} max={12} className="input py-1.5" placeholder={recipe ? String(recipe.images.min) : ""} /><input name="imagesMax" type="number" min={1} max={12} className="input py-1.5" placeholder={recipe ? String(recipe.images.max) : ""} /></div>
+            <Field label="Картинок (от – до)" hint="Пусто — авто: по формату, числу пунктов, теме и объёму. Число — одно на весь запуск.">
+              <div className="grid grid-cols-2 gap-2"><input name="imagesMin" type="number" min={1} max={12} className="input py-1.5" placeholder="авто" /><input name="imagesMax" type="number" min={1} max={12} className="input py-1.5" placeholder="авто" /></div>
             </Field>
             <Field label="Поиск фото: страна / язык" hint="Пусто — из сценария.">
               <div className="grid grid-cols-2 gap-2"><input name="searchCountry" className="input py-1.5" defaultValue={site.settings.search.country} placeholder="us" maxLength={8} /><input name="searchLanguage" className="input py-1.5" defaultValue={site.settings.search.language} placeholder="en" maxLength={8} /></div>
