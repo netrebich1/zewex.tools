@@ -34,10 +34,6 @@ export default async function UploaderMappingPage() {
   const suggestions = suggestProfiles(sites, profiles, allAccounts);
   const sure = [...suggestions.values()].filter((l) => l[0]?.sure).length;
   const settings = await uplSettings();
-  // Одинаковые имена профилей (старый и новый профиль сайта) — в списке показываем id, иначе их не различить.
-  const nameCount = new Map<string, number>();
-  for (const p of profiles) nameCount.set(p.name.toLowerCase(), (nameCount.get(p.name.toLowerCase()) ?? 0) + 1);
-  const label = (p: { id: string; name: string }) => ((nameCount.get(p.name.toLowerCase()) ?? 0) > 1 ? `${p.name} · ${p.id}` : p.name);
 
   return (
     <>
@@ -58,11 +54,11 @@ export default async function UploaderMappingPage() {
                   <td className="font-medium">{s.wpConnectionId ? <Link href={`/pinterest/projects/${s.wpConnectionId}`} className="hover:underline">{s.name}</Link> : s.name}</td>
                   <td className="min-w-[260px]">
                     <AutoForm action={setProfileAction} hidden={{ pinSiteId: s.id }} showOk>
-                      <ProfileSelect name="profileId" value={a?.profileId ?? ""} options={options.map((p) => ({ id: p.id, name: label(p) }))} />
+                      <ProfileSelect name="profileId" value={a?.profileId ?? ""} options={options.map((p) => ({ id: p.id, name: p.name }))} />
                     </AutoForm>
-                    {twins.length > 1 && <div className="mt-1 text-[12px] text-warn">В Dolphin {twins.length} профиля с этим доменом ({twins.map((p) => p.id).join(", ")}). Лишний лучше удалить или переименовать; если выбранный не откроется, агент сам попробует другой и перепривяжет сайт.</div>}
+                    {twins.length > 1 && <div className="mt-1 text-[12px] text-warn">В Dolphin {twins.length} профиля с этим доменом ({twins.map((p) => p.id).join(", ")}). Выберите нужный по ID; если выбранный не откроется, агент сам попробует другой и перепривяжет сайт.</div>}
                   </td>
-                  <td>{!a?.profileId && sug ? <AcceptSuggestion pinSiteId={s.id} profileId={sug.profileId} profileName={sug.profileName} sure={sug.sure} /> : <span className="help">{a?.profileId ? "" : "—"}</span>}</td>
+                  <td>{!a?.profileId && sug ? <AcceptSuggestion pinSiteId={s.id} profileId={sug.profileId} profileName={`${sug.profileName} · ${sug.profileId}`} sure={sug.sure} /> : <span className="help">{a?.profileId ? "" : "—"}</span>}</td>
                   <td className="help">{a?.pinUsername ? `@${a.pinUsername}` : "—"}</td>
                   <td className="help whitespace-nowrap">{a?.lastUploadAt ? dt(a.lastUploadAt) : "—"}</td>
                   <td>{a ? <><AccountBadge status={a.status} />{a.pausedUntil && a.pausedUntil > now ? <span className="help ml-1">до {dt(a.pausedUntil)}</span> : null}{a.lastError ? <div className="text-[12px] text-danger">{a.lastError}</div> : null}</> : <span className="help">—</span>}</td>

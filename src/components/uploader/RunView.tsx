@@ -15,7 +15,7 @@ function TaskRow({ t }: { t: TaskView }) {
   return (
     <>
       <tr className={t.status === "FAILED" ? "bg-danger-soft/30" : t.status === "SKIPPED" ? "bg-warn-soft/30" : ""}>
-        <td className="font-medium">{t.siteName}<div className="help">{t.profileName ?? t.profileId}</div>{t.errorLabel ? <div className="sm:hidden text-[12.5px] font-normal text-danger">{t.errorLabel}</div> : null}</td>
+        <td className="font-medium">{t.siteName}<div className="help">{t.profileName ? `${t.profileName} · ${t.profileId}` : t.profileId}</div>{t.errorLabel ? <div className="sm:hidden text-[12.5px] font-normal text-danger">{t.errorLabel}</div> : null}</td>
         <td className="col-sm help">{t.phase === "verify" ? "проверка" : "заливка"}</td>
         <td><TaskBadge status={t.status} />{t.attempts > 1 ? <span className="help ml-1">попытка {t.attempts}</span> : null}</td>
         <td className="tabular-nums">{t.rows ?? "—"}<div className="help">{t.fileName ?? ""}</div></td>
