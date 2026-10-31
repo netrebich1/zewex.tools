@@ -13,9 +13,9 @@ import { SLOTS, type ArticlePlan } from "@/lib/articles/types";
 import { resolvePromptOptional, fillPrompt, stageModel } from "@/lib/articles/prompts";
 import { COUNT_TOKEN, hasCountToken, keepToken, renderCount } from "@/lib/articles/text/countToken";
 import { parseModelJsonSafe } from "@/lib/articles/text/jsonRepair";
-import { applySlugYear, hashPercent, keywordYear, normalizeMetaYear, slugExampleFor, slugify, slugOk, stripYear, yearInSlugFor, yearPercentOf, YEAR_PATTERN } from "@/lib/articles/text/slug";
+import { applySlugYear, hashPercent, keywordYear, normalizeMetaYear, contextSlug, slugExampleFor, slugify, stripYear, yearInSlugFor, yearPercentOf, YEAR_PATTERN } from "@/lib/articles/text/slug";
 import { buildPromptVars, focusKeywordOf, loadProfile, topicOf, type JsonRecord } from "@/lib/articles/text/vars";
-import { fixDashesText, polishHeading, stripSlugFiller, toUsSpellingText, usesUsSpelling } from "@/lib/articles/text/polish";
+import { fixDashesText, polishHeading, toUsSpellingText, usesUsSpelling } from "@/lib/articles/text/polish";
 import type { ArtStageHandler } from "./index";
 import { loadActivePhotos } from "./plan";
 
@@ -655,13 +655,8 @@ No filler words in the title ("Ideas / Looks / Best / Stunning / Must-Try / Top"
   }
   // Длину описания подгоняет padDescription ниже — по концу предложения и уже с подставленным числом.
 
-  // URL: ключ цельным блоком + ≤3 безопасных слова, иначе — заранее выбранная форма (оригинал: 595-612)
-  seoMeta.url_slug = stripSlugFiller(slugify(normalizeMetaYear(slugify(seoMeta.url_slug, 200), year), 200), kwSlug, year);
-  if (kwSlug && !slugOk(seoMeta.url_slug, kwSlug, year)) {
-    ctx.log(`slug «${seoMeta.url_slug}» отклонён → «${slugExample}»`);
-    seoMeta.url_slug = slugExample;
-  }
-  seoMeta.url_slug = applySlugYear(seoMeta.url_slug, year, yearInSlug);
+  // URL: слова ключа + 2–3 смысловых слова из H1 (запас — LSI секций), не голый ключ (владелец 31.10: адреса по ключу палевные)
+  seoMeta.url_slug = applySlugYear(contextSlug({ keyword: keywordNoYear, h1: seoMeta.h1, extra: secondaryKeywords, seed: article.id }) || slugExample, year, yearInSlug);
 
   // Год в заголовках обязателен (оригинал: 626-634)
   if (year) {

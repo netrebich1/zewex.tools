@@ -78,7 +78,7 @@ export async function workerState(me: CurrentUser): Promise<WorkerState> {
 }
 
 export type PostRowData = {
-  id: string; keyword: string; status: BlogStatus; stage: string; stageLabel: string; error: string | null; note: string | null;
+  id: string; keyword: string; /** Название статьи: H1, до плана — тема от редактора */ title: string; status: BlogStatus; stage: string; stageLabel: string; error: string | null; note: string | null;
   recipeName: string | null; runId: string | null; runName: string | null; siteId: string; siteName: string;
   wordCount: number; photos: number; costUsd: number; wpUrl: string | null; updatedAt: string; createdAt: string;
 };
@@ -88,7 +88,7 @@ type RowWithRel = Prisma.BlogPostGetPayload<{ include: typeof ROW_INCLUDE }>;
 
 function toRow(p: RowWithRel): PostRowData {
   return {
-    id: p.id, keyword: p.keyword, status: p.status, stage: p.stage, stageLabel: stageLabel(p.stage), error: p.error, note: p.note,
+    id: p.id, keyword: p.keyword, title: (p.h1 || p.topic || "").trim(), status: p.status, stage: p.stage, stageLabel: stageLabel(p.stage), error: p.error, note: p.note,
     recipeName: p.recipeRef?.name ?? null, runId: p.runId, runName: p.run?.name ?? null, siteId: p.siteId, siteName: p.site.name,
     wordCount: p.wordCount, photos: p._count.photos, costUsd: p.costUsd, wpUrl: p.wpUrl, updatedAt: p.updatedAt.toISOString(), createdAt: p.createdAt.toISOString(),
   };

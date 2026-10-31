@@ -14,7 +14,7 @@ import { requireUser, type CurrentUser } from "@/lib/auth";
 import { forSitesTab } from "@/lib/permissions";
 import { decryptSecret } from "@/lib/crypto";
 import { canAccessSiteAccess } from "@/lib/sites/access";
-import { canAccessBlogPost, canAccessBlogSite } from "@/lib/blog/access";
+import { blogPostWhere, canAccessBlogPost, canAccessBlogSite } from "@/lib/blog/access";
 import { BLOG, DEFAULT_SITE_SETTINGS, PROJECT_SLUG, PUBLISH_MODES, SITE_LIMITS, mergeSiteSettings, type BlogRunSettings, type BlogSiteSettings, type KeywordInput, type PublishMode, type ReviewMode } from "@/lib/blog/types";
 import { findDuplicateKeywords } from "@/lib/blog/recipes";
 import { launchPosts } from "@/lib/blog/launch";
@@ -332,14 +332,14 @@ export async function deletePostAction(_p: FormState, f: FormData): Promise<Form
   redirect(str(f, "back") || `${BLOG}/sites/${a.siteId}?tab=queue`);
 }
 
-export type BulkOp = "retry" | "stop" | "requeue" | "delete";
+export type BulkOp = "retry" | "stop" | "requeue" | "delete" | "approve";
 
 export async function bulkPostsAction(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const ids = [...new Set(f.getAll("ids").map(String).filter(Boolean))].slice(0, 500);
   const op = str(f, "op") as BulkOp;
   if (!ids.length) return { error: "Отметьте хотя бы одну статью" };
-  if (!["retry", "stop", "requeue", "delete"].includes(op)) return { error: "Неизвестное действие" };
+  if (!["retry", "stop", "requeue", "delete", "approve"].includes(op)) return { error: "Неизвестное действие" };
   let ok = 0;
   const problems: string[] = [];
   const touched = new Set<string>();
@@ -349,6 +349,7 @@ export async function bulkPostsAction(_p: FormState, f: FormData): Promise<FormS
       if (op === "retry") await retryPost(a);
       else if (op === "stop") await stopPost(a);
       else if (op === "requeue") await requeuePost(a);
+      else if (op === "approve") await approvePost(a, me.id, null);
       else await deletePost(a);
       ok++;
       touched.add(`${a.siteId}|${a.runId ?? ""}`);
@@ -356,7 +357,7 @@ export async function bulkPostsAction(_p: FormState, f: FormData): Promise<FormS
   }
   for (const t of touched) { const [siteId, runId] = t.split("|"); revalidatePath(`${BLOG}/sites/${siteId}`); if (runId) revalidatePath(`${BLOG}/runs/${runId}`); }
   revalidatePath(BLOG);
-  const verb = op === "retry" ? "снова в очереди" : op === "stop" ? "остановлено" : op === "requeue" ? "возвращено в очередь" : "удалено";
+  const verb = op === "approve" ? "одобрено и отправлено в публикацию" : op === "retry" ? "снова в очереди" : op === "stop" ? "остановлено" : op === "requeue" ? "возвращено в очередь" : "удалено";
   const summary = `${verb}: ${ok} из ${ids.length}`;
   if (!ok) return { error: `Ничего не сделано. ${[...new Set(problems)].slice(0, 3).join("; ")}` };
   return { ok: problems.length ? `${summary}. Пропущено ${problems.length}: ${[...new Set(problems)].slice(0, 3).join("; ")}` : summary };
@@ -504,17 +505,38 @@ export async function excludeSlotPhoto(_p: FormState, f: FormData): Promise<Form
 
 /* ───────── Проверка перед публикацией ───────── */
 
+/** Одобрить одну статью: пересборка (с учётом правок) и публикация. */
+async function approvePost(a: Awaited<ReturnType<typeof postForUser>>, userId: string, note: string | null) {
+  if (!["REVIEW_PENDING", "NEEDS_REWORK", "FAILED", "PUBLISH_ERROR", "STOPPED"].includes(a.status)) throw new Error("Статья сейчас не ждёт проверки");
+  const cursor = { ...((a.cursor ?? {}) as Record<string, unknown>), reviewApproved: true };
+  await prisma.blogPost.update({ where: { id: a.id }, data: { status: "PENDING", stage: "pin_images", cursor: cursor as Prisma.InputJsonValue, reviewedById: userId, reviewedAt: new Date(), reviewNote: note, attempts: 0, error: null, errorStage: null, note: null, nextRunAt: new Date(), workerId: null, leaseUntil: null, stopRequested: false } });
+}
+
 /** Одобрить: пересборка (с учётом правок) и публикация. */
 export async function approvePostAction(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   try {
     const a = await postForUser(me, str(f, "id"));
-    if (!["REVIEW_PENDING", "NEEDS_REWORK", "FAILED", "PUBLISH_ERROR", "STOPPED"].includes(a.status)) throw new Error("Статья сейчас не ждёт проверки");
-    const cursor = { ...((a.cursor ?? {}) as Record<string, unknown>), reviewApproved: true };
-    await prisma.blogPost.update({ where: { id: a.id }, data: { status: "PENDING", stage: "pin_images", cursor: cursor as Prisma.InputJsonValue, reviewedById: me.id, reviewedAt: new Date(), reviewNote: str(f, "note").slice(0, 1000) || null, attempts: 0, error: null, errorStage: null, note: null, nextRunAt: new Date(), workerId: null, leaseUntil: null, stopRequested: false } });
+    await approvePost(a, me.id, str(f, "note").slice(0, 1000) || null);
     revalidatePost(a);
     return { ok: "Статья одобрена: пересборка и публикация в очереди" };
   } catch (e) { return fail(e); }
+}
+
+/** Одобрить все статьи, ждущие проверки (REVIEW_PENDING; «в доработку» не трогаем), — по всем доступным сайтам или одному. */
+export async function approveAllReviewAction(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  const siteId = str(f, "siteId");
+  const where = await blogPostWhere(me);
+  const ids = (await prisma.blogPost.findMany({ where: { ...where, status: "REVIEW_PENDING", ...(siteId ? { siteId } : {}) }, select: { id: true } })).map((p) => p.id);
+  if (!ids.length) return { error: "Нет статей, ждущих проверки" };
+  let ok = 0;
+  for (const id of ids) {
+    try { await approvePost(await postForUser(me, id), me.id, null); ok++; } catch { /* статью могли взять в работу параллельно */ }
+  }
+  revalidatePath(`${BLOG}/review`);
+  revalidatePath(BLOG);
+  return { ok: `Одобрено ${ok} из ${ids.length}: пересборка и публикация в очереди` };
 }
 
 /** В доработку: план заново (outline) или только текст (write). */

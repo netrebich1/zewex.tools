@@ -10,7 +10,7 @@ function fmt(iso: string): string {
   return new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-/** Таблица инфо-статей с отметками и массовыми действиями: Повторить · Остановить · В очередь · Удалить. */
+/** Таблица инфо-статей с отметками и массовыми действиями: Одобрить · Повторить · Остановить · В очередь · Удалить. */
 export function PostsTable({ rows, showRun = false, showSite = false, emptyText = "Статей нет" }: { rows: PostRowData[]; showRun?: boolean; showSite?: boolean; emptyText?: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -27,6 +27,7 @@ export function PostsTable({ rows, showRun = false, showSite = false, emptyText 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-2/60 px-3 py-2">
         <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" className="h-4 w-4" checked={allOn} onChange={toggleAll} /> {picked.length ? `Отмечено ${picked.length}` : "Отметить все"}</label>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <button type="submit" name="op" value="approve" className="btn-ghost btn-sm" disabled={!picked.length} title="Одобрить отмеченные статьи с проверки: пересборка и публикация">Одобрить</button>
           <button type="submit" name="op" value="retry" className="btn-ghost btn-sm" disabled={!picked.length} title="Снова в очередь с этапа, на котором остановились или упали">Повторить</button>
           <button type="submit" name="op" value="stop" className="btn-ghost btn-sm" disabled={!picked.length}>Остановить</button>
           <button type="submit" name="op" value="requeue" className="btn-ghost btn-sm" disabled={!picked.length}>В очередь</button>
@@ -46,7 +47,7 @@ export function PostsTable({ rows, showRun = false, showSite = false, emptyText 
           <thead>
             <tr>
               <th className="w-8"></th>
-              <th>Ключ</th>
+              <th>Ключ · статья</th>
               {showSite && <th className="hidden md:table-cell">Сайт</th>}
               <th>Статус</th>
               <th className="hidden sm:table-cell">Этап</th>
@@ -63,6 +64,7 @@ export function PostsTable({ rows, showRun = false, showSite = false, emptyText 
                 <td><input type="checkbox" className="h-4 w-4" checked={selected.has(r.id)} onChange={() => toggle(r.id)} aria-label="Отметить" /></td>
                 <td className="max-w-[280px] sm:max-w-[420px]">
                   <Link href={`/pinterest/blog/posts/${r.id}`} className="font-medium hover:underline block truncate" title={r.keyword}>{r.keyword}</Link>
+                  {r.title && r.title.toLowerCase() !== r.keyword.toLowerCase() && <div className="truncate text-[13px]" title={r.title}>{r.title}</div>}
                   <div className="help truncate"><span className="sm:hidden">{r.stageLabel} · </span>{r.recipeName ?? "—"}{r.note ? ` · ${r.note}` : ""}</div>
                   {r.error && (r.status === "FAILED" || r.status === "PUBLISH_ERROR") && <div className="text-[12.5px] text-danger truncate" title={r.error}>{r.error}</div>}
                 </td>

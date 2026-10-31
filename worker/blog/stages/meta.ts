@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { AiError } from "@/lib/pins/ai/errors";
 import { aiChat } from "@/lib/blog/ai";
 import { parseModelJsonSafe } from "@/lib/articles/text/jsonRepair";
-import { applySlugYear, keywordYear, normalizeMetaYear, slugify, stripYear, yearInSlugFor, yearPercentOf } from "@/lib/articles/text/slug";
+import { applySlugYear, contextSlug, keywordYear, normalizeMetaYear, slugify, stripYear, yearInSlugFor, yearPercentOf } from "@/lib/articles/text/slug";
 import { fixDashesText, polishHeading, toUsSpellingText, usesUsSpelling } from "@/lib/articles/text/polish";
 import { stageModel } from "@/lib/blog/prompts";
 import { countListItems, fixLeadingNumber, LIST_STRUCTURES } from "@/lib/blog/structure";
@@ -142,11 +142,9 @@ Rules: title 40-58 characters, Title Case, contains the keyword naturally, no co
   m.description = fitDescription(us ? toUsSpellingText(fixDashesText(m.description)) : fixDashesText(m.description));
   if (m.description.length < 120) m.description = fitDescription(`${m.description.replace(/[.!?]$/, "")}. Clear steps, common mistakes and practical tips in one guide.`);
   if (year && !m.title.includes(year)) m.title = trimTitle(`${m.title} ${year}`, 60).includes(year) ? trimTitle(`${m.title} ${year}`, 60) : `${trimTitle(m.title, 60 - year.length - 1)} ${year}`;
-  // Slug: ключ одним блоком; план мог добавить слова — оставляем, если ключ внутри и длина разумная
-  let slug = slugify(m.slug, 90);
-  if (!slug.includes(kwSlug) || slug.length > kwSlug.length + 30) slug = kwSlug;
-  slug = applySlugYear(slug.replace(/-?\b20\d{2}\b/g, "").replace(/-{2,}/g, "-").replace(/^-|-$/g, ""), year, yearInSlug) || kwSlug;
-  m.slug = slug;
+  // Slug: слова ключа + 2–3 смысловых слова из H1 (запас — тема статьи и заголовки секций), не голый ключ
+  const slug = contextSlug({ keyword: kwNoYear, h1: m.h1, extra: [post.topic, ...(outline?.sections ?? []).map((s) => s.heading)], seed: post.id });
+  m.slug = applySlugYear(slug, year, yearInSlug) || kwSlug;
 
   // Число пунктов: по написанным секциям (подборка/список/тренировка — пункты, большой список — строки <li>)
   const st = recipe.scenario?.structure;

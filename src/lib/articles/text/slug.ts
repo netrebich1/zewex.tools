@@ -106,3 +106,75 @@ export function applySlugYear(slug: string, year: string, yearInSlug: boolean): 
   }
   return s;
 }
+
+/** Служебные слова: в адрес не идут, если их нет в самом ключе. */
+const SLUG_STOP = new Set([
+  "a", "an", "the", "and", "or", "but", "to", "for", "of", "in", "on", "at", "by", "with", "from", "into", "over", "under",
+  "your", "you", "yours", "my", "our", "we", "i", "it", "its", "this", "that", "these", "those", "how", "what", "why", "when",
+  "which", "who", "is", "are", "be", "can", "do", "does", "will", "should", "vs", "versus", "like", "as", "so", "than", "up",
+  "out", "about", "all", "every", "any", "more", "most", "really", "just", "very", "ever", "s", "t", "count",
+]);
+
+/** Пустышки и «продающие» слова: контекста не добавляют (аудит text-v2), плюс глаголы-зачины заголовков. */
+const SLUG_CONTEXT_SKIP = new Set([
+  "cute", "trendy", "best", "top", "chic", "classy", "elegant", "pretty", "stylish", "aesthetic", "cool", "fresh", "popular",
+  "amazing", "stunning", "gorgeous", "perfect", "ultimate", "beautiful", "awesome", "incredible", "effortless", "effortlessly",
+  "elevate", "must", "know", "complete", "simple", "easy", "actually", "truly", "ideas", "idea", "inspo", "inspiration",
+  "gallery", "picks", "examples", "guide", "step", "steps", "achieve", "discover", "learn", "master", "unlock", "get", "make",
+  "try", "need", "want", "find", "use", "using", "give", "keep", "start", "new", "way", "ways", "things", "thing",
+  "work", "works", "help", "helps", "move", "go", "feel", "right", "wrong", "really", "here", "everything", "anything",
+]);
+
+const UNIT_WORDS = new Set(["day", "days", "week", "weeks", "minute", "minutes", "min", "hour", "hours", "month", "months", "step", "steps", "second", "seconds"]);
+
+const stemOf = (w: string) => (w.length >= 5 ? w.slice(0, 5) : w);
+
+/**
+ * Адрес статьи по контексту, а не голым ключом (просьба владельца 31.10: адреса «строго по ключу» палевные).
+ * Слова ключа — все и как в ключе; к ним 2–3 смысловых слова из H1 (по запасным фразам — темы, LSI, если в H1 нет),
+ * порядок как в H1, когда весь ключ там есть. Число добавочных слов — детерминированно по seed (id статьи),
+ * чтобы соседние статьи не были одного шаблона. Без года (его ставит applySlugYear), ≤ maxLen символов.
+ */
+export function contextSlug(o: { keyword: string; h1: string; extra?: string[]; seed: string; maxLen?: number }): string {
+  const maxLen = o.maxLen ?? 60;
+  const kwSlug = slugify(stripYear(o.keyword), 200);
+  const kwWords = kwSlug.split("-").filter(Boolean);
+  if (!kwWords.length) return slugify(stripYear(o.h1), maxLen);
+  const kwSet = new Set(kwWords);
+  const kwStems = new Set(kwWords.filter((w) => w.length >= 4).map(stemOf));
+  const isExtra = (w: string) => !kwSet.has(w) && !/^\d+$/.test(w) && w.length > 1 && !SLUG_STOP.has(w) && !SLUG_CONTEXT_SKIP.has(w) && !(w.length >= 4 && kwStems.has(stemOf(w)));
+  // «7-Day», «10-Minute»: без числа единица смысла не несёт — уходит вместе с ним
+  const words = (s: string) => slugify(stripYear(s), 300).split("-").filter(Boolean).filter((w, i, a) => !(i > 0 && /^\d+$/.test(a[i - 1]) && UNIT_WORDS.has(w)));
+
+  const h1 = words(o.h1);
+  const want = 2 + (hashPercent(`${o.seed}|ctx-slug`) % 2);
+  const extras: string[] = [];
+  const addFrom = (list: string[]) => { for (const w of list) if (extras.length < want && isExtra(w) && !extras.includes(w)) extras.push(w); };
+  addFrom(h1);
+  for (const e of o.extra ?? []) addFrom(words(e));
+
+  let seq: string[];
+  const allInH1 = kwWords.every((w) => h1.includes(w));
+  if (allInH1 && !`-${h1.join("-")}-`.includes(`-${kwSlug}-`)) {
+    // Ключ в H1 вразбивку: порядок H1 (естественная фраза), каждое слово один раз
+    const kwLeft = [...kwWords];
+    seq = [];
+    for (const w of h1) {
+      const k = kwLeft.indexOf(w);
+      if (k >= 0) { seq.push(w); kwLeft.splice(k, 1); } else if (extras.includes(w) && !seq.includes(w)) seq.push(w);
+    }
+  } else if (allInH1) {
+    // Ключ цельным блоком: слова H1 до и после блока
+    const at = h1.join("-").indexOf(kwSlug);
+    const before = h1.join("-").slice(0, at).split("-").filter((w) => extras.includes(w));
+    const rest = extras.filter((w) => !before.includes(w));
+    seq = [...before, ...kwWords, ...rest];
+  } else {
+    seq = [...kwWords, ...extras];
+  }
+  // Длина: снимаем добавочные слова с конца, ключ не трогаем
+  while (seq.join("-").length > maxLen && seq.some((w) => !kwSet.has(w))) {
+    for (let i = seq.length - 1; i >= 0; i--) if (!kwSet.has(seq[i])) { seq.splice(i, 1); break; }
+  }
+  return seq.join("-") || kwSlug;
+}
