@@ -13,9 +13,11 @@ import { siteDeletionImpact } from "@/lib/sites/delete";
 import { canAccessSiteAccess, canEditAccess, canEditSiteAccess } from "@/lib/sites/access";
 import { forSitesTab, seesAllSites } from "@/lib/permissions";
 
-export type FormState = { error?: string; ok?: string };
+export type FormState = { error?: string; ok?: string; link?: { href: string; label: string } };
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const fail = (e: unknown): FormState => ({ error: e instanceof Error ? e.message : String(e) });
+/** Хост без протокола, www и регистра: «https://www.Site.com/» и «http://site.com» — один сайт. */
+const hostOf = (url: string) => url.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/.*$/, "").toLowerCase();
 
 /**
  * Доступ к сайту (уровень системы): REST API WordPress, команда-владелец, дополнительные команды,
@@ -27,7 +29,7 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
   const id = str(f, "id");
   const teamId = str(f, "teamId");
   if (!seesAllSites(me) && !canManageTeam(me, teamId) && !me.teamIds.includes(teamId)) return { error: "Нет доступа к команде" };
-  const before = id ? await prisma.siteAccess.findUnique({ where: { id }, select: { teamId: true, teams: { select: { teamId: true } }, viewers: { select: { userId: true } } } }) : null;
+  const before = id ? await prisma.siteAccess.findUnique({ where: { id }, select: { teamId: true, baseUrl: true, teams: { select: { teamId: true } }, viewers: { select: { userId: true } } } }) : null;
   if (id && !before) return { error: "Доступ не найден" };
   if (before && !canEditAccess(me, before)) return { error: "Менять этот сайт может лидер команды-владельца или админ" };
   const baseUrl = str(f, "baseUrl").replace(/\/+$/, "");
@@ -35,6 +37,18 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
   const appPassword = str(f, "appPassword");
   if (!baseUrl || !username) return { error: "Укажите адрес сайта и логин" };
   if (!/^https?:\/\//.test(baseUrl)) return { error: "Адрес должен начинаться с http(s)://" };
+  // Второй доступ к тому же сайту не создаём (2026-11-01): пины, статьи и проекты остаются привязаны к первому,
+  // и новый пароль до них не доходит — так встал прогон inspiration-for-home.com. Пароль меняют в существующем доступе.
+  // Проверка — при создании и при смене адреса: уже существующие пары можно править как раньше.
+  const host = hostOf(baseUrl);
+  const twin = before && hostOf(before.baseUrl) === host ? undefined : (await prisma.siteAccess.findMany({ where: { kind: "wordpress", baseUrl: { contains: host }, ...(id ? { id: { not: id } } : {}) }, select: { id: true, baseUrl: true } })).find((a) => hostOf(a.baseUrl) === host);
+  if (twin) {
+    const visible = await canAccessSiteAccess(me, twin.id);
+    return {
+      error: `Сайт ${host} уже есть в «Сайтах». Второй доступ не создаём: пины, статьи и проекты привязаны к существующему, и новый пароль до них не дойдёт. Откройте существующий сайт и обновите логин и Application Password там.${visible ? "" : " Он принадлежит другой команде — попросите её лидера или админа."}`,
+      ...(visible ? { link: { href: `/sites/${twin.id}`, label: `Открыть ${host}` } } : {}),
+    };
+  }
   try {
     await assertPublicUrl(baseUrl);
     if (str(f, "mediaBaseUrl")) await assertPublicUrl(str(f, "mediaBaseUrl"));
