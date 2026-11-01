@@ -106,7 +106,7 @@ export const styleTypes: AiStyleType[] = (Array.isArray(raw.types) ? (raw.types 
   .filter((t) => t.id !== "");
 
 /** Порядок категорий при сортировке результатов (как в generate-pin-prompt). */
-export const CATEGORY_ORDER: Record<string, number> = { magazine: 0, soft: 1, ctr: 2, traffic: 3, modern2027: 4, newyear: 5 };
+export const CATEGORY_ORDER: Record<string, number> = { magazine: 0, soft: 1, ctr: 2, traffic: 3, modern2027: 4, newyear: 5, "ny-interior": 6 };
 export const CATEGORY_ORDER_FALLBACK = 50;
 
 /** Категория ИИ-стилей для блоговых / информационных статей. */

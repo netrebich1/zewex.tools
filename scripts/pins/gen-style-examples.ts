@@ -72,6 +72,15 @@ const UNIVERSAL_SAMPLES: Array<{ kind: ArticleKind; title: string; niche: string
   { kind: "how_to", title: "How to Paint a Room Like a Pro", niche: "home improvement", count: 5, points: { steps: ["Prep the walls", "Tape the edges", "Cut in first", "Roll in a W shape", "Add a second coat"] } },
 ];
 
+/** Темы примеров для универсальных стилей обычных категорий (ny-interior): реальные ключи статей-подборок, у каждого подстиля своя. */
+const TOPIC_SAMPLES: Record<string, string[]> = {
+  "ny-interior": [
+    "navy blue christmas tree", "christmas mantel decor", "christmas front porch decor", "living room christmas decor", "christmas centerpiece ideas",
+    "christmas wreath ideas", "scandinavian christmas decor", "christmas staircase decor", "pink christmas decor", "rustic christmas tree ideas",
+    "christmas kitchen decor", "black and gold christmas tree", "new year's party decor", "christmas coffee table decor", "farmhouse christmas decor",
+  ],
+};
+
 const flag = (k: string, def = "") => (process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=").slice(1).join("=") ?? (process.argv.includes(`--${k}`) ? "1" : def));
 
 async function main() {
@@ -139,6 +148,24 @@ async function main() {
           const pts = pointsForStyle(info, s);
           return { id: s.id, tags: { season: false, year: false, number: false, siteName: false, cta: true }, article: { kind, label: ARTICLE_KIND_LABELS[kind], kicker: kindKicker(kind, "en"), count: pts.count, title: b.title, points: pts.points, section: pts.section } };
         }),
+      }));
+    }
+  } else if (TOPIC_SAMPLES[category]) {
+    // Подстиль k семейства i — тема (i + 5·(k−1)) по кругу: соседние стили и подстили одного стиля на разных темах.
+    const topics = TOPIC_SAMPLES[category];
+    const families = [...new Set(listAiStyles(category).map((s) => s.variantOf ?? s.id))];
+    const byTopic = new Map<string, typeof styles>();
+    for (const s of styles) {
+      const vi = Math.max(0, Number((s.id.match(/-(\d)$/) ?? [])[1] ?? 1) - 1);
+      const t = topics[(families.indexOf(s.variantOf ?? s.id) + vi * 5) % topics.length];
+      byTopic.set(t, [...(byTopic.get(t) ?? []), s]);
+    }
+    prompts = [];
+    for (const [t, list] of byTopic) {
+      for (const s of list) sampleOf.set(s.id, { keyword: t, niche });
+      prompts.push(...await generateAiPrompts(ctx, {
+        keyword: t, topic: t, niche, language: "en", audience: "women", siteName: "", year, season, seasonWord: season, ideaCount: 12,
+        styles: list.map((s) => ({ id: s.id, tags: { season: false, year: false, number: s.type === "listicle", siteName: false, cta: true } })),
       }));
     }
   } else {
