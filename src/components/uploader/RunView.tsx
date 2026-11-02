@@ -21,8 +21,10 @@ function createdInfo(v: VerifyResult | undefined): { url: string | null; line: s
   return { url, line: m ? m[0] : body.slice(0, 120) || null };
 }
 
-function TaskRow({ t }: { t: TaskView }) {
+function TaskRow({ t, runId }: { t: TaskView; runId: string }) {
   const [open, setOpen] = useState(false);
+  // Автозаливка не прошла — тот же CSV можно скачать и залить руками.
+  const manual = t.phase === "upload" && (t.status === "FAILED" || t.status === "SKIPPED") && t.errorKind !== "no_file";
   const v = t.result?.verify;
   const shot = t.result?.screenshot ?? v?.screenshot ?? null;
   const created = createdInfo(v);
@@ -39,7 +41,7 @@ function TaskRow({ t }: { t: TaskView }) {
           {t.errorLabel ? <div className="sm:hidden text-[12.5px] font-normal text-danger">{t.errorLabel}</div> : null}</td>
         <td className="col-sm help">{t.phase === "verify" ? "проверка" : "заливка"}</td>
         <td><TaskBadge status={t.status} />{t.attempts > 1 ? <span className="help ml-1">попытка {t.attempts}</span> : null}</td>
-        <td className="tabular-nums">{t.rows ?? "—"}<div className="help">{t.fileName ?? ""}</div></td>
+        <td className="tabular-nums">{t.rows ?? "—"}<div className="help">{t.fileName ?? ""}</div>{manual ? <a href={`/api/uploader/runs/${runId}/file?task=${t.id}`} className="btn-secondary btn-sm mt-1.5 inline-flex">⬇ Скачать CSV</a> : null}</td>
         <td className="text-[12.5px]">
           {t.status === "LEASED" ? <span className="text-brand">{t.step ?? "в работе"}</span> : null}
           {t.errorLabel ? <div className="text-danger">{t.errorLabel}{t.error && t.error !== t.errorLabel ? <span className="help"> — {t.error}</span> : null}</div> : t.status === "SKIPPED" && t.error ? <div className="text-warn">{t.error}</div> : null}
@@ -96,14 +98,14 @@ export function RunView({ initial }: { initial: RunViewT }) {
       <Card title={`Заливка · ${uploads.length}`}>
         <div className="table-wrap"><table className="table">
           <thead><tr><th>Сайт / профиль</th><th className="col-sm">Фаза</th><th>Статус</th><th>Пинов</th><th>Что происходит</th><th className="col-sm">Начато</th><th></th></tr></thead>
-          <tbody>{uploads.map((t) => <TaskRow key={t.id} t={t} />)}</tbody>
+          <tbody>{uploads.map((t) => <TaskRow key={t.id} t={t} runId={run.id} />)}</tbody>
         </table></div>
       </Card>
       {verifies.length > 0 && (
         <Card title={`Проверка истории загрузок · ${verifies.length}`} description="Через 10 минут после заливки агент снова открывает профиль и читает историю массовых загрузок Pinterest.">
           <div className="table-wrap"><table className="table">
             <thead><tr><th>Сайт / профиль</th><th className="col-sm">Фаза</th><th>Статус</th><th>Пинов</th><th>Что происходит</th><th className="col-sm">Начато</th><th></th></tr></thead>
-            <tbody>{verifies.map((t) => <TaskRow key={t.id} t={t} />)}</tbody>
+            <tbody>{verifies.map((t) => <TaskRow key={t.id} t={t} runId={run.id} />)}</tbody>
           </table></div>
         </Card>
       )}
