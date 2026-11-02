@@ -23,15 +23,15 @@ export function profileText(p: MatchProfile): string {
 }
 
 /**
- * Насколько профиль похож на сайт: 2 — полный домен («povixi.com»), 1 — имя без зоны отдельным словом
- * («povixi», не короче 5 букв), 0 — не похож.
+ * Насколько профиль похож на сайт: 2 — полный домен («povixi.com», и с номером копии «povixi.com1», «povixi.com 2» —
+ * так в Dolphin различают второй профиль сайта), 1 — имя без зоны отдельным словом («povixi», не короче 5 букв), 0 — не похож.
  */
 export function matchScore(site: MatchSite, p: MatchProfile): number {
   const domain = siteDomain(site.name);
   if (!domain) return 0;
   const text = profileText(p);
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  if (new RegExp(`(^|[^a-z0-9-])${esc(domain)}($|[^a-z0-9-])`).test(text)) return 2;
+  if (new RegExp(`(^|[^a-z0-9-])${esc(domain)}\\d*($|[^a-z0-9-])`).test(text)) return 2;
   const label = domain.split(".")[0];
   if (label.length >= 5 && new RegExp(`(^|[^a-z0-9])${esc(label)}($|[^a-z0-9])`).test(text)) return 1;
   return 0;
