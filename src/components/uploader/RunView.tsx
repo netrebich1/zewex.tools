@@ -11,14 +11,32 @@ const fmtS = (ms: number) => `${Math.round(ms / 1000)} с`;
 const verifyLabel = (v: VerifyResult) =>
   v.scheduled != null ? (v.scheduled > 0 ? `в расписании ${v.scheduled} пинов` : "в расписании пинов нет") : v.processing ? "ещё обрабатывается" : v.published == null ? "статус не прочитан" : `опубликовано ${v.published}${v.failed ? `, ошибок ${v.failed}` : ""}`;
 
+/** Из текста проверки (агент 0.1.6: «адрес Created», затем «Scheduled Pins 100 Pins · Only visible to you 0d …») — адрес и строка блока без хвоста. */
+function createdInfo(v: VerifyResult | undefined): { url: string | null; line: string | null } | null {
+  if (!v?.text || v.scheduled === undefined) return null;
+  const [first, ...rest] = v.text.split("\n");
+  const url = /^https?:\/\//.test(first) ? first.trim() : null;
+  const body = (url ? rest.join(" ") : v.text).replace(/\s+/g, " ").trim();
+  const m = /scheduled pins?.*?only visible to you/i.exec(body);
+  return { url, line: m ? m[0] : body.slice(0, 120) || null };
+}
+
 function TaskRow({ t }: { t: TaskView }) {
   const [open, setOpen] = useState(false);
   const v = t.result?.verify;
   const shot = t.result?.screenshot ?? v?.screenshot ?? null;
+  const created = createdInfo(v);
   return (
     <>
       <tr className={t.status === "FAILED" ? "bg-danger-soft/30" : t.status === "SKIPPED" ? "bg-warn-soft/30" : ""}>
-        <td className="font-medium">{t.siteName}<div className="help">{t.profileName ? `${t.profileName} · ${t.profileId}` : t.profileId}</div>{t.errorLabel ? <div className="sm:hidden text-[12.5px] font-normal text-danger">{t.errorLabel}</div> : null}</td>
+        <td className="font-medium">{t.siteName}<div className="help">{t.profileName ? `${t.profileName} · ${t.profileId}` : t.profileId}</div>
+          {created ? (
+            <div className="mt-1.5 rounded-lg border border-line bg-ink/5 px-2 py-1 text-[12.5px] font-normal">
+              <div className={v?.scheduled ? "text-ok" : "text-warn"}><b>{created.line ?? verifyLabel(v!)}</b></div>
+              {created.url ? <a href={created.url} target="_blank" rel="noreferrer" className="help underline break-all">{created.url.replace(/^https?:\/\/(www\.)?/, "")}</a> : null}
+            </div>
+          ) : null}
+          {t.errorLabel ? <div className="sm:hidden text-[12.5px] font-normal text-danger">{t.errorLabel}</div> : null}</td>
         <td className="col-sm help">{t.phase === "verify" ? "проверка" : "заливка"}</td>
         <td><TaskBadge status={t.status} />{t.attempts > 1 ? <span className="help ml-1">попытка {t.attempts}</span> : null}</td>
         <td className="tabular-nums">{t.rows ?? "—"}<div className="help">{t.fileName ?? ""}</div></td>
