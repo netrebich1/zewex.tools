@@ -11,9 +11,13 @@ import { log } from "./log";
 import { AGENT_VERSION, DEFAULT_HUMANIZE, PROTOCOL, type AgentTask, type UplHumanize } from "./protocol";
 import { runTask } from "./task";
 import { maybeUpdate } from "./update";
-import { startTray } from "./tray";
+import { anotherInstanceRunning, startTray } from "./tray";
 
 async function main() {
+  if (await anotherInstanceRunning()) {
+    log.error("агент уже запущен в другом окне — второй экземпляр не нужен, это окно можно закрыть");
+    process.exit(0);
+  }
   let cfg = loadConfig() ?? (await askConfig());
   let api = new PortalClient(cfg.portal, cfg.token);
   const dolphin = new Dolphin(null);

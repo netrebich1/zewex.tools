@@ -32,10 +32,9 @@ export const PINTEREST = {
   /** Тексты успеха / ошибки после загрузки */
   success: /uploaded|processing|in progress|will be (published|created)|queued|received|success|being created|complete|imported|we.ll (create|publish)|scheduled/i,
   failure: /error|invalid|failed|wrong format|couldn.t|could not|unable|not supported|too many|limit|try again/i,
-  /** Вход в историю загрузок */
-  historyEntry: ['a:has-text("History")', 'button:has-text("History")', 'a:has-text("Upload history")', 'a:has-text("Bulk upload history")', '[data-test-id*="history"]', 'a[href*="history"]'],
-  historyRows: ['table tr', '[role="row"]', '[data-test-id*="history"] li'],
-  historyPublished: /(\d+)\s*(?:pins?\s*)?(published|created|succeeded|successful|complete)/i,
-  historyFailed: /(\d+)\s*(?:pins?\s*)?(failed|errors?|rejected)/i,
-  historyProcessing: /processing|in progress|pending|queued|validating/i,
+  /** Профиль → вкладка Created (проверено 2026-11-02): блок «Scheduled Pins», под ним «4 Pins · Only visible to you». */
+  createdUrl: (username: string) => `https://www.pinterest.com/${encodeURIComponent(username)}/_created/`,
+  profileLink: ['[data-test-id="header-profile"] a', 'a[data-test-id="header-profile"]', '[data-test-id="profile-avatar"] a'],
+  scheduledTitle: /scheduled pins?/i,
+  scheduledCount: /scheduled pins?\s+(\d[\d,]*)\s*pins?\b/i,
 };

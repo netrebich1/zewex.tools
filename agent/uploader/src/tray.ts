@@ -5,6 +5,17 @@
 import { createServer } from "node:http";
 import { log } from "./log";
 
+/** Окно состояния уже отвечает — значит, агент запущен в другом окне (27–28.10 их было два, и они мешали обновлению). */
+export async function anotherInstanceRunning(): Promise<boolean> {
+  const port = Number(process.env.ZEWEX_UPLOADER_PORT || 47831);
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/state`, { signal: AbortSignal.timeout(2000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export function startTray(info: { portal: string; version: string }): void {
   const port = Number(process.env.ZEWEX_UPLOADER_PORT || 47831);
   const html = () => `<!doctype html><html lang="ru"><meta charset="utf-8"><meta http-equiv="refresh" content="5"><title>Zewex Uploader</title>

@@ -1,6 +1,6 @@
 /** Копия протокола портала (src/lib/uploader/types.ts) — ровно то, что нужно агенту. При изменении протокола править оба файла. */
 
-export const AGENT_VERSION = "0.1.5";
+export const AGENT_VERSION = "0.1.6";
 export const PROTOCOL = 1;
 
 export type StepKind = "upload_csv" | "check_history" | "analytics";
@@ -22,7 +22,8 @@ export const DEFAULT_HUMANIZE: UplHumanize = {
   betweenSites: [60, 180], afterOpen: [3, 8], feedScrolls: [1, 3], scrollPause: [2, 5], beforeUpload: [2, 6], afterUpload: [5, 15], typeMs: [60, 180], browseFeed: true,
 };
 
-export type VerifyResult = { published: number | null; failed: number | null; processing: boolean; text?: string | null };
+/** scheduled — сколько пинов в блоке «Scheduled Pins» на вкладке Created профиля (null — блок не прочитан). */
+export type VerifyResult = { published: number | null; failed: number | null; processing: boolean; scheduled?: number | null; text?: string | null };
 
 export type AgentTask = {
   id: string;

@@ -35,13 +35,17 @@ cd /d "%~dp0"
 title Zewex Uploader
 :loop
 node.exe dist\index.js
-if "%errorlevel%"=="75" (
-  set /p UPD=<"%LOCALAPPDATA%\ZewexUploader\update\pending.txt"
-  echo Updating from "%UPD%" ...
-  xcopy "%UPD%\*" "%~dp0." /E /Y /Q >nul
-  del "%LOCALAPPDATA%\ZewexUploader\update\pending.txt"
-  goto loop
-)
+if not "%errorlevel%"=="75" goto done
+rem Без скобок: внутри ( ) %UPD% раскрывался до set /p и был пуст (xcopy "\*" = корень диска) — так было до 0.1.6.
+set "UPD="
+if exist "%LOCALAPPDATA%\ZewexUploader\update\pending.txt" set /p UPD=<"%LOCALAPPDATA%\ZewexUploader\update\pending.txt"
+del "%LOCALAPPDATA%\ZewexUploader\update\pending.txt" 2>nul
+if not defined UPD goto loop
+if not exist "%UPD%\dist\index.js" goto loop
+echo Updating from "%UPD%" ...
+xcopy "%UPD%\*" "%~dp0." /E /Y /Q >nul
+goto loop
+:done
 pause
 CMD
 sed -i 's/$/\r/' "$STAGE/zewex-uploader/ZewexUploader.cmd"

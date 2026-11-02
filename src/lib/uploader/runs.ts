@@ -5,7 +5,7 @@
 import { Prisma, type UplRun, type UplTask } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
-import { eventText, logEventByPinSite } from "@/lib/projects/events";
+import { logEventByPinSite } from "@/lib/projects/events";
 import { TZ } from "@/lib/pins/runs/stats";
 import { todayKey } from "@/lib/pins/schedule/math";
 import { previewDay } from "./csv";
@@ -144,6 +144,13 @@ async function startVerify(run: UplRun): Promise<void> {
   ]);
 }
 
+/** Итог проверки словами: с 0.1.6 агент считает пины в «Scheduled Pins» на вкладке Created профиля. */
+export function verifyText(v: VerifyResult): string {
+  if (v.scheduled != null) return v.scheduled > 0 ? `в расписании ${v.scheduled} пинов` : "в расписании пинов нет (Pinterest ещё создаёт?)";
+  if (v.processing) return "Pinterest ещё обрабатывает";
+  return v.published == null ? "статус не прочитан" : `опубликовано ${v.published}${v.failed ? `, ошибок ${v.failed}` : ""}`;
+}
+
 /** Результат проверки — в исходное задание заливки, в отметку CRM и в ленту проекта. */
 export async function applyVerify(task: UplTask, v: VerifyResult): Promise<void> {
   const upload = await prisma.uplTask.findFirst({ where: { runId: task.runId, pinSiteId: task.pinSiteId, day: task.day, phase: "upload", status: "DONE" } });
@@ -151,10 +158,10 @@ export async function applyVerify(task: UplTask, v: VerifyResult): Promise<void>
     const prev = (upload.result as TaskResult | null) ?? {};
     await prisma.uplTask.update({ where: { id: upload.id }, data: { result: { ...prev, verify: { ...v, checkedAt: new Date().toISOString() } } as Prisma.InputJsonValue } });
   }
-  const note = v.processing ? "проверка: Pinterest ещё обрабатывает" : v.published == null ? "проверка: статус не прочитан" : `проверка: опубликовано ${v.published}${v.failed ? `, ошибок ${v.failed}` : ""}`;
+  const note = `проверка: ${verifyText(v)}${v.screenshot ? ` · ${v.screenshot}` : ""}`;
   await prisma.prjUpload.updateMany({ where: { pinSiteId: task.pinSiteId, day: task.day }, data: { note } });
   await prisma.uplAccount.updateMany({ where: { pinSiteId: task.pinSiteId }, data: { lastCheckAt: new Date() } });
-  if (!v.processing) void logEventByPinSite(task.pinSiteId, { kind: "export_verified", refId: `${task.pinSiteId}|${task.day}`, summary: eventText.exportVerified(task.day, v.published, v.failed), payload: { published: v.published, failed: v.failed } });
+  if (!v.processing) void logEventByPinSite(task.pinSiteId, { kind: "export_verified", refId: `${task.pinSiteId}|${task.day}`, summary: `Проверка в Pinterest за ${task.day}: ${verifyText(v)}`, payload: { published: v.published, failed: v.failed, scheduled: v.scheduled ?? null, screenshot: v.screenshot ?? null } });
 }
 
 /** Локальное время агента «HH:MM» и день «YYYY-MM-DD» в его поясе. */

@@ -5,7 +5,7 @@ import type { Dolphin } from "./dolphin";
 import { AgentError, toAgentError } from "./errors";
 import { pause, rand, sleep } from "./humanize";
 import { log } from "./log";
-import { assertLoggedIn, bulkUpload, openPinterest, pageHtml, readHistory, readUsername, screenshot } from "./pinterest";
+import { assertLoggedIn, bulkUpload, openPinterest, pageHtml, readScheduled, readUsername, screenshot } from "./pinterest";
 import type { AgentTask, UplHumanize } from "./protocol";
 
 export type TaskEnv = { api: PortalClient; dolphin: Dolphin; humanize: UplHumanize; bulkUrl: string | null; stopped: () => boolean };
@@ -60,11 +60,10 @@ export async function runTask(task: AgentTask, env: TaskEnv): Promise<void> {
       await api.finishUpload(task.id, { rowsSeen: r.rowsSeen, message: r.message, screenshot: shot, timings });
       log.info(`${label}: загружено${r.rowsSeen != null ? `, строк ${r.rowsSeen}` : ""}`);
     } else {
-      const v = await readHistory(page, task.expectFileName, env.bulkUrl, h, step);
-      const shot = await screenshot(page);
+      const { result: v, shot } = await readScheduled(page, username ?? task.pinUsername, h, step);
       timings.total = Date.now() - t0;
       await api.finishVerify(task.id, v, shot);
-      log.info(`${label}: история — ${v.processing ? "обрабатывается" : `опубликовано ${v.published ?? "?"}, ошибок ${v.failed ?? 0}`}`);
+      log.info(`${label}: в расписании ${v.scheduled ?? "?"} пинов`);
     }
   } catch (e) {
     const err = toAgentError(e);

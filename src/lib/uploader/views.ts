@@ -12,7 +12,7 @@ export type TodayRow = {
   file: { fileName: string; count: number; issues: number } | null;
   account: { profileId: string | null; profileName: string | null; status: string; pausedUntil: Date | null; lastUploadAt: Date | null; lastError: string | null; pinUsername: string | null } | null;
   uploaded: { at: Date; source: string; note: string | null } | null;
-  lastTask: { id: string; runId: string; status: string; errorKind: string | null; error: string | null; finishedAt: Date | null } | null;
+  lastTask: { id: string; runId: string; status: string; errorKind: string | null; error: string | null; finishedAt: Date | null; scheduled: number | null; createdShot: string | null } | null;
 };
 
 /** Таблица «Сегодня»: сайты с файлом на день, их профиль, состояние аккаунта, отметка заливки, последняя попытка. */
@@ -22,7 +22,7 @@ export async function todayRows(me: CurrentUser, day = todayKey(new Date(), TZ))
   const [accounts, uploads, tasks] = await Promise.all([
     prisma.uplAccount.findMany({ where: { pinSiteId: { in: ids } } }),
     prisma.prjUpload.findMany({ where: { pinSiteId: { in: ids }, day } }),
-    prisma.uplTask.findMany({ where: { pinSiteId: { in: ids }, day, phase: "upload" }, orderBy: { updatedAt: "desc" }, select: { id: true, runId: true, pinSiteId: true, status: true, errorKind: true, error: true, finishedAt: true } }),
+    prisma.uplTask.findMany({ where: { pinSiteId: { in: ids }, day, phase: "upload" }, orderBy: { updatedAt: "desc" }, select: { id: true, runId: true, pinSiteId: true, status: true, errorKind: true, error: true, finishedAt: true, result: true } }),
   ]);
   const accBy = new Map(accounts.map((a) => [a.pinSiteId, a]));
   const upBy = new Map(uploads.map((u) => [u.pinSiteId, u]));
@@ -40,7 +40,7 @@ export async function todayRows(me: CurrentUser, day = todayKey(new Date(), TZ))
       file,
       account: a ? { profileId: a.profileId, profileName: a.profileName, status: a.status, pausedUntil: a.pausedUntil, lastUploadAt: a.lastUploadAt, lastError: a.lastError, pinUsername: a.pinUsername } : null,
       uploaded: u ? { at: u.uploadedAt, source: u.source, note: u.note } : null,
-      lastTask: t ? { id: t.id, runId: t.runId, status: t.status, errorKind: t.errorKind, error: t.error, finishedAt: t.finishedAt } : null,
+      lastTask: t ? { id: t.id, runId: t.runId, status: t.status, errorKind: t.errorKind, error: t.error, finishedAt: t.finishedAt, scheduled: (t.result as TaskResult | null)?.verify?.scheduled ?? null, createdShot: (t.result as TaskResult | null)?.verify?.screenshot ?? null } : null,
     });
   }
   return out;

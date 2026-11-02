@@ -1,4 +1,4 @@
-/** Действия на Pinterest: проверка входа и имени, массовая загрузка CSV, чтение истории загрузок. */
+/** Действия на Pinterest: проверка входа и имени, массовая загрузка CSV, пины в расписании на вкладке Created. */
 import type { Page } from "playwright-core";
 import { AgentError } from "./errors";
 import { browseFeed, humanClick, pause, rand, sleep } from "./humanize";
@@ -128,24 +128,40 @@ function diff(before: string, after: string): string {
   return after.split("\n").map((l) => l.trim()).filter((l) => l && !old.has(l)).join("\n");
 }
 
-/** История массовых загрузок: найти запись по имени файла (или самую свежую), прочитать статус. */
-export async function readHistory(page: Page, expectFileName: string | null, bulkUrl: string | null, h: UplHumanize, onStep: (s: string) => Promise<void>): Promise<VerifyResult> {
-  await onStep("открываю историю загрузок");
-  await openBulkPage(page, bulkUrl, h).catch((e) => { if (!(e instanceof AgentError && e.kind === "upload_form_changed")) throw e; });
-  const entry = await firstVisible(page, S.historyEntry, 8000);
-  if (entry) { await humanClick(page, entry, h); await sleep(rand(2000, 4000)); }
-  let rows: string[] = [];
-  for (const s of S.historyRows) {
-    const texts = await page.locator(s).allInnerTexts().catch(() => [] as string[]);
-    if (texts.length > 1) { rows = texts.map((t) => t.replace(/\s+/g, " ").trim()).filter(Boolean); break; }
+/**
+ * Проверка после заливки: профиль → вкладка Created → блок «Scheduled Pins» («N Pins · Only visible to you»).
+ * Возвращает число пинов в расписании (0 — блока нет, null — страница профиля не открылась) и снимок с этим блоком.
+ */
+export async function readScheduled(page: Page, username: string | null, h: UplHumanize, onStep: (s: string) => Promise<void>): Promise<{ result: VerifyResult; shot: string | null }> {
+  await onStep("открываю профиль → Created");
+  let url = username ? S.createdUrl(username) : null;
+  if (!url) {
+    await page.goto(S.home, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await sleep(rand(2000, 4000));
+    const link = await firstVisible(page, S.profileLink, 8000);
+    const href = link ? await page.locator(link).first().getAttribute("href").catch(() => null) : null;
+    const name = href?.split("/").filter(Boolean)[0] ?? null;
+    if (name) url = S.createdUrl(name);
   }
-  const body = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
-  const base = expectFileName ? expectFileName.replace(/\.csv$/i, "") : null;
-  const row = (base && rows.find((r) => r.includes(base))) ?? rows.find((r) => /\.csv/i.test(r)) ?? null;
-  const text = row ?? body.slice(0, 2000);
-  const pub = S.historyPublished.exec(text);
-  const fail = S.historyFailed.exec(text);
-  const processing = S.historyProcessing.test(text) && !pub;
-  if (!row && !rows.length) log.warn("история загрузок: таблица не найдена, беру текст страницы");
-  return { published: pub ? Number(pub[1]) : null, failed: fail ? Number(fail[1]) : null, processing, text: (row ? `${row}\n---\n` : "") + rows.slice(0, 15).join("\n") };
+  if (!url) return { result: { published: null, failed: null, processing: false, scheduled: null, text: "не нашёл адрес профиля" }, shot: await screenshot(page) };
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+  await pause(h.afterOpen);
+  if (S.loginUrl.test(page.url())) throw new AgentError("not_logged_in", "Pinterest открыл страницу входа", await screenshot(page));
+  // Блок расписания подгружается не сразу — ждём заголовок до 15 с; нет — значит пинов в расписании нет.
+  const title = page.getByText(S.scheduledTitle).first();
+  let found = false;
+  try { await title.waitFor({ state: "visible", timeout: 15000 }); found = true; } catch { /* блока нет */ }
+  if (found) {
+    await title.scrollIntoViewIfNeeded().catch(() => {});
+    await page.mouse.wheel(0, -200).catch(() => {});
+    await sleep(rand(1500, 3000));
+  }
+  const body = (await page.locator("body").innerText().catch(() => "")).slice(0, 20000);
+  const m = S.scheduledCount.exec(body);
+  const scheduled = m ? Number(m[1].replace(/[,\s.]/g, "")) : found ? null : 0;
+  const shot = await screenshot(page);
+  const at = body.search(S.scheduledTitle);
+  const text = at >= 0 ? body.slice(at, at + 200).replace(/\s+/g, " ").trim() : "блока «Scheduled Pins» на вкладке Created нет";
+  // 0 сразу после заливки — Pinterest ещё создаёт пины (до ~2 ч): портал зайдёт ещё раз.
+  return { result: { published: null, failed: null, processing: scheduled === 0, scheduled, text: `${page.url()}\n${text}` }, shot };
 }

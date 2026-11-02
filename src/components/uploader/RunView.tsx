@@ -3,10 +3,13 @@ import { useEffect, useState } from "react";
 import { pollWhileVisible } from "@/lib/poll";
 import { Card } from "@/components/ui";
 import type { RunView as RunViewT, TaskView } from "@/lib/uploader/views";
-import { RUN_LIVE } from "@/lib/uploader/types";
+import { RUN_LIVE, type VerifyResult } from "@/lib/uploader/types";
 import { AgentBadge, RunBadge, TaskBadge, dt } from "./ui";
 
 const fmtS = (ms: number) => `${Math.round(ms / 1000)} с`;
+/** Как verifyText в lib/uploader/runs.ts (тот серверный, сюда не импортируется). */
+const verifyLabel = (v: VerifyResult) =>
+  v.scheduled != null ? (v.scheduled > 0 ? `в расписании ${v.scheduled} пинов` : "в расписании пинов нет") : v.processing ? "ещё обрабатывается" : v.published == null ? "статус не прочитан" : `опубликовано ${v.published}${v.failed ? `, ошибок ${v.failed}` : ""}`;
 
 function TaskRow({ t }: { t: TaskView }) {
   const [open, setOpen] = useState(false);
@@ -23,11 +26,12 @@ function TaskRow({ t }: { t: TaskView }) {
           {t.status === "LEASED" ? <span className="text-brand">{t.step ?? "в работе"}</span> : null}
           {t.errorLabel ? <div className="text-danger">{t.errorLabel}{t.error && t.error !== t.errorLabel ? <span className="help"> — {t.error}</span> : null}</div> : t.status === "SKIPPED" && t.error ? <div className="text-warn">{t.error}</div> : null}
           {t.status === "DONE" && t.phase === "upload" ? <div className="text-ok">файл принят{t.result?.rowsSeen != null ? `, строк ${t.result.rowsSeen}` : ""}{t.result?.message ? <span className="help"> · {t.result.message}</span> : null}</div> : null}
-          {v ? <div className={v.processing ? "text-warn" : "text-ok"}>проверка: {v.processing ? "ещё обрабатывается" : v.published == null ? "статус не прочитан" : `опубликовано ${v.published}${v.failed ? `, ошибок ${v.failed}` : ""}`}</div> : null}
+          {v ? <div className={v.processing || v.scheduled === 0 ? "text-warn" : "text-ok"}>проверка: {verifyLabel(v)}</div> : null}
         </td>
         <td className="col-sm help whitespace-nowrap">{t.startedAt ? dt(t.startedAt) : "—"}{t.finishedAt && t.result?.timings?.total ? ` · ${fmtS(t.result.timings.total)}` : ""}</td>
         <td className="text-right whitespace-nowrap">
           {shot ? <a href={shot} target="_blank" rel="noreferrer" className="btn-ghost btn-sm">Скриншот</a> : null}
+          {v?.screenshot && v.screenshot !== shot ? <a href={v.screenshot} target="_blank" rel="noreferrer" className="btn-ghost btn-sm">Created</a> : null}
           {t.result?.html || v?.text ? <button type="button" className="btn-ghost btn-sm" onClick={() => setOpen(!open)}>{open ? "Скрыть" : "Подробнее"}</button> : null}
         </td>
       </tr>

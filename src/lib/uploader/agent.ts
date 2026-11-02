@@ -10,7 +10,7 @@ import { canUseTool, resolvePermissions } from "@/lib/permissions";
 import { writeFileAtomic, publicUrl } from "@/lib/pins/storage";
 import { eventText, logEventByPinSite } from "@/lib/projects/events";
 import { matchScore } from "./match";
-import { applyVerify, leaseUntil, settleRun, uplSettings } from "./runs";
+import { applyVerify, leaseUntil, settleRun, uplSettings, verifyText } from "./runs";
 import { ERROR_LABELS, MAX_ATTEMPTS, PAUSE_HOURS, PROTOCOL, TRANSIENT, UPLOADER, parseHumanize, type AgentTask, type ErrorKind, type Step, type TaskResult, type VerifyResult } from "./types";
 
 export const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
@@ -210,10 +210,10 @@ export async function finish(ctx: Ctx, b: Body) {
     await event(t.pinSiteId, t.id, "upload", "ok", `${t.day}: файл ${t.fileName ?? ""} принят${rows != null ? `, строк ${rows}` : ""}`);
   } else {
     const vr = (r.verify && typeof r.verify === "object" ? r.verify : r) as Record<string, unknown>;
-    const v: VerifyResult = { published: num(vr.published), failed: num(vr.failed), processing: vr.processing === true, text: str(vr.text, 2000), screenshot: shot };
+    const v: VerifyResult = { published: num(vr.published), failed: num(vr.failed), processing: vr.processing === true, scheduled: num(vr.scheduled), text: str(vr.text, 2000), screenshot: shot };
     await prisma.uplTask.update({ where: { id: t.id }, data: { status: "DONE", leaseUntil: null, finishedAt: now, step: "готово", result: { ...prev, verify: v, screenshot: shot } as Prisma.InputJsonValue } });
     await applyVerify(t, v);
-    await event(t.pinSiteId, t.id, "check", "ok", `${t.day}: ${v.processing ? "ещё обрабатывается" : v.published == null ? "статус не прочитан" : `опубликовано ${v.published}, ошибок ${v.failed ?? 0}`}`);
+    await event(t.pinSiteId, t.id, "check", "ok", `${t.day}: ${verifyText(v)}`);
   }
   await settleRun(t.runId);
   return { ok: true };

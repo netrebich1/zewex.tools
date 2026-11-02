@@ -2,11 +2,14 @@
  * Автообновление: портал в каждом ответе присылает `latest` (версию) и `latestUrl` (ZIP на нашем сервере).
  * Если версия новее — качаем ZIP в <dataDir>/update, распаковываем (PowerShell Expand-Archive), пишем pending.txt
  * и выходим с кодом 75. ZewexUploader.cmd видит код 75, копирует распакованные файлы поверх своей папки и запускает агент снова.
+ * С 0.1.6 агент сам копирует новые файлы в свою папку до выхода (у запускателя до 0.1.6 копирование не работало —
+ * пустой %UPD% в блоке скобок; 01–02.11 агент перезапускался по кругу), а попытку обновления до версии помнит в файле:
+ * если после перезапуска версия всё та же — 6 часов не пробует снова.
  * Работает только в собранной версии на Windows (dist/*.js); в режиме разработки (tsx) и на других системах — пропуск.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { log } from "./log";
 import { dataDir } from "./paths";
 import { AGENT_VERSION } from "./protocol";
@@ -33,6 +36,14 @@ export async function maybeUpdate(latest: string | undefined, latestUrl: string 
   const dir = join(dataDir(), "update");
   const zip = join(dir, `zewex-uploader-${latest}.zip`);
   const out = join(dir, latest);
+  const mark = join(dir, `attempt-${latest}.txt`);
+  try {
+    const last = existsSync(mark) ? Number(readFileSync(mark, "utf8")) || 0 : 0;
+    if (Date.now() - last < 6 * 3600_000) {
+      log.warn(`обновление до ${latest} уже пробовал в ${new Date(last).toLocaleString("ru-RU")}, но запустилась ${AGENT_VERSION} — следующая попытка через 6 ч. Обновите вручную: ZIP на странице «Агенты»`);
+      return;
+    }
+  } catch { /* нет отметки — пробуем */ }
   try {
     mkdirSync(dir, { recursive: true });
     log.setState(`обновление до ${latest}: скачиваю`);
@@ -48,6 +59,13 @@ export async function maybeUpdate(latest: string | undefined, latestUrl: string 
     if (!existsSync(join(root, "dist", "index.js")) || !existsSync(join(root, "node.exe"))) throw new Error("в архиве нет dist/index.js или node.exe");
     // Сам запускатель не перезаписываем: он выполняется в этот момент (cmd читает файл по ходу).
     rmSync(join(root, "ZewexUploader.cmd"), { force: true });
+    // Копируем сами: dist и node_modules заменяются на ходу; node.exe занят этим процессом — его только если другой размер.
+    const self = join(__dirname, "..");
+    cpSync(root, self, {
+      recursive: true, force: true,
+      filter: (src) => basename(src) !== "node.exe" || !existsSync(join(self, "node.exe")) || statSync(src).size !== statSync(join(self, "node.exe")).size,
+    });
+    writeFileSync(mark, String(Date.now()), "utf8");
     writeFileSync(join(dir, "pending.txt"), root, "utf8");
     log.info(`обновление до ${latest} готово — перезапускаюсь`);
     process.exit(UPDATE_EXIT_CODE);

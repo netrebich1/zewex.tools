@@ -118,7 +118,8 @@ export function parseHumanize(v: unknown): UplHumanize {
 }
 
 /** Результат проверки истории загрузок Pinterest. */
-export type VerifyResult = { published: number | null; failed: number | null; processing: boolean; text?: string | null; screenshot?: string | null; checkedAt?: string };
+/** scheduled — пинов в блоке «Scheduled Pins» на вкладке Created профиля (null — не прочитано), screenshot — снимок этой вкладки. */
+export type VerifyResult = { published: number | null; failed: number | null; processing: boolean; scheduled?: number | null; text?: string | null; screenshot?: string | null; checkedAt?: string };
 
 /** Результат задания от агента (UplTask.result). */
 export type TaskResult = {
