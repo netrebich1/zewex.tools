@@ -288,26 +288,52 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
       out[i] = first;
       return;
     }
-    const rewrote = issues.some((x) => x.code === "rewrite");
-    const note = rewrote
-      ? "ВАЖНО: предыдущий ответ переписал текст. Верни ПОЛНЫЙ фрагмент целиком, меняя ТОЛЬКО отдельные слова и словосочетания; структуру предложений и их порядок сохрани дословно.\n\n"
-      : "Верни ПОЛНЫЙ фрагмент целиком.\n\n";
-    // Пересказ при сверке с оригиналом — обычно модель вернула формулировки оригинала (стенд: до 79% слов).
-    // Второй заход без оригинала: только чистка языка, уникализация перевода сохраняется.
-    const retryCtx = rewrote && kctx?.reference ? { ...kctx, reference: undefined } : kctx;
-    try {
-      const retry = repairPlaceholders(src, await editChunk(ctx, prompt, src, note, retryCtx));
-      const retryIssues = grade(retry);
-      if (!chunkIsFatal(retryIssues, opts.relaxTags)) {
-        warnings.push(...retryIssues.map((x) => ({ ...x, detail: `фрагмент ${i + 1}: ${x.detail}` })));
-        out[i] = retry;
-        return;
+    // До 3 повторов, указание с каждым строже (было 1 повтор — фрагмент на 24% при пороге 22% оставался необработанным).
+    // Ответ, у которого единственная беда — «переписано чуть больше порога», запоминаем: если все повторы не пройдут,
+    // берём самый бережный из них (до 1,5 порога) вместо исходного фрагмента. Пустой/обрезанный/без разметки — никогда.
+    const softMax = opts.maxRewritePct !== undefined ? Math.round(opts.maxRewritePct * 1.5) : 0;
+    let best: { html: string; pct: number; issues: QualityIssue[] } | null = null;
+    const consider = (html: string, list: QualityIssue[]) => {
+      if (opts.maxRewritePct === undefined || chunkIsFatal(list.filter((x) => x.code !== "rewrite"), opts.relaxTags)) return;
+      const pct = rewritePct(src, html);
+      if (pct <= softMax && (!best || pct < best.pct)) best = { html, pct, issues: list };
+    };
+    consider(first, issues);
+    let last = issues;
+    const rewriteNotes = [
+      "ВАЖНО: предыдущий ответ переписал текст. Верни ПОЛНЫЙ фрагмент целиком, меняя ТОЛЬКО отдельные слова и словосочетания; структуру предложений и их порядок сохрани дословно.\n\n",
+      "ВАЖНО: ответ снова изменил слишком много слов. Исправь ТОЛЬКО явные ошибки и кальки перевода — не больше одного-двух слов в предложении. Остальной текст верни символ в символ.\n\n",
+      "ПОСЛЕДНЯЯ ПОПЫТКА: верни фрагмент практически без изменений — правь только грубые ошибки языка, ничего не перефразируй и не переставляй.\n\n",
+    ];
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const rewrote = last.some((x) => x.code === "rewrite");
+      const note = rewrote ? rewriteNotes[attempt]! : "Верни ПОЛНЫЙ фрагмент целиком.\n\n";
+      // Пересказ при сверке с оригиналом — обычно модель вернула формулировки оригинала (стенд: до 79% слов).
+      // Повтор без оригинала: только чистка языка, уникализация перевода сохраняется.
+      const retryCtx = rewrote && kctx?.reference ? { ...kctx, reference: undefined } : kctx;
+      try {
+        const retry = repairPlaceholders(src, await editChunk(ctx, prompt, src, note, retryCtx));
+        const retryIssues = grade(retry);
+        if (!chunkIsFatal(retryIssues, opts.relaxTags)) {
+          warnings.push(...retryIssues.map((x) => ({ ...x, detail: `фрагмент ${i + 1}: ${x.detail}` })));
+          out[i] = retry;
+          return;
+        }
+        consider(retry, retryIssues);
+        last = retryIssues;
+      } catch (e) {
+        if (e instanceof AiError && e.cls.kind === "fatal_run") throw e;
       }
-    } catch (e) {
-      if (e instanceof AiError && e.cls.kind === "fatal_run") throw e;
+    }
+    const pick = best as { html: string; pct: number; issues: QualityIssue[] } | null;
+    if (pick) {
+      out[i] = pick.html;
+      // Не «chunk_rollback»: фрагмент обработан, статья не уходит в «Проверить» из-за пары лишних слов.
+      warnings.push({ code: "rewrite_soft", detail: `фрагмент ${i + 1}: принят самый бережный из ${4} вариантов — переписано ${pick.pct}% слов при пороге ${opts.maxRewritePct}%` });
+      return;
     }
     rolledBack++;
-    warnings.push({ code: "chunk_rollback", detail: `фрагмент ${i + 1}: результат не прошёл проверку (${issues.map((x) => x.detail).join("; ")}) — оставлен исходный фрагмент` });
+    warnings.push({ code: "chunk_rollback", detail: `фрагмент ${i + 1}: результат не прошёл проверку и после 3 повторов (${last.map((x) => x.detail).join("; ")}) — оставлен исходный фрагмент` });
   };
 
   const indexes = chunks.map((_, i) => i);
