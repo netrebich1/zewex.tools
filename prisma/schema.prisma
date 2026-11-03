@@ -1583,6 +1583,29 @@ model DeeplKey {
   updatedAt DateTime  @updatedAt
 }
 
+/// SOCKS5-прокси, через которые DeepL Articler ходит в API DeepL. Каждый ключ всегда идёт через один и тот же
+/// прокси (выбор по хешу ключа), чтобы аккаунты DeepL не светились с одного IP. Пусто — запросы идут напрямую.
+model DeeplProxy {
+  id            String    @id @default(uuid()) @db.Char(36)
+  host          String    @db.VarChar(255)
+  port          Int
+  username      String    @default("") @db.VarChar(255)
+  passwordEnc   String    @default("") @db.Text
+  isActive      Boolean   @default(true)
+  /// Сетевых сбоев подряд; на 3-м прокси выключается сам (lastError начинается с «Автоотключён»)
+  failCount     Int       @default(0)
+  lastError     String?   @db.Text
+  lastCheckedAt DateTime?
+  lastCheckOk   Boolean?
+  lastCheckNote String?   @db.Text
+  /// Внешний IP по последней проверке
+  exitIp        String?   @db.VarChar(64)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([host, port, username])
+}
+
 /// Промт этапа: headings (H2) | post_edit (постредактура) | any
 model DeeplPrompt {
   id        String   @id @default(uuid()) @db.Char(36)

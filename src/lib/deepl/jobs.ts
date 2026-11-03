@@ -158,11 +158,14 @@ export async function resumeJob(me: CurrentUser, id: string): Promise<number> {
 }
 
 /** Повтор статей: готовые и проверенные гоним заново с исходника, с ошибкой — продолжаем с последнего готового этапа. */
-export async function retryItems(me: CurrentUser, jobId: string, itemIds: string[] | "failed", fresh = false): Promise<number> {
+/** "failed" — с ошибкой и «проверить»; "all" — весь прогон заново с исходника (кроме статей в работе и в очереди). */
+export async function retryItems(me: CurrentUser, jobId: string, itemIds: string[] | "failed" | "all", fresh = false): Promise<number> {
   await requireJob(me, jobId);
   const where: Prisma.DeeplItemWhereInput = itemIds === "failed"
     ? { jobId, status: { in: ["error", "warning"] } }
-    : { jobId, id: { in: itemIds }, status: { notIn: ["processing", "pending"] } };
+    : itemIds === "all"
+      ? { jobId, status: { notIn: ["processing", "pending"] } }
+      : { jobId, id: { in: itemIds }, status: { notIn: ["processing", "pending"] } };
   const items = await prisma.deeplItem.findMany({ where, select: { id: true, status: true, stages: true } });
   for (const it of items) {
     const full = fresh || it.status === "done" || it.status === "warning";

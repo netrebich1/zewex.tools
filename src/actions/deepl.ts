@@ -86,8 +86,13 @@ export async function resumeDeeplJob(_p: FormState, f: FormData): Promise<FormSt
 export async function retryDeeplItems(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   try {
+    // Без рабочего ключа статьи сразу упадут снова — говорим об этом до постановки в очередь.
+    if (!(await prisma.deeplKey.count({ where: { isActive: true, deletedAt: null } }))) {
+      throw new Error("Нет рабочих ключей DeepL — сначала добавьте или включите ключ на вкладке «Ключи DeepL», потом перезапускайте");
+    }
     const ids = f.getAll("itemId").map(String).filter(Boolean);
-    const n = await retryItems(me, str(f, "id"), ids.length ? ids : "failed", f.get("fresh") === "1");
+    const all = f.get("all") === "1";
+    const n = await retryItems(me, str(f, "id"), all ? "all" : ids.length ? ids : "failed", all || f.get("fresh") === "1");
     revalidatePath(runPath(str(f, "id")));
     return n ? { ok: `Снова в очереди: ${n}` } : { error: "Нечего повторять" };
   } catch (e) {
@@ -286,6 +291,40 @@ export async function refreshDeeplKeys(_p: FormState, _f: FormData): Promise<For
     return r.failed ? { error: `Проверено ${r.ok + r.failed}: работают ${r.ok}, с ошибкой ${r.failed}${bad}${revived}` } : { ok: `Все ключи работают (${r.ok}), расход обновлён${revived}` };
   } catch (e) {
     return fail(e);
+  }
+}
+
+/* ---------- Проверка ключей без сохранения (вкладка «Проверка ключей») ---------- */
+
+export type KeyCheckRow = { secret: string; hint: string; label: string; plan: "Free" | "Pro"; ok: boolean; note: string; used: number | null; limit: number | null; inTool: boolean };
+export type KeyCheckState = { error?: string; rows?: KeyCheckRow[]; at?: string };
+
+/** Вставили ключи — спросили DeepL (/v2/usage) про каждый: принят ли, сколько символов израсходовано и осталось. Ничего не сохраняет. */
+export async function checkDeeplKeysTool(_p: KeyCheckState, f: FormData): Promise<KeyCheckState> {
+  try {
+    await requireUser();
+    const found: { secret: string; label: string }[] = [];
+    for (const line of String(f.get("keys") ?? "").split(/\r?\n/)) {
+      let prevEnd = 0;
+      for (const m of line.matchAll(KEY_RE)) {
+        const label = line.slice(prevEnd, m.index).replace(/^[\s|:;,]+|[\s|:;,]+$/g, "").slice(0, 80);
+        prevEnd = (m.index ?? 0) + m[0].length;
+        if (!found.some((x) => x.secret.toLowerCase() === m[0].toLowerCase())) found.push({ secret: m[0], label });
+      }
+    }
+    if (!found.length) throw new Error("Не нашёл ни одного ключа DeepL. Ключ выглядит так: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx");
+    if (found.length > 300) throw new Error(`За раз — до 300 ключей, вставлено ${found.length}`);
+    const inTool = new Set((await prisma.deeplKey.findMany({ where: { deletedAt: null }, select: { secretEnc: true } })).map((k) => decryptSecret(k.secretEnc).trim().toLowerCase()));
+    const checks = await mapLimit(found, 8, (k) => checkDeeplKey(k.secret));
+    return {
+      at: new Date().toISOString(),
+      rows: found.map((k, i) => {
+        const c = checks[i]!;
+        return { secret: k.secret, hint: deeplHint(k.secret), label: k.label, plan: k.secret.toLowerCase().endsWith(":fx") ? "Free" : "Pro", ok: c.ok, note: c.note, used: c.ok ? (c.used ?? 0) : null, limit: c.ok ? (c.limit ?? null) : null, inTool: inTool.has(k.secret.toLowerCase()) };
+      }),
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
   }
 }
 

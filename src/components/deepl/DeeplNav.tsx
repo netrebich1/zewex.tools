@@ -6,6 +6,8 @@ const ITEMS = [
   { href: "/discovery/deepl", label: "Прогоны", exact: true },
   { href: "/discovery/deepl/new", label: "Новый прогон" },
   { href: "/discovery/deepl/keys", label: "Ключи DeepL" },
+  { href: "/discovery/deepl/check", label: "Проверка ключей" },
+  { href: "/discovery/deepl/proxies", label: "Прокси" },
   { href: "/discovery/deepl/settings", label: "Промты и сценарии" },
 ];
 

@@ -8,6 +8,7 @@
 import { createHash } from "crypto";
 import { prisma } from "@/lib/db";
 import { decryptSecret } from "@/lib/crypto";
+import { deeplFetch } from "./net";
 import {
   chunkHtml, chunkIsFatal, protectHtml, repairPlaceholders, repairTagDrift, restoreHtml, validateChunk, visibleTextLength,
   type QualityIssue,
@@ -147,7 +148,7 @@ async function deeplRequest(secret: string, text: string, target: string, source
   const body: Record<string, unknown> = { text: [text], target_lang: target, tag_handling: "html", ignore_tags: ["code", "pre", "x-ph"] };
   if (source) body.source_lang = source;
   try {
-    const res = await fetch(`${deeplBase(secret)}/translate`, {
+    const res = await deeplFetch(secret, `${deeplBase(secret)}/translate`, {
       method: "POST",
       headers: { Authorization: `DeepL-Auth-Key ${secret.trim()}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -289,7 +290,7 @@ export async function refreshDeeplUsage(ids?: string[]): Promise<{ ok: number; f
     const secret = decryptSecret(k.secretEnc);
     const now = new Date();
     try {
-      const res = await fetch(`${deeplBase(secret)}/usage`, { headers: { Authorization: `DeepL-Auth-Key ${secret.trim()}` }, signal: AbortSignal.timeout(20_000) });
+      const res = await deeplFetch(secret, `${deeplBase(secret)}/usage`, { headers: { Authorization: `DeepL-Auth-Key ${secret.trim()}` }, signal: AbortSignal.timeout(20_000) });
       if (!res.ok) {
         failed++;
         const rejected = res.status === 403 || res.status === 401;
@@ -348,7 +349,7 @@ export async function refreshDeeplUsage(ids?: string[]): Promise<{ ok: number; f
 /** Проверка ключа перед сохранением: /v2/usage отвечает 200. */
 export async function checkDeeplKey(secret: string): Promise<{ ok: boolean; note: string; used?: number; limit?: number | null }> {
   try {
-    const res = await fetch(`${deeplBase(secret)}/usage`, { headers: { Authorization: `DeepL-Auth-Key ${secret.trim()}` }, signal: AbortSignal.timeout(20_000) });
+    const res = await deeplFetch(secret, `${deeplBase(secret)}/usage`, { headers: { Authorization: `DeepL-Auth-Key ${secret.trim()}` }, signal: AbortSignal.timeout(20_000) });
     if (!res.ok) return { ok: false, note: deeplRefusal(res.status, await res.text()) };
     const u = (await res.json()) as { character_count?: number; character_limit?: number };
     const limit = typeof u.character_limit === "number" && u.character_limit > 0 && u.character_limit < 1e12 ? u.character_limit : null;
