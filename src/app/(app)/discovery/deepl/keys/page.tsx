@@ -106,7 +106,7 @@ export default async function DeeplKeysPage() {
                           <td className="whitespace-nowrap font-medium">{k.charLimit == null ? "без лимита" : fmt(Math.max(0, k.charLimit - k.charUsed))}</td>
                           <td className="col-sm">
                             <ActionForm action={updateDeeplKey} className="flex items-center gap-1" hidden={{ id: k.id, op: "limit" }}>
-                              <input name="limit" className="input w-28 !py-1 text-[13px]" defaultValue={k.charLimit ?? ""} />
+                              <input name="limit" className="input !w-28 !py-1 text-[13px]" defaultValue={k.charLimit ?? ""} />
                               <SubmitButton className="btn-ghost btn-sm" pendingText="…">OK</SubmitButton>
                             </ActionForm>
                             <div className="help">

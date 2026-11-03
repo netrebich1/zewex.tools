@@ -81,11 +81,32 @@ function releaseKey(k: PoolKey, chars: number): void {
   k.inflight = Math.max(0, k.inflight - 1);
 }
 
-async function markDead(k: PoolKey, note: string): Promise<void> {
+/**
+ * Понятная причина отказа DeepL. «This account is not allowed to access the API» — DeepL закрыл API аккаунту
+ * (ключ при этом выглядит обычным; так было 2026-11-03: /usage принял ключ в 15:22, в 15:45 — 403 на всё).
+ */
+export function deeplRefusal(status: number, body: string): string {
+  if (status === 456) return "лимит символов исчерпан (456)";
+  if (/not allowed to access the API/i.test(body)) return `DeepL закрыл доступ к API для аккаунта этого ключа (${status})`;
+  if (status === 403 || status === 401) return `DeepL отклонил ключ (${status})`;
+  return `DeepL ответил ${status}`;
+}
+
+async function markDead(k: PoolKey, status: number, body: string): Promise<void> {
   k.dead = true;
+  const now = new Date();
+  // Итог проверки тоже обновляется: иначе в списке висит «ключ принят» от прошлой проверки рядом с «выключен».
   await prisma.deeplKey.update({
     where: { id: k.id },
-    data: { isActive: false, lastError: note.slice(0, 500), deadAt: new Date(), deadReason: note.startsWith("456") ? "exhausted" : "rejected" },
+    data: {
+      isActive: false,
+      lastError: `${status}: ${body}`.slice(0, 500),
+      deadAt: now,
+      deadReason: status === 456 ? "exhausted" : "rejected",
+      lastCheckedAt: now,
+      lastCheckOk: false,
+      lastCheckNote: `при переводе: ${deeplRefusal(status, body)}`,
+    },
   }).catch(() => {});
 }
 
@@ -165,7 +186,9 @@ async function translateChunk(
   for (;;) {
     const key = await takeKey(need, skip);
     if (!key) {
-      throw new Error((await loadPool()).length ? "Нет доступных ключей DeepL: у всех рабочих ключей не хватает лимита символов — добавьте ключи или обновите расход" : "Нет активных ключей DeepL — добавьте ключи на вкладке «Ключи DeepL»");
+      const all = await loadPool();
+      if (all.length && all.every((k) => k.dead)) throw new Error("Нет рабочих ключей DeepL: DeepL отказал всем ключам при переводе (причина — в списке ключей) — добавьте или включите ключи");
+      throw new Error(all.length ? "Нет доступных ключей DeepL: у всех рабочих ключей не хватает лимита символов — добавьте ключи или обновите расход" : "Нет активных ключей DeepL — добавьте ключи на вкладке «Ключи DeepL»");
     }
     let res: DeeplResult;
     try {
@@ -175,7 +198,7 @@ async function translateChunk(
     }
     if (!res.ok) {
       if (res.status === 456 || res.status === 403 || res.status === 401) {
-        await markDead(key, `${res.status}: ${res.body}`);
+        await markDead(key, res.status, res.body);
         warnings.push({ code: "key_switch", detail: `${label}: ключ «${key.label}» недоступен (${res.status === 456 ? "лимит исчерпан" : res.status}), переключение` });
         skip.add(key.id);
         continue;
@@ -270,12 +293,13 @@ export async function refreshDeeplUsage(ids?: string[]): Promise<{ ok: number; f
       if (!res.ok) {
         failed++;
         const rejected = res.status === 403 || res.status === 401;
-        const note = rejected ? `DeepL отклонил ключ (${res.status})` : `DeepL ответил ${res.status}`;
+        const text = await res.text();
+        const note = deeplRefusal(res.status, text);
         notes.push(`${k.label}: ${note}`);
         await prisma.deeplKey.update({
           where: { id: k.id },
           data: {
-            lastError: `usage ${res.status}: ${(await res.text()).slice(0, 200)}`,
+            lastError: `usage ${res.status}: ${text.slice(0, 200)}`,
             usageAt: now,
             lastCheckedAt: now,
             lastCheckOk: false,
@@ -325,7 +349,7 @@ export async function refreshDeeplUsage(ids?: string[]): Promise<{ ok: number; f
 export async function checkDeeplKey(secret: string): Promise<{ ok: boolean; note: string; used?: number; limit?: number | null }> {
   try {
     const res = await fetch(`${deeplBase(secret)}/usage`, { headers: { Authorization: `DeepL-Auth-Key ${secret.trim()}` }, signal: AbortSignal.timeout(20_000) });
-    if (!res.ok) return { ok: false, note: res.status === 403 || res.status === 401 ? `DeepL отклонил ключ (${res.status})` : `DeepL ответил ${res.status}` };
+    if (!res.ok) return { ok: false, note: deeplRefusal(res.status, await res.text()) };
     const u = (await res.json()) as { character_count?: number; character_limit?: number };
     const limit = typeof u.character_limit === "number" && u.character_limit > 0 && u.character_limit < 1e12 ? u.character_limit : null;
     const used = u.character_count ?? 0;
