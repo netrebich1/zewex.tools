@@ -124,10 +124,14 @@ const ANTI_AI = `Пиши як живий редактор, не як ШІ. За
 - загальні слова замість деталі: не «стильний образ», а що саме (колір, крій, бренд, де і коли); не «емоційний допис», а що написала.
 Починай не з загальної фрази, а з факту, деталі, сцени, цитати або цифри. Фінал — «Нагадаємо, …» про конкретну попередню подію з героєм, якщо така є в ТЗ чи джерелах; якщо немає — закінчуй цитатою героя або фактом. Ніколи — мораллю чи узагальненням.`;
 
-/** 3 угла с форматом (кнопка «+ ТЗ для сайта»); taken — углы, уже взятые для других наших сайтов, их не повторяем. */
-export async function makeAngles(ctx: AiCtx, st: NewsSettings, c: ClusterForAi, ours: OurArticle[], taken: string[] = []): Promise<{ angles: Angle[]; competitorsAngle: string; gaps: string[] }> {
+/**
+ * 3 угла с форматом (кнопка «+ ТЗ для сайта»). taken — углы, уже предложенные или взятые для других наших сайтов:
+ * их не повторяем ни по подаче, ни по формату. voice — почерк этой редакции.
+ */
+export async function makeAngles(ctx: AiCtx, st: NewsSettings, c: ClusterForAi, ours: OurArticle[], taken: string[] = [], voice = ""): Promise<{ angles: Angle[]; competitorsAngle: string; gaps: string[] }> {
   const system = `Ти шеф-редактор українського жіночого медіа для Google Discover. Про сайт: ${st.siteAbout}
-${DISCOVER_RULES}
+${voice ? `Почерк цієї редакції (кути мають йому відповідати): ${voice}
+` : ""}${DISCOVER_RULES}
 
 Формати статті (format → коли доречний, обсяг):
 ${FORMAT_KEYS.map((k) => `- ${k} (${FORMATS[k].label}, ${FORMATS[k].words}): ${FORMATS[k].when}`).join("\n")}
@@ -143,7 +147,7 @@ ${BAIT_RULES}
 Якщо в публікаціях лише загальні слова без конкретики (немає цитати, цифри, назви, дати) — перший кут усе одно найближчий до події, але в fit напиши «мало фактів: автору відкрити першоджерело».
 Якщо інформаційний привід слабкий для нашої читачки (другорядна подія, герой маловідомий в Україні), скажи це в fit: «слабкий привід: …», інакше fit: «ok».
 Поверни лише JSON: {"fit":"…","competitors_angle":"…","gaps":["…"],"angles":[{"format":"moment","title":"…","angle":"…","why":"…","novelty":4,"usefulness":4}]}`;
-  const user = `Тема: ${c.title}\nКатегорія: ${c.category ? CATEGORY_LABELS[c.category] ?? c.category : "—"}${c.subcategory ? ` (${c.subcategory})` : ""}${c.entity ? `\nГерой: ${c.entity}` : ""}\nСигнали: ${c.signals.join("; ") || "—"}\n\nПублікації:\n${srcText(c, 700)}\n\nНаші схожі статті:\n${ours.map((o) => `- ${o.title} (${o.url})`).join("\n") || "— немає"}${taken.length ? `\n\nЦю новину вже пишуть інші наші сайти під такими кутами — не повторюй їх (ні формат+подачу, ні заголовок), запропонуй 3 інші, помітно відмінні:\n${taken.map((t) => `- ${t}`).join("\n")}` : ""}`;
+  const user = `Тема: ${c.title}\nКатегорія: ${c.category ? CATEGORY_LABELS[c.category] ?? c.category : "—"}${c.subcategory ? ` (${c.subcategory})` : ""}${c.entity ? `\nГерой: ${c.entity}` : ""}\nСигнали: ${c.signals.join("; ") || "—"}\n\nПублікації:\n${srcText(c, 700)}\n\nНаші схожі статті:\n${ours.map((o) => `- ${o.title} (${o.url})`).join("\n") || "— немає"}${taken.length ? `\n\nЦю ж новину роблять інші, не пов'язані з нами редакції, і їхні кути вже відомі. Твоя редакція працює незалежно: факти й суть події ті самі, але подача інша. Заборонено повторювати будь-який із цих кутів — ні формат, ні головну думку, ні заголовок, ні ключову деталь у заголовку. Якщо в них «момент» — у тебе не «момент» першим; якщо вони ведуть від цитати — ти від контексту чи деталі. Запропонуй 3 помітно інші кути:\n${taken.map((t) => `- ${t}`).join("\n")}` : ""}`;
   const j = await chatJson(withOp(ctx, "angles"), SLOT_BRIEF, system, user, st.briefModel, 2500);
   const angles = (Array.isArray(j.angles) ? (j.angles as Record<string, unknown>[]) : []).slice(0, 3).map((a) => {
     const f = s(a.format, 20).toLowerCase();
@@ -157,7 +161,7 @@ ${BAIT_RULES}
   return { angles, competitorsAngle: s(j.competitors_angle, 400), gaps };
 }
 
-type BriefJson = {
+export type BriefJson = {
   hook: string;
   summary: string;
   whyNow: string;
@@ -183,14 +187,52 @@ type BriefJson = {
   dont: string[];
 };
 
-/** ТЗ по выбранному углу: короткое, под формат, с вариантами заголовков, title, description, slug и именами файлов. */
-export async function makeBrief(ctx: AiCtx, st: NewsSettings, site: string, cIn: ClusterForAi, angle: Angle, ours: OurArticle[], summaryUk: string | null, research?: ClusterResearch | null): Promise<string> {
+/** Что уже сделали другие наши редакции по этой новости: ТЗ этого сайта не должно с ними совпадать по подаче. */
+export type OtherBrief = { headlines: string[]; titles: string[]; lead: string; h2s: string[]; hook: string; ending: string; addon: string; firstQuote: string; descriptions: string[] };
+export const otherBriefOf = (d: BriefJson): OtherBrief => ({
+  headlines: d.headlines.map((h) => h.text), titles: d.titles, lead: d.lead, h2s: d.blocks.map((b) => b.h2), hook: d.hook, ending: d.ending,
+  addon: d.addon.type && d.addon.type !== "none" ? `${ADDONS[d.addon.type]?.label ?? d.addon.type}: ${d.addon.text}` : "", firstQuote: d.quotes[0]?.text ?? "", descriptions: d.descriptions,
+});
+
+/** Слова фразы без коротких, служебных и имён (имена героев есть в любом заголовке и совпадением не считаются). */
+const words = (t: string, skip: Set<string>) => new Set(t.toLowerCase().replace(/[^a-zа-яіїєґ0-9’']+/gi, " ").split(" ").filter((w) => w.length >= 4 && !skip.has(w.slice(0, 5))));
+/** Доля общих слов двух фраз без имён (по меньшей): 0.6+ при трёх и больше общих словах — та же формулировка. */
+export const overlap = (a: string, b: string, names: string[] = []) => {
+  const skip = new Set(names.flatMap((n) => n.toLowerCase().split(/[\s'’-]+/)).filter((w) => w.length >= 3).map((w) => w.slice(0, 5)));
+  const A = words(a, skip), B = words(b, skip);
+  // Одинаковое начало без имён («Знову разом: …», «Новий етап: …») — та же формула, даже если дальше слова другие.
+  const open = (t: string) => t.toLowerCase().replace(/[^a-zа-яіїєґ0-9’']+/gi, " ").trim().split(" ").filter((w) => !skip.has(w.slice(0, 5))).slice(0, 2).join(" ");
+  if (A.size && B.size && open(a).length >= 7 && open(a) === open(b)) return 1;
+  if (A.size < 3 || B.size < 3) return 0;
+  let n = 0;
+  for (const w of A) if (B.has(w)) n++;
+  return n >= 3 ? n / Math.min(A.size, B.size) : 0;
+};
+
+/**
+ * ТЗ по выбранному углу: короткое, под формат, с вариантами заголовков, title, description, slug и именами файлов.
+ * voice — почерк редакции сайта; others — ТЗ других наших сайтов по этой же новости (их заголовки, лид, H2, финал — под запретом).
+ */
+export async function makeBrief(ctx: AiCtx, st: NewsSettings, site: string, cIn: ClusterForAi, angle: Angle, ours: OurArticle[], summaryUk: string | null, research?: ClusterResearch | null, voice = "", others: OtherBrief[] = []): Promise<{ md: string; data: BriefJson }> {
   let c = cIn;
   const fmt = FORMATS[angle.format ?? "news"] ?? FORMATS.news;
   const addonList = ADDON_KEYS;
+  const othersText = others.length
+    ? `\n\nВАЖЛИВО: цю ж новину вже зробили інші, не пов'язані з нами редакції. Ти — окрема редакція зі своїм почерком, читач і Google не повинні побачити «одну руку». Факти, імена, цифри, дати й суть події — ті самі (нічого не перекручуй і не випускай головне). Усе інше — інакше:
+- заголовки H1, Title, Description: жодної спільної формули й ключової фрази з їхніми; інший прийом гачка, інша деталь у заголовку, інший порядок слів;
+- лід: інше перше речення (почни з іншого: сцена замість факту, цитата замість дати, контекст замість імені), інше джерело в першому реченні, якщо їх кілька;
+- структура: інша кількість і порядок блоків, інші формулювання H2 (не синоніми їхніх — інші теми блоків);
+- цитати: якщо цитат кілька — починай з іншої, ніж у них; ту саму цитату став в інше місце;
+- добавка: інший тип, ніж у них (або none, якщо в них добавка є і новина самодостатня);
+- фінал: інший тип (у них «Нагадаємо» — у тебе цитата, і навпаки) або інша попередня подія;
+- фото: інший кадр головним.
+Що вже зробили інші редакції (ЗАБОРОНЕНО повторювати):
+${others.map((o, i) => `Редакція ${i + 1}: H1: ${o.headlines.join(" | ")}; Title: ${o.titles.join(" | ")}; лід: ${o.lead}; H2: ${o.h2s.join(" | ") || "—"}; гачок: ${o.hook}; перша цитата: ${o.firstQuote || "—"}; добавка: ${o.addon || "немає"}; фінал: ${o.ending}`).join("\n")}`
+    : "";
   const system = `Ти шеф-редактор українського жіночого медіа ${site} для Google Discover. Про сайт: ${st.siteAbout}
-${DISCOVER_RULES}
-Стиль редакції (коротко): ${st.houseStyle.split("\n").slice(0, 3).join(" ")}
+${voice ? `Почерк цієї редакції — дотримуйся його в ліді, структурі блоків, місці цитат і фіналі: ${voice}
+` : ""}${DISCOVER_RULES}
+Стиль редакції (коротко): ${st.houseStyle.split("\n").slice(0, 3).join(" ")}${othersText}
 
 Склади коротке ТЗ для автора. Формат: ${fmt.label} (${fmt.words}) — ${fmt.when}. Пиши українською. Факти лише з публікацій (номер джерела). Нічого не вигадуй: чого нема в джерелах — у todo як завдання автору перевірити.${c.entity ? `\nІм'я героя пиши саме так, як у нашому списку: «${c.entity}» — у заголовках, Title і alt.` : ""}
 Кожна публікація позначена [UA] — український конкурент, або [світ] — іноземне медіа. У лід, цитати й факти не вписуй «як пише …» про [UA]: звідки відомо — це першоджерело (Instagram героя, інтерв'ю, заява) або [світ]-медіа.
@@ -242,7 +284,27 @@ ${addonList.map((k) => `- ${k} (${ADDONS[k].label}): ${ADDONS[k].what}`).join("\
   c = { ...c, sources: allSources };
   const user = `Тема: ${c.title}${summaryUk ? `\nСуть (чернетка, перепиши чистою українською): ${summaryUk}` : ""}\nОбраний кут (${angle.kind}): ${angle.title} — ${angle.angle}\nЧому клікнуть: ${angle.why}\n\nПублікації (номер — джерело):\n${allSources.map((x, i) => `${i + 1}. [${isUaSource(x) ? "UA" : "світ"}] ${x.domain}${x.tier === "search" ? " (знайдено пошуком)" : ""} — ${x.title}${x.lead ? `: ${x.lead.slice(0, 900)}` : ""}`).join("\n")}\n\nНаші статті для посилань:\n${ours.map((o) => `- ${o.title} (${o.url})`).join("\n") || "— немає"}`;
   // Температура 0.2: решение «нужна ли добавка и какая» должно зависеть от новости, а не от случайности ответа.
-  const j = await chatJson(withOp(ctx, "brief"), SLOT_BRIEF, system, user, st.briefModel, 4000, 150_000, 0.2);
+  // Есть ТЗ других редакций — 0.5, иначе модель воспроизводит ту же подачу слово в слово.
+  const temp = others.length ? 0.5 : 0.2;
+  let j = await chatJson(withOp(ctx, "brief"), SLOT_BRIEF, system, user, st.briefModel, 4000, 150_000, temp);
+  // Совпадения с другими редакциями проверяем кодом: модель иногда игнорирует запрет — тогда одна повторная попытка с перечнем совпадений.
+  const same = (jj: Record<string, unknown>) => {
+    const got = [
+      ...(Array.isArray(jj.headlines) ? (jj.headlines as { text?: unknown }[]).map((h) => s(h?.text, 160)) : []),
+      ...(Array.isArray(jj.titles) ? (jj.titles as unknown[]).map((t) => s(t && typeof t === "object" ? (t as { text?: unknown }).text : t, 160)) : []),
+      ...(Array.isArray(jj.blocks) ? (jj.blocks as { h2?: unknown }[]).map((b) => s(b?.h2, 160)) : []),
+      s(jj.lead, 300).split(/[.!?]\s/)[0],
+    ].filter(Boolean);
+    return got.filter((g) => theirs.some((t) => overlap(g, t, names) >= 0.6));
+  };
+  // Имена из заголовков других редакций (слова с большой буквы не в начале фразы) и герой: совпадать могут только они.
+  const theirs = others.flatMap((o) => [...o.headlines, ...o.titles, ...o.h2s, o.lead.split(/[.!?]\s/)[0]]).filter(Boolean);
+  const names = [c.entity ?? "", ...theirs.flatMap((t) => t.match(/(?<=[^:.!?—]\s)[А-ЯІЇЄҐA-Z][а-яіїєґ’'a-z]{2,}/g) ?? [])];
+  const isDup = (g: string) => theirs.some((t) => overlap(g, t, names) >= 0.6);
+  const dup = others.length ? same(j) : [];
+  if (dup.length) {
+    j = await chatJson(withOp(ctx, "brief"), SLOT_BRIEF, system, `${user}\n\nТвоя попередня відповідь повторила формулювання інших редакцій: ${dup.map((d) => `«${d}»`).join(", ")}. Перепиши ТЗ так, щоб заголовки, Title, лід і H2 не мали з ними спільних фраз.`, st.briefModel, 4000, 150_000, 0.7);
+  }
   // Модель иногда отдаёт строки объектами {text, bait} по образцу headlines — берём text.
   const list = (v: unknown, max = 300) => (Array.isArray(v) ? v.map((x) => s(x && typeof x === "object" ? (x as Record<string, unknown>).text ?? (x as Record<string, unknown>).title : x, max)).filter(Boolean) : []);
   const arr = <T>(v: unknown, f: (x: Record<string, unknown>) => T) => (Array.isArray(v) ? (v as Record<string, unknown>[]).map(f) : []);
@@ -275,8 +337,9 @@ ${addonList.map((k) => `- ${k} (${ADDONS[k].label}): ${ADDONS[k].what}`).join("\
       .slice(0, 4)
       // Главное фото не может быть embed-постом: правило повторяем кодом, модель его иногда игнорирует.
       .map((p, i) => (i === 0 && /embed|вбудов|пост героя|instagram|facebook|threads/i.test(p.where) ? { ...p, where: "пресматеріали бренду/організатора, фотобанк за редакційною ліцензією або Wikimedia Commons (embed поста — лише як вставка в тексті, не головне фото)" } : p)),
-    headlines: arr(j.headlines, (x) => ({ text: s(x.text, 120), type: s(x.type, 20), bait: s(x.bait, 20) })).filter((x) => x.text).slice(0, 6),
-    titles: list(j.titles, 120).slice(0, 4),
+    // Что после повтора всё ещё совпадает с другими редакциями — в ТЗ не попадает: лучше два варианта, чем общий с другим сайтом.
+    headlines: arr(j.headlines, (x) => ({ text: s(x.text, 120), type: s(x.type, 20), bait: s(x.bait, 20) })).filter((x) => x.text && !isDup(x.text)).slice(0, 6),
+    titles: list(j.titles, 120).filter((t) => !isDup(t)).slice(0, 4),
     descriptions: list(j.descriptions, 220).slice(0, 4),
     slugs: list(j.slugs, 100).map((x) => x.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "")).filter(Boolean).slice(0, 4),
     rubric: s(j.rubric, 60),
@@ -287,7 +350,23 @@ ${addonList.map((k) => `- ${k} (${ADDONS[k].label}): ${ADDONS[k].what}`).join("\
   if (["moment", "news", "list"].includes(angle.format ?? "news") && b.expert.need && b.addon.type && b.addon.type !== "none") {
     b.addon = { type: "none", text: "у короткому форматі вже є думка експерта — друга вставка зробить текст важким", points: [] };
   }
-  return renderBrief(site, st, c, angle, fmt, b, ours, summaryUk, research ?? null);
+  // После фильтра совпадений вариантов меньше трёх — добираем отдельным коротким запросом с перечнем запрещённых формулировок.
+  if (others.length && (b.headlines.length < 3 || b.titles.length < 3)) {
+    try {
+      const ban = [...theirs, ...b.headlines.map((h) => h.text), ...b.titles];
+      const r = await chatJson(withOp(ctx, "brief"), SLOT_BRIEF, `Ти редактор українського медіа для Google Discover. ${HEADLINE_PATTERNS}\n${BAIT_RULES}`,
+        `Новина: ${b.summary || c.title}\nГачок: ${b.hook}\nКут: ${angle.title} — ${angle.angle}\n\nЗАБОРОНЕНІ формулювання (так уже написали інші видання; не повторюй ні початок, ні будову, ні ключову фразу):\n${ban.map((t) => `- ${t}`).join("\n")}\n\nДай 4 нові заголовки H1 (60–95 символів, герой у перших словах, без питань, різні прийоми гачка) і 4 Title (45–65 символів), усі з іншим початком, ніж у заборонених. Лише JSON: {"headlines":[{"text":"…","type":"дія|деталь|цифра|цитата|контекст","bait":"…"}],"titles":["…"]}`,
+        st.briefModel, 900, 60_000, 0.8);
+      const more = arr(r.headlines, (x) => ({ text: s(x.text, 120), type: s(x.type, 20), bait: s(x.bait, 20) })).filter((x) => x.text && !isDup(x.text) && !b.headlines.some((h) => overlap(h.text, x.text, names) >= 0.6));
+      b.headlines = [...b.headlines, ...more].slice(0, 3);
+      const moreT = list(r.titles, 120).filter((t) => !isDup(t) && !b.titles.some((x) => overlap(x, t, names) >= 0.6));
+      b.titles = [...b.titles, ...moreT].slice(0, 3);
+    } catch {
+      /* останутся те варианты, что прошли фильтр */
+    }
+  }
+  const md = renderBrief(site, st, c, angle, fmt, b, ours, summaryUk, research ?? null, voice, others);
+  return { md, data: b };
 }
 
 /**
@@ -314,7 +393,7 @@ const FLAT_VERBS = /показа|розпові|зізна|відпові|нар
 const flat = (t: string) => !/\d/.test(t) && !/[«"„]/.test(t) && !FLAT_VERBS.test(t) && !/вперше|нарешті|після|замість|разом/i.test(t);
 const CTA = /дізнайтес|читайте|подробиці|детальніше|у матеріалі/i;
 
-function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Angle, fmt: { label: string; words: string }, b: BriefJson, ours: OurArticle[], summaryUk: string | null, research: ClusterResearch | null): string {
+function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Angle, fmt: { label: string; words: string }, b: BriefJson, ours: OurArticle[], summaryUk: string | null, research: ClusterResearch | null, voice = "", others: OtherBrief[] = []): string {
   // Лимит Title не режем под суффикс Yoast: с « - Beauty Daily UA» оставалось 42 знака и заголовки выходили плоскими. Суффикс для новин выключает владелец.
   const titleMax = 65;
   const onlyUa = c.sources.slice(0, 8).every(isUaSource);
@@ -332,6 +411,17 @@ function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Ang
     `> Напиши статтю для ${site} за цим ТЗ. Це матеріал для Google Discover: легкий, короткий, з героєм у заголовку. Спершу відкрий усі посилання з розділу «Джерела» і першоджерело (пост героя, інтерв'ю): ТЗ дає лише витяги, точні цитати, цифри й дати бери з оригіналів. Лише факти з джерел і матеріалів, які автор додав до ТЗ${b.todo.length ? "; що в «Автору перевірити» — знайди і підтверди або прибери" : ""}.${b.addon.type && b.addon.type !== "none" ? " Обов'язково розкрий «Нашу добавку»." : ""} Це не переказ чужої новини: свої слова, своя подача, цитати дослівно. Спершу зроби «Додатковий ресьорч»: наша стаття має бути повнішою, ніж у будь-якого конкурента. Українські медіа з «Джерел» не згадуй і не став на них посилань — це конкуренти; іноземні медіа й першоджерело — можна. Відповідь — за розділом «Формат відповіді» в кінці: чистий HTML для WordPress + метатеги, після постредактури.`,
     "",
     ...(weakLine ? [`> ⚠ Слабка фактура: ${weakLine}`, ""] : []),
+    ...(voice ? ["## Почерк редакції (так пише саме це видання)", voice, ""] : []),
+    ...(others.length
+      ? [
+          "## Не повторювати: цю новину вже написали інші видання",
+          "Ти — окрема редакція, між виданнями немає зв'язку. Факти й суть — ті самі, подача — інша: інше перше речення, інша структура й підзаголовки, інша перша цитата, інший фінал. Нижче — їхні формулювання; жодне не має з'явитися в тексті навіть перефразованим.",
+          ...others.flatMap((o, i) => [
+            `- Видання ${i + 1}: заголовки — ${o.headlines.map((h) => `«${h}»`).join(", ")}; перше речення — «${o.lead.split(/[.!?]\s/)[0]}»${o.h2s.length ? `; підзаголовки — ${o.h2s.map((h) => `«${h}»`).join(", ")}` : ""}${o.firstQuote ? `; відкриває цитатою «${o.firstQuote.slice(0, 80)}…»` : ""}; фінал — ${o.ending.slice(0, 120)}`,
+          ]),
+          "",
+        ]
+      : []),
     "## Суть",
     b.summary || summaryUk || c.title,
     "",
@@ -437,7 +527,7 @@ function renderBrief(site: string, st: NewsSettings, c: ClusterForAi, angle: Ang
     "## Формат відповіді (обов'язково)",
     "0. Прочитай джерела за посиланнями з розділу «Джерела» і першоджерело (пост героя, інтерв'ю, пресреліз). З них — точні цитати, цифри, дати, імена; ТЗ дає лише витяги. Якщо доступу до вебу немає — пиши строго за розділами «Факти» і «Цитати героя», нічого не додумуй.",
     "1. Спочатку напиши чернетку, потім зроби постредактуру як редактор українського fashion-журналу і віддай лише фінальний текст: прибери канцелярит і кальки, повтори слів, оцінки зовнішності та кожен зворот із розділу «Як писати, щоб текст не звучав як ШІ»; абзаци по 1–3 речення, кожне речення несе факт, цитату або думку; лід не повторює заголовок; хоча б одна дослівна цитата героя в лапках; якщо в ТЗ є «Наша добавка» — вона має бути в тексті, якщо «не потрібна» — нічого не вигадуй від себе; фінал «Нагадаємо, …» з внутрішнім посиланням; перевір імена, бренди, дати й цифри за джерелами; тон — наш стиль редакції (довідково внизу).",
-    "1а. Перед тим як віддати, перевір себе списком: (1) перші два речення дають факт із заголовка і джерело; (2) жодного слова зі списку заборонених; (3) фінал — «Нагадаємо» про конкретну подію або цитата героя, без моралі; (4) кожен факт і цифра є в джерелах; (5) заголовок 60–95 символів, герой у перших словах або одразу після цитати, без питання, і в ньому є гачок — прибери ім'я героя, має лишитися причина клікнути; (6) нічого не приписано героям чи експертам; (7) жодного <img> і жодної згадки чи посилання на українські медіа та на сторінки тегів; (8) у тексті є хоча б один факт із «Додаткового ресьорчу», якого немає в українських публікаціях.",
+    `1а. Перед тим як віддати, перевір себе списком: (1) перші два речення дають факт із заголовка і джерело; (2) жодного слова зі списку заборонених; (3) фінал — «Нагадаємо» про конкретну подію або цитата героя, без моралі; (4) кожен факт і цифра є в джерелах; (5) заголовок 60–95 символів, герой у перших словах або одразу після цитати, без питання, і в ньому є гачок — прибери ім'я героя, має лишитися причина клікнути; (6) нічого не приписано героям чи експертам; (7) жодного <img> і жодної згадки чи посилання на українські медіа та на сторінки тегів; (8) у тексті є хоча б один факт із «Додаткового ресьорчу», якого немає в українських публікаціях${others.length ? "; (9) перше речення, підзаголовки й фінал не збігаються з розділом «Не повторювати», порядок блоків інший" : ""}.`,
     "2. Віддай ГОТОВИЙ ЧИСТИЙ HTML для вставки у WordPress (блок «HTML»): лише теги <p>, <h2>, <a>, <strong>, <em>, <ul>/<li>. Без <html>/<body>, без <h1> (заголовок іде окремо), без inline-стилів, класів, <div>, <br>, markdown і коментарів. Винятки: офіційний код вставки соцмережі (Instagram blockquote.instagram-media + embed.js, X, TikTok, YouTube iframe) — як є, і блок «Думка експерта» (п. 7).",
     "3. Фото НЕ вставляй: жодних <img>, <figure> і заготовок із порожнім чи вигаданим src — редакція сама вирішить, де поставити фото. Вставляти можна лише готовий код вставки (Instagram, X, TikTok, YouTube iframe), якщо він є в ТЗ або ти знайшов справжній пост героя.",
     ...(research?.embeds.length

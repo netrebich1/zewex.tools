@@ -27,7 +27,7 @@ async function main() {
   const a = await makeAngles(ctx, s, c, ours);
   console.log(`\n== УГЛЫ (${Math.round((Date.now() - t1) / 1000)} с)\n`, JSON.stringify(a, null, 1));
   const t2 = Date.now();
-  const md = await makeBrief(ctx, s, hostOf(p.siteUrl), c, a.angles[0], ours, sum[0]?.summaryUk ?? null);
+  const { md } = await makeBrief(ctx, s, hostOf(p.siteUrl), c, a.angles[0], ours, sum[0]?.summaryUk ?? null);
   console.log(`\n== ТЗ (${Math.round((Date.now() - t2) / 1000)} с)\n${md}`);
   console.log(`\nрасход $${cost.toFixed(4)}`);
   await prisma.$disconnect();

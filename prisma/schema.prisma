@@ -2814,6 +2814,8 @@ model NewsBrief {
   anglesAt    DateTime?
   angleIdx    Int?
   brief       String?   @db.MediumText
+  /// Разобранное ТЗ (BriefJson): заголовки, лид, H2, финал — чтобы ТЗ других сайтов по той же новости их не повторяли
+  data        Json?
   briefAt     DateTime?
   /// draft (углы, ТЗ ещё нет) | ready (ТЗ готово) | published (статья вышла)
   status      String    @default("draft")

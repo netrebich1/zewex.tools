@@ -142,7 +142,7 @@ export async function saveSite(_p: FormState, f: FormData): Promise<FormState> {
       const h = siteHost(str(f, "url"));
       if (!h || !h.includes(".")) throw new Error("Укажите адрес сайта, например site.ua");
       if (sites.some((x, i) => x.host === h && i !== idx)) throw new Error(`Сайт ${h} уже есть в списке`);
-      return { host: h, name: str(f, "name") || h, about: str(f, "about") };
+      return { host: h, name: str(f, "name") || h, about: str(f, "about"), voice: String(f.get("voice") ?? "").trim() };
     };
     let msg = "Сохранено";
     if (op === "add") {

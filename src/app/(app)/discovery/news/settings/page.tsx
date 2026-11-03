@@ -7,7 +7,7 @@ import { NewsNav } from "@/components/news/NewsNav";
 import { createProject, saveProxy, saveSettings, saveSite, testBot } from "@/actions/news";
 import { canManageProject, requireProject } from "@/lib/news/access";
 import { agoText } from "@/lib/news/query";
-import { CATEGORIES, CATEGORY_LABELS, DEFAULT_SETTINGS, parseSettings, projectSites } from "@/lib/news/types";
+import { CATEGORIES, CATEGORY_LABELS, DEFAULT_SETTINGS, parseSettings, projectSites, siteVoice } from "@/lib/news/types";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +55,7 @@ export default async function NewsSettingsPage({ searchParams }: { searchParams:
         <Card
           className="mb-5"
           title={`Сайты для ТЗ (${projectSites(project, s).length})`}
-          description="Под каждый сайт в карточке новости есть кнопка «+ ТЗ для сайта»: у сайта свои углы и своё ТЗ, углы другого сайта не повторяются. «О сайте» подставляется в углы и ТЗ — чем точнее аудитория и тон, тем точнее угол. Новостей сайты не касаются: лента одна на проект."
+          description="Под каждый сайт в карточке новости есть кнопка «+ ТЗ для сайта»: у сайта свои углы и своё ТЗ, углы и ТЗ других сайтов не повторяются. «О сайте» подставляется в углы и ТЗ. «Почерк редакции» — как эта редакция подаёт новости (с чего начинает, подзаголовки, цитаты, финал): факты у всех сайтов одни, подача разная, как у не связанных между собой редакций. Пусто — готовый почерк по позиции в списке, он показан серым. Новостей сайты не касаются: лента одна на проект."
         >
           <div className="space-y-2">
             {projectSites(project, s).map((x, i) => (
@@ -65,6 +65,7 @@ export default async function NewsSettingsPage({ searchParams }: { searchParams:
                   <input name="url" className="input" defaultValue={x.host} aria-label="Адрес" disabled={!manage} />
                   <input name="about" className="input" defaultValue={x.about} placeholder={i === 0 ? "пусто — общее «о сайте» из блока «Стиль редакции»" : "о сайте и аудитории: тема, кто читает, тон"} aria-label="О сайте" disabled={!manage} />
                   {manage && <SubmitButton className="btn-ghost btn-sm" pendingText="…">Сохранить</SubmitButton>}
+                  <textarea name="voice" className="input min-h-[64px] text-[13px] sm:col-span-4" defaultValue={x.voice} placeholder={`Почерк редакции. Пусто — ${siteVoice(x, i)}`} aria-label="Почерк редакции" disabled={!manage} />
                 </ActionForm>
                 {manage && i > 0 && (
                   <ActionForm action={saveSite} className="inline" hidden={{ project: project.id, op: "up", host: x.host }}>
@@ -86,6 +87,7 @@ export default async function NewsSettingsPage({ searchParams }: { searchParams:
               <input name="url" className="input" placeholder="site.ua" required />
               <input name="about" className="input" placeholder="о сайте и аудитории (необязательно)" />
               <SubmitButton className="btn-brand btn-sm" pendingText="Добавляю…">+ Добавить сайт</SubmitButton>
+              <textarea name="voice" className="input min-h-[64px] text-[13px] sm:col-span-4" placeholder="Почерк редакции (необязательно — подставится готовый по позиции в списке)" />
             </ActionForm>
           )}
         </Card>

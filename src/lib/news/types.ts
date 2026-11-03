@@ -130,8 +130,25 @@ export type NewsSettings = {
   sites: NewsSite[];
 };
 
-/** Сайт для ТЗ: домен без www — ключ, название — подпись кнопки, «о сайте» — подставляется в углы и ТЗ вместо siteAbout. */
-export type NewsSite = { host: string; name: string; about: string };
+/**
+ * Сайт для ТЗ: домен без www — ключ, название — подпись кнопки, «о сайте» — подставляется в углы и ТЗ вместо siteAbout.
+ * voice — «почерк редакции» (решение владельца 03.11): каждый сайт — отдельная редакция, одна новость на разных сайтах
+ * выходит с разной подачей при тех же фактах. Пусто — пресет по позиции сайта в списке (EDITORIAL_VOICES).
+ */
+export type NewsSite = { host: string; name: string; about: string; voice: string };
+
+/** Пресеты почерка редакций: заметно разные привычки подачи, чтобы тексты сайтов не были похожи. */
+export const EDITORIAL_VOICES: string[] = [
+  "Редакція-репортер: сухо й швидко, як стрічка новин. Перший абзац — факт, час і джерело без вступів. Абзаци по 1–2 речення, підзаголовків майже немає. Цитата героя — одразу після ліду. Фінал — коротке «Нагадаємо» однією фразою. Ніяких оцінок і підводок.",
+  "Редакція-подруга: тепла розмовна подача, звернення до читачки на «ви». Починає зі сцени або деталі (що на фото, що сказала), і лише потім — хто й коли. Один підзаголовок-твердження посередині. Наша думка — що це означає для читачки — окремим коротким абзацом. Фінал — цитата героя, не «Нагадаємо».",
+  "Редакція-аналітик: подача через контекст. Лід — факт плюс одразу «чому це важливо» (що було раніше, що змінилося). Два підзаголовки: що сталося / що це означає. Цифри, дати й порівняння наперед. Цитата героя ближче до кінця як підтвердження. Фінал — «Нагадаємо» з конкретною датою попередньої події.",
+  "Редакція-колумніст: впізнаваний голос автора з легкою іронією, без фамільярності. Починає з короткого спостереження (одне речення), далі факт і джерело. Абзаци різної довжини, один довший з деталями. Без підзаголовків до 350 слів. Фінал — несподівана деталь або контраст, без моралі.",
+  "Редакція-глянець: візуальна подача. Лід описує образ, кадр або момент конкретно (колір, бренд, крій, обстановка), потім подія. Підзаголовки — назви деталей. Прямі цитати короткі, 1–2. Фінал — що повторити або де подивитися оригінал.",
+  "Редакція-дайджест: структурна подача «коротко про головне». Лід — одне речення з головним фактом. Далі 3–4 короткі блоки з підзаголовками-фактами (не питання). Кожен блок — один факт або цитата. Фінал — «Нагадаємо» двома реченнями.",
+];
+
+/** Почерк редакции сайта: свой текст из настроек или пресет по позиции в списке. */
+export const siteVoice = (site: NewsSite, idx: number) => site.voice || EDITORIAL_VOICES[((idx % EDITORIAL_VOICES.length) + EDITORIAL_VOICES.length) % EDITORIAL_VOICES.length];
 
 export const DEFAULT_STOP_WORDS = [
   // война и армия
@@ -263,7 +280,7 @@ export function parseSettings(raw: unknown): NewsSettings {
     briefModel: str(r.briefModel, d.briefModel),
     autoSummaryPerDay: num(r.autoSummaryPerDay, d.autoSummaryPerDay, 0, 2000),
     titleSuffix: typeof r.titleSuffix === "string" ? r.titleSuffix : d.titleSuffix,
-    sites: Array.isArray(r.sites) ? (r.sites as Partial<NewsSite>[]).map((x) => ({ host: siteHost(String(x.host ?? "")), name: String(x.name ?? "").trim(), about: String(x.about ?? "").trim() })).filter((x) => x.host) : d.sites,
+    sites: Array.isArray(r.sites) ? (r.sites as Partial<NewsSite>[]).map((x) => ({ host: siteHost(String(x.host ?? "")), name: String(x.name ?? "").trim(), about: String(x.about ?? "").trim(), voice: String(x.voice ?? "").trim() })).filter((x) => x.host) : d.sites,
   };
 }
 
@@ -276,7 +293,7 @@ export function siteHost(url: string): string {
 export function projectSites(p: { name: string; siteUrl: string }, s: NewsSettings): NewsSite[] {
   if (s.sites.length) return s.sites.map((x) => ({ ...x, name: x.name || x.host }));
   const host = siteHost(p.siteUrl);
-  return host ? [{ host, name: p.name || host, about: "" }] : [];
+  return host ? [{ host, name: p.name || host, about: "", voice: "" }] : [];
 }
 
 

@@ -1,9 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { makeAngles, makeBrief, ourArticles, summarizeClusters, type Angle, type ClusterForAi } from "./brief";
+import { makeAngles, makeBrief, otherBriefOf, ourArticles, summarizeClusters, type Angle, type BriefJson, type ClusterForAi } from "./brief";
 import type { AiCtx } from "./llm";
 import { deepResearch, type ClusterResearch } from "./research";
-import { KEEP_DAYS, parseSettings, projectSites, type NewsSettings, type NewsSite, type RunStats, type ScorePart } from "./types";
+import { KEEP_DAYS, parseSettings, projectSites, siteVoice, type NewsSettings, type NewsSite, type RunStats, type ScorePart } from "./types";
 
 /** Кластер для ИИ: источники (украинские первыми), сигналы балла и причины важности словами. */
 export async function clusterForAi(clusterId: string): Promise<{ c: ClusterForAi; row: Prisma.NewsClusterGetPayload<object> }> {
@@ -92,7 +92,9 @@ async function siteCtx(projectId: string, host: string) {
   // Описание сайта из списка; у основного сайта без описания — общее «о сайте» проекта.
   const primary = sites[0]?.host === host;
   const about = site.about || (primary ? s.siteAbout : `${site.name} (${site.host}) — українське жіноче медіа про зірок, моду й красу.`);
-  return { project, s: { ...s, siteAbout: about } as NewsSettings, site };
+  // Почерк редакции: свой или пресет по позиции. Один сайт в проекте — почерк не нужен, различать не с кем.
+  const voice = sites.length > 1 ? siteVoice(site, sites.indexOf(site)) : "";
+  return { project, s: { ...s, siteAbout: about } as NewsSettings, site, voice };
 }
 
 async function ourFor(site: NewsSite, c: ClusterForAi): Promise<{ title: string; url: string }[]> {
@@ -101,12 +103,13 @@ async function ourFor(site: NewsSite, c: ClusterForAi): Promise<{ title: string;
 }
 
 /**
- * «+ ТЗ для сайта»: заводим ТЗ этого сайта и 3 угла (повторно — «другие углы»). Углы, уже взятые для других сайтов,
- * модель не повторяет: одна новость на разных сайтах должна выйти разными статьями. Новость попадает в избранное.
+ * «+ ТЗ для сайта»: заводим ТЗ этого сайта и 3 угла (повторно — «другие углы»). Углы, уже предложенные или взятые
+ * для других сайтов, модель не повторяет: одна новость на разных сайтах должна выйти разными статьями (решение владельца 03.11:
+ * сайты — отдельные редакции, факты те же, подача разная). Новость попадает в избранное.
  */
 export async function startSiteWork(userId: string, clusterId: string, host: string, regenerate: boolean): Promise<void> {
   const { c, row } = await clusterForAi(clusterId);
-  const { project, s, site } = await siteCtx(row.projectId, host);
+  const { project, s, site, voice } = await siteCtx(row.projectId, host);
   await prisma.newsCluster.update({
     where: { id: clusterId },
     data: { status: row.status === "new" ? "in_work" : row.status, workById: userId, ...(row.starred ? {} : { starred: true, starredById: userId, starredAt: new Date() }) },
@@ -114,13 +117,13 @@ export async function startSiteWork(userId: string, clusterId: string, host: str
   const cur = await prisma.newsBrief.findUnique({ where: { clusterId_site: { clusterId, site: host } } });
   if (cur?.angles && !regenerate) return;
   const others = await prisma.newsBrief.findMany({ where: { clusterId, site: { not: host } } });
+  // Взятый угол другого сайта — запрет строгий; предложенные, но не взятые — тоже не повторяем, чтобы выбор был из разного.
   const taken = others.flatMap((b) => {
     const a = (b.angles ?? {}) as AnglesData;
-    const pick = b.angleIdx != null ? a.angles?.[b.angleIdx] : undefined;
-    return pick ? [`${pick.title} — ${pick.angle}`] : [];
+    return (a.angles ?? []).map((x, i) => `${i === b.angleIdx ? "[ВЗЯТО] " : ""}(${x.kind}) ${x.title} — ${x.angle}`);
   });
   const ours = await ourFor(site, c);
-  const res = await withCostRun(project.id, userId, "angles", clusterId, project.teamId, (ctx) => makeAngles(ctx, s, c, ours, taken), s);
+  const res = await withCostRun(project.id, userId, "angles", clusterId, project.teamId, (ctx) => makeAngles(ctx, s, c, ours, taken, voice), s);
   const data = { angles: { ...res, ours } as unknown as Prisma.InputJsonValue, anglesAt: new Date(), angleIdx: null, brief: null, briefAt: null, status: "draft" };
   await prisma.newsBrief.upsert({
     where: { clusterId_site: { clusterId, site: host } },
@@ -134,7 +137,7 @@ export async function buildSiteBrief(userId: string, briefId: string, idx: numbe
   const b = await prisma.newsBrief.findUniqueOrThrow({ where: { id: briefId } });
   const clusterId = b.clusterId;
   const { c, row } = await clusterForAi(clusterId);
-  const { project, s, site } = await siteCtx(row.projectId, b.site);
+  const { project, s, site, voice } = await siteCtx(row.projectId, b.site);
   const data = (b.angles ?? {}) as AnglesData;
   const angle = data.angles?.[idx];
   if (!angle) throw new Error("Сначала получите углы для этого сайта");
@@ -158,7 +161,9 @@ export async function buildSiteBrief(userId: string, briefId: string, idx: numbe
       /* ресёрч не обязателен для ТЗ */
     }
   }
-  const md = await withCostRun(project.id, userId, "brief", clusterId, project.teamId, (ctx) => makeBrief(ctx, s, site.host, c, angle, ours, summaryUk, research), s);
-  await prisma.newsBrief.update({ where: { id: briefId }, data: { angleIdx: idx, brief: md, briefAt: new Date(), status: b.status === "published" ? "published" : "ready" } });
+  // ТЗ других сайтов по этой новости: их заголовки, лид, H2 и финал — под запретом для этого ТЗ.
+  const others = (await prisma.newsBrief.findMany({ where: { clusterId, site: { not: b.site }, data: { not: Prisma.DbNull } } })).map((o) => otherBriefOf(o.data as unknown as BriefJson));
+  const { md, data: json } = await withCostRun(project.id, userId, "brief", clusterId, project.teamId, (ctx) => makeBrief(ctx, s, site.host, c, angle, ours, summaryUk, research, voice, others), s);
+  await prisma.newsBrief.update({ where: { id: briefId }, data: { angleIdx: idx, brief: md, data: json as unknown as Prisma.InputJsonValue, briefAt: new Date(), status: b.status === "published" ? "published" : "ready" } });
   await prisma.newsCluster.update({ where: { id: clusterId }, data: { status: row.status === "new" ? "in_work" : row.status, workById: userId } });
 }
