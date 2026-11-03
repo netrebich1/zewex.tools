@@ -1569,6 +1569,16 @@ model DeeplKey {
   sortOrder Int       @default(0)
   lastError String?   @db.Text
   usageAt   DateTime?
+  /// Последняя проверка ключа в DeepL (/v2/usage): при добавлении, кнопкой «Проверить» и автопроверкой воркера
+  lastCheckedAt DateTime?
+  lastCheckOk   Boolean?
+  lastCheckNote String?  @db.Text
+  /// Когда ключ перестал работать сам и почему: exhausted (лимит) | rejected (DeepL отклонил).
+  /// Для статистики «через сколько ключи выходят из строя»; ключ снова заработал — поля очищаются.
+  deadAt     DateTime?
+  deadReason String?   @db.VarChar(16)
+  /// Удалён со страницы ключей; строка остаётся для статистики
+  deletedAt  DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }

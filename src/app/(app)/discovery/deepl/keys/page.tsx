@@ -5,7 +5,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { DeeplNav } from "@/components/deepl/DeeplNav";
 import { addDeeplKeys, refreshDeeplKeys, updateDeeplKey } from "@/actions/deepl";
-import { fmtChars, keysSummary } from "@/lib/deepl/keys";
+import { fmtChars, fmtDays, keysLifeStats, keysSummary } from "@/lib/deepl/keys";
 import { fmtDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,11 @@ const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
  */
 export default async function DeeplKeysPage() {
   await requireUser();
-  const [keys, sum] = await Promise.all([prisma.deeplKey.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }), keysSummary()]);
+  const [keys, sum, life] = await Promise.all([
+    prisma.deeplKey.findMany({ where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
+    keysSummary(),
+    keysLifeStats(),
+  ]);
 
   return (
     <>
@@ -60,11 +64,11 @@ export default async function DeeplKeysPage() {
 
         <Card
           title={`Список ключей (${keys.length})`}
-          description={`Ключ, на который DeepL ответил «лимит исчерпан» или «доступ запрещён», выключается сам. «Обновить расход» подтягивает потраченные символы из DeepL; в новом месяце исчерпанные ключи включаются сами. Последнее обновление: ${fmtDate(sum.lastUsageAt)}.`}
+          description={`Ключи общие для всего инструмента, для всех команд. Ключ, на который DeepL ответил «лимит исчерпан» или «доступ запрещён», выключается сам. «Проверить» спрашивает DeepL, принимает ли он ключ, и подтягивает расход; воркер проверяет все ключи сам раз в час, в новом месяце исчерпанные ключи включаются сами. Последняя проверка: ${fmtDate(sum.lastUsageAt)}.`}
           actions={keys.length ? (
             <>
               <ActionForm action={refreshDeeplKeys} className="inline">
-                <SubmitButton className="btn-primary btn-sm" pendingText="Обновляю…">Обновить расход из DeepL</SubmitButton>
+                <SubmitButton className="btn-primary btn-sm" pendingText="Проверяю…">Проверить все ключи в DeepL</SubmitButton>
               </ActionForm>
               {sum.exhausted + sum.off > 0 && (
                 <ActionForm action={updateDeeplKey} className="inline" hidden={{ id: "", op: "delete_dead" }}>
@@ -78,12 +82,12 @@ export default async function DeeplKeysPage() {
             <>
               <ActionForm action={updateDeeplKey} className="mb-3 flex flex-wrap items-center gap-2" hidden={{ id: "", op: "limit_all" }}>
                 <span className="text-[14px]">Задать лимит всем ключам:</span>
-                <input name="limit" className="input w-40" defaultValue="1000000" />
+                <input name="limit" className="input !w-40" defaultValue="1000000" />
                 <SubmitButton className="btn-ghost btn-sm" pendingText="…" confirm="Поставить этот лимит всем ключам?">Применить</SubmitButton>
               </ActionForm>
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>#</th><th>Ключ</th><th>Расход</th><th>Осталось</th><th className="col-sm">Лимит</th><th>Статус</th><th></th></tr></thead>
+                  <thead><tr><th>#</th><th>Ключ</th><th>Расход</th><th>Осталось</th><th className="col-sm">Лимит</th><th>Статус</th><th className="col-sm">Добавлен</th><th>Проверка</th><th></th></tr></thead>
                   <tbody>
                     {keys.map((k, i) => {
                       const pct = k.charLimit ? Math.min(100, Math.round((k.charUsed / k.charLimit) * 100)) : 0;
@@ -117,6 +121,17 @@ export default async function DeeplKeysPage() {
                           <td>
                             <Badge tone={!k.isActive ? "neutral" : exhausted ? "warn" : "ok"}>{!k.isActive ? "выключен" : exhausted ? "исчерпан" : "в работе"}</Badge>
                             {k.lastError && <div className="help text-danger line-clamp-2 max-w-[220px]">{k.lastError}</div>}
+                            {k.deadAt && <div className="help">не работает с {fmtDate(k.deadAt)} · прожил {fmtDays((k.deadAt.getTime() - k.createdAt.getTime()) / 86_400_000)}</div>}
+                          </td>
+                          <td className="col-sm whitespace-nowrap text-[13px]">{fmtDate(k.createdAt)}</td>
+                          <td className="min-w-[160px]">
+                            {k.lastCheckedAt ? (
+                              <>
+                                <Badge tone={k.lastCheckOk ? "ok" : "danger"}>{k.lastCheckOk ? "ключ принят" : "ошибка"}</Badge>
+                                <div className="help">{fmtDate(k.lastCheckedAt)}</div>
+                                {k.lastCheckNote && <div className={`help line-clamp-2 max-w-[220px] ${k.lastCheckOk ? "" : "text-danger"}`}>{k.lastCheckNote}</div>}
+                              </>
+                            ) : <span className="help">ещё не проверялся</span>}
                           </td>
                           <td className="text-right whitespace-nowrap">
                             {(["up", "down"] as const).map((op) => (
@@ -124,6 +139,9 @@ export default async function DeeplKeysPage() {
                                 <SubmitButton className="btn-ghost btn-sm" pendingText="…">{op === "up" ? "↑" : "↓"}</SubmitButton>
                               </ActionForm>
                             ))}
+                            <ActionForm action={updateDeeplKey} className="inline" hidden={{ id: k.id, op: "check" }}>
+                              <SubmitButton className="btn-ghost btn-sm" pendingText="…">Проверить</SubmitButton>
+                            </ActionForm>
                             <ActionForm action={updateDeeplKey} className="inline" hidden={{ id: k.id, op: "toggle" }}>
                               <SubmitButton className="btn-ghost btn-sm" pendingText="…">{k.isActive ? "Выключить" : "Включить"}</SubmitButton>
                             </ActionForm>
@@ -138,6 +156,48 @@ export default async function DeeplKeysPage() {
                 </table>
               </div>
             </>
+          )}
+        </Card>
+
+        <Card
+          title="Срок жизни ключей"
+          description="По всем ключам, добавленным в инструмент, включая удалённые. «Вышел из строя» — DeepL ответил «лимит исчерпан» или отклонил ключ; время считается от добавления ключа. Ключи, удалённые до 3 ноября 2026, в статистику не попали."
+        >
+          <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
+            {[
+              { label: `Добавлено всего (работают ${life.alive})`, value: fmt(life.added) },
+              { label: `Вышли из строя: лимит ${life.exhausted} · отклонены ${life.rejected}`, value: fmt(life.dead) },
+              { label: `Срок жизни: медиана (среднее ${fmtDays(life.avgDays)})`, value: fmtDays(life.medianDays) },
+              { label: "Символов в среднем до выхода из строя", value: life.avgCharsDead == null ? "—" : fmtChars(life.avgCharsDead) },
+            ].map((s) => (
+              <div key={s.label} className="kpi">
+                <div className="kpi-value">{s.value}</div>
+                <div className="help">{s.label}</div>
+              </div>
+            ))}
+          </div>
+          {life.dead > 0 && (
+            <p className="text-[14px] mb-3">
+              Вышли из строя через: {life.buckets.map((b) => `${b.label} — ${b.count}`).join(" · ")}
+              {life.deletedAlive ? ` · удалены рабочими: ${life.deletedAlive}` : ""}
+            </p>
+          )}
+          {life.byMonth.length > 0 && (
+            <div className="table-wrap">
+              <table className="table">
+                <thead><tr><th>Месяц добавления</th><th>Добавлено</th><th>Вышли из строя</th><th>Средний срок жизни</th></tr></thead>
+                <tbody>
+                  {life.byMonth.map((m) => (
+                    <tr key={m.month}>
+                      <td>{m.month}</td>
+                      <td>{fmt(m.added)}</td>
+                      <td>{fmt(m.dead)}{m.added ? ` (${Math.round((m.dead / m.added) * 100)}%)` : ""}</td>
+                      <td>{fmtDays(m.avgDays)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       </div>

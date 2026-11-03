@@ -29,7 +29,7 @@ let poolAt = 0;
 
 async function loadPool(force = false): Promise<PoolKey[]> {
   if (pool && !force && Date.now() - poolAt < POOL_TTL_MS) return pool;
-  const rows = await prisma.deeplKey.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
+  const rows = await prisma.deeplKey.findMany({ where: { isActive: true, deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
   const prev = new Map((pool ?? []).map((k) => [k.id, k]));
   pool = rows.map((r) => {
     // Тот же объект, а не копия: идущий запрос держит ссылку на ключ и освобождает именно её (releaseKey).
@@ -83,12 +83,19 @@ function releaseKey(k: PoolKey, chars: number): void {
 
 async function markDead(k: PoolKey, note: string): Promise<void> {
   k.dead = true;
-  await prisma.deeplKey.update({ where: { id: k.id }, data: { isActive: false, lastError: note.slice(0, 500) } }).catch(() => {});
+  await prisma.deeplKey.update({
+    where: { id: k.id },
+    data: { isActive: false, lastError: note.slice(0, 500), deadAt: new Date(), deadReason: note.startsWith("456") ? "exhausted" : "rejected" },
+  }).catch(() => {});
 }
 
 async function addUsage(k: PoolKey, chars: number): Promise<void> {
   k.charUsed += chars;
   await prisma.deeplKey.update({ where: { id: k.id }, data: { charUsed: { increment: chars }, lastError: null } }).catch(() => {});
+  // Лимит выбран этим запросом — момент «ключ исчерпан» для статистики.
+  if (k.charLimit != null && k.charUsed >= k.charLimit) {
+    await prisma.deeplKey.updateMany({ where: { id: k.id, deadAt: null }, data: { deadAt: new Date(), deadReason: "exhausted" } }).catch(() => {});
+  }
 }
 
 /**
@@ -243,24 +250,38 @@ export async function translateKeywords(keys: string[], target?: string | null, 
 }
 
 /**
- * Обновить расход всех ключей по /v2/usage (кнопка на странице ключей; ключи опрашиваются параллельно).
+ * Проверить ключи по /v2/usage и обновить расход (кнопки на странице ключей и автопроверка воркера раз в час;
+ * ключи опрашиваются параллельно). ids — только эти ключи, иначе все неудалённые.
  * Лимит, заданный вручную (limitManual), не перезаписывается — как «Лимит символов» в исходном сервисе.
  * Ключ, выключенный из-за исчерпания (456), снова включается, если DeepL показывает свободный остаток (новый месяц).
+ * Итог пишется в lastChecked*; момент, когда ключ перестал работать, — в deadAt/deadReason (статистика).
  */
-export async function refreshDeeplUsage(): Promise<{ ok: number; failed: number; revived: number }> {
-  const keys = await prisma.deeplKey.findMany();
+export async function refreshDeeplUsage(ids?: string[]): Promise<{ ok: number; failed: number; revived: number; notes: string[] }> {
+  const keys = await prisma.deeplKey.findMany({ where: { deletedAt: null, ...(ids ? { id: { in: ids } } : {}) } });
   let ok = 0;
   let failed = 0;
   let revived = 0;
+  const notes: string[] = [];
   await mapLimit(keys, 8, async (k) => {
     const secret = decryptSecret(k.secretEnc);
+    const now = new Date();
     try {
       const res = await fetch(`${deeplBase(secret)}/usage`, { headers: { Authorization: `DeepL-Auth-Key ${secret.trim()}` }, signal: AbortSignal.timeout(20_000) });
       if (!res.ok) {
         failed++;
+        const rejected = res.status === 403 || res.status === 401;
+        const note = rejected ? `DeepL отклонил ключ (${res.status})` : `DeepL ответил ${res.status}`;
+        notes.push(`${k.label}: ${note}`);
         await prisma.deeplKey.update({
           where: { id: k.id },
-          data: { lastError: `usage ${res.status}: ${(await res.text()).slice(0, 200)}`, usageAt: new Date(), ...(res.status === 403 || res.status === 401 ? { isActive: false } : {}) },
+          data: {
+            lastError: `usage ${res.status}: ${(await res.text()).slice(0, 200)}`,
+            usageAt: now,
+            lastCheckedAt: now,
+            lastCheckOk: false,
+            lastCheckNote: note,
+            ...(rejected ? { isActive: false, ...(k.deadAt ? {} : { deadAt: now, deadReason: "rejected" }) } : {}),
+          },
         });
         return;
       }
@@ -269,30 +290,46 @@ export async function refreshDeeplUsage(): Promise<{ ok: number; failed: number;
       const dlLimit = typeof u.character_limit === "number" && u.character_limit > 0 && u.character_limit < 1e12 ? u.character_limit : null;
       const used = typeof u.character_count === "number" ? u.character_count : k.charUsed;
       const limit = k.limitManual ? k.charLimit : dlLimit;
+      const exhausted = limit != null && used >= limit;
       const exhaustedOff = !k.isActive && /^456/.test(k.lastError ?? "");
-      const revive = exhaustedOff && (limit == null || used < limit);
+      const revive = exhaustedOff && !exhausted;
       if (revive) revived++;
+      const active = k.isActive || revive;
+      const note = exhausted ? "ключ рабочий, но лимит исчерпан" : `ключ работает · осталось ${limit == null ? "без лимита" : Math.round(limit - used).toLocaleString("ru-RU")}`;
       await prisma.deeplKey.update({
         where: { id: k.id },
-        data: { charUsed: used, charLimit: limit, usageAt: new Date(), ...(revive ? { isActive: true, lastError: null } : k.isActive ? { lastError: null } : {}) },
+        data: {
+          charUsed: used,
+          charLimit: limit,
+          usageAt: now,
+          lastCheckedAt: now,
+          lastCheckOk: true,
+          lastCheckNote: note,
+          ...(revive ? { isActive: true, lastError: null } : k.isActive ? { lastError: null } : {}),
+          ...(exhausted && !k.deadAt ? { deadAt: now, deadReason: "exhausted" } : {}),
+          ...(!exhausted && active && k.deadAt ? { deadAt: null, deadReason: null } : {}),
+        },
       });
     } catch (e) {
       failed++;
-      await prisma.deeplKey.update({ where: { id: k.id }, data: { lastError: e instanceof Error ? e.message : String(e), usageAt: new Date() } });
+      const msg = e instanceof Error ? e.message : String(e);
+      notes.push(`${k.label}: не удалось проверить — ${msg}`);
+      await prisma.deeplKey.update({ where: { id: k.id }, data: { lastError: msg, usageAt: now, lastCheckedAt: now, lastCheckOk: false, lastCheckNote: `не удалось проверить: ${msg}`.slice(0, 500) } });
     }
   });
   pool = null;
-  return { ok, failed, revived };
+  return { ok, failed, revived, notes };
 }
 
 /** Проверка ключа перед сохранением: /v2/usage отвечает 200. */
 export async function checkDeeplKey(secret: string): Promise<{ ok: boolean; note: string; used?: number; limit?: number | null }> {
   try {
     const res = await fetch(`${deeplBase(secret)}/usage`, { headers: { Authorization: `DeepL-Auth-Key ${secret.trim()}` }, signal: AbortSignal.timeout(20_000) });
-    if (!res.ok) return { ok: false, note: res.status === 403 ? "DeepL отклонил ключ (403)" : `DeepL ответил ${res.status}` };
+    if (!res.ok) return { ok: false, note: res.status === 403 || res.status === 401 ? `DeepL отклонил ключ (${res.status})` : `DeepL ответил ${res.status}` };
     const u = (await res.json()) as { character_count?: number; character_limit?: number };
     const limit = typeof u.character_limit === "number" && u.character_limit > 0 && u.character_limit < 1e12 ? u.character_limit : null;
-    return { ok: true, note: "ключ работает", used: u.character_count ?? 0, limit };
+    const used = u.character_count ?? 0;
+    return { ok: true, note: `ключ работает · осталось ${limit == null ? "без лимита" : Math.round(limit - used).toLocaleString("ru-RU")}`, used, limit };
   } catch (e) {
     return { ok: false, note: e instanceof Error ? e.message : String(e) };
   }

@@ -17,7 +17,7 @@ export default async function NewDeeplJob({ searchParams }: { searchParams: Prom
     prisma.deeplPrompt.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, purpose: true } }),
     prisma.deeplScenario.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true, settings: true } }),
     prisma.slot.findFirst({ where: { key: "text_main", project: { slug: "deepl" } }, select: { _count: { select: { bindings: true } } } }),
-    prisma.deeplKey.count({ where: { isActive: true } }),
+    prisma.deeplKey.count({ where: { isActive: true, deletedAt: null } }),
   ]);
 
   // «Повторить с этими настройками»: сайт и настройки из прошлого прогона, иначе первый сценарий.

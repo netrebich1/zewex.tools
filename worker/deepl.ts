@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { claimItem, failItem, refreshJobStatus, requeueStaleItems } from "@/lib/deepl/jobs";
 import { processItem } from "@/lib/deepl/process";
+import { refreshDeeplUsage } from "@/lib/deepl/deepl";
 import { log } from "./log";
 
 /**
@@ -66,6 +67,12 @@ export async function deeplRequeueStale(hostPrefix?: string): Promise<void> {
 export async function deeplPurgeCache(): Promise<void> {
   const r = await prisma.deeplCache.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 90 * 24 * 60 * 60_000) } } });
   if (r.count) log.info(`deepl: purged ${r.count} cached translations`);
+}
+
+/** Автопроверка ключей DeepL: принимает ли DeepL ключ, расход, включение исчерпанных в новом месяце. /v2/usage бесплатен. */
+export async function deeplCheckKeys(): Promise<void> {
+  const r = await refreshDeeplUsage();
+  if (r.failed || r.revived) log.info(`deepl keys check: ok ${r.ok}, failed ${r.failed}, revived ${r.revived}${r.notes.length ? ` (${r.notes.join("; ")})` : ""}`);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

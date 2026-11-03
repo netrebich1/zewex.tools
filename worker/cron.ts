@@ -10,7 +10,7 @@ import { prisma } from "@/lib/db";
 import { purgeOldRuns } from "@/lib/pins/runs/cleanup";
 import { resyncSheets } from "@/lib/articles/sheets";
 import { failedKeywordsTick } from "@/lib/articles/failedKeywords";
-import { deeplPurgeCache, deeplRequeueStale } from "./deepl";
+import { deeplCheckKeys, deeplPurgeCache, deeplRequeueStale } from "./deepl";
 import { analyticsPurge, analyticsRequeueStale } from "./analytics";
 import { uploaderTick } from "@/lib/uploader/runs";
 import { newsDaily } from "./news";
@@ -43,6 +43,8 @@ export function startCron(): () => void {
   // DeepL Articler: статьи с истёкшей арендой — в очередь; кэш переводов старше 90 дней — раз в сутки.
   timers.push(setInterval(() => deeplRequeueStale().catch((e) => log.warn("deepl requeueStale failed", e)), 2 * 60_000));
   timers.push(setInterval(() => deeplPurgeCache().catch((e) => log.warn("deepl purgeCache failed", e)), 24 * 60 * 60_000));
+  // Ключи DeepL: проверка в DeepL раз в час (итог и остаток — в списке ключей).
+  timers.push(setInterval(() => deeplCheckKeys().catch((e) => log.warn("deepl keys check failed", e)), 60 * 60_000));
   // Трафик сайтов (GA4): зависшие аренды — каждые 5 мин; часы/страницы/разрезы старше 400 дней — раз в сутки.
   timers.push(setInterval(() => analyticsRequeueStale().catch((e) => log.warn("analytics requeueStale failed", e)), 5 * 60_000));
   timers.push(setInterval(() => analyticsPurge().catch((e) => log.warn("analytics purge failed", e)), 24 * 60 * 60_000));

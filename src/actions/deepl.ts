@@ -175,7 +175,7 @@ export async function addDeeplKeys(_p: FormState, f: FormData): Promise<FormStat
       }
     }
     if (!found.length) throw new Error("Не нашёл ни одного ключа DeepL. Ключ выглядит так: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx");
-    const existing = new Set((await prisma.deeplKey.findMany({ select: { secretEnc: true } })).map((k) => decryptSecret(k.secretEnc).trim().toLowerCase()));
+    const existing = new Set((await prisma.deeplKey.findMany({ where: { deletedAt: null }, select: { secretEnc: true } })).map((k) => decryptSecret(k.secretEnc).trim().toLowerCase()));
     const fresh = found.filter((k, i) => !existing.has(k.secret.toLowerCase()) && found.findIndex((x) => x.secret.toLowerCase() === k.secret.toLowerCase()) === i);
     const dupes = found.length - fresh.length;
     // Лимит для новых ключей, как «Лимит символов» в исходном сервисе: задан — фиксируем вручную, пусто — берём из DeepL.
@@ -200,6 +200,9 @@ export async function addDeeplKeys(_p: FormState, f: FormData): Promise<FormStat
           limitManual: manualLimit != null || c.limit == null,
           charUsed: c.used ?? 0,
           usageAt: new Date(),
+          lastCheckedAt: new Date(),
+          lastCheckOk: true,
+          lastCheckNote: c.note,
           sortOrder: ++order,
         },
       });
@@ -211,7 +214,8 @@ export async function addDeeplKeys(_p: FormState, f: FormData): Promise<FormStat
     const parts = [`Добавлено ключей: ${added}`];
     if (dupes) parts.push(`уже были: ${dupes}`);
     if (rejected.length) parts.push(`не приняты DeepL: ${rejected.length} (${rejected.slice(0, 5).join("; ")}${rejected.length > 5 ? "…" : ""})`);
-    return rejected.length && !added ? { error: parts.join(" · ") } : { ok: parts.join(" · ") };
+    // Отклонённый ключ не сохраняется, и об этом говорит красное сообщение, даже если остальные ключи добавились.
+    return rejected.length ? { error: parts.join(" · ") } : { ok: parts.join(" · ") };
   } catch (e) {
     return fail(e);
   }
@@ -222,12 +226,21 @@ export async function updateDeeplKey(_p: FormState, f: FormData): Promise<FormSt
     await requireUser();
     const id = str(f, "id");
     const op = str(f, "op");
-    if (op === "delete") await prisma.deeplKey.delete({ where: { id } });
-    else if (op === "toggle") {
+    // Удаление мягкое: строка нужна статистике «через сколько ключи выходят из строя».
+    if (op === "delete") await prisma.deeplKey.update({ where: { id }, data: { deletedAt: new Date(), isActive: false } });
+    else if (op === "check") {
+      const r = await refreshDeeplUsage([id]);
+      resetDeeplPool();
+      revalidatePath(KEYS_PATH);
+      revalidatePath(BASE_PATH);
       const k = await prisma.deeplKey.findUniqueOrThrow({ where: { id } });
-      await prisma.deeplKey.update({ where: { id }, data: { isActive: !k.isActive, lastError: k.isActive ? k.lastError : null } });
+      return r.ok ? { ok: `«${k.label}»: ${k.lastCheckNote ?? "ключ работает"}${r.revived ? " · снова в работе" : ""}` } : { error: `«${k.label}»: ${k.lastCheckNote ?? "проверка не прошла"}` };
+    } else if (op === "toggle") {
+      const k = await prisma.deeplKey.findUniqueOrThrow({ where: { id } });
+      // Включили вручную — ключ снова считается живым; откажет опять — отметка поставится заново.
+      await prisma.deeplKey.update({ where: { id }, data: k.isActive ? { isActive: false } : { isActive: true, lastError: null, deadAt: null, deadReason: null } });
     } else if (op === "up" || op === "down") {
-      const keys = await prisma.deeplKey.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], select: { id: true } });
+      const keys = await prisma.deeplKey.findMany({ where: { deletedAt: null }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], select: { id: true } });
       const i = keys.findIndex((k) => k.id === id);
       const j = op === "up" ? i - 1 : i + 1;
       if (i >= 0 && j >= 0 && j < keys.length) {
@@ -240,16 +253,16 @@ export async function updateDeeplKey(_p: FormState, f: FormData): Promise<FormSt
       const limit = parseLimit(str(f, "limit"));
       if (limit == null) throw new Error("Укажите лимит символов числом, например 1000000");
       if (op === "limit") await prisma.deeplKey.update({ where: { id }, data: { charLimit: limit, limitManual: true } });
-      else await prisma.deeplKey.updateMany({ data: { charLimit: limit, limitManual: true } });
+      else await prisma.deeplKey.updateMany({ where: { deletedAt: null }, data: { charLimit: limit, limitManual: true } });
     } else if (op === "limit_auto") {
       // Снова брать лимит из DeepL: подтянется при «Обновить расход из DeepL».
       await prisma.deeplKey.update({ where: { id }, data: { limitManual: false } });
       await refreshDeeplUsage();
     } else if (op === "delete_dead") {
       // Выключенные (лимит, отказ DeepL) и исчерпанные ключи — одним нажатием.
-      const keys = await prisma.deeplKey.findMany({ select: { id: true, isActive: true, charLimit: true, charUsed: true } });
+      const keys = await prisma.deeplKey.findMany({ where: { deletedAt: null }, select: { id: true, isActive: true, charLimit: true, charUsed: true } });
       const dead = keys.filter((k) => !k.isActive || (k.charLimit != null && k.charUsed >= k.charLimit)).map((k) => k.id);
-      await prisma.deeplKey.deleteMany({ where: { id: { in: dead } } });
+      await prisma.deeplKey.updateMany({ where: { id: { in: dead } }, data: { deletedAt: new Date(), isActive: false } });
       resetDeeplPool();
       revalidatePath(KEYS_PATH);
       return { ok: `Удалено ключей: ${dead.length}` };
@@ -269,7 +282,8 @@ export async function refreshDeeplKeys(_p: FormState, _f: FormData): Promise<For
     revalidatePath(KEYS_PATH);
     revalidatePath(BASE_PATH);
     const revived = r.revived ? ` · снова в работе после обновления лимита: ${r.revived}` : "";
-    return r.failed ? { error: `Обновлено ${r.ok}, с ошибкой ${r.failed} — см. строку ключа${revived}` } : { ok: `Расход обновлён по ${r.ok} ключам${revived}` };
+    const bad = r.notes.length ? ` (${r.notes.slice(0, 5).join("; ")}${r.notes.length > 5 ? "…" : ""})` : "";
+    return r.failed ? { error: `Проверено ${r.ok + r.failed}: работают ${r.ok}, с ошибкой ${r.failed}${bad}${revived}` } : { ok: `Все ключи работают (${r.ok}), расход обновлён${revived}` };
   } catch (e) {
     return fail(e);
   }
