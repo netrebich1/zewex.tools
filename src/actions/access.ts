@@ -19,6 +19,34 @@ const fail = (e: unknown): FormState => ({ error: e instanceof Error ? e.message
 /** Хост без протокола, www и регистра: «https://www.Site.com/» и «http://site.com» — один сайт. */
 const hostOf = (url: string) => url.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/.*$/, "").toLowerCase();
 
+type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+/** Переносит на команду teamId всё, что висит на доступе: сайты пинов, статей и блога, их запуски, выгрузки, ошибки и задания DeepL. Расходы (UsageLog) остаются за командой, которая платила. */
+async function moveSiteData(tx: Tx, accessId: string, teamId: string) {
+  const pin = (await tx.pinSite.findMany({ where: { wpConnectionId: accessId }, select: { id: true } })).map((s) => s.id);
+  const art = (await tx.artSite.findMany({ where: { accessId }, select: { id: true } })).map((s) => s.id);
+  const blog = (await tx.blogSite.findMany({ where: { accessId }, select: { id: true } })).map((s) => s.id);
+  const data = { teamId };
+  await tx.pinJob.updateMany({ where: { run: { siteId: { in: pin } } }, data });
+  await tx.pinRun.updateMany({ where: { siteId: { in: pin } }, data });
+  await tx.pinExportLog.updateMany({ where: { siteId: { in: pin } }, data });
+  await tx.pinStyleExclusion.updateMany({ where: { siteId: { in: pin } }, data });
+  await tx.pinStyleOverride.updateMany({ where: { siteId: { in: pin } }, data });
+  await tx.artSite.updateMany({ where: { id: { in: art } }, data });
+  await tx.artRun.updateMany({ where: { siteId: { in: art } }, data });
+  await tx.article.updateMany({ where: { siteId: { in: art } }, data });
+  await tx.artError.updateMany({ where: { siteId: { in: art } }, data });
+  await tx.artFailedKeyword.updateMany({ where: { siteId: { in: art } }, data });
+  await tx.artPhotoFingerprint.updateMany({ where: { siteId: { in: art } }, data });
+  await tx.artAiModerationRun.updateMany({ where: { siteId: { in: art } }, data });
+  await tx.blogSite.updateMany({ where: { id: { in: blog } }, data });
+  await tx.blogRun.updateMany({ where: { siteId: { in: blog } }, data });
+  await tx.blogPost.updateMany({ where: { siteId: { in: blog } }, data });
+  await tx.blogError.updateMany({ where: { siteId: { in: blog } }, data });
+  await tx.blogPhotoFingerprint.updateMany({ where: { siteId: { in: blog } }, data });
+  await tx.deeplJob.updateMany({ where: { accessId }, data });
+}
+
 /**
  * Доступ к сайту (уровень системы): REST API WordPress, команда-владелец, дополнительные команды,
  * сервисы (projects, пусто = всем) и видимость — список сотрудников (пусто = вся команда).
@@ -98,6 +126,8 @@ export async function saveSiteAccess(_p: FormState, f: FormData): Promise<FormSt
       if (viewers.length) await tx.siteAccessViewer.createMany({ data: viewers.map((u) => ({ accessId: aid, userId: u })) });
       // Сайт сервиса следует за командой-владельцем доступа.
       await tx.pinSite.updateMany({ where: { wpConnectionId: aid }, data: { teamId } });
+      // Смена владельца переносит и сайты остальных инструментов вместе с их историей.
+      if (before && before.teamId !== teamId) await moveSiteData(tx, aid, teamId);
       return aid;
     });
     if (!id) {

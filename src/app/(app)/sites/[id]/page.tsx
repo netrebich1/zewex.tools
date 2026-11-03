@@ -63,7 +63,7 @@ export default async function SitePage({ params, searchParams }: { params: Promi
         <div className="space-y-4">
           {(!access.username || !access.appPasswordEnc) && <Alert tone="warn">Сайт перенесён из старого сервиса: доступ к REST API ещё не введён. Укажите логин WordPress и Application Password и нажмите «Сохранить сайт», иначе загрузка картинок в медиатеку и импорт статей работать не будут.</Alert>}
           <Card title="Доступ, команды и видимость" description="Доступ по REST API WordPress вводится один раз. Здесь же — какие команды и сотрудники видят сайт и в какие инструменты он интегрирован. Пароль хранится в зашифрованном виде.">
-            {canEdit ? <SiteAccessForm row={access} teams={teams} projects={projects} members={members} />
+            {canEdit ? <SiteAccessForm key={access.updatedAt.toISOString()} row={access}teams={teams} projects={projects} members={members} />
               : <Alert>Сайт принадлежит команде «{teamName(access.teamId)}» и открыт вашей команде. Смотреть и работать с ним в инструментах можно, а менять доступ, видимость и подключение инструментов — лидер команды «{teamName(access.teamId)}» или админ.</Alert>}
           </Card>
 
