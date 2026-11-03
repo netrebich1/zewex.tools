@@ -285,11 +285,12 @@ export async function jobItems(jobId: string): Promise<JobItemRow[]> {
       revertedAt, (originalWpHtml IS NOT NULL) AS hasOriginal, costUsd, deeplChars, startedAt, finishedAt,
       JSON_EXTRACT(stages, '$[*].key') AS stageKeys
     FROM DeeplItem WHERE jobId = ${jobId} ORDER BY position ASC`;
+  // Сброшенное при повторе поле (Prisma.JsonNull) приходит строкой "null": без «?? d» таблица прогона падала на .filter.
   const json = <T,>(v: unknown, d: T): T => {
     if (v == null) return d;
     if (typeof v === "string") {
       try {
-        return JSON.parse(v) as T;
+        return (JSON.parse(v) as T | null) ?? d;
       } catch {
         return d;
       }
