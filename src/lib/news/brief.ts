@@ -201,8 +201,8 @@ export const overlap = (a: string, b: string, names: string[] = []) => {
   const skip = new Set(names.flatMap((n) => n.toLowerCase().split(/[\s'’-]+/)).filter((w) => w.length >= 3).map((w) => w.slice(0, 5)));
   const A = words(a, skip), B = words(b, skip);
   // Одинаковое начало без имён («Знову разом: …», «Новий етап: …») — та же формула, даже если дальше слова другие.
-  const open = (t: string) => t.toLowerCase().replace(/[^a-zа-яіїєґ0-9’']+/gi, " ").trim().split(" ").filter((w) => !skip.has(w.slice(0, 5))).slice(0, 2).join(" ");
-  if (A.size && B.size && open(a).length >= 7 && open(a) === open(b)) return 1;
+  const open = (t: string) => t.toLowerCase().replace(/[^a-zа-яіїєґ0-9’']+/gi, " ").trim().split(" ").filter((w) => !skip.has(w.slice(0, 5))).slice(0, 3).join(" ");
+  if (A.size && B.size && open(a).length >= 9 && open(a) === open(b)) return 1;
   if (A.size < 3 || B.size < 3) return 0;
   let n = 0;
   for (const w of A) if (B.has(w)) n++;
