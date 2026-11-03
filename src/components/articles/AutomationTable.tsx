@@ -5,8 +5,9 @@ import { pollWhileVisible } from "@/lib/poll";
 import { Alert } from "@/components/ui";
 import { WorkerPill } from "./ArticlesBoard";
 import { Fold, More } from "@/components/ui/Fold";
-import type { AutomationPayload, AutostartCounts, SiteAutomationPatch, SiteAutostartRow, ArtGlobalSettings } from "@/lib/articles/automation";
+import type { AutomationPayload, AutostartCounts, SiteAutomationPatch, SiteAutostartRow, ArtGlobalSettings, TeamAutostartRow } from "@/lib/articles/automation";
 import { SITE_LIMITS as L } from "@/lib/articles/types";
+import { TEAM_LIMITS, type TeamAutostart } from "@/lib/articles/teamQueue";
 
 /**
  * Экран «Автозапуск сайтов»: 8 плиток-счётчиков по шагам пути статьи, легенда, таблица сайтов с переключателями
@@ -82,7 +83,13 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
     void send({ global: patch }, key);
   };
 
+  const saveTeam = (teamId: string, patch: Partial<TeamAutostart>, key: string) => {
+    setData((d) => ({ ...d, teams: (d.teams ?? []).map((t) => (t.id === teamId ? { ...t, settings: { ...t.settings, ...patch } } : t)) }));
+    void send({ team: { teamId, patch } }, key);
+  };
+
   const { sites, totals, global, worker, canEditGlobal } = data;
+  const teams = data.teams ?? [];
   const n = sites.length;
   const every = (f: (s: SiteAutostartRow) => boolean) => n > 0 && sites.every(f);
   const allPhoto = (v: boolean) => askAll(`${v ? "Включить" : "Выключить"} поиск фото на всех сайтах?`, v ? "Воркер начнёт брать статьи, ждущие поиска фото, на каждом сайте." : "Новые статьи перестанут уходить в поиск фото; текущие доработают этап. Сами этапы не включатся — только вручную.", { autostart: { photoEnabled: v } });
@@ -151,7 +158,7 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
             Диск: статьи {gb(worker.disk.storageMb)} · свободно {gb(worker.disk.freeMb)} из {gb(worker.disk.totalMb)}
           </span>
         )}
-        <span className="help">Мастер-выключатели (все сайты сразу):</span>
+        <span className="help">Вся система (все команды сразу):</span>
         <MasterSwitch label="Поиск фото" on={global.photoMaster} disabled={!canEditGlobal} saving={saving === "g-photo"} onChange={(v) => saveGlobal({ photoMaster: v }, "g-photo")} />
         <MasterSwitch label="Написание" on={global.writingMaster} disabled={!canEditGlobal} saving={saving === "g-writing"} onChange={(v) => saveGlobal({ writingMaster: v }, "g-writing")} />
         <MasterSwitch label="Публикация" on={global.publishMaster} disabled={!canEditGlobal} saving={saving === "g-publish"} onChange={(v) => saveGlobal({ publishMaster: v }, "g-publish")} />
@@ -160,8 +167,11 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
           <span className="text-muted">Общий потолок</span>
           <NumInput value={global.maxConcurrent} min={0} max={300} disabled={!canEditGlobal} onSave={(v) => saveGlobal({ maxConcurrent: v }, "g-max")} />
         </label>
-        {!canEditGlobal && <span className="help">Мастер-выключатели меняет администратор или лидер команды.</span>}
+        {!canEditGlobal && <span className="help">Выключатели всей системы меняет администратор; у команды — свои, ниже.</span>}
       </div>
+
+      {/* Команды: у каждой свои ключи ИИ — свои выключатели, потолок и режим очереди */}
+      {teams.map((t) => <TeamBar key={t.id} t={t} workerCap={worker.cap} saving={saving} onSave={(patch, key) => saveTeam(t.id, patch, key)} />)}
 
       {(err || flash) && (
         <div className="flex flex-wrap items-center gap-2">
@@ -248,9 +258,51 @@ export function AutomationTable({ initial }: { initial: AutomationPayload }) {
         </table>
       </div>
       <More short={<>Этапы работают, пока включены: сами они не выключаются и не включаются. Обновлено: {new Date(data.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.</>}>
-        Мастер-выключатели сверху останавливают этап на всех сайтах сразу, не меняя настроек сайтов.
+        Выключатели всей системы останавливают этап на всех сайтах сразу, выключатели команды — на сайтах команды; настройки сайтов не меняются.
+        Потолок команды — сколько её статей идёт одновременно (ключи ИИ у команд свои). Режим очереди: вся мощность команды отдаётся
+        N сайтам, у которых есть неначатые статьи (кто раньше запущен — тот первый), остальные ждут; сайт без неначатых дописывает начатое,
+        а его место сразу получает следующий.
         ИИ-проверка фото: включена на сайте и мастер-выключатель включён — фото каждой новой статьи ИИ берёт в течение ~20 секунд; сомнительные отдаёт сотруднику. Те же настройки — в настройках сайта.
       </More>
+    </div>
+  );
+}
+
+/* ───────── Команда: выключатели, потолок, режим очереди ───────── */
+
+function TeamBar({ t, workerCap, saving, onSave }: { t: TeamAutostartRow; workerCap: number; saving: string | null; onSave: (patch: Partial<TeamAutostart>, key: string) => void }) {
+  const s = t.settings;
+  const k = (f: string) => `t:${t.id}:${f}`;
+  const cap = s.maxConcurrent || workerCap;
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line px-3 py-2">
+      <span className="font-semibold text-[13px]">Команда {t.name}</span>
+      <span
+        className={`badge px-2.5 py-1 tabular-nums !rounded-lg ${s.maxConcurrent > 0 && t.running >= s.maxConcurrent ? "bg-warn-soft text-warn" : "bg-ink/5"}`}
+        title="Статей команды в работе сейчас / потолок команды (ключи ИИ у команды свои)"
+      >
+        В работе: {t.running}{cap ? ` / ${cap}` : ""}
+      </span>
+      <MasterSwitch label="Поиск фото" on={s.photoMaster} disabled={!t.canEdit} saving={saving === k("photo")} onChange={(v) => onSave({ photoMaster: v }, k("photo"))} />
+      <MasterSwitch label="Написание" on={s.writingMaster} disabled={!t.canEdit} saving={saving === k("writing")} onChange={(v) => onSave({ writingMaster: v }, k("writing"))} />
+      <MasterSwitch label="Публикация" on={s.publishMaster} disabled={!t.canEdit} saving={saving === k("publish")} onChange={(v) => onSave({ publishMaster: v }, k("publish"))} />
+      <label className="inline-flex items-center gap-1.5 text-[12.5px]" title={`Сколько статей команды идёт одновременно на всех её сайтах — по силе ключа ИИ команды. 0 — только потолок воркера${workerCap ? ` (${workerCap})` : ""}.`}>
+        <span className="text-muted">Потолок команды</span>
+        <NumInput value={s.maxConcurrent} min={TEAM_LIMITS.maxConcurrent[0]} max={TEAM_LIMITS.maxConcurrent[1]} disabled={!t.canEdit} onSave={(v) => onSave({ maxConcurrent: v }, k("max"))} />
+      </label>
+      <label
+        className="inline-flex items-center gap-1.5 text-[12.5px]"
+        title="Режим очереди: вся мощность команды — N сайтам с неначатыми статьями (кто раньше запущен), остальные ждут. Сайт без неначатых дописывает начатое, его место получает следующий. В очереди — сайты с включённым поиском фото. 0 — выключен, все сайты по своим лимитам."
+      >
+        <span className="text-muted">Очередь: сайтов сразу</span>
+        <NumInput value={s.queueSites} min={TEAM_LIMITS.queueSites[0]} max={TEAM_LIMITS.queueSites[1]} disabled={!t.canEdit} onSave={(v) => onSave({ queueSites: v }, k("queue"))} />
+      </label>
+      {t.queue && (
+        <span className="help">
+          в работе: {t.queue.active.join(", ") || "—"}{t.queue.waiting > 0 ? ` · ждут ${t.queue.waiting}` : ""}
+        </span>
+      )}
+      {!t.canEdit && <span className="help">Меняет администратор или лидер команды.</span>}
     </div>
   );
 }

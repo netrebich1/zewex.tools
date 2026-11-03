@@ -17,6 +17,7 @@ import { mergeSiteSettings, SITE_LIMITS, SLOTS, type ArtSiteSettings, type SlotK
 import { phaseOf, type StagePhase } from "./stages";
 import { slotAvailable } from "./ai";
 import { undecidedArticleIds } from "./aiModeration";
+import { DEFAULT_TEAM_AUTOSTART, TEAM_LIMITS, freshBySite, loadTeamAutostart, queueLimit, queueRoles, teamAutostart, type QueueRole, type TeamAutostart } from "./teamQueue";
 
 /* ───────── Глобальные настройки (singleton ArtSettings id="main") ───────── */
 
@@ -51,6 +52,43 @@ export async function saveArtSettings(patch: Partial<ArtGlobalSettings>): Promis
   await prisma.artSettings.upsert({ where: { id: "main" }, create: { id: "main", ...DEFAULT_GLOBAL_SETTINGS, ...data }, update: data });
   return loadArtSettings();
 }
+
+/* ───────── Настройки команды (ArtTeamSettings): выключатели, потолок, режим очереди ───────── */
+
+/** Проверить патч настроек команды; ошибка — текст на русском. */
+export function validateTeamPatch(raw: unknown): { ok: true; patch: Partial<TeamAutostart> } | { ok: false; error: string } {
+  if (!raw || typeof raw !== "object") return { ok: false, error: "Пустой патч" };
+  const r = raw as Record<string, unknown>;
+  const patch: Partial<TeamAutostart> = {};
+  for (const k of ["photoMaster", "writingMaster", "publishMaster"] as const) if (k in r) { if (typeof r[k] !== "boolean") return { ok: false, error: `Поле ${k} должно быть да/нет` }; patch[k] = r[k] as boolean; }
+  for (const k of ["maxConcurrent", "queueSites"] as const) if (k in r) {
+    const n = clampInt(r[k], TEAM_LIMITS[k]);
+    if (n === null) return { ok: false, error: `${k === "maxConcurrent" ? "Потолок команды" : "Сайтов сразу"} — число от ${TEAM_LIMITS[k][0]} до ${TEAM_LIMITS[k][1]}` };
+    patch[k] = n;
+  }
+  if (!Object.keys(patch).length) return { ok: false, error: "В патче нет известных полей" };
+  return { ok: true, patch };
+}
+
+export async function saveTeamAutostart(teamId: string, patch: Partial<TeamAutostart>): Promise<void> {
+  await prisma.artTeamSettings.upsert({ where: { teamId }, create: { teamId, ...DEFAULT_TEAM_AUTOSTART, ...patch }, update: patch });
+}
+
+/** Настройки команды меняют админ и лидер этой команды. */
+export function canEditTeamSettings(me: CurrentUser, teamId: string): boolean {
+  return me.role === "ADMIN" || me.leadTeamIds.includes(teamId);
+}
+
+export type TeamAutostartRow = {
+  id: string;
+  name: string;
+  settings: TeamAutostart;
+  /** RUNNING с живой арендой на сайтах команды */
+  running: number;
+  /** Режим очереди: сайты в работе сейчас и сколько ждут */
+  queue: { active: string[]; waiting: number } | null;
+  canEdit: boolean;
+};
 
 /* ───────── Счётчики по шагам ───────── */
 
@@ -192,13 +230,15 @@ export type AutomationPayload = {
   totals: AutostartCounts;
   global: ArtGlobalSettings;
   worker: WorkerBrief;
+  /** Команды видимых сайтов: свои выключатели, потолок и режим очереди */
+  teams: TeamAutostartRow[];
   canEditGlobal: boolean;
   at: string;
 };
 
-/** Глобальные настройки меняют админ и лидер команды. */
+/** Выключатели всей системы (все команды сразу) меняет только администратор; у команд — свои (canEditTeamSettings). */
 export function canEditGlobalSettings(me: CurrentUser): boolean {
-  return me.role === "ADMIN" || me.leadTeamIds.length > 0;
+  return me.role === "ADMIN";
 }
 
 /** PENDING старше этого срока при включённых цепочках и молчащем воркере — «воркер не отвечает». */
@@ -215,6 +255,12 @@ export type DiagSite = {
   published24h: number;
   /** Есть PENDING старше 3 мин в фазе */
   stale: Record<StagePhase, boolean>;
+  /** Настройки команды сайта, её бегущие статьи и роль сайта в режиме очереди (null — режим выключен или сайт вне очереди) */
+  team: TeamAutostart;
+  teamRunning: number;
+  role: QueueRole | null;
+  /** Сайты команды в работе по очереди */
+  queueActive: string[];
 };
 
 /**
@@ -231,10 +277,19 @@ export function autostartDiagnostics(site: DiagSite, counts: AutostartCounts, se
     return out;
   }
 
+  const t = site.team;
+  const role = site.role;
+  const queueText = () => `Очередь команды: место №${role?.position}, в работе ${site.queueActive.join(", ") || "—"}. Сайт начнёт, когда у одного из них закончатся неначатые статьи`;
+  if (role?.role === "waiting") out.push({ text: queueText() });
+  if (role?.role === "active") out.push({ text: `Очередь команды: сайт в работе (по ${t.queueSites} сразу) — лимиты фото и написания до ${a.writingLimit}` });
+  if (role?.role === "draining" && counts.writeWait + counts.writeRun + counts.review + counts.photoRun > 0) out.push({ text: "Очередь команды: неначатых нет — дописывает начатые, место отдано следующему сайту" });
+
   // 1. Поиск фото
   if (counts.photoWait > 0) {
     if (!settings.photoMaster) out.push({ bad: true, text: `Мастер-выключатель «Поиск фото» выключен — ждут ${counts.photoWait}` });
+    else if (!t.photoMaster) out.push({ bad: true, text: `Выключатель команды «Поиск фото» выключен — ждут ${counts.photoWait}` });
     else if (!a.photoEnabled) out.push({ bad: true, text: `Поиск фото на сайте выключен — ждут ${counts.photoWait}. Включите переключатель` });
+    else if (role?.role === "waiting") { /* причина — очередь команды, сказано выше */ }
     else if (counts.photoRun >= a.photoLimit) out.push({ text: `Поиск фото: занято ${counts.photoRun} из ${a.photoLimit}, ждут ${counts.photoWait}` });
     // Автобаланс очереди (worker/articles/queue.ts): перед написанием больше статей, чем лимит написания, — новые подборы ждут.
     else if (a.writingEnabled && settings.writingMaster && counts.writeWait > a.writingLimit) out.push({ text: `Новые подборы фото на паузе: перед написанием ждут ${counts.writeWait} (больше лимита написания ${a.writingLimit}) — места отданы написанию` });
@@ -246,7 +301,9 @@ export function autostartDiagnostics(site: DiagSite, counts: AutostartCounts, se
   // 3. Написание
   if (counts.writeWait > 0) {
     if (!settings.writingMaster) out.push({ bad: true, text: `Мастер-выключатель «Написание» выключен — ждут ${counts.writeWait}` });
+    else if (!t.writingMaster) out.push({ bad: true, text: `Выключатель команды «Написание» выключен — ждут ${counts.writeWait}` });
     else if (!a.writingEnabled) out.push({ bad: true, text: `Написание на сайте выключено — ждут ${counts.writeWait}. Включите переключатель` });
+    else if (role?.role === "waiting") out.push({ text: `Написание ждёт очереди команды — ждут ${counts.writeWait}` });
     else if (counts.writeRun >= a.writingLimit) out.push({ text: `Написание: занято ${counts.writeRun} из ${a.writingLimit}, ждут ${counts.writeWait}` });
     else {
       const miss = missingSlots(site.slots, "writing");
@@ -256,12 +313,17 @@ export function autostartDiagnostics(site: DiagSite, counts: AutostartCounts, se
   // 4. Публикация
   if (counts.publishWait > 0) {
     if (!settings.publishMaster) out.push({ bad: true, text: `Мастер-выключатель «Публикация» выключен — ждут ${counts.publishWait}` });
+    else if (!t.publishMaster) out.push({ bad: true, text: `Выключатель команды «Публикация» выключен — ждут ${counts.publishWait}` });
     else if (counts.publishRun >= a.publishLimit) out.push({ text: `Публикация: занято ${counts.publishRun} из ${a.publishLimit}, ждут ${counts.publishWait}` });
     else if (counts.publishRun > 0) out.push({ text: `Публикуются сейчас: ${counts.publishRun}` });
   }
   // Общий потолок
   if (settings.maxConcurrent > 0 && worker.runningTotal >= settings.maxConcurrent && anyWait) {
     out.push({ text: `Общий потолок ${settings.maxConcurrent} статей достигнут (в работе ${worker.runningTotal})` });
+  }
+  // Потолок команды: ключи ИИ у команды свои, больше её потолка сразу не идёт на всех её сайтах
+  if (t.maxConcurrent > 0 && site.teamRunning >= t.maxConcurrent && anyWait) {
+    out.push({ text: `Потолок команды ${t.maxConcurrent} статей занят (в работе ${site.teamRunning})` });
   }
   // Потолок воркера: больше cap статей сразу не идёт, какие бы ни были лимиты сайтов
   if (worker.cap > 0 && worker.runningTotal >= worker.cap && anyWait) {
@@ -297,7 +359,7 @@ export function autostartDiagnostics(site: DiagSite, counts: AutostartCounts, se
 }
 
 /** Строки таблицы «Автозапуск сайтов» по видимым сайтам + итоги + состояние воркера. */
-export async function siteAutostartRows(me: CurrentUser, global?: ArtGlobalSettings): Promise<{ sites: SiteAutostartRow[]; totals: AutostartCounts; worker: WorkerBrief }> {
+export async function siteAutostartRows(me: CurrentUser, global?: ArtGlobalSettings): Promise<{ sites: SiteAutostartRow[]; totals: AutostartCounts; worker: WorkerBrief; teams: TeamAutostartRow[] }> {
   const settings = global ?? (await loadArtSettings());
   const sites = await prisma.artSite.findMany({
     where: await artSiteWhere(me),
@@ -347,6 +409,31 @@ export async function siteAutostartRows(me: CurrentUser, global?: ArtGlobalSetti
   const aiBySite = await aiReviewBriefs(sites.map((s) => ({ id: s.id, on: mergeSiteSettings(s.settings).aiModeration.enabled && settings.aiModMaster })), aiRuns.map((r) => r.id), counts);
   const pub24 = new Map(pub.map((r) => [r.siteId, r._count._all]));
 
+  // Команды: настройки, бегущие статьи (по всем сайтам команды, не только видимым) и роли сайтов в режиме очереди.
+  const teamIds = [...new Set(sites.map((s) => s.teamId))];
+  const [teamSettings, teamRun, teamNames] = await Promise.all([
+    loadTeamAutostart(prisma),
+    prisma.article.groupBy({ by: ["teamId"], where: { status: "RUNNING", leaseUntil: { gt: now } }, _count: { _all: true } }),
+    prisma.team.findMany({ where: { id: { in: teamIds } }, select: { id: true, name: true } }),
+  ]);
+  const teamRunning = new Map(teamRun.map((r) => [r.teamId, r._count._all]));
+  const queueTeams = teamIds.filter((t) => teamAutostart(teamSettings, t).queueSites > 0);
+  const queueSites = queueTeams.length
+    ? await prisma.artSite.findMany({ where: { teamId: { in: queueTeams }, isActive: true }, select: { id: true, name: true, teamId: true, isActive: true, settings: true } })
+    : [];
+  const roles = queueRoles(
+    queueSites.map((s) => ({ id: s.id, name: s.name, teamId: s.teamId, isActive: s.isActive, photoEnabled: mergeSiteSettings(s.settings).autostart.photoEnabled })),
+    await freshBySite(prisma, queueSites.map((s) => s.id)),
+    teamSettings,
+  );
+  const activeByTeam = new Map<string, string[]>();
+  const waitingByTeam = new Map<string, number>();
+  for (const s of queueSites) {
+    const r = roles.get(s.id);
+    if (r?.role === "active") activeByTeam.set(s.teamId, [...(activeByTeam.get(s.teamId) ?? []), s.name]);
+    if (r?.role === "waiting") waitingByTeam.set(s.teamId, (waitingByTeam.get(s.teamId) ?? 0) + 1);
+  }
+
   // Ключи владельцев — по уникальным пользователям, с кэшем на минуту.
   const owners = [...new Set(sites.map((s) => s.createdById).filter((x): x is string => !!x))];
   const slotsByOwner = new Map<string, SlotMap>();
@@ -355,11 +442,16 @@ export async function siteAutostartRows(me: CurrentUser, global?: ArtGlobalSetti
   const rows: SiteAutostartRow[] = sites.map((s) => {
     const st = mergeSiteSettings(s.settings);
     const c = counts.get(s.id)!;
+    const team = teamAutostart(teamSettings, s.teamId);
+    const role = roles.get(s.id) ?? null;
+    // Сайт в работе очереди идёт с поднятыми лимитами (как в worker/articles/queue.ts) — диагностика считает по ним.
+    const lift = (n: number) => (role && role.role !== "waiting" ? queueLimit(team, worker.cap, n) : n);
     const diag: DiagSite = {
-      isActive: s.isActive, autostart: st.autostart, aiModeration: st.aiModeration,
+      isActive: s.isActive, autostart: { ...st.autostart, photoLimit: lift(st.autostart.photoLimit), writingLimit: lift(st.autostart.writingLimit) }, aiModeration: st.aiModeration,
       slots: s.createdById ? slotsByOwner.get(s.createdById) ?? null : null,
       ai: aiBySite.get(s.id)!, aiRunning: running.has(s.id), published24h: pub24.get(s.id) ?? 0,
       stale: staleMap.get(s.id) ?? { photos: false, writing: false, publish: false },
+      team, teamRunning: teamRunning.get(s.teamId) ?? 0, role, queueActive: activeByTeam.get(s.teamId) ?? [],
     };
     return {
       id: s.id, name: s.name, isActive: s.isActive, teamId: s.teamId, autostart: st.autostart, aiModeration: st.aiModeration, counts: c,
@@ -368,7 +460,16 @@ export async function siteAutostartRows(me: CurrentUser, global?: ArtGlobalSetti
     };
   });
   const totals = rows.reduce((acc, r) => addCounts(acc, r.counts), emptyCounts());
-  return { sites: rows, totals, worker };
+  const teams: TeamAutostartRow[] = teamNames
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((t) => {
+      const settings = teamAutostart(teamSettings, t.id);
+      return {
+        id: t.id, name: t.name, settings, running: teamRunning.get(t.id) ?? 0, canEdit: canEditTeamSettings(me, t.id),
+        queue: settings.queueSites > 0 ? { active: activeByTeam.get(t.id) ?? [], waiting: waitingByTeam.get(t.id) ?? 0 } : null,
+      };
+    });
+  return { sites: rows, totals, worker, teams };
 }
 
 /** Закрепление статьи сотрудником, после которого она снова свободна (как CLAIM_TTL_MIN в types.ts). */
@@ -400,8 +501,8 @@ async function aiReviewBriefs(sites: Array<{ id: string; on: boolean }>, running
 
 export async function automationPayload(me: CurrentUser): Promise<AutomationPayload> {
   const global = await loadArtSettings();
-  const { sites, totals, worker } = await siteAutostartRows(me, global);
-  return { sites, totals, global, worker, canEditGlobal: canEditGlobalSettings(me), at: new Date().toISOString() };
+  const { sites, totals, worker, teams } = await siteAutostartRows(me, global);
+  return { sites, totals, global, worker, teams, canEditGlobal: canEditGlobalSettings(me), at: new Date().toISOString() };
 }
 
 /* ───────── Правка настроек сайта ───────── */

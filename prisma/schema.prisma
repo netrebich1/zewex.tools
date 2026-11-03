@@ -1271,6 +1271,20 @@ model ArtSettings {
   updatedAt        DateTime @updatedAt
 }
 
+/// Автозапуск статей команды (ключи ИИ у команд свои): мастер-выключатели, потолок и режим очереди сайтов (src/lib/articles/teamQueue.ts).
+/// Нет строки — всё включено, потолка и очереди нет.
+model ArtTeamSettings {
+  teamId        String   @id
+  photoMaster   Boolean  @default(true)
+  writingMaster Boolean  @default(true)
+  publishMaster Boolean  @default(true)
+  /// Потолок одновременных статей команды «В работе» (0 — только потолок воркера)
+  maxConcurrent Int      @default(0)
+  /// Режим очереди: 0 — выключен; N — вся мощность команды N сайтам с неначатыми статьями, остальные ждут
+  queueSites    Int      @default(0)
+  updatedAt     DateTime @updatedAt
+}
+
 /// Запуск ИИ-модерации фото (оригинал: ai_moderation_runs)
 model ArtAiModerationRun {
   id           String   @id @default(uuid()) @db.Char(36)

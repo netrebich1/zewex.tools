@@ -8,6 +8,8 @@
  *  - публикация — свой лимит;
  *  - мастер-выключатели ArtSettings (photoMaster/writingMaster/publishMaster) гасят фазу на всех сайтах сразу;
  *  - ArtSettings.maxConcurrent > 0 — потолок RUNNING по всем статьям (оригинал: globalCap); 0 — только ARTICLES_WORKER_CONCURRENCY (цикл воркера);
+ *  - у команды (ArtTeamSettings, ключи ИИ у команд свои) — свои мастер-выключатели, потолок RUNNING и режим очереди сайтов
+ *    (src/lib/articles/teamQueue.ts): в работе N сайтов команды, остальные ждут;
  *  - round-robin по сайтам: сначала по одному кандидату с каждого сайта (сайты с меньшим числом бегущих статей — раньше),
  *    второй кандидат того же сайта — только когда кандидаты других сайтов исчерпаны (оригинал: «берём по каждому сайту»).
  *  - кандидаты выбираются только из «открытых» пар сайт × фаза (сайт активен, фаза включена, лимит не занят) и не больше
@@ -20,6 +22,7 @@ import { mergeSiteSettings } from "@/lib/articles/types";
 import { phaseOf, stagesOfPhase, type StagePhase } from "@/lib/articles/stages";
 import { markArticleStatus } from "@/lib/articles/sheets";
 import { stageLabel } from "@/lib/articles/stages";
+import { freshBySite, loadTeamAutostart, queueLimit, queueRoles, teamAutostart, type QueueRole, type TeamAutostart } from "@/lib/articles/teamQueue";
 import { recordError } from "./journal";
 import { log } from "../log";
 
@@ -37,26 +40,33 @@ const PHASES: StagePhase[] = ["photos", "writing", "publish"];
 const CANDIDATES_PER_STAGE = 3;
 type Tx = Prisma.TransactionClient;
 
-type GlobalRules = { enabled: Record<StagePhase, boolean>; maxConcurrent: number };
+type GlobalRules = { enabled: Record<StagePhase, boolean>; maxConcurrent: number; workerCap: number };
 
 /** Мастер-выключатели и общий потолок (ArtSettings id="main"); нет строки — всё включено, потолка нет. */
 async function globalRules(tx: Tx): Promise<GlobalRules> {
-  const g = await tx.artSettings.findUnique({ where: { id: "main" }, select: { photoMaster: true, writingMaster: true, publishMaster: true, maxConcurrent: true } });
+  const g = await tx.artSettings.findUnique({ where: { id: "main" }, select: { photoMaster: true, writingMaster: true, publishMaster: true, maxConcurrent: true, workerCap: true } });
   return {
     enabled: { photos: g?.photoMaster ?? true, writing: g?.writingMaster ?? true, publish: g?.publishMaster ?? true },
     maxConcurrent: g?.maxConcurrent ?? 0,
+    workerCap: g?.workerCap ?? 0,
   };
 }
 
-function siteRules(site: { settings: unknown; isActive: boolean }, g: GlobalRules): SiteRules {
+/**
+ * Правила сайта: выключатели сайта, команды и системы; в режиме очереди команды ждущий сайт не начинает и не пишет,
+ * а у сайта в работе (и дописывающего начатое) лимиты фото и написания подняты до доли потолка команды.
+ */
+function siteRules(site: { settings: unknown; isActive: boolean }, g: GlobalRules, team: TeamAutostart, role?: QueueRole): SiteRules {
   const s = mergeSiteSettings(site.settings);
+  const waiting = role?.role === "waiting";
+  const lift = (n: number) => (role && !waiting ? queueLimit(team, g.workerCap, n) : n);
   return {
     enabled: {
-      photos: site.isActive && g.enabled.photos && s.autostart.photoEnabled,
-      writing: site.isActive && g.enabled.writing && s.autostart.writingEnabled,
-      publish: site.isActive && g.enabled.publish,
+      photos: site.isActive && g.enabled.photos && team.photoMaster && s.autostart.photoEnabled && !waiting,
+      writing: site.isActive && g.enabled.writing && team.writingMaster && s.autostart.writingEnabled && !waiting,
+      publish: site.isActive && g.enabled.publish && team.publishMaster,
     },
-    limit: { photos: Math.max(1, s.autostart.photoLimit), writing: Math.max(1, s.autostart.writingLimit), publish: Math.max(1, s.autostart.publishLimit) },
+    limit: { photos: Math.max(1, lift(s.autostart.photoLimit)), writing: Math.max(1, lift(s.autostart.writingLimit)), publish: Math.max(1, s.autostart.publishLimit) },
   };
 }
 
@@ -101,7 +111,17 @@ export async function claimArticle(workerId: string): Promise<Article | null> {
       if (g.maxConcurrent > 0 && runningTotal >= g.maxConcurrent) return null;
 
       // Открытые пары сайт × фаза: сайт активен, фаза включена (сайт и мастер-выключатель), лимит не занят.
-      const sites = await tx.artSite.findMany({ where: { isActive: true }, select: { id: true, settings: true, isActive: true } });
+      const sites = await tx.artSite.findMany({ where: { isActive: true }, select: { id: true, name: true, teamId: true, settings: true, isActive: true } });
+      // Команды: потолок по бегущим статьям её сайтов и режим очереди (кто из сайтов сейчас в работе).
+      const teams = await loadTeamAutostart(tx);
+      const teamOf = new Map(sites.map((s) => [s.id, s.teamId]));
+      const teamRunning = new Map<string, number>();
+      for (const [siteId, n] of runningBySite) { const t = teamOf.get(siteId); if (t) teamRunning.set(t, (teamRunning.get(t) ?? 0) + n); }
+      const teamFull = (teamId: string) => { const cap = teamAutostart(teams, teamId).maxConcurrent; return cap > 0 && (teamRunning.get(teamId) ?? 0) >= cap; };
+      const queued = sites.filter((s) => teamAutostart(teams, s.teamId).queueSites > 0);
+      const roles = queued.length
+        ? queueRoles(queued.map((s) => ({ id: s.id, name: s.name, teamId: s.teamId, isActive: s.isActive, photoEnabled: mergeSiteSettings(s.settings).autostart.photoEnabled })), await freshBySite(tx, queued.map((s) => s.id)), teams)
+        : new Map<string, QueueRole>();
       // Автобаланс (2026-10-25, qunex.online: фото в 29 потоков обгоняли написание с лимитом 20, перед написанием копилось 65
       // статей, а потолок воркера был занят фото): если перед написанием сайта ждёт больше статей, чем его лимит написания,
       // новые подборы фото этого сайта не начинаются — места воркера уходят написанию. Начатые подборы доходят до конца.
@@ -114,7 +134,8 @@ export async function claimArticle(workerId: string): Promise<Article | null> {
       const rulesBySite = new Map<string, SiteRules>();
       const open: Prisma.Sql[] = [];
       for (const site of sites) {
-        const rules = siteRules(site, g);
+        if (teamFull(site.teamId)) continue;
+        const rules = siteRules(site, g, teamAutostart(teams, site.teamId), roles.get(site.id));
         rulesBySite.set(site.id, rules);
         for (const phase of PHASES) {
           if (!rules.enabled[phase] || (phaseRunning.get(`${site.id}:${phase}`) ?? 0) >= rules.limit[phase]) continue;
@@ -149,6 +170,7 @@ export async function claimArticle(workerId: string): Promise<Article | null> {
         const rules = rulesBySite.get(c.siteId);
         if (!rules || !rules.enabled[phase]) continue;
         if ((phaseRunning.get(`${c.siteId}:${phase}`) ?? 0) >= rules.limit[phase]) continue;
+        if (teamFull(teamOf.get(c.siteId) ?? "")) continue;
         const r = await tx.$executeRaw`
           UPDATE Article SET status = 'RUNNING', workerId = ${workerId}, leaseUntil = DATE_ADD(NOW(3), INTERVAL ${LEASE_SECONDS} SECOND),
                  attempts = attempts + 1, startedAt = COALESCE(startedAt, NOW(3)), error = NULL, errorStage = NULL

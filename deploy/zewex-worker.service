@@ -14,7 +14,8 @@ Environment=NODE_ENV=production
 Environment=PINS_STORAGE_DIR=/var/www/zewex_tools_usr/data/storage
 # Статьи: сколько статей воркер ведёт одновременно на все сайты (лимиты сайтов на экране «Автозапуск» — внутри этого потолка).
 # Было 3, потом 10, 30 — лимиты сайтов упирались в него (2026-10-16, 2026-10-19: 30, 2026-10-23: 45 на 4 ядрах). Статьи ждут ИИ/поиск, CPU почти не нужен.
-Environment=ARTICLES_WORKER_CONCURRENCY=45
+# 2026-11-03: 90 — у команд свои ключи ИИ и свои потолки (экран «Автозапуск», ArtTeamSettings): Zewex 45 (потолок её ключа OpenRouter), остальные внутри.
+Environment=ARTICLES_WORKER_CONCURRENCY=90
 ExecStart=/var/www/zewex_tools_usr/data/app/node_modules/.bin/tsx worker/index.ts
 Restart=always
 RestartSec=5
