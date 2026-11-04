@@ -7,11 +7,11 @@
 import { Prisma, type DeeplItem, type DeeplJob } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
-  anchorsFromTokens, changedWordCount, checkIntegrity, countKeyword, detectLangMismatch, extractKeywords, keywordTarget, protectHtml,
-  restoreHtml, type QualityIssue,
+  anchorsFromTokens, changedWordCount, checkIntegrity, countKeyword, detectLangMismatch, extractKeywords, keywordTarget, matchDashStyle,
+  protectHtml, restoreHtml, type QualityIssue,
 } from "./html";
 import { runTranslate, sourceCode, translateKeywords } from "./deepl";
-import { KEYWORD_TOPUP_PROMPT, runEdit, runHeadings, type AiCtx } from "./edit";
+import { keywordTopupPrompt, runEdit, runHeadings, type AiCtx } from "./edit";
 import { getPost, savePost, siteCreds } from "./wp";
 import { parseSettings, type KeywordStat, type Snapshot, type Warning } from "./types";
 
@@ -147,13 +147,13 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
       });
     });
     if (cfg.headings.enabled && cfg.headings.prompt.trim()) {
-      plan.push({ id: "headings#0", stage: "headings", label: "Заголовки H2", run: (h) => runHeadings({ ...ai, model: cfg.headingsModel || cfg.model }, h, cfg.headings.prompt, { title, h1 }) });
+      plan.push({ id: "headings#0", stage: "headings", label: "Заголовки H2", run: (h) => runHeadings({ ...ai, model: cfg.headingsModel || cfg.model }, h, cfg.headings.prompt, { title, h1, lang: finalLang }) });
     }
     if (cfg.postEdit.enabled && cfg.postEdit.prompt.trim()) {
       plan.push({
         id: "post_edit#0", stage: "post_edit", label: "Постредактура", critical: true, allowPartial: true, reviewNoop: true,
         // Только язык: ключи сюда намеренно не передаются, их вписывает следующий независимый этап.
-        run: (h) => runEdit(ai, h, cfg.postEdit.prompt, { title, h1, lightTouch: true, anchors: anchorTexts }, true, {
+        run: (h) => runEdit(ai, h, cfg.postEdit.prompt, { title, h1, lang: finalLang, lightTouch: true, anchors: anchorTexts }, true, {
           sections: 3, maxTextGrowthPct: 12, maxRewritePct: 22,
           // Оригинал той же секции — сверить термины, факты и обращение после цепочки переводов (формулировки не возвращаются).
           referenceHtml: steps.length ? protectHtml(sourceHtml).text : undefined,
@@ -165,7 +165,7 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
           run: async (h) => {
             const deficits = await prepareSeo(h);
             if (!deficits.length) return { html: h, warnings: [], changedWords: 0 };
-            return runEdit(ai, h, KEYWORD_TOPUP_PROMPT, { title, h1, lightTouch: true, anchors: anchorTexts, keywordDeficits: deficits }, true, {
+            return runEdit(ai, h, keywordTopupPrompt(finalLang), { title, h1, lang: finalLang, lightTouch: true, anchors: anchorTexts, keywordDeficits: deficits }, true, {
               sections: 2, maxTextGrowthPct: 4, maxRewritePct: 12, retryKeywordDeficits: true,
             });
           },
@@ -208,6 +208,8 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
       if (why) return await interrupted(why);
       const before = html;
       const r = await st.run(html);
+      // Тире как в исходнике: DeepL через немецкий ставит длинное «—» вместо короткого «–».
+      r.html = matchDashStyle(sourceHtml, r.html);
       warnings.push(...r.warnings.map((w) => ({ ...w, detail: `${st.label}: ${w.detail}` })));
       let rolledBack = false;
       if ((r.rolledBack ?? 0) > 0 && !st.allowPartial) {

@@ -7,10 +7,11 @@ import { disableKey, resolveSlot, runSlot, type ResolvedSlot } from "@/lib/run";
 import { AiError, classifyAiError } from "@/lib/pins/ai/errors";
 import { acquire } from "@/lib/pins/ai/limiter";
 import {
-  changedWordCount, chunkBySections, chunkHtml, chunkIsFatal, countKeyword, detectMasculineVoice, protectHtml, repairPlaceholders,
-  restoreHtml, rewritePct, validateChunk, visibleText, visibleTextLength, type QualityIssue,
+  changedWordCount, chunkBySections, chunkHtml, chunkIsFatal, countKeyword, countRussianisms, detectMasculineVoice, findRussianisms, matchDashStyle,
+  protectHtml, repairPlaceholders, restoreHtml, rewritePct, stripKeywordQuotes, validateChunk, visibleText, visibleTextLength, type QualityIssue,
 } from "./html";
 import { mapLimit } from "./deepl";
+import { langPack } from "./lang";
 import { EDIT_SLOT, PROJECT_SLUG } from "./types";
 
 /** Одновременных запросов к модели на один ключ (OpenRouter держит больше, чем общий лимит портала 6). */
@@ -20,35 +21,18 @@ const CHUNK_CONCURRENCY = Number(process.env.DEEPL_EDIT_CHUNK_CONCURRENCY || 4);
 
 export type AiCtx = { userId: string; teamId?: string | null; refId?: string; model?: string; onCost?: (usd: number) => void };
 
-export const EDIT_SYSTEM = `Ты — профессиональный редактор HTML-статей.
-СТРОГИЕ ПРАВИЛА:
-1. Возвращай ТОЛЬКО HTML-фрагмент, без markdown-обёрток и пояснений.
-2. Сохраняй всю разметку, порядок и структуру тегов один в один.
-3. НИКОГДА не меняй, не удаляй, не дублируй и не добавляй: атрибуты src, href, class, id, srcset, теги <img>, <a>, <iframe>, шорткоды в квадратных скобках и служебные теги <x-ph i="N"></x-ph> — переноси их в ответ ровно один раз, в том же месте и с тем же номером.
-4. Не добавляй новые блоки и не удаляй существующие абзацы.
-5. Редактируй только текстовое содержимое согласно инструкции пользователя.
-6. ГОЛОС АВТОРА — ЖЕНСКИЙ: статья написана от лица девушки/женщины. ВСЕ обороты от первого лица («я», «меня», «мне», действия и чувства автора) должны стоять в ЖЕНСКОМ роде: «я обрала», «я була рада», «я спробувала», «як для мене», «я замовила». Если после перевода появились формы мужского рода («я обрав», «я був радий», «я попробовал») — исправь их на женский род, даже если инструкция пользователя этого не упоминает. Это правило приоритетнее сохранения исходных формулировок.`;
+/** Совместимость со стендом: системный промт — из языкового пакета (UK — украинский, остальные — английский). */
+export const EDIT_SYSTEM = langPack("UK").system;
 
-const ANCHOR_RULE = `ССЫЛКИ И АНКОРЫ (обязательно):
-- Ссылки скрыты служебными тегами <x-ph i="N"></x-ph>. Текст анкора менять НЕЛЬЗЯ — он уже задан.
-- Ниже дан список анкоров в том виде, в каком они стоят в тексте. Фразу ВОКРУГ служебного тега согласуй с анкором: правильный падеж, предлог, порядок слов, чтобы предложение читалось естественно.
-- Убирай осиротевшие предлоги, тире и точки рядом со ссылкой («...пасує, я показала у своїй добірці на — джинси ...» — так быть не должно).
-- Служебный тег переноси ровно один раз, на том же месте.`;
-
-const QUOTE_RULE = `КАВЫЧКИ: не добавляй новых кавычек. Пустых кавычек («», "") быть не должно.`;
-
-/** Добор ключей — отдельный проход только ради ключей, никакой другой редактуры. */
-export const KEYWORD_TOPUP_PROMPT = `Задача — только вписать недостающие SEO-ключи из списка ниже.
-- Ничего другого не меняй: ни стиль, ни порядок, ни объём предложений.
-- Ключ вставляй ТОЛЬКО заменой существующего синонима или описательного оборота (например «ці штани» → «жіночі легінси»).
-- Новых предложений, абзацев, списков и вводных штампов добавлять нельзя.
-- Ключ можно склонять. В подписях к фото и внутри анкоров ключи не вставляй.
-- Если ключ не подходит фрагменту по смыслу — пропусти его: лучше не вставить, чем вставить нелепо.
-- Если во фрагменте вставить нечего — верни его без изменений.`;
+/** Добор ключей — отдельный проход только ради ключей, никакой другой редактуры (текст по языку статьи). */
+export const KEYWORD_TOPUP_PROMPT = langPack("UK").topupPrompt;
+export const keywordTopupPrompt = (lang?: string | null): string => langPack(lang).topupPrompt;
 
 export interface EditContext {
   title?: string | null;
   h1?: string | null;
+  /** язык итоговой статьи (код DeepL): выбирает языковой пакет служебных промтов */
+  lang?: string | null;
   /** режим постредактуры: только точечная замена слов/словосочетаний */
   lightTouch?: boolean;
   /** тексты анкоров (неприкосновенны, но контекст вокруг согласуем) */
@@ -60,64 +44,25 @@ export interface EditContext {
 }
 
 /**
- * Что именно искать после цепочки переводов. Без этого списка и без оригинала модели возвращали текст почти без правок
- * (стенд 2026-10-15: 0–1 правка на секцию у 10 моделей из 11), а смысловые сдвиги перевода оставались.
+ * Служебные блоки промта на языке статьи. Без списка «что искать» и без оригинала модели возвращали текст почти
+ * без правок (стенд 2026-10-15), а с русскоязычными блоками — правили украинский на суржик (2026-11-04).
  */
-const REFERENCE_RULE = `СВЕРКА С ОРИГИНАЛОМ (обязательно):
-Ниже дан оригинал этого же фрагмента ДО цепочки машинных переводов. Текст после перевода специально перефразирован — так и должно остаться: формулировки оригинала НЕ возвращай и предложения из него НЕ копируй.
-Сверяйся с оригиналом только чтобы найти и исправить искажения перевода:
-- предмет или термин подменён (было «каблучка» — стало «обручка»; «плащ» → «дощовик»; «мигдаль» как форма нігтів) — верни правильный термин;
-- цвет, материал, число, бренд, название, ситуация передаёт другое (было «рудий» — стало «червоний») — верни как в оригинале;
-- обращение к читателю изменилось (в оригинале «ви» — в тексте «ти», или наоборот) — приведи к оригиналу во всём фрагменте;
-- появилось то, чего в оригинале нет («на моєму пальці», лишнее «я»), или пропало важное уточнение — исправь коротко, в пределах предложения;
-- разорванные или лишние кавычки вокруг названий («Vogue Ukraine без закрывающей) — исправь.
-Если фрагмент передаёт смысл оригинала верно — меняй только язык.`;
-
-const FIX_CHECKLIST = `ЧТО ИСПРАВЛЯТЬ (пройди фрагмент по каждому пункту):
-1. Кальки и машинные обороты после перевода («є гарною відправною точкою», «у зоні кутикули», «привертає погляд уздовж»), русизмы, неестественная сочетаемость.
-2. Термины тематики (мода, волосся, нігті, догляд) — как говорят в живих українських фешн-медіа.
-3. Граматика, відмінки, узгодження роду й числа.
-4. Женский род автора в формах первого лица.
-5. Смысловые искажения против оригинала (если оригинал дан).
-Правок обычно несколько в каждом абзаце: машинный перевод почти никогда не бывает чистым.`;
-
 export function contextBlock(ctx?: EditContext): string {
   if (!ctx) return "";
+  const L = langPack(ctx.lang);
   const lines: string[] = [];
-  if (ctx.title) lines.push(`Title статьи: ${ctx.title}`);
-  if (ctx.h1) lines.push(`H1 статьи: ${ctx.h1}`);
+  if (ctx.title) lines.push(`${L.titleLabel}: ${ctx.title}`);
+  if (ctx.h1) lines.push(`${L.h1Label}: ${ctx.h1}`);
   let block = "";
-  if (lines.length) {
-    block += `Контекст статьи (используй, чтобы определить основные ключевые слова и LSI-фразы и сохранить их в тексте):\n${lines.join("\n")}\n\n`;
-  }
+  if (lines.length) block += `${L.contextHeader}\n${lines.join("\n")}\n\n`;
   if (ctx.lightTouch) {
-    block += `РЕЖИМ ПОСТРЕДАКТУРЫ — ТОЧЕЧНАЯ ПРАВКА (обязательно):
-- Это НЕ рерайт. Запрещено переписывать предложения своими словами, пересказывать, укорачивать, объединять или разбивать их, менять порядок предложений и абзацев.
-- Каркас каждого предложения остаётся прежним: не менее 80% слов фрагмента должны остаться дословно на своих местах.
-- Разрешена ТОЛЬКО замена отдельных слов и коротких словосочетаний ради чистоты языка: грамматика, падежи, согласование, кальки и машинные обороты после перевода, неестественная сочетаемость.
-- Не «улучшай стиль» ради стиля: правка нужна там, где есть ошибка, калька, искажение смысла или неестественная фраза.
-- ОСОБО РАЗРЕШЕНО и обязательно: исправлять формы первого лица на ЖЕНСКИЙ род (автор — девушка): «я обрав/був/зробив» → «я обрала/була/зробила» и т.п. во всём фрагменте.
-- Ключевые слова и LSI из Title/H1 сохраняй и используй в естественной форме, не переспамливай.\n\n`;
-    if (!ctx.keywordDeficits?.length) block += `${FIX_CHECKLIST}\n\n`;
+    block += `${L.lightTouch}\n\n`;
+    if (!ctx.keywordDeficits?.length) block += `${L.checklist}\n\n`;
   }
-  if (ctx.reference?.trim()) {
-    block += `${REFERENCE_RULE}\nОРИГИНАЛ ФРАГМЕНТА (только для сверки, не копировать):\n"""\n${ctx.reference.trim().slice(0, 8000)}\n"""\n\n`;
-  }
-  if (ctx.anchors?.length) {
-    block += `${ANCHOR_RULE}\nАнкоры в статье:\n${ctx.anchors.slice(0, 40).map((a, i) => `${i + 1}. ${a}`).join("\n")}\n\n`;
-  }
-  if (ctx.keywordDeficits?.length) {
-    block += `SEO-КЛЮЧИ (обязательно):
-- Ниже ключи, которых в тексте не хватает, и сколько вхождений нужно добавить во всей статье.
-- Добавляй ключ ТОЛЬКО заменой уже существующего синонима или описательного оборота на ключ. Новых предложений, абзацев и перечислений добавлять НЕЛЬЗЯ.
-- Запрещены вводные штампы («Кроме того», «Важно отметить», «Стоит подчеркнуть»), повтор ключа в соседних предложениях, ключ в подписях к фото и внутри анкоров.
-- Ключ можно склонять и согласовывать по падежу. Все формы от первого лица — строго в женском роде (автор — девушка).
-- Если ключ не подходит этому фрагменту по смыслу — пропусти его, его вставят в другом месте статьи.
-- Ключи ниже закреплены именно за этим фрагментом: постарайся разместить их здесь, по одному в разных абзацах.
-- Объём фрагмента не должен вырасти более чем на 6%.
-Ключи:\n${ctx.keywordDeficits.slice(0, 20).map((k) => `- «${k.key}» — добавить примерно ${k.need}`).join("\n")}\n\n`;
-  }
-  if (ctx.lightTouch || ctx.anchors?.length) block += `${QUOTE_RULE}\n\n`;
+  if (ctx.reference?.trim()) block += `${L.reference}\n${L.referenceHeader}\n"""\n${ctx.reference.trim().slice(0, 8000)}\n"""\n\n`;
+  if (ctx.anchors?.length) block += `${L.anchors}\n${L.anchorsHeader}\n${ctx.anchors.slice(0, 40).map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\n`;
+  if (ctx.keywordDeficits?.length) block += `${L.keywords}\n${L.keywordsHeader}\n${ctx.keywordDeficits.slice(0, 20).map((k) => L.keywordLine(k.key, k.need)).join("\n")}\n\n`;
+  if (ctx.lightTouch || ctx.anchors?.length) block += `${L.quotes}\n\n`;
   return block;
 }
 
@@ -186,7 +131,8 @@ export async function chat(ctx: AiCtx, system: string, user: string, temperature
 }
 
 async function editChunk(ctx: AiCtx, prompt: string, html: string, note: string, ectx?: EditContext): Promise<string> {
-  return chat(ctx, EDIT_SYSTEM, `${contextBlock(ectx)}Инструкция редактуры:\n${prompt}\n\n${note}HTML-фрагмент:\n${html}`, ectx?.lightTouch ? 0.2 : 0.6);
+  const L = langPack(ectx?.lang);
+  return chat(ctx, L.system, `${contextBlock(ectx)}${L.instructionLabel}\n${prompt}\n\n${note}${L.fragmentLabel}\n${html}`, ectx?.lightTouch ? 0.2 : 0.6);
 }
 
 export type EditOpts = {
@@ -269,6 +215,9 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
     const kctx = ctxFor(i);
     if (deficits.length && !kctx?.keywordDeficits?.length) return; // добор: этому фрагменту вставлять нечего
     const beforeText = visibleTextLength(src);
+    const isUk = langPack(ectx?.lang).code === "UK";
+    const srcRu = isUk ? countRussianisms(src) : 0;
+    const srcRuWords = new Set(isUk ? findRussianisms(src) : []);
     const grade = (candidate: string): QualityIssue[] => {
       const list = validateChunk(src, candidate);
       const afterText = visibleTextLength(candidate);
@@ -279,9 +228,20 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
         const pct = rewritePct(src, candidate);
         if (pct > opts.maxRewritePct) list.push({ code: "rewrite", detail: `переписано ${pct}% слов (допустимо до ${opts.maxRewritePct}%) — это пересказ, а не точечная правка` });
       }
+      // Украинский итог: правка не имеет права добавлять русизмы (deepseek-v4-flash с 2026-11 добавлял десятки на статью).
+      if (isUk && countRussianisms(candidate) > srcRu) {
+        const added = findRussianisms(candidate).filter((w) => !srcRuWords.has(w));
+        list.push({ code: "russianisms", detail: `модель добавила русизмы: ${added.slice(0, 6).join(", ")}` });
+      }
       return list;
     };
-    const first = repairPlaceholders(src, await editChunk(ctx, prompt, src, "", kctx));
+    // Чистка механики до проверки: тире как во фрагменте, ключи без кавычек.
+    const clean = (raw: string) => {
+      let s = matchDashStyle(src, raw);
+      if (kctx?.keywordDeficits?.length) s = stripKeywordQuotes(src, s, kctx.keywordDeficits.map((k) => k.key));
+      return repairPlaceholders(src, s);
+    };
+    const first = clean(await editChunk(ctx, prompt, src, "", kctx));
     const issues = grade(first);
     if (!chunkIsFatal(issues, opts.relaxTags)) {
       warnings.push(...issues.map((x) => ({ ...x, detail: `фрагмент ${i + 1}: ${x.detail}` })));
@@ -300,19 +260,15 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
     };
     consider(first, issues);
     let last = issues;
-    const rewriteNotes = [
-      "ВАЖНО: предыдущий ответ переписал текст. Верни ПОЛНЫЙ фрагмент целиком, меняя ТОЛЬКО отдельные слова и словосочетания; структуру предложений и их порядок сохрани дословно.\n\n",
-      "ВАЖНО: ответ снова изменил слишком много слов. Исправь ТОЛЬКО явные ошибки и кальки перевода — не больше одного-двух слов в предложении. Остальной текст верни символ в символ.\n\n",
-      "ПОСЛЕДНЯЯ ПОПЫТКА: верни фрагмент практически без изменений — правь только грубые ошибки языка, ничего не перефразируй и не переставляй.\n\n",
-    ];
+    const rewriteNotes = langPack(ectx?.lang).retryNotes.rewrite;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const rewrote = last.some((x) => x.code === "rewrite");
-      const note = rewrote ? rewriteNotes[attempt]! : "Верни ПОЛНЫЙ фрагмент целиком.\n\n";
+      const rewrote = last.some((x) => x.code === "rewrite" || x.code === "russianisms");
+      const note = rewrote ? rewriteNotes[attempt]! : langPack(ectx?.lang).retryNotes.full;
       // Пересказ при сверке с оригиналом — обычно модель вернула формулировки оригинала (стенд: до 79% слов).
       // Повтор без оригинала: только чистка языка, уникализация перевода сохраняется.
       const retryCtx = rewrote && kctx?.reference ? { ...kctx, reference: undefined } : kctx;
       try {
-        const retry = repairPlaceholders(src, await editChunk(ctx, prompt, src, note, retryCtx));
+        const retry = clean(await editChunk(ctx, prompt, src, note, retryCtx));
         const retryIssues = grade(retry);
         if (!chunkIsFatal(retryIssues, opts.relaxTags)) {
           warnings.push(...retryIssues.map((x) => ({ ...x, detail: `фрагмент ${i + 1}: ${x.detail}` })));
@@ -358,14 +314,7 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
 
 /* ---------------- H2 ---------------- */
 
-export const HEADINGS_SYSTEM = `Ты — редактор заголовков H2 в статье.
-СТРОГИЕ ПРАВИЛА:
-1. Тебе дан нумерованный список заголовков. Верни РОВНО столько же строк в том же порядке и той же нумерации.
-2. Формат строки: "N. новый заголовок". Без markdown, без пояснений, без пустых строк.
-3. Не объединяй, не удаляй и не добавляй заголовки.
-4. Не добавляй HTML-теги и не трогай служебные теги <x-ph i="N"></x-ph>.
-5. Если заголовок уже хорош — верни его без изменений.
-6. Автор статьи — девушка. Если в заголовке есть форма первого лица, она должна быть женского рода («я обрала», «мій вибір»), мужской род запрещён.`;
+export const HEADINGS_SYSTEM = langPack("UK").headingsSystem;
 
 /**
  * Ответ модели → новые H2 по номерам. Если промт просит несколько вариантов и «РЕКОМЕНДОВАНИЙ НАБІР»
@@ -398,10 +347,11 @@ export async function runHeadings(ctx: AiCtx, html: string, prompt: string, ectx
   if (!matches.length) return { html, warnings: [{ code: "headings_none", detail: "H2 в статье не найдены" }], changedWords: 0 };
   const originals = matches.map((m) => m[1]!.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
   const list = originals.map((t, i) => `${i + 1}. ${t}`).join("\n");
+  const L = langPack(ectx?.lang);
   const ctxLines: string[] = [];
-  if (ectx?.title) ctxLines.push(`Title статьи: ${ectx.title}`);
-  if (ectx?.h1) ctxLines.push(`H1 статьи: ${ectx.h1}`);
-  const content = await chat(ctx, HEADINGS_SYSTEM, `${ctxLines.length ? ctxLines.join("\n") + "\n\n" : ""}Инструкция:\n${prompt}\n\nЗаголовки H2:\n${list}\n\nВ конце ответа обязательно дай итоговый список строго в формате "N. заголовок" — по одной строке на каждый H2, в исходном порядке.`, 0.4);
+  if (ectx?.title) ctxLines.push(`${L.titleLabel}: ${ectx.title}`);
+  if (ectx?.h1) ctxLines.push(`${L.h1Label}: ${ectx.h1}`);
+  const content = await chat(ctx, L.headingsSystem, `${ctxLines.length ? ctxLines.join("\n") + "\n\n" : ""}${L.headingsInstruction}\n${prompt}\n\n${L.headingsList}\n${list}\n\n${L.headingsTail}`, 0.4);
   const parsed = parseHeadings(content, originals.length);
   let replaced = 0;
   let idx = 0;

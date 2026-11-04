@@ -233,7 +233,7 @@ function ItemPanel({ jobId, item, publishDefaults }: { jobId: string; item: JobI
                 {m === "diff" ? "Сравнение" : m === "view" ? "Текст" : m === "side" ? "Рядом с предыдущей" : "HTML"}
               </button>
             ))}
-            {mode === "diff" && cur && cur.key !== "final" && cur.key !== "source" && (
+            {(mode === "diff" || mode === "side") && cur && cur.key !== "final" && cur.key !== "source" && (
               <select className="input w-auto !py-1 text-[13px]" value={base} onChange={(e) => setBase(e.target.value as "prev" | "source")}>
                 <option value="prev">с предыдущим этапом</option>
                 <option value="source">с исходным</option>
@@ -251,7 +251,8 @@ function ItemPanel({ jobId, item, publishDefaults }: { jobId: string; item: JobI
           {cur && mode === "view" && <Preview html={cur.html} />}
           {cur && mode === "side" && (
             <div className="grid gap-3 lg:grid-cols-2">
-              <div><div className="label">{prev?.label ?? "—"}</div>{prev ? <Preview html={prev.html} /> : <p className="help">Это первая версия.</p>}</div>
+              {/* Слева — то, с чем сравниваем (для «Итогового» всегда исходник), справа — выбранная версия. */}
+              <div><div className="label">{against?.label ?? "—"}</div>{against ? <Preview html={against.html} /> : <p className="help">Это исходная версия.</p>}</div>
               <div><div className="label">{cur.label}</div><Preview html={cur.html} /></div>
             </div>
           )}

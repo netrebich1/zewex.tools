@@ -643,7 +643,7 @@ export function validateChunk(source: string, output: string): QualityIssue[] {
 export function chunkIsFatal(issues: QualityIssue[], relaxTags = false): boolean {
   return issues.some((x) =>
     x.code === "empty" || x.code === "truncated" || x.code === "placeholders" || x.code === "text_growth" ||
-    x.code === "rewrite" ||
+    x.code === "rewrite" || x.code === "russianisms" ||
     (x.code === "tags" && !relaxTags)
 
   );
@@ -812,4 +812,70 @@ export function detectMasculineVoice(html: string): string[] {
     if (hits.size >= 20) break;
   }
   return [...hits];
+}
+
+/* ---------------- Чистота украинского: русизмы, тире, кавычки вокруг ключей ---------------- */
+
+/**
+ * Русские служебные слова и формы, которых в украинском тексте быть не должно. Буквы ы/э/ъ/ё — безусловный русизм.
+ * Список только из слов, которые в украинском не встречаются (ни «так», ни «при», ни «день» сюда не входят).
+ */
+const RU_WORDS = new Set([
+  "от", "с", "этом", "это", "этого", "эта", "эти", "чему", "чем", "который", "которая", "которые", "которых", "если", "когда", "можно",
+  "нужно", "чтобы", "бы", "потому", "поэтому", "сейчас", "как", "также", "или", "тоже", "очень", "даже", "только", "ещё", "еще",
+  "другой", "другая", "новый", "новая", "старый", "старая", "хороший", "хорошая", "плохой", "плохая", "практически", "здесь",
+  "вот", "где", "куда", "почему", "потом", "после", "почти", "вместе", "между", "немного", "иногда", "всегда", "никогда",
+  "сразу", "лучше", "хуже", "больше", "меньше", "много", "самый", "самая", "каждый", "каждая", "первый", "второй",
+  "волосы", "ногти", "ноготь", "одежда", "платье", "юбка", "обувь", "цвет", "цвета", "длина", "время", "год", "лет",
+]);
+
+/** Русизмы и суржик в украинском тексте (для UK): список найденных слов, без повторов. */
+export function findRussianisms(html: string): string[] {
+  const text = plainText(html);
+  const hits = new Set<string>();
+  for (const raw of text.split(/[^\p{L}'’ʼ]+/u)) {
+    const w = raw.toLowerCase();
+    if (!w || !/[Ѐ-ӿ]/.test(w)) continue;
+    if (/[ыэъё]/.test(w) || RU_WORDS.has(w)) hits.add(w);
+  }
+  return [...hits];
+}
+
+/** Сколько слов-русизмов в тексте (с повторами) — метрика «постредактура не должна добавлять русизмы». */
+export function countRussianisms(html: string): number {
+  const text = plainText(html);
+  let n = 0;
+  for (const raw of text.split(/[^\p{L}'’ʼ]+/u)) {
+    const w = raw.toLowerCase();
+    if (w && /[Ѐ-ӿ]/.test(w) && (/[ыэъё]/.test(w) || RU_WORDS.has(w))) n++;
+  }
+  return n;
+}
+
+/**
+ * Тире как в исходнике: DeepL (через немецкий) и модели меняют короткое тире «–» на длинное «—».
+ * Если в исходной статье длинного тире нет, а короткое есть — возвращаем короткое во всём тексте.
+ */
+export function matchDashStyle(source: string, html: string): string {
+  const srcHasEn = /–/.test(source);
+  const srcHasEm = /—/.test(source);
+  if (srcHasEm || !srcHasEn) return html;
+  return mapTextNodes(html, (t) => t.replace(/—/g, "–"));
+}
+
+/**
+ * Модель при вписывании ключа берёт его в кавычки («котяче око»). Ключ — обычные слова текста, кавычки снимаем,
+ * если в исходном фрагменте этот ключ в кавычках не стоял.
+ */
+export function stripKeywordQuotes(source: string, html: string, keys: string[]): string {
+  let out = html;
+  for (const key of keys) {
+    const k = key.trim();
+    if (!k) continue;
+    const esc = k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+    const quoted = new RegExp(`[«„“"‘']\\s*(${esc}(?:[а-яіїєґ']{0,3}))\\s*[»“”"’']`, "giu");
+    if (quoted.test(source)) continue;
+    out = out.replace(quoted, "$1");
+  }
+  return out;
 }
