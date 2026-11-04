@@ -8,12 +8,15 @@ import { purgePublishedBacklog } from "@/lib/articles/wp/cleanup";
 import { measureStorage } from "@/lib/articles/storage";
 import { prisma } from "@/lib/db";
 import { purgeOldRuns } from "@/lib/pins/runs/cleanup";
+import { autoResumeKeyBlockedRuns } from "@/lib/pins/runs/autoResume";
 import { resyncSheets } from "@/lib/articles/sheets";
 import { failedKeywordsTick } from "@/lib/articles/failedKeywords";
 import { deeplCheckKeys, deeplPurgeCache, deeplRequeueStale } from "./deepl";
 import { analyticsPurge, analyticsRequeueStale } from "./analytics";
+import { keywordsArticleDatesTick, keywordsDaily, keywordsRequeueStale, keywordsStyleTick } from "./keywords";
 import { uploaderTick } from "@/lib/uploader/runs";
 import { newsDaily } from "./news";
+import { tasksTick } from "./tasks";
 
 /** Периодические задачи воркера: сторож зависших задач, уборка (позже). */
 export function startCron(): () => void {
@@ -24,6 +27,14 @@ export function startCron(): () => void {
   const purge = () => purgeOldRuns().then((r) => { if (r.deleted.length) log.info(`purged ${r.deleted.length} old runs`); }).catch((e) => log.warn("purgeOldRuns failed", e));
   timers.push(setTimeout(purge, 60_000));
   timers.push(setInterval(purge, 24 * 60 * 60_000));
+  // Ключи ИИ: автоотключённые (нет баланса / отклонён) проверяются настоящим запросом и включаются обратно,
+  // прогоны пинов, вставшие из-за ключа, продолжаются сами — через 2 мин после старта и каждые 10 мин.
+  const keys = () => autoResumeKeyBlockedRuns().then((r) => {
+    if (r.keysEnabled.length) log.info(`keys re-enabled after check: ${r.keysEnabled.join(", ")}`);
+    if (r.resumed.length) log.info(`pins runs auto-resumed after key check: ${r.resumed.join(", ")}`);
+    if (r.waiting) log.info(`pins runs still waiting for a working key: ${r.waiting}`);
+  }).catch((e) => log.warn("key health check failed", e));
+  timers.push(setTimeout(keys, 2 * 60_000), setInterval(keys, 10 * 60_000));
   timers.push(setInterval(() => requeueStaleArticles().catch((e) => log.warn("articles requeueStale failed", e)), 5 * 60_000));
   // Инфо-статьи (Pin Blog Article): посты с истёкшей арендой — в очередь.
   timers.push(setInterval(() => requeueStalePosts().catch((e) => log.warn("blog requeueStale failed", e)), 5 * 60_000));
@@ -48,10 +59,20 @@ export function startCron(): () => void {
   // Трафик сайтов (GA4): зависшие аренды — каждые 5 мин; часы/страницы/разрезы старше 400 дней — раз в сутки.
   timers.push(setInterval(() => analyticsRequeueStale().catch((e) => log.warn("analytics requeueStale failed", e)), 5 * 60_000));
   timers.push(setInterval(() => analyticsPurge().catch((e) => log.warn("analytics purge failed", e)), 24 * 60 * 60_000));
+  // Подбор ключей Pinterest: даты статей топа — через 3 мин после старта и каждые 10 мин; пересчёт оценок и уборка очереди — раз в сутки.
+  const artDates = () => keywordsArticleDatesTick().catch((e) => log.warn("keywords articleDates failed", e));
+  timers.push(setTimeout(artDates, 3 * 60_000), setInterval(artDates, 10 * 60_000));
+  timers.push(setInterval(() => keywordsRequeueStale().catch((e) => log.warn("keywords requeueStale failed", e)), 5 * 60_000));
+  // Оформление пинов новых снимков (модель со зрением, слот vision) — каждые 2 мин по 5 снимков.
+  timers.push(setInterval(() => keywordsStyleTick().catch((e) => log.warn("keywords styles failed", e)), 2 * 60_000));
+  timers.push(setInterval(() => keywordsDaily().catch((e) => log.warn("keywords daily failed", e)), 24 * 60 * 60_000));
   // Заливка в Pinterest (Pin Uploader): агенты офлайн, просроченные аренды, фаза проверки, расписание — раз в минуту.
   timers.push(setInterval(() => uploaderTick().then((r) => { if (r.verify || r.scheduled) log.info(`uploader tick: verify ${r.verify}, scheduled ${r.scheduled}, stale ${r.stale}`); }).catch((e) => log.warn("uploader tick failed", e)), 60_000));
   // Новости (Google Discover): уборка отсечённых материалов и старых векторов, зависшие прогоны — через 5 мин после старта и раз в сутки.
   const news = () => newsDaily().catch((e) => log.warn("news daily failed", e));
   timers.push(setTimeout(news, 5 * 60_000), setInterval(news, 24 * 60 * 60_000));
+  // Задачи: регламенты → задачи, дайджесты в Telegram в свой час — раз в минуту (через 30 с после старта).
+  const tasks = () => tasksTick().then((r) => { if (r.routines || r.digest) log.info(`tasks tick: routines +${r.routines}${r.digest ? `, digest ${r.digest}` : ""}`); }).catch((e) => log.warn("tasks tick failed", e));
+  timers.push(setTimeout(tasks, 30_000), setInterval(tasks, 60_000));
   return () => timers.forEach(clearInterval);
 }

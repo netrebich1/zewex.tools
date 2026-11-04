@@ -48,7 +48,7 @@ export function Shell({ user, children }: { user: ShellUser; children: ReactNode
   const items = MENU.filter((n) => !n.show || n.show(user));
   // Админу переключатель не нужен: он видит всё независимо от команд. В режиме сотрудника — нужен.
   const teamSwitch = user.role !== "ADMIN" && user.teams.length > 1;
-  const isTools = pathname === "/" || pathname.startsWith("/projects") || pathname.startsWith("/pinterest") || pathname.startsWith("/gambling") || pathname.startsWith("/finance") || pathname.startsWith("/discovery") || pathname.startsWith("/analytics");
+  const isTools = pathname === "/" || pathname.startsWith("/projects") || pathname.startsWith("/pinterest") || pathname.startsWith("/gambling") || pathname.startsWith("/finance") || pathname.startsWith("/tasks") || pathname.startsWith("/discovery") || pathname.startsWith("/analytics");
 
   useEffect(() => {
     if (!open) return;

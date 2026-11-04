@@ -15,6 +15,7 @@ import { deeplInflight, deeplLoop, deeplRequeueStale } from "./deepl";
 import { analyticsInflight, analyticsLoop, analyticsRequeueStale } from "./analytics";
 import { blogInflight, blogLoop, blogStartup } from "./blog";
 import { newsInflight, newsLoop, newsStartup } from "./news";
+import { tasksPollLoop } from "./tasks";
 import sharp from "sharp";
 
 /**
@@ -111,7 +112,7 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
   // Очереди подборов доменов и статей работают рядом с очередью пинов в том же процессе.
-  await Promise.all([loop(), domainsLoop(WORKER_ID, () => shuttingDown), articlesLoop(WORKER_ID, () => shuttingDown), blogLoop(WORKER_ID, () => shuttingDown), aiModerationLoop(WORKER_ID, () => shuttingDown), deeplLoop(WORKER_ID, () => shuttingDown), analyticsLoop(WORKER_ID, () => shuttingDown), newsLoop(WORKER_ID, () => shuttingDown)]);
+  await Promise.all([loop(), domainsLoop(WORKER_ID, () => shuttingDown), articlesLoop(WORKER_ID, () => shuttingDown), blogLoop(WORKER_ID, () => shuttingDown), aiModerationLoop(WORKER_ID, () => shuttingDown), deeplLoop(WORKER_ID, () => shuttingDown), analyticsLoop(WORKER_ID, () => shuttingDown), newsLoop(WORKER_ID, () => shuttingDown), tasksPollLoop(() => shuttingDown).catch((e) => log.error("tasks poll loop crashed", e))]);
 }
 
 main().catch((e) => {

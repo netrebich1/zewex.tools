@@ -1861,6 +1861,411 @@ model GaDimDaily {
   @@index([kind, date])
 }
 
+// ───────────────────────────── Подбор ключей Pinterest (проект `keywords`) ─────────────────────────────
+// Дизайн: docs/keyword-research/00-design.md. Данные исследования общие для всех, кому открыт инструмент.
+
+/// Аккаунт Pinterest, с которого снимается выдача (выдача персонализирована — снимок помнит аккаунт).
+model KwAccount {
+  id           String    @id @default(uuid()) @db.Char(36)
+  name         String    @unique @db.VarChar(120)
+  username     String?   @db.VarChar(120)
+  /// ACTIVE | SLOW | LIMITED | OFF
+  status       String    @default("ACTIVE") @db.VarChar(16)
+  limitedUntil DateTime?
+  /// Пауза между ключами, секунды (к ней добавляется случайный разброс)
+  gapSec       Int       @default(10)
+  /// Ключей в сутки; null — без лимита (решение владельца 2026-10-20: порог блока ещё неизвестен)
+  dailyCap     Int?
+  /// Ступень пауз после отказов Pinterest (0 — отказов нет; 1–4 → паузы 2/4/8/15 мин; дальше LIMITED)
+  blockStep    Int       @default(0)
+  /// До какого времени аккаунт на короткой паузе после отказа
+  pausedUntil  DateTime?
+  /// Первый отказ текущей полосы отказов (длительность блока = успех − blockedAt)
+  blockedAt    DateTime?
+  /// Успешных ключей с последнего блока/возобновления и с какого времени (порог блока)
+  streakKeys   Int       @default(0)
+  streakFrom   DateTime?
+  /// Счётчик ключей за сутки (день по Киеву, YYYY-MM-DD)
+  dayDate      String?   @db.Char(10)
+  dayKeys      Int       @default(0)
+  lastSeenAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  snapshots    KwSerpSnapshot[]
+  events       KwAccountEvent[]
+  collectors   KwCollector[]
+  tasks        KwTask[]
+}
+
+/// Журнал аккаунта: каждый запрос и каждая блокировка — из него узнаём безопасный темп.
+model KwAccountEvent {
+  id        BigInt    @id @default(autoincrement())
+  accountId String    @db.Char(36)
+  at        DateTime  @default(now())
+  /// serp | typeahead | pinner | volume | limited | resumed
+  kind      String    @db.VarChar(16)
+  /// ok | empty | error
+  result    String    @db.VarChar(16)
+  /// Длительность паузы/блока в секундах или время ответа в мс — по смыслу kind
+  value     Int?
+  note      String?   @db.VarChar(255)
+  account   KwAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, at])
+}
+
+/// Установленное расширение Zewex Collector (токен выдаётся на вкладке «Сбор»).
+model KwCollector {
+  id         String     @id @default(uuid()) @db.Char(36)
+  userId     String     @db.VarChar(64)
+  name       String     @default("") @db.VarChar(120)
+  tokenHash  String     @unique @db.Char(64)
+  accountId  String?    @db.Char(36)
+  /// Начало токена для узнавания в списке (сам токен не хранится)
+  tokenHint  String     @default("") @db.VarChar(12)
+  /// Версия расширения и имя пользователя Pinterest, которые оно прислало последними
+  version    String?    @db.VarChar(20)
+  seenUser   String?    @db.VarChar(120)
+  /// Что делает расширение сейчас (строка состояния для вкладки «Сбор»)
+  state      String?    @db.VarChar(190)
+  lastSeenAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime   @default(now())
+  account    KwAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+}
+
+/// Группа ключей одного интента (чтобы не писать две статьи под одно и то же).
+model KwCluster {
+  id        String      @id @default(uuid()) @db.Char(36)
+  name      String      @db.VarChar(190)
+  niche     String      @default("") @db.VarChar(16)
+  createdAt DateTime    @default(now())
+  keywords  KwKeyword[]
+}
+
+/// Ключ. Последние посчитанные метрики лежат прямо в строке — фильтры и сортировка идут запросом к базе.
+model KwKeyword {
+  id             String    @id @default(uuid()) @db.Char(36)
+  phrase         String    @db.VarChar(190)
+  /// Нижний регистр, одиночные пробелы
+  norm           String    @unique @db.VarChar(190)
+  /// nails | outfits | hair
+  niche          String    @default("") @db.VarChar(16)
+  /// sheet | autocomplete | generated | manual
+  source         String    @default("manual") @db.VarChar(16)
+  /// none | soft | trend | hard
+  season         String    @default("none") @db.VarChar(8)
+  /// new | picked | rejected | sent
+  status         String    @default("new") @db.VarChar(12)
+  /// Поля строки Google Таблицы для запуска статей (Keyword / SEO Keyword / Сценарий / Режим)
+  articleKeyword String?   @db.VarChar(190)
+  seoKeyword     String?   @db.VarChar(190)
+  scenario       String?   @db.VarChar(8)
+  mode           String?   @db.VarChar(8)
+  clusterId      String?   @db.Char(36)
+  // — частотность (последняя) —
+  volume         Int?
+  volLower       Int?
+  volUpper       Int?
+  /// Ads Manager ответил «нет данных» (≈0)
+  volNone        Boolean   @default(false)
+  volAt          DateTime?
+  // — последний снимок выдачи и посчитанное по нему —
+  serpAt         DateTime?
+  serpAccountId  String?   @db.Char(36)
+  /// 0–100, null — не считается (нет частотности/выдачи или частотность < 3000)
+  score          Int?
+  /// easy | medium | hard | commercial | low_volume
+  verdict        String?   @db.VarChar(16)
+  /// Коды флагов через запятую (FLAGS в lib/keywords/metrics.ts)
+  flags          String    @default("") @db.VarChar(190)
+  pins           Int?
+  adPct          Float?
+  prodPct        Float?
+  infoPct        Float?
+  videoPct       Float?
+  fresh3Pct      Float?
+  freshPct       Float?
+  tmatchPct      Float?
+  bizPct         Float?
+  medSaves       Int?
+  medFollowers   Int?
+  bigCount       Int?
+  domains        Int?
+  artCount       Int?
+  artNewestAt    DateTime?
+  artOldestAt    DateTime?
+  artAvgAt       DateTime?
+  /// Свежие (< 3 мес) пины топ-10 с весом позиции (1-е место весит больше 10-го), 0–100
+  freshTopPct    Float?
+  /// Пинов со ссылкой на позициях 1–5 (реальные конкуренты за клик)
+  linkTop5       Int?
+  /// Статей топ-10 с устаревшим годом в заголовке (год меньше текущего)
+  oldYears       Int?
+  /// Медиана слов и фото в статьях топ-10
+  artWords       Int?
+  artImages      Int?
+  /// Ссылок топ-10 на блоги (не платформы и магазины) и их доля среди ссылок, 0–100
+  blogLinks      Int?
+  blogPct        Float?
+  /// Пины первого экрана (органика) с годом в заголовке, 0–100
+  pinYearPct     Float?
+  /// Пины топ-10 с оформлением (коллаж или фото с надписью), 0–100; null — оформление ещё не определено
+  designedPct    Float?
+  /// Подсказки поиска содержат год 2025–2029
+  withYear       Boolean   @default(false)
+  // — остальные метрики для фильтров «от–до» и колонок (см. lib/keywords/fields.ts) —
+  /// Реклама + товары, % первого экрана
+  comPct         Float?
+  // — количества (штуки) к процентным метрикам: фильтр «в штуках» (переключатель в панели фильтров) —
+  comN           Int?
+  adN            Int?
+  prodN          Int?
+  infoN          Int?
+  nolinkN        Int?
+  videoN         Int?
+  tmatchN        Int?
+  ownN           Int?
+  resavedN       Int?
+  fresh3N        Int?
+  freshN         Int?
+  bizN           Int?
+  dvN            Int?
+  merN           Int?
+  tyN            Int?
+  designedN      Int?
+  collageN       Int?
+  textN          Int?
+  photoN         Int?
+  nolinkPct      Float?
+  ownPct         Float?
+  resavedPct     Float?
+  listNum        Int?
+  linksTop10     Int?
+  blogDomains    Int?
+  blogTop5       Int?
+  freshTop3      Int?
+  savesTop3      Int?
+  /// Возраст пинов топ-10 в месяцах: самый свежий, медиана, самый старый
+  pinAgeMin      Float?
+  pinAgeMed      Float?
+  pinAgeMax      Float?
+  /// Возраст статей блогов топ-10 в месяцах: самая свежая, средний, самая старая
+  artAgeMin      Float?
+  artAgeAvg      Float?
+  artAgeMax      Float?
+  bizViewsAvg    Int?
+  bizFollowersAvg Int?
+  dvPct          Float?
+  merPct         Float?
+  collagePct     Float?
+  textPct        Float?
+  photoPct       Float?
+  /// Оценки входа: для нового блога и для старого блога (0–100, см. lib/keywords/entry.ts)
+  entryNew       Int?
+  entryOld       Int?
+  // — история пересъёмов: сравнение последнего снимка с предыдущим —
+  snapCount      Int       @default(0)
+  prevVerdict    String?   @db.VarChar(16)
+  verdictChanged Boolean   @default(false)
+  scoreDelta     Int?
+  /// Изменение доли рекламы + товаров, процентные пункты
+  comDelta       Float?
+  /// Совпадение топ-10 с предыдущим снимком, %
+  topOverlapPrev Float?
+  prevSerpAt     DateTime?
+  /// Всё посчитанное для показа (`KwMetrics`: проценты, профили бизнес-аккаунтов, вариации, топ-10)
+  metrics        Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  cluster        KwCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+  volumes        KwVolume[]
+  snapshots      KwSerpSnapshot[]
+  tasks          KwTask[]
+
+  @@index([source, niche])
+  @@index([verdict, score])
+  @@index([volume])
+  @@index([status])
+}
+
+/// История частотности (Ads Manager «Monthly active ads audience», US).
+model KwVolume {
+  id        BigInt    @id @default(autoincrement())
+  keywordId String    @db.Char(36)
+  estimate  Int?
+  lower     Int?
+  upper     Int?
+  none      Boolean   @default(false)
+  /// ads_ui
+  source    String    @default("ads_ui") @db.VarChar(16)
+  region    String    @default("US") @db.VarChar(4)
+  takenAt   DateTime  @default(now())
+  keyword   KwKeyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@index([keywordId, takenAt])
+}
+
+/// Снимок выдачи: агрегаты в формате прототипа (`SerpAgg`), подсказки и уточнения.
+model KwSerpSnapshot {
+  id        String     @id @default(uuid()) @db.Char(36)
+  keywordId String     @db.Char(36)
+  accountId String?    @db.Char(36)
+  takenAt   DateTime   @default(now())
+  agg       Json
+  typeahead Json?
+  guides    Json?
+  /// Итог снимка на момент, когда он был последним (вердикт, оценка, доли, ключи пинов) — для истории изменений
+  summary   Json?
+  keyword   KwKeyword  @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  account   KwAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  pins      KwPin[]
+
+  @@index([keywordId, takenAt])
+  @@index([accountId])
+}
+
+/// Пины топа снимка (у стартовых данных — только ссылка, дата и сохранения топ-10).
+model KwPin {
+  id         BigInt         @id @default(autoincrement())
+  snapshotId String         @db.Char(36)
+  position   Int
+  pinId      String?        @db.VarChar(32)
+  link       String?        @db.Text
+  domain     String?        @db.VarChar(190)
+  createdAt  DateTime?
+  saves      Int?
+  promoted   Boolean        @default(false)
+  product    Boolean        @default(false)
+  video      Boolean        @default(false)
+  title      String?        @db.VarChar(255)
+  pinner     String?        @db.VarChar(120)
+  /// Кто сохранил пин со ссылкой: own — владелец сайта, resaved — другой пользователь, upload — загружен без ссылки
+  saveType   String?        @db.VarChar(8)
+  /// sha1 ссылки = KwArticle.urlHash (воркер ищет ссылки без даты статьи)
+  linkHash   String?        @db.Char(40)
+  /// Картинка пина (236px из выдачи) — для определения оформления
+  imageUrl   String?        @db.Text
+  /// Оформление пина: collage (несколько фото) | text (фото с надписью) | photo (чистое фото) | unknown; null — ещё не смотрели
+  style      String?        @db.VarChar(10)
+  snapshot   KwSerpSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([snapshotId, position])
+  @@index([domain])
+  @@index([linkHash])
+  @@index([style])
+}
+
+/// Кэш профилей авторов (UserResource), живёт 30 дней.
+model KwPinner {
+  username       String   @id @db.VarChar(120)
+  views          Int?
+  reach          Int?
+  followers      Int?
+  pins           Int?
+  boards         Int?
+  business       Boolean  @default(false)
+  domainVerified Boolean  @default(false)
+  merchant       Boolean  @default(false)
+  domain         String?  @db.VarChar(190)
+  fetchedAt      DateTime @default(now())
+
+  @@index([fetchedAt])
+}
+
+/// Дата публикации статьи по ссылке пина (метатеги / JSON-LD / дата в адресе).
+model KwArticle {
+  urlHash     String    @id @db.Char(40)
+  url         String    @db.Text
+  domain      String    @default("") @db.VarChar(190)
+  publishedAt DateTime?
+  /// ok | nodate | error
+  status      String    @default("ok") @db.VarChar(8)
+  fetchedAt   DateTime  @default(now())
+  /// Заголовок статьи (og:title → h1 → title)
+  title       String?   @db.VarChar(300)
+  /// Год в заголовке (наибольший 2015–2029), null — года нет
+  titleYear   Int?
+  /// Слов текста, фото и подзаголовков H2 в основной части страницы (первые 600 КБ)
+  words       Int?
+  images      Int?
+  h2          Int?
+  /// Когда разобраны заголовок/объём; null — ещё не разбирали (старые строки воркер проходит заново)
+  detailsAt   DateTime?
+
+  @@index([domain])
+  @@index([detailsAt])
+}
+
+/// Сравнение выдачи двух аккаунтов на одной выборке ключей: насколько выдача персонализирована.
+model KwCompare {
+  id         String   @id @default(uuid()) @db.Char(36)
+  accountAId String   @db.Char(36)
+  accountBId String   @db.Char(36)
+  /// id ключей выборки
+  keywordIds Json
+  createdBy  String   @default("") @db.VarChar(190)
+  createdAt  DateTime @default(now())
+}
+
+/// Сайт-конкурент: сводка по топам всех ключей (вкладка «Конкуренты»).
+model KwDomain {
+  host      String   @id @db.VarChar(190)
+  /// platform | site
+  kind      String   @default("site") @db.VarChar(10)
+  stats     Json?
+  updatedAt DateTime @updatedAt
+}
+
+/// Очередь заданий для расширения.
+model KwTask {
+  id         String     @id @default(uuid()) @db.Char(36)
+  /// serp | volume | typeahead | pinner
+  kind       String     @db.VarChar(12)
+  keywordId  String?    @db.Char(36)
+  accountId  String?    @db.Char(36)
+  /// QUEUED | LEASED | DONE | FAILED
+  status     String     @default("QUEUED") @db.VarChar(8)
+  attempts   Int        @default(0)
+  leaseUntil DateTime?
+  /// Расширение, которое взяло задание
+  collectorId String?   @db.Char(36)
+  /// Промежуточные данные задания (сырой ответ поиска между шагами)
+  payload    Json?
+  error      String?    @db.VarChar(255)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  keyword    KwKeyword? @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  account    KwAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([status, kind, createdAt])
+  @@index([keywordId])
+}
+
+/// Сохранённый вид экрана ключей: фильтры, сортировка и колонки. Личный или общий для всех, кому открыт инструмент.
+model KwView {
+  id        String   @id @default(uuid()) @db.Char(36)
+  userId    String   @db.VarChar(64)
+  name      String   @db.VarChar(120)
+  /// Параметры адреса (фильтры, сортировка, вкладка)
+  query     String   @db.Text
+  /// Колонки таблицы (ключи из lib/keywords/fields.ts); null — не менять колонки
+  columns   Json?
+  shared    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// Личные настройки экрана ключей: какие колонки показывать.
+model KwPrefs {
+  userId    String   @id @db.VarChar(64)
+  columns   Json?
+  perPage   Int      @default(50)
+  updatedAt DateTime @updatedAt
+}
+
 // ═══════════════════════════ Pin Blog Article — инфо-статьи (сервис `blog`, src/lib/blog, worker/blog) ═══════════════════════════
 // Отдельный сервис рядом со «Статьями»: текст-первичные статьи (how-to, причины, сравнение) с 3–7 реальными фото под разделы.
 // Пост (BlogPost) — одновременно строка очереди воркера, как Article у статей. Все модели с префиксом Blog.
@@ -2935,4 +3340,194 @@ model NewsProxy {
   lastOkAt  DateTime?
   lastError String?   @db.Text
   createdAt DateTime  @default(now())
+}
+
+/* ---------- Задачи (проект `tasks`, закрытый: владелец + выданные ToolAccess) ---------- */
+
+/// Дерево: направление → проект → подпроект (parentId). Верхний уровень — направление (Pinterest, Сайты, Wexora…).
+model TkProject {
+  id          String      @id @default(uuid()) @db.Char(36)
+  parentId    String?     @db.Char(36)
+  name        String      @db.VarChar(120)
+  description String?     @db.Text
+  /// Цвет (hex) карточек и дашборда
+  color       String      @default("#64748b") @db.VarChar(9)
+  /// Ответственный за проект (по умолчанию — исполнитель новых задач)
+  ownerId     String?
+  order       Int         @default(0)
+  archived    Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  parent      TkProject?  @relation("TkProjectTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    TkProject[] @relation("TkProjectTree")
+  tasks       TkTask[]
+  routines    TkRoutine[]
+
+  @@index([parentId, order])
+}
+
+/// Метка (тег) с цветом, общая для всех задач
+model TkLabel {
+  id        String        @id @default(uuid()) @db.Char(36)
+  name      String        @unique @db.VarChar(60)
+  color     String        @default("#64748b") @db.VarChar(9)
+  order     Int           @default(0)
+  tasks     TkTaskLabel[]
+}
+
+/// Задача. Подзадачи — через parentId (дерево и майндмап рисуют одно и то же).
+model TkTask {
+  id          String        @id @default(uuid()) @db.Char(36)
+  projectId   String?       @db.Char(36)
+  parentId    String?       @db.Char(36)
+  /// Если задача создана регламентом
+  routineId   String?       @db.Char(36)
+  title       String        @db.VarChar(300)
+  description String?       @db.Text
+  /// Способ: do (сам) | delegate (делегировать) | ask (спросить/уточнить)
+  mode        String        @default("do") @db.VarChar(10)
+  /// idea | backlog | planned | doing | waiting | done | cancelled
+  status      String        @default("backlog") @db.VarChar(12)
+  /// 1 срочно · 2 важно · 3 обычно · 4 когда-нибудь
+  priority    Int           @default(3)
+  assigneeId  String?
+  /// Для delegate/ask: кому поручено / у кого спрашиваем
+  counterpart String?       @db.VarChar(120)
+  /// Для delegate/ask: до какого дня ждём; после — напоминание «пора пнуть»
+  waitUntil   DateTime?     @db.Date
+  /// На какой день запланировано делать (экраны «Сегодня»/«Завтра»)
+  planDate    DateTime?     @db.Date
+  startAt     DateTime?     @db.Date
+  dueAt       DateTime?     @db.Date
+  /// Порядок внутри колонки канбана / среди соседей в дереве
+  order       Int           @default(0)
+  doneAt      DateTime?
+  /// Отметка «пнули» — чтобы бот не напоминал об одном и том же каждое утро
+  nudgedAt    DateTime?
+  createdById String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  project     TkProject?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parent      TkTask?       @relation("TkTaskTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    TkTask[]      @relation("TkTaskTree")
+  routine     TkRoutine?    @relation(fields: [routineId], references: [id], onDelete: SetNull)
+  labels      TkTaskLabel[]
+  notes       TkNote[]
+  checks      TkCheck[]
+
+  @@index([status, planDate])
+  @@index([assigneeId, status])
+  @@index([projectId, status])
+  @@index([parentId])
+  @@index([mode, status, waitUntil])
+  @@index([routineId, planDate])
+}
+
+model TkTaskLabel {
+  taskId  String  @db.Char(36)
+  labelId String  @db.Char(36)
+  task    TkTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label   TkLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+}
+
+/// Лента задачи: комментарии людей (kind=comment) и автособытия (kind=event: смена статуса, исполнителя…)
+model TkNote {
+  id        String   @id @default(uuid()) @db.Char(36)
+  taskId    String   @db.Char(36)
+  userId    String?
+  /// comment | event
+  kind      String   @default("comment") @db.VarChar(10)
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+  task      TkTask   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+}
+
+/// Пункт чеклиста внутри задачи
+model TkCheck {
+  id     String  @id @default(uuid()) @db.Char(36)
+  taskId String  @db.Char(36)
+  text   String  @db.VarChar(300)
+  done   Boolean @default(false)
+  order  Int     @default(0)
+  task   TkTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, order])
+}
+
+/// Регламент — повторяющийся процесс менеджмента («каждое 5-е проверить офферы», «по понедельникам созвон»).
+/// Воркер создаёт из него задачу на нужный день; шаги — чеклист-цепочка новой задачи.
+model TkRoutine {
+  id          String     @id @default(uuid()) @db.Char(36)
+  projectId   String?    @db.Char(36)
+  title       String     @db.VarChar(300)
+  description String?    @db.Text
+  /// daily | weekly | monthly | every_n
+  rule        String     @default("weekly") @db.VarChar(10)
+  /// weekly: дни недели "1,3,5" (1=пн … 7=вс); monthly: число месяца; every_n: раз в N дней
+  ruleArg     String     @default("1") @db.VarChar(30)
+  /// Шаги-цепочка (JSON string[]), становятся чеклистом задачи
+  steps       Json?
+  mode        String     @default("do") @db.VarChar(10)
+  priority    Int        @default(3)
+  assigneeId  String?
+  active      Boolean    @default(true)
+  /// На какую дату создавать следующую задачу (день по Киеву)
+  nextAt      DateTime?  @db.Date
+  lastAt      DateTime?  @db.Date
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  project     TkProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  tasks       TkTask[]
+
+  @@index([active, nextAt])
+}
+
+/// Привязка Telegram-чата к сотруднику (команда боту /start <код>). Любой сотрудник портала — для голосовых отчётов.
+model TkTgLink {
+  userId      String    @id
+  chatId      String?   @unique @db.VarChar(32)
+  tgName      String?   @db.VarChar(120)
+  /// Одноразовый код привязки, показывается в настройках
+  code        String?   @unique @db.VarChar(16)
+  morning     Boolean   @default(true)
+  evening     Boolean   @default(true)
+  linkedAt    DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+/// Отчёт сотрудника за день (голосовое или текст боту): расшифровка и выделенные пункты «что сделано»
+model TkReport {
+  id         String   @id @default(uuid()) @db.Char(36)
+  userId     String
+  date       DateTime @db.Date
+  /// voice | text
+  source     String   @default("voice") @db.VarChar(8)
+  transcript String   @db.Text
+  /// string[] — пункты, выделенные моделью (или строки текста)
+  items      Json
+  audioSec   Int?
+  costUsd    Float?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, date])
+  @@index([date])
+}
+
+/// Настройки раздела (одна строка id="main"): бот, часы дайджестов, курсор getUpdates
+model TkSettings {
+  id          String    @id @default("main") @db.VarChar(8)
+  botTokenEnc String?   @db.Text
+  botUsername String?   @db.VarChar(64)
+  tgOffset    Int       @default(0)
+  morningHour Int       @default(9)
+  eveningHour Int       @default(20)
+  /// День по Киеву (YYYY-MM-DD), за который дайджест уже отправлен
+  morningSent String?   @db.Char(10)
+  eveningSent String?   @db.Char(10)
+  lastError   String?   @db.Text
+  updatedAt   DateTime  @updatedAt
 }

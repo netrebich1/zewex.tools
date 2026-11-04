@@ -262,6 +262,42 @@ await prisma.project.upsert({
   update: {},
   create: { sectionId: wexora.id, slug: "finance", name: "Финансы", description: "Доходы и расходы по направлениям, кто что платил и кто кому должен", url: "/finance", status: "ACTIVE", order: 1 },
 });
+// ───────────────────────────── Задачи (закрытый инструмент, владелец + Никита) ─────────────────────────────
+await prisma.project.upsert({
+  where: { slug: "tasks" },
+  update: {},
+  create: { sectionId: wexora.id, slug: "tasks", name: "Задачи", description: "Задачник на двоих: направления и проекты, канбан, дерево, «Сегодня/Завтра», регламенты, Telegram-бот с голосовыми отчётами", url: "/tasks", status: "ACTIVE", order: 2 },
+});
+{
+  const tasksProject = await prisma.project.findUnique({ where: { slug: "tasks" } });
+  // Расшифровка голосовых отчётов (OpenAI audio/transcriptions) и выделение пунктов «что сделано» (дешёвая текстовая модель).
+  await prisma.slot.upsert({
+    where: { projectId_key: { projectId: tasksProject.id, key: "transcribe" } },
+    update: { preferProviders: "openai" },
+    create: { projectId: tasksProject.id, key: "transcribe", name: "Расшифровка голосовых", capability: "CHAT", description: "Голосовые отчёты из Telegram → текст (модель gpt-4o-mini-transcribe, ≈$0.003 за минуту)", preferProviders: "openai" },
+  });
+  await prisma.slot.upsert({
+    where: { projectId_key: { projectId: tasksProject.id, key: "text" } },
+    update: {},
+    create: { projectId: tasksProject.id, key: "text", name: "Разбор отчёта", capability: "CHAT", description: "Из расшифровки — список пунктов «что сделано» (дешёвая модель, например gpt-4o-mini)" },
+  });
+  const openai = await prisma.provider.findUnique({ where: { slug: "openai" } });
+  if (openai) {
+    for (const [modelId, name, inputPrice, outputPrice] of [["gpt-4o-mini-transcribe", "GPT-4o mini Transcribe", 1.25, 5], ["gpt-4o-transcribe", "GPT-4o Transcribe", 2.5, 10]]) {
+      await prisma.model.upsert({ where: { providerId_modelId: { providerId: openai.id, modelId } }, update: {}, create: { providerId: openai.id, modelId, name, capabilities: "CHAT", inputPrice, outputPrice, source: "MANUAL", isEnabled: true } });
+    }
+  }
+  if ((await prisma.tkProject.count()) === 0) {
+    for (const [i, [name, color]] of [["Pinterest", "#e11d48"], ["Сайты", "#2563eb"], ["Гемблинг", "#7c3aed"], ["Wexora", "#f59e0b"]].entries()) {
+      await prisma.tkProject.create({ data: { name, color, order: i + 1 } });
+    }
+  }
+  if ((await prisma.tkLabel.count()) === 0) {
+    for (const [i, [name, color]] of [["Срочно", "#dc2626"], ["Идея", "#a855f7"], ["Деньги", "#16a34a"], ["Клиент", "#0ea5e9"], ["Баг", "#f97316"]].entries()) {
+      await prisma.tkLabel.create({ data: { name, color, order: i + 1 } });
+    }
+  }
+}
 // Направления и категории — только в пустую базу, дальше правятся в настройках инструмента.
 if ((await prisma.finDirection.count()) === 0) {
   const tree = [["Пинтерест", ["Кулинария", "Женское"]], ["Гемблинг", []], ["Укр сайты", []], ["Общее Wexora", []]];
@@ -301,6 +337,13 @@ if (discovery) {
     update: { preferProviders: "openrouter" },
     create: { projectId: deeplProject.id, key: "text_main", name: "Редактура (OpenRouter)", capability: "CHAT", description: "H2, постредактура после перевода, добор ключей", preferProviders: "openrouter" },
   });
+  // Модели OpenRouter, выбранные стендом для DeepL Articler (цены $ за 1M токенов; точная стоимость всё равно приходит в ответе).
+  const or = await prisma.provider.findUnique({ where: { slug: "openrouter" } });
+  if (or) {
+    for (const [modelId, name, inputPrice, outputPrice] of [["openai/gpt-5.6-luna", "GPT-5.6 Luna", 0.2, 1.2], ["mistralai/mistral-small-3.2-24b-instruct", "Mistral Small 3.2", 0.075, 0.2], ["deepseek/deepseek-v4.1-flash", "DeepSeek V4.1 Flash", 0.045, 0.5], ["deepseek/deepseek-v4-flash", "DeepSeek V4 Flash", 0.091, 0.182], ["openai/gpt-6-luna", "GPT-6 Luna", 0.1, 0.5]]) {
+      await prisma.model.upsert({ where: { providerId_modelId: { providerId: or.id, modelId } }, update: { isEnabled: true }, create: { providerId: or.id, modelId, name, capabilities: "CHAT", inputPrice, outputPrice, source: "MANUAL", isEnabled: true } });
+    }
+  }
   const deeplSeed = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "seed-data", "deepl", "prompts.json"), "utf8"));
   for (const p of deeplSeed.prompts) await prisma.deeplPrompt.upsert({ where: { id: p.id }, update: {}, create: p });
   for (const s of deeplSeed.scenarios) await prisma.deeplScenario.upsert({ where: { id: s.id }, update: {}, create: s });
@@ -314,6 +357,22 @@ if (analyticsSection) {
     where: { slug: "analytics" },
     update: {},
     create: { sectionId: analyticsSection.id, slug: "analytics", name: "Трафик сайтов", description: "Все аккаунты Google Analytics в одном кабинете: визиты, страницы, источники, рост и падение, сравнение периодов, группы сайтов", url: "/analytics", status: "ACTIVE", order: 1 },
+  });
+}
+// ───────────────────────────── Подбор ключей Pinterest ─────────────────────────────
+// Выдачу снимает расширение Zewex Collector, частотность — Ads Manager; слоты ключей ИИ не нужны.
+if (pinterest) {
+  await prisma.project.upsert({
+    where: { slug: "keywords" },
+    update: {},
+    create: { sectionId: pinterest.id, slug: "keywords", name: "Подбор ключей", description: "Вечнозелёные ключи Pinterest: частотность Ads Manager, лёгкость выдачи, оценка 0–100, конкуренты", url: "/pinterest/keywords", status: "ACTIVE", order: 3 },
+  });
+  const kwProject = await prisma.project.findUnique({ where: { slug: "keywords" } });
+  // Модель со зрением смотрит картинки пинов топа: коллаж / фото с надписью / чистое фото.
+  await prisma.slot.upsert({
+    where: { projectId_key: { projectId: kwProject.id, key: "vision" } },
+    update: { preferProviders: "openrouter,laozhang,openai" },
+    create: { projectId: kwProject.id, key: "vision", name: "Оформление пинов (vision)", capability: "CHAT", description: "Коллаж, фото с надписью или чистое фото — по картинкам пинов топ-10; модель со зрением (например, google/gemini-2.5-flash)", preferProviders: "openrouter,laozhang,openai" },
   });
 }
 // ───────────────────────────── Проекты (CRM по Pinterest-сайтам) ─────────────────────────────

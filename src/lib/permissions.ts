@@ -165,7 +165,7 @@ export const inScope = (scope: TeamScope, teamId: string | null | undefined) => 
  * Закрытые инструменты: роль и `perms.tools` их не открывают, даже админу. Доступ — запись `ToolAccess`
  * (выдаёт владелец портала на странице пользователя), владелец видит их всегда. Список — в `CurrentUser.privateTools`.
  */
-export const PRIVATE_TOOLS = ["finance"] as const;
+export const PRIVATE_TOOLS = ["finance", "tasks"] as const;
 export const isPrivateTool = (slug: string) => (PRIVATE_TOOLS as readonly string[]).includes(slug);
 
 export function canUseTool(u: Actor, slug: string): boolean {
