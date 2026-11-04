@@ -21,7 +21,62 @@ function createdInfo(v: VerifyResult | undefined): { url: string | null; line: s
   return { url, line: m ? m[0] : body.slice(0, 120) || null };
 }
 
-function TaskRow({ t, runId }: { t: TaskView; runId: string }) {
+type Shot = { url: string; label: string };
+
+/** Снимки задания: после заливки и вкладка Created (если это другой снимок). */
+function taskShots(t: TaskView): Shot[] {
+  const v = t.result?.verify;
+  const shot = t.result?.screenshot ?? v?.screenshot ?? null;
+  const out: Shot[] = [];
+  if (shot) out.push({ url: shot, label: `${t.siteName} · ${t.status === "FAILED" ? "ошибка" : "заливка"}` });
+  if (v?.screenshot && v.screenshot !== shot) out.push({ url: v.screenshot, label: `${t.siteName} · Created` });
+  return out;
+}
+
+/** Миниатюра снимка прямо в строке; клик — увеличить. */
+function Thumb({ s, caption, onZoom }: { s: Shot; caption: string; onZoom: (url: string) => void }) {
+  return (
+    <button type="button" onClick={() => onZoom(s.url)} className="group block text-left" title="Увеличить">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={s.url} alt={s.label} loading="lazy" className="h-[96px] w-[150px] rounded-lg border border-line object-cover object-top transition group-hover:ring-2 group-hover:ring-brand" />
+      <span className="help mt-0.5 block text-[11.5px]">{caption}</span>
+    </button>
+  );
+}
+
+/** Просмотр снимка на весь экран: ← → по всем снимкам запуска, Esc или клик по фону — закрыть. */
+function Lightbox({ shots, index, onIndex }: { shots: Shot[]; index: number; onIndex: (i: number | null) => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onIndex(null);
+      else if (e.key === "ArrowRight") onIndex(Math.min(shots.length - 1, index + 1));
+      else if (e.key === "ArrowLeft") onIndex(Math.max(0, index - 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shots.length, index, onIndex]);
+  const s = shots[index];
+  if (!s) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 bg-black/85 p-4" onClick={() => onIndex(null)}>
+      <div className="flex w-full max-w-[1400px] items-center justify-between text-[13px] text-white">
+        <span>{s.label} · {index + 1} из {shots.length}</span>
+        <span className="flex gap-2">
+          <a href={s.url} target="_blank" rel="noreferrer" className="underline" onClick={(e) => e.stopPropagation()}>открыть отдельно</a>
+          <button type="button" className="underline">закрыть (Esc)</button>
+        </span>
+      </div>
+      <div className="flex w-full max-w-[1400px] flex-1 items-center gap-2 overflow-hidden">
+        <button type="button" disabled={index === 0} className="rounded-full bg-white/15 px-3 py-2 text-2xl text-white disabled:opacity-20" onClick={(e) => { e.stopPropagation(); onIndex(index - 1); }}>‹</button>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={s.url} alt={s.label} className="mx-auto max-h-[88vh] max-w-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
+        <button type="button" disabled={index === shots.length - 1} className="rounded-full bg-white/15 px-3 py-2 text-2xl text-white disabled:opacity-20" onClick={(e) => { e.stopPropagation(); onIndex(index + 1); }}>›</button>
+      </div>
+    </div>
+  );
+}
+
+function TaskRow({ t, runId, onZoom }: { t: TaskView; runId: string; onZoom: (url: string) => void }) {
   const [open, setOpen] = useState(false);
   // Автозаливка не прошла — тот же CSV можно скачать и залить руками.
   const manual = t.phase === "upload" && (t.status === "FAILED" || t.status === "SKIPPED") && t.errorKind !== "no_file";
@@ -49,10 +104,11 @@ function TaskRow({ t, runId }: { t: TaskView; runId: string }) {
           {v ? <div className={v.processing || v.scheduled === 0 ? "text-warn" : "text-ok"}>проверка: {verifyLabel(v)}</div> : null}
         </td>
         <td className="col-sm help whitespace-nowrap">{t.startedAt ? dt(t.startedAt) : "—"}{t.finishedAt && t.result?.timings?.total ? ` · ${fmtS(t.result.timings.total)}` : ""}</td>
-        <td className="text-right whitespace-nowrap">
-          {shot ? <a href={shot} target="_blank" rel="noreferrer" className="btn-ghost btn-sm">Скриншот</a> : null}
-          {v?.screenshot && v.screenshot !== shot ? <a href={v.screenshot} target="_blank" rel="noreferrer" className="btn-ghost btn-sm">Created</a> : null}
-          {t.result?.html || v?.text ? <button type="button" className="btn-ghost btn-sm" onClick={() => setOpen(!open)}>{open ? "Скрыть" : "Подробнее"}</button> : null}
+        <td className="text-right">
+          <div className="flex flex-wrap justify-end gap-2">
+            {taskShots(t).map((s) => <Thumb key={s.url} s={s} caption={s.label.endsWith("Created") ? "Created" : s.url === shot ? "после заливки" : "снимок"} onZoom={onZoom} />)}
+          </div>
+          {t.result?.html || v?.text ? <button type="button" className="btn-ghost btn-sm mt-1" onClick={() => setOpen(!open)}>{open ? "Скрыть" : "Подробнее"}</button> : null}
         </td>
       </tr>
       {open && (
@@ -80,6 +136,9 @@ export function RunView({ initial }: { initial: RunViewT }) {
   }, [live, run.id]);
   const uploads = run.tasks.filter((t) => t.phase === "upload");
   const verifies = run.tasks.filter((t) => t.phase === "verify");
+  const shots = [...uploads, ...verifies].flatMap(taskShots).filter((s, i, a) => a.findIndex((x) => x.url === s.url) === i);
+  const [zoom, setZoom] = useState<number | null>(null);
+  const onZoom = (url: string) => setZoom(Math.max(0, shots.findIndex((s) => s.url === url)));
   const pct = run.total ? Math.round(((run.done + run.failed) / run.total) * 100) : 0;
   return (
     <div className="space-y-4">
@@ -88,7 +147,7 @@ export function RunView({ initial }: { initial: RunViewT }) {
           <RunBadge status={run.status} />
           <span>Агент: <b>{run.agent.name}</b> <AgentBadge status={run.agent.status} />{run.agent.state ? <span className="help"> · {run.agent.state}</span> : null}</span>
           <span className="help">профилей одновременно: {run.parallel}</span>
-          {run.status === "VERIFY_WAIT" && run.verifyAt ? <span className="text-warn">проверка истории в {dt(run.verifyAt)}</span> : null}
+          {run.status === "VERIFY_WAIT" && run.verifyAt ? <span className="text-warn">проверка Created в {dt(run.verifyAt)}</span> : null}
           {run.verifyAttempts ? <span className="help">проверок: {run.verifyAttempts}</span> : null}
           {run.error ? <span className="text-danger">{run.error}</span> : null}
         </div>
@@ -98,17 +157,18 @@ export function RunView({ initial }: { initial: RunViewT }) {
       <Card title={`Заливка · ${uploads.length}`}>
         <div className="table-wrap"><table className="table">
           <thead><tr><th>Сайт / профиль</th><th className="col-sm">Фаза</th><th>Статус</th><th>Пинов</th><th>Что происходит</th><th className="col-sm">Начато</th><th></th></tr></thead>
-          <tbody>{uploads.map((t) => <TaskRow key={t.id} t={t} runId={run.id} />)}</tbody>
+          <tbody>{uploads.map((t) => <TaskRow key={t.id} t={t} runId={run.id} onZoom={onZoom} />)}</tbody>
         </table></div>
       </Card>
       {verifies.length > 0 && (
-        <Card title={`Проверка истории загрузок · ${verifies.length}`} description="Через 10 минут после заливки агент снова открывает профиль и читает историю массовых загрузок Pinterest.">
+        <Card title={`Проверка · ${verifies.length}`} description="Через 10 минут после заливки агент открывает профиль → вкладку Created и считает пины в «Scheduled Pins»; 0 — зайдёт ещё раз через 30 минут.">
           <div className="table-wrap"><table className="table">
             <thead><tr><th>Сайт / профиль</th><th className="col-sm">Фаза</th><th>Статус</th><th>Пинов</th><th>Что происходит</th><th className="col-sm">Начато</th><th></th></tr></thead>
-            <tbody>{verifies.map((t) => <TaskRow key={t.id} t={t} runId={run.id} />)}</tbody>
+            <tbody>{verifies.map((t) => <TaskRow key={t.id} t={t} runId={run.id} onZoom={onZoom} />)}</tbody>
           </table></div>
         </Card>
       )}
+      {zoom != null && <Lightbox shots={shots} index={zoom} onIndex={setZoom} />}
     </div>
   );
 }
