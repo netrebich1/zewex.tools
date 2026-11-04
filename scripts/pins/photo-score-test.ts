@@ -1,7 +1,7 @@
 /**
  * Тест выбора фото для Canvas-пинов: A — как сейчас (фото подряд из запаса, модель только кадрирует),
- * B — модель оценивает до K кандидатов статьи (рамка + оценка качества одним вызовом), на пин идут лучшие.
- *   npx tsx scripts/pins/photo-score-test.ts <outDir> <runId> [K=10]
+ * B — как в воркере: кандидаты равномерно по статье, один сравнительный вызов на статью (rankPhotos), лучшие на пин.
+ *   npx tsx scripts/pins/photo-score-test.ts <outDir> <runId>
  * Ничего не пишет в базу пинов; расход ИИ пишется в журнал с refId "test-photo-score".
  */
 import { mkdir, writeFile } from "fs/promises";
@@ -13,7 +13,8 @@ import { guessAccent, renderPin, type AccentType } from "@/lib/pins/canvas";
 import { toRecipe } from "@/lib/pins/canvas/styleSpec";
 import { scriptForLanguage } from "@/lib/pins/canvas/fonts";
 import { cachedPhoto } from "@/lib/pins/canvas/photos";
-import type { SubjectBox } from "@/lib/pins/canvas/subject";
+import { rankPhotos, BAD_PHOTO_FLAGS, type SubjectBox } from "@/lib/pins/canvas/subject";
+import { assignPhotos, candidateCount, spreadIndices } from "@/lib/pins/canvas/photoPick";
 import { aiChat, type AiCtx } from "@/lib/pins/ai/client";
 import { SLOT_TEXT_FAST, mergeRecipe } from "@/lib/pins/types";
 import { toCleanJpeg } from "@/lib/pins/images";
@@ -71,36 +72,9 @@ async function detectA(ai: AiCtx, photo: Buffer, accent: string) {
   return { box: subj ? boxFrom(subj.box_2d, face?.box_2d, people) : null, cost: res.costUsd ?? 0 };
 }
 
-/** B: рамка + оценка качества для Pinterest одним вызовом (без json-режима — в нём Gemini портит рамку). */
-async function detectB(ai: AiCtx, photo: Buffer, accent: string, topic: string) {
-  const people = PEOPLE.has(accent);
-  const res = await aiChat(ai, SLOT_TEXT_FAST, {
-    user: [
-      { type: "text", text: `You pick photos for a Pinterest collage about "${topic}".
-1) Detect ${HINT[accent] ?? HINT.auto} and give its 2D bounding box [ymin, xmin, ymax, xmax] normalized to 0-1000.${people ? " If a person is visible, also give the face box." : ""}
-2) Rate the photo 0-10 as a Pinterest collage tile for this topic: sharp, well lit, the subject is clear, fully visible and on-topic, attractive. Give low scores to: blurry or dark photos, screenshots, photos with big text/watermarks/logos, collages or grids, product packshots on white with no subject, photos where the subject is cut off, off-topic images.
-Output ONLY this json object: {"subject":[ymin,xmin,ymax,xmax],"face":[ymin,xmin,ymax,xmax] or null,"score":0-10,"flags":["blurry"|"text"|"collage"|"cut"|"offtopic"|"dark"]}` },
-      { type: "image_url", image_url: { url: await small(photo) } },
-    ],
-    temperature: 0, maxTokens: 220, timeoutMs: 40_000,
-  });
-  const m = res.text.replace(/```[a-z]*\n?/gi, "").match(/\{[\s\S]*\}/);
-  let o: { subject?: unknown; face?: unknown; score?: unknown; flags?: unknown } = {};
-  try { o = m ? JSON.parse(m[0]) : {}; } catch { /* */ }
-  const flags = Array.isArray(o.flags) ? o.flags.map(String) : [];
-  return { box: boxFrom(o.subject, o.face, people), score: Number(o.score) || 0, flags, cost: res.costUsd ?? 0 };
-}
-
-/** K кандидатов, равномерно по статье (не подряд). */
-function spread<T>(list: T[], k: number): Array<{ v: T; i: number }> {
-  if (list.length <= k) return list.map((v, i) => ({ v, i }));
-  return Array.from({ length: k }, (_, j) => { const i = Math.round((j * (list.length - 1)) / (k - 1)); return { v: list[i], i }; });
-}
-
 async function main() {
-  const [outDir = "/tmp/photo-score", runId, kArg = "10"] = process.argv.slice(2);
+  const [outDir = "/tmp/photo-score", runId] = process.argv.slice(2);
   if (!runId) throw new Error("укажите runId");
-  const K = Math.max(3, Number(kArg) || 10);
   installNodeCanvasHost(process.env.PINS_FONTS_DIR || "/var/www/zewex_tools_usr/data/storage/pins/fonts");
   await mkdir(outDir, { recursive: true });
   const run = await prisma.pinRun.findUniqueOrThrow({ where: { id: runId }, include: { site: true } });
@@ -152,22 +126,24 @@ async function main() {
     const rA = await renderPin({ recipe: { ...toRecipe(spec, seed, aPhotos.length, { script: scriptForLanguage(recipe.text.language) }), accent }, photos: aPhotos, subjects: aBoxes, texts, seed });
     await writeFile(join(outDir, `${tag}_A.jpg`), rA.jpeg);
 
-    // B — оценка K кандидатов статьи, лучшие на пин
+    // B — как в воркере: кандидаты равномерно по статье, один сравнительный вызов на статью, рамки только для выбранных
     const pool = await poolOf(it.pageId);
-    const cands: Array<{ url: string; i: number; photo: Buffer; box: SubjectBox | null; score: number; flags: string[] }> = [];
-    for (const { v: u, i } of spread(pool, K)) {
-      try { const p = await cachedPhoto(u); const d = await detectB(ai, p, accent, it.page.keyword); costB += d.cost; callsB++; cands.push({ url: u, i, photo: p, box: d.box, score: d.score, flags: d.flags }); } catch { /* битое */ }
-    }
-    const bad = new Set(["text", "collage", "blurry", "offtopic"]);
-    const ranked = [...cands].sort((a, b) => (b.score - (b.flags.some((f) => bad.has(f)) ? 3 : 0)) - (a.score - (a.flags.some((f) => bad.has(f)) ? 3 : 0)));
-    const chosen: typeof cands = [];
-    for (const c of ranked) { if (chosen.length >= n) break; if (chosen.some((x) => Math.abs(x.i - c.i) <= 1) && ranked.length - chosen.length > n) continue; chosen.push(c); }
-    for (const c of ranked) { if (chosen.length >= n) break; if (!chosen.includes(c)) chosen.push(c); }
-    const rB = await renderPin({ recipe: { ...toRecipe(spec, seed, chosen.length, { script: scriptForLanguage(recipe.text.language) }), accent }, photos: chosen.map((c) => c.photo), subjects: chosen.map((c) => c.box), texts, seed });
+    const idxs = spreadIndices(pool.length, candidateCount(n * 2, pool.length));
+    const loaded: Array<{ url: string; index: number; photo: Buffer }> = [];
+    for (const i of idxs) { try { loaded.push({ url: pool[i], index: i, photo: await cachedPhoto(pool[i]) }); } catch { /* */ } }
+    const t0 = new Date();
+    const ranks = (await rankPhotos(ai, loaded, accent, it.page.keyword, console.log)) ?? new Map();
+    const cands = loaded.map((c) => ({ url: c.url, index: c.index, score: ranks.get(c.url)?.score ?? 5, bad: !!ranks.get(c.url)?.flags.some((f: string) => BAD_PHOTO_FLAGS.has(f) || f === "duplicate"), photo: c.photo }));
+    const [mine] = assignPhotos(cands, [n, n]);
+    const chosen = mine.map((u) => cands.find((c) => c.url === u)!);
+    const boxes: Array<SubjectBox | null> = [];
+    for (const c of chosen) { const d = await detectA(ai, c.photo, accent); costB += d.cost; callsB++; boxes.push(d.box); }
+    const rk = await prisma.usageLog.aggregate({ _sum: { costUsd: true }, _count: true, where: { refId: "test-photo-score", createdAt: { gte: t0 }, inputTokens: { gt: 3000 } } });
+    costB += rk._sum.costUsd ?? 0; callsB += rk._count;
+    const rB = await renderPin({ recipe: { ...toRecipe(spec, seed, chosen.length, { script: scriptForLanguage(recipe.text.language) }), accent }, photos: chosen.map((c) => c.photo), subjects: boxes, texts, seed });
     await writeFile(join(outDir, `${tag}_B.jpg`), rB.jpeg);
-
     const aScores = aUrls.map((u) => cands.find((c) => c.url === u)?.score);
-    report.push(`${tag} фото ${n} | статья: ${it.page.keyword} | запас ${pool.length} | оценки кандидатов: ${cands.map((c) => `${c.score}${c.flags.length ? `(${c.flags.join(",")})` : ""}`).join(" ")} | B взял: ${chosen.map((c) => c.score).join(",")} | A (если оценены): ${aScores.map((s) => s ?? "?").join(",")}`);
+    report.push(`${tag} фото ${n} | ${it.page.keyword} | запас ${pool.length} | кандидаты: ${cands.map((c) => `${c.score}${ranks.get(c.url)?.flags.length ? `(${ranks.get(c.url)!.flags.join(",")})` : ""}`).join(" ")} | B: ${chosen.map((c) => c.score).join(",")} | A: ${aScores.map((x) => x ?? "?").join(",")}`);
     console.log(report[report.length - 1]);
   }
   const lines = [

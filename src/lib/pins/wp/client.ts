@@ -378,6 +378,14 @@ export async function uploadMedia(
 }
 
 /** Выполнить fn над элементами не более чем по `limit` одновременно, сохраняя порядок результатов. */
+/** Удаляет файл из медиатеки WordPress безвозвратно (force=true, без корзины). 404 — уже удалён, не ошибка. */
+export async function deleteMedia(creds: WpCreds, id: string | number, opts: WpRequestOptions = {}): Promise<"deleted" | "missing"> {
+  const res = await wpRequest(creds, `/media/${encodeURIComponent(String(id))}?force=true`, { method: "DELETE" }, opts);
+  if (res.status === 404 || res.status === 410) return "missing";
+  if (res.status < 200 || res.status >= 300) throw new Error(`WordPress не удалил медиа ${id}: HTTP ${res.status} ${parseWpError(res.text).message}`);
+  return "deleted";
+}
+
 export async function mapLimited<T, R>(items: readonly T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array<R>(items.length);
   let next = 0;

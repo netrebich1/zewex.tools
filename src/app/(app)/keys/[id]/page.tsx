@@ -7,7 +7,7 @@ import type { KeyOwnerOption } from "@/components/KeyOwnerFields";
 import { Alert, Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { assignKeyUsage, deleteKey, setKeyBalance, testKey, updateKey } from "@/actions/admin";
+import { assignKeyUsage, deleteKey, enableKey, setKeyBalance, testKey, updateKey } from "@/actions/admin";
 import { manualBalanceProvider, manualBalances } from "@/lib/balances";
 import { CAPABILITY_LABELS, SCOPE_LABELS, fmtDate, fmtMoney, monthStart } from "@/lib/utils";
 
@@ -200,6 +200,12 @@ export default async function KeyPage({ params }: { params: Promise<{ id: string
             <div className="mt-4 space-y-2">
               {key.lastCheckedAt && (
                 <Alert tone={key.lastCheckOk ? "ok" : "danger"}>{key.lastCheckNote} <span className="opacity-70">({fmtDate(key.lastCheckedAt)})</span></Alert>
+              )}
+              {canEdit && key.status === "DISABLED" && (
+                <ActionForm action={enableKey} hidden={{ id: key.id }} className="space-y-2">
+                  <p className="help">Выключенный ключ пропускается во всех правилах. Портал выключает ключ сам, если провайдер ответил «нет баланса» или отклонил ключ; пополнили баланс — включите.</p>
+                  <SubmitButton className="btn-brand w-full" pendingText="Включаю…">Включить ключ</SubmitButton>
+                </ActionForm>
               )}
               {canEdit && (
                 <ActionForm action={testKey} hidden={{ id: key.id }} className="space-y-2">
