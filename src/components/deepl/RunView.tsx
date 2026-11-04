@@ -332,6 +332,7 @@ function QualityBlock({ q }: { q: QualityReport }) {
       </div>
       <div className="help mt-1.5">
         русизмов в итоге {m.russianisms} · штампов {m.clichesFinal} (в исходнике {m.clichesSource}) · обращение в исходнике {ADDR[m.addressSource ?? ""] ?? "смешано/нет"}, в итоге {ADDR[m.addressFinal ?? ""] ?? "смешано/нет"}{m.addressMixed ? " — смешаны «ти» и «ви»" : ""}
+        {m.overlapOut != null && <> · совпадение фраз с оригиналом: после переводов {m.overlapIn ?? "—"}% → итог {m.overlapOut}%</>}
       </div>
       {q.issues.length > 0 && (
         <details className="mt-1.5">

@@ -142,6 +142,7 @@ export const STAGE_LABELS: Record<string, string> = {
   post_edit: "постредактура",
   keyword_topup: "добор ключей",
   style: "стиль",
+  address: "звертання ти/ви",
   judge: "оценка качества",
   publish: "публикация",
   publishing: "публикация",
@@ -171,7 +172,11 @@ export type QualityReport = {
   total: number;
   issues: QualityIssueNote[];
   /** метрики кода: русизмы, штампы, обращение в исходнике и итоге */
-  metrics: { russianisms: number; clichesSource: number; clichesFinal: number; addressSource: string | null; addressFinal: string | null; addressMixed: boolean };
+  metrics: {
+    russianisms: number; clichesSource: number; clichesFinal: number; addressSource: string | null; addressFinal: string | null; addressMixed: boolean;
+    /** доля 5-словных фраз, совпадающих с оригиналом: на входе редактуры и в итоге (справочно, не блокирует) */
+    overlapIn?: number; overlapOut?: number;
+  };
   costUsd: number;
 };
 export const QUALITY_LABELS: Record<keyof QualityReport["scores"], string> = { mova: "мова", fakty: "факты", terminy: "термины", zvertannia: "обращение", styl: "стиль" };

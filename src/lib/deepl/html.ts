@@ -643,7 +643,7 @@ export function validateChunk(source: string, output: string): QualityIssue[] {
 export function chunkIsFatal(issues: QualityIssue[], relaxTags = false): boolean {
   return issues.some((x) =>
     x.code === "empty" || x.code === "truncated" || x.code === "placeholders" || x.code === "text_growth" ||
-    x.code === "rewrite" || x.code === "russianisms" || x.code === "cliches" ||
+    x.code === "rewrite" || x.code === "russianisms" || x.code === "cliches" || x.code === "mixed_script" || x.code === "negation_lost" || x.code === "protected_zone" ||
     (x.code === "tags" && !relaxTags)
 
   );
@@ -996,3 +996,123 @@ export function findCliches(html: string): string[] {
 }
 
 export const countCliches = (html: string): number => findCliches(html).length;
+
+/* ---------------- Пакет качества 2: фразы у ссылок, подмены перевода, латиница, отрицания, таблицы ---------------- */
+
+/** Слова, где смешаны кириллица и латиница («Перiть», «впевнeтеся», «обтислa») — модель подменила букву. */
+export function mixedScriptWords(html: string): string[] {
+  const out = new Set<string>();
+  for (const w of plainText(html).split(/[^\p{L}'’ʼ]+/u)) {
+    if (w && /[Ѐ-ӿ]/.test(w) && /[A-Za-z]/.test(w)) out.add(w);
+  }
+  return [...out];
+}
+
+/** Сколько отрицаний в тексте: правка/добор ключей не имеет права терять «не» («тягне кріплення донизу» вместо «не тягне»). */
+export function countNegations(html: string): number {
+  return (plainText(html).match(/(?:^|[^\p{L}])(?:не|ні|ані)(?=[^\p{L}]|$)/giu) ?? []).length;
+}
+
+/** Текст таблиц и подписей к фото — туда ключи и правки стиля не должны попадать. */
+export function protectedZonesText(html: string): string {
+  const parts = [...html.matchAll(/<table[\s\S]*?<\/table>|<figcaption[\s\S]*?<\/figcaption>|\[caption[\s\S]*?\[\/caption\]/gi)].map((m) => plainText(m[0]));
+  return parts.join("\n").replace(/\s+/g, " ").trim();
+}
+
+const SENT_SPLIT = /(?<=[.!?…])\s+(?=[«"“(]?\p{Lu})/u;
+
+/**
+ * Предложения оригинала, в которых стоит ссылка (по тексту анкора). DeepL оставляет анкор нетронутым, а фразу вокруг
+ * переводит трижды — связка рвётся («я показувала [на трьох запрошеннях] показує»). Модель получает оригинальное
+ * предложение как образец связки; сам анкор при этом остаётся под плейсхолдером и не меняется.
+ */
+export function anchorSentences(sourceHtml: string, anchors: { text: string }[]): Map<string, string> {
+  const sentences = visibleText(sourceHtml).split(SENT_SPLIT);
+  const out = new Map<string, string>();
+  for (const a of anchors) {
+    const key = a.text.trim().toLowerCase();
+    if (!key || out.has(key)) continue;
+    const s = sentences.find((x) => x.toLowerCase().includes(key));
+    if (s && s.length <= 600) out.set(key, s.trim());
+  }
+  return out;
+}
+
+/**
+ * Типовые подмены DeepL в украинском: [основа слова оригинала, основа подмены в переводе]. Пара срабатывает, когда
+ * в оригинале секции есть первое, а во фрагменте — второе (и в оригинале второго нет): модель получает явное указание
+ * «у фрагменті X — в оригіналі Y» вместо угадывания по глоссарию.
+ */
+const TERM_PAIRS: Array<[string, RegExp, string, RegExp]> = [
+  ["маківка", /маківк/iu, "проділ", /проділ/iu],
+  ["гольф", /(?:^|[^\p{L}])гольф/iu, "светр із високим коміром", /светр\w*\s+(?:із|з)\s+високим\s+коміром|водолазк/iu],
+  ["рваний", /рван(?:ий|а|е|і|ого|ому|им|их|ою)/iu, "ступінчастий / каскадний", /ступінчаст|каскадн/iu],
+  ["невидимка", /невидимк/iu, "шпилька", /шпильк/iu],
+  ["черевики", /черевик/iu, "чоботи", /чоб[іо]т/iu],
+  ["чоботи", /чоб[іо]т/iu, "черевики", /черевик/iu],
+  ["вершки", /вершк/iu, "сметана", /сметан/iu],
+  ["облеглий", /обле?гл/iu, "вільного крою / облягаючий", /вільного\s+крою|облягаюч/iu],
+  ["босоніжки", /босоніжк/iu, "сандалі", /сандал/iu],
+  ["жакет / піджак", /жакет|піджак/iu, "куртка", /куртк/iu],
+  ["блакитний", /блакитн/iu, "синій", /(?:^|[^\p{L}])син(?:ій|я|є|і|ього|ьому|ім|іх|ьою)/iu],
+  ["синій", /(?:^|[^\p{L}])син(?:ій|я|є|і|ього|ьому|ім|іх|ьою)/iu, "блакитний", /блакитн/iu],
+  ["молочний", /молочн/iu, "кремовий", /кремов/iu],
+  ["кремовий", /кремов/iu, "молочний", /молочн/iu],
+  ["каблучка", /каблучк/iu, "кільце / перстень", /(?:^|[^\p{L}])кільц|перст(?:ень|н)/iu],
+  ["чубчик", /чубчик/iu, "чубок / чубчина", /чубок|чубк|чубчин/iu],
+  ["сукня", /(?:^|[^\p{L}])сукн/iu, "плаття", /платт/iu],
+  ["рубчик", /рубчик|рубчаст/iu, "ребристий", /ребрист/iu],
+  ["подруга", /подруг/iu, "дівчина / друг / хлопець", /(?:^|[^\p{L}])дівчин|(?:^|[^\p{L}])друг(?:а|у|ові|ом|и|ів)?(?=[^\p{L}]|$)|хлопц|хлопець/iu],
+  ["батарея", /батаре/iu, "радіатор", /радіатор/iu],
+  ["стулка", /стулк/iu, "полотно", /полотн/iu],
+  ["термотоп", /термотоп/iu, "термофутболка", /термофутболк/iu],
+  ["ботфорти", /ботфорт/iu, "чоботи до колін", /чоб[іо]т\w*\s+до\s+колін/iu],
+  ["скріншот", /скріншот/iu, "скриншот", /скриншот/iu],
+  ["вихор", /вихор|вихр/iu, "пасмо на маківці / проділі", /пасмо\s+на\s+(?:маківці|проділі)/iu],
+];
+
+/** Пары «у фрагменті X — в оригіналі Y» для данного фрагмента. */
+export function findTermPairs(reference: string, fragment: string): string[] {
+  const ref = plainText(reference);
+  const frag = plainText(fragment);
+  const out: string[] = [];
+  for (const [good, goodRe, bad, badRe] of TERM_PAIRS) {
+    if (goodRe.test(ref) && badRe.test(frag) && !badRe.test(ref)) out.push(`«${bad}» → «${good}»`);
+  }
+  return out.slice(0, 12);
+}
+
+/**
+ * Механические кальки, которые безопасно чинить кодом сразу после перевода (UK): одинаковые окончания, нет двусмысленности.
+ */
+const UK_FIXES: Array<[RegExp, string]> = [
+  [/облягаюч/giu, "облегл"],
+  [/металічн/giu, "металев"],
+  [/магнетичн/giu, "магнітн"],
+  [/у довгостроковій перспективі/giu, "надовго"],
+  [/Тут ви дізнаєтеся,?\s*/gu, "Розповідаємо, "],
+  [/(?<=[^\p{L}])скриншот/giu, "скріншот"],
+  [/чверть-оборот/giu, "чверть оберт"],
+  [/(?<=[^\p{L}])оборот(у|а|и|ом|ів|ах)(?=[^\p{L}])/giu, "оберт$1"],
+];
+
+export function fixTranslationArtifacts(html: string, lang?: string | null): string {
+  if ((lang ?? "").toUpperCase().split("-")[0] !== "UK") return html;
+  return mapTextNodes(html, (t) => UK_FIXES.reduce((s, [re, to]) => s.replace(re, to), t));
+}
+
+/** Доля 5-словных n-грамм текста, которые есть в оригинале, % — сколько формулировок оригинала вернулось. */
+export function overlapPct(sourceHtml: string, html: string, n = 5): number {
+  const words = (h: string) => plainText(h).toLowerCase().split(/[^\p{L}\d'’]+/u).filter((w) => w.length > 1);
+  const src = new Set<string>();
+  const sw = words(sourceHtml);
+  for (let i = 0; i + n <= sw.length; i++) src.add(sw.slice(i, i + n).join(" "));
+  const ws = words(html);
+  let hit = 0;
+  let tot = 0;
+  for (let i = 0; i + n <= ws.length; i++) {
+    tot++;
+    if (src.has(ws.slice(i, i + n).join(" "))) hit++;
+  }
+  return tot ? Math.round((hit / tot) * 1000) / 10 : 0;
+}

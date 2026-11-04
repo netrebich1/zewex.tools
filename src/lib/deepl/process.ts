@@ -7,11 +7,11 @@
 import { Prisma, type DeeplItem, type DeeplJob } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
-  anchorsFromTokens, changedWordCount, checkIntegrity, countCliches, countKeyword, detectLangMismatch, extractKeywords, keywordTarget, matchDashStyle,
-  protectHtml, restoreHtml, type QualityIssue,
+  anchorSentences, anchorsFromTokens, changedWordCount, checkIntegrity, countCliches, countKeyword, detectLangMismatch, extractKeywords, fixTranslationArtifacts,
+  keywordTarget, matchDashStyle, overlapPct, protectHtml, restoreHtml, type QualityIssue,
 } from "./html";
 import { runTranslate, sourceCode, translateKeywords } from "./deepl";
-import { keywordTopupPrompt, runEdit, runHeadings, type AiCtx } from "./edit";
+import { alignAddressAll, keywordTopupPrompt, runEdit, runHeadings, type AiCtx } from "./edit";
 import { judgeArticle } from "./judge";
 import { langPack } from "./lang";
 import { getPost, savePost, siteCreds } from "./wp";
@@ -109,6 +109,8 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
     const steps = cfg.translateSteps;
     const finalLang: string | null = steps.length ? steps[steps.length - 1]!.target : null;
     let anchorTexts: string[] = [];
+    // Ссылки по номеру плейсхолдера → предложение оригинала с этой ссылкой (образец связки вокруг анкора; сам анкор не меняется).
+    let anchorByPh = new Map<number, { anchor: string; sentence: string }>();
     let seoKeys: string[] | null = null;
     let seoSourceKeys: string[] = [];
     let seoReport: KeywordStat[] = [];
@@ -159,8 +161,9 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
           sections: 3, maxTextGrowthPct: 12, maxRewritePct: 22,
           // Оригинал той же секции — сверить термины, факты и обращение после цепочки переводов (формулировки не возвращаются).
           referenceHtml: steps.length ? protectHtml(sourceHtml).text : undefined,
-          // Пакет «качество текста»: обращение «ти/ви» как в оригинале, термины оригинала, без новых штампов.
-          alignAddress: cfg.quality.address, glossary: cfg.quality.glossary, noCliches: true,
+          // Пакет «качество текста»: обращение «ти/ви» как в оригинале, термины оригинала, без новых штампов,
+          // предложения оригинала со ссылками — чтобы восстановить связку вокруг анкора.
+          alignAddress: cfg.quality.address, glossary: cfg.quality.glossary, noCliches: true, anchorSentencesByPh: anchorByPh,
         }),
       });
       if (cfg.quality.style) {
@@ -186,9 +189,17 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
             const deficits = await prepareSeo(h);
             if (!deficits.length) return { html: h, warnings: [], changedWords: 0 };
             return runEdit(ai, h, keywordTopupPrompt(finalLang), { title, h1, lang: finalLang, lightTouch: true, anchors: anchorTexts, keywordDeficits: deficits }, true, {
-              sections: 2, maxTextGrowthPct: 4, maxRewritePct: 12, retryKeywordDeficits: true,
+              sections: 2, maxTextGrowthPct: 4, maxRewritePct: 12, retryKeywordDeficits: true, keywordSafety: true,
             });
           },
+        });
+      }
+      if (cfg.quality.address) {
+        // Последним — обращение «ти/ви» по всей статье: постредактура выравнивает только свои фрагменты, добор ключей и
+        // врезки-советы снова приносили «ви» в текст на «ти».
+        plan.push({
+          id: "address#0", stage: "address", label: "Звертання", allowPartial: true,
+          run: (h) => alignAddressAll(ai, h, protectHtml(sourceHtml).text, { title, h1, lang: finalLang, anchors: anchorTexts }),
         });
       }
     }
@@ -212,6 +223,16 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
     // Единая защита картинок/шорткодов/ссылок/iframe на весь оставшийся прогон статьи.
     const { text: protectedSource, tokens } = protectHtml(resumeHtml);
     anchorTexts = anchorsFromTokens(tokens).map((a) => a.text);
+    {
+      const byText = anchorSentences(sourceHtml, anchorsFromTokens(tokens));
+      anchorByPh = new Map();
+      tokens.forEach((t, i) => {
+        const m = t.match(/^<a\b[^>]*>([\s\S]*?)<\/a\s*>$/i);
+        const text = m ? m[1]!.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+        const sentence = text ? byText.get(text.toLowerCase()) : undefined;
+        if (sentence) anchorByPh.set(i, { anchor: text, sentence });
+      });
+    }
     let html = protectedSource;
     const problems: string[] = [];
 
@@ -230,6 +251,8 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
       const r = await st.run(html);
       // Тире как в исходнике: DeepL через немецкий ставит длинное «—» вместо короткого «–».
       r.html = matchDashStyle(sourceHtml, r.html);
+      // Механические кальки перевода (облягаючий → облеглий, металічний → металевий, оборот → оберт) — кодом, до моделей.
+      if (st.stage === "translate" && st.expectLang) r.html = fixTranslationArtifacts(r.html, st.expectLang);
       warnings.push(...r.warnings.map((w) => ({ ...w, detail: `${st.label}: ${w.detail}` })));
       let rolledBack = false;
       if ((r.rolledBack ?? 0) > 0 && !st.allowPartial) {
@@ -309,7 +332,11 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
       const why = await touch("judge");
       if (why) return await interrupted(why);
       try {
+        const lastTranslate = [...snapshots].reverse().find((s) => s.key.startsWith("translate#") && !s.key.includes("#failed"));
         quality = await judgeArticle({ ...ai, model: cfg.quality.judgeModel }, sourceHtml, finalHtml, finalLang);
+        // Справочно: сколько формулировок оригинала вернулось (5-словные фразы) — на входе редактуры и в итоге.
+        quality.metrics.overlapIn = lastTranslate ? overlapPct(sourceHtml, lastTranslate.html) : undefined;
+        quality.metrics.overlapOut = overlapPct(sourceHtml, finalHtml);
         if (quality.metrics.addressMixed) warnings.push({ code: "address_mixed", detail: "в итоге смешаны обращения «ти» и «ви»" });
       } catch (e) {
         warnings.push({ code: "judge_failed", detail: `оценка качества не выполнена: ${e instanceof Error ? e.message : String(e)}` });

@@ -7,9 +7,9 @@ import { disableKey, resolveSlot, runSlot, type ResolvedSlot } from "@/lib/run";
 import { AiError, classifyAiError } from "@/lib/pins/ai/errors";
 import { acquire } from "@/lib/pins/ai/limiter";
 import {
-  addressStats, changedWordCount, chunkBySections, chunkHtml, chunkIsFatal, countCliches, countKeyword, countRussianisms, detectMasculineVoice, dominantAddress,
-  findRussianisms, matchDashStyle, protectHtml, repairPlaceholders, restoreHtml, rewritePct, sourceGlossary, stripKeywordQuotes, validateChunk, visibleText,
-  visibleTextLength, type QualityIssue,
+  addressStats, changedWordCount, chunkBySections, chunkHtml, chunkIsFatal, countCliches, countKeyword, countNegations, countRussianisms, detectMasculineVoice,
+  dominantAddress, findRussianisms, findTermPairs, matchDashStyle, mixedScriptWords, placeholderIds, protectHtml, protectedZonesText, repairPlaceholders, restoreHtml,
+  rewritePct, sourceGlossary, stripKeywordQuotes, validateChunk, visibleText, visibleTextLength, type QualityIssue,
 } from "./html";
 import { mapLimit } from "./deepl";
 import { langPack } from "./lang";
@@ -46,6 +46,10 @@ export interface EditContext {
   glossary?: string[];
   /** "style" — стилистический проход (канцелярит и штампы) вместо чек-листа постредактуры */
   mode?: "edit" | "style";
+  /** явные подмены перевода «у фрагменті X → в оригіналі Y» */
+  termPairs?: string[];
+  /** ссылки этого фрагмента и предложения оригинала с ними — образец связки вокруг анкора */
+  anchorSentences?: { anchor: string; sentence: string }[];
 }
 
 /**
@@ -66,7 +70,9 @@ export function contextBlock(ctx?: EditContext): string {
     else if (!ctx.keywordDeficits?.length) block += `${L.checklist}\n\n`;
   }
   if (ctx.reference?.trim()) block += `${L.reference}\n${L.referenceHeader}\n"""\n${ctx.reference.trim().slice(0, 8000)}\n"""\n\n`;
+  if (ctx.termPairs?.length) block += `${L.termPairs}\n${ctx.termPairs.map((p) => `- ${p}`).join("\n")}\n\n`;
   if (ctx.glossary?.length) block += `${L.glossary}\n${L.glossaryHeader}\n${ctx.glossary.join(", ")}\n\n`;
+  if (ctx.anchorSentences?.length) block += `${L.anchorSentences}\n${L.anchorSentencesHeader}\n${ctx.anchorSentences.slice(0, 12).map((a, i) => `${i + 1}. «${a.anchor}» — ${a.sentence}`).join("\n")}\n\n`;
   if (ctx.anchors?.length) block += `${L.anchors}\n${L.anchorsHeader}\n${ctx.anchors.slice(0, 40).map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\n`;
   if (ctx.keywordDeficits?.length) block += `${L.keywords}\n${L.keywordsHeader}\n${ctx.keywordDeficits.slice(0, 20).map((k) => L.keywordLine(k.key, k.need)).join("\n")}\n\n`;
   if (ctx.lightTouch || ctx.anchors?.length) block += `${L.quotes}\n\n`;
@@ -158,6 +164,10 @@ export type EditOpts = {
   glossary?: boolean;
   /** фрагмент с большим числом канцелярских штампов, чем на входе, отклоняется */
   noCliches?: boolean;
+  /** предложения оригинала со ссылками по номеру плейсхолдера <x-ph i="N"> (нужен referenceHtml) */
+  anchorSentencesByPh?: Map<number, { anchor: string; sentence: string }>;
+  /** добор ключей: нельзя терять «не», менять таблицы и подписи к фото */
+  keywordSafety?: boolean;
 };
 
 /** Статья по секциям: [0] — всё до первого H2, дальше по одной секции на каждый H2. */
@@ -216,7 +226,14 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
       if (!refs[i]) return ectx;
       // Термины оригинала, которых во фрагменте нет: перевод заменил их синонимами (каблучка → кільце, рубчик → ребристий).
       const glossary = opts.glossary ? sourceGlossary(refs[i]!, visibleText(chunks[i]!)) : [];
-      return { ...(ectx ?? {}), reference: refs[i], ...(glossary.length ? { glossary } : {}) };
+      const termPairs = opts.glossary ? findTermPairs(refs[i]!, chunks[i]!) : [];
+      const anchorSentences = opts.anchorSentencesByPh
+        ? [...placeholderIds(chunks[i]!)].map((id) => opts.anchorSentencesByPh!.get(id)).filter((x): x is { anchor: string; sentence: string } => !!x)
+        : [];
+      return {
+        ...(ectx ?? {}), reference: refs[i],
+        ...(glossary.length ? { glossary } : {}), ...(termPairs.length ? { termPairs } : {}), ...(anchorSentences.length ? { anchorSentences } : {}),
+      };
     }
     if (!opts.retryKeywordDeficits) return { ...(ectx as EditContext), keywordDeficits: perChunk[i] };
     // Пересчёт после каждого фрагмента: ключ, пропущенный в одной секции, предлагается следующим.
@@ -237,6 +254,9 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
     const srcRu = isUk ? countRussianisms(src) : 0;
     const srcRuWords = new Set(isUk ? findRussianisms(src) : []);
     const srcCliches = opts.noCliches && isUk ? countCliches(src) : 0;
+    const srcMixed = new Set(mixedScriptWords(src));
+    const srcNegations = opts.keywordSafety ? countNegations(src) : 0;
+    const srcZones = opts.keywordSafety ? protectedZonesText(src) : "";
     const grade = (candidate: string): QualityIssue[] => {
       const list = validateChunk(src, candidate);
       const afterText = visibleTextLength(candidate);
@@ -256,6 +276,14 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
       if (opts.noCliches && isUk) {
         const n = countCliches(candidate);
         if (n > srcCliches) list.push({ code: "cliches", detail: `модель добавила канцелярские штампы: было ${srcCliches}, стало ${n}` });
+      }
+      // Латинская буква внутри кириллического слова («Перiть», «впевнeтеся») — подмена символа моделью.
+      const mixed = mixedScriptWords(candidate).filter((w) => !srcMixed.has(w));
+      if (mixed.length) list.push({ code: "mixed_script", detail: `латиница внутри слов: ${mixed.slice(0, 5).join(", ")}` });
+      if (opts.keywordSafety) {
+        const neg = countNegations(candidate);
+        if (neg < srcNegations) list.push({ code: "negation_lost", detail: `пропало отрицание «не» (было ${srcNegations}, стало ${neg})` });
+        if (protectedZonesText(candidate) !== srcZones) list.push({ code: "protected_zone", detail: "изменён текст таблицы или подписи к фото" });
       }
       return list;
     };
@@ -326,30 +354,9 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
     if (!opts.alignAddress || !ref || deficits.length || langPack(ectx?.lang).code !== "UK") return;
     const target = dominantAddress(ref);
     if (!target) return;
-    const cur = out[i]!;
-    const st = addressStats(cur);
-    const refSt = addressStats(ref);
-    const wrong = target === "ty" ? st.vy : st.ty;
-    const wrongWords = target === "ty" ? st.vyWords : st.tyWords;
-    if (wrong <= (target === "ty" ? refSt.vy : refSt.ty)) return;
-    const L = langPack(ectx?.lang);
-    try {
-      const raw = await editChunk(ctx, L.addressNote(target, wrongWords).trim(), cur, "", { title: ectx?.title, h1: ectx?.h1, lang: ectx?.lang, anchors: ectx?.anchors });
-      const fixed = repairPlaceholders(cur, matchDashStyle(cur, raw));
-      const issues = validateChunk(cur, fixed);
-      const after = addressStats(fixed);
-      const afterWrong = target === "ty" ? after.vy : after.ty;
-      const pct = rewritePct(cur, fixed);
-      if (!chunkIsFatal(issues, opts.relaxTags) && countRussianisms(fixed) <= countRussianisms(cur) && afterWrong < wrong && pct <= 30) {
-        out[i] = fixed;
-        warnings.push({ code: "address_fixed", detail: `фрагмент ${i + 1}: звертання приведено до «${target === "ty" ? "ти" : "ви"}» як в оригіналі (форм на «${target === "ty" ? "ви" : "ти"}» було ${wrong}, лишилося ${afterWrong})` });
-      } else {
-        warnings.push({ code: "address_mixed", detail: `фрагмент ${i + 1}: в оригіналі «${target === "ty" ? "ти" : "ви"}», у тексті лишилися форми ${wrongWords.slice(0, 6).join(", ")} — вирівняти не вдалося (переписано ${pct}%)` });
-      }
-    } catch (e) {
-      if (e instanceof AiError && e.cls.kind === "fatal_run") throw e;
-      warnings.push({ code: "address_mixed", detail: `фрагмент ${i + 1}: звертання не вирівняно — ${e instanceof Error ? e.message : String(e)}` });
-    }
+    const r = await alignChunkAddress(ctx, out[i]!, target, ectx, addressStats(ref), opts.relaxTags);
+    out[i] = r.html;
+    if (r.note) warnings.push({ code: r.fixed ? "address_fixed" : "address_mixed", detail: `фрагмент ${i + 1}: ${r.note}` });
   };
 
   const indexes = chunks.map((_, i) => i);
@@ -373,6 +380,63 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
     rolledBack,
     changedWords: changedWordCount(protectedHtml, joined),
   };
+}
+
+/* ---------------- Обращение «ти/ви» ---------------- */
+
+export type AddressResult = { html: string; fixed: boolean; note: string };
+
+/**
+ * Один фрагмент: если «чужих» форм обращения больше, чем допускает оригинал, — отдельный проход с единственной задачей.
+ * Принимается, только если чужих форм стало меньше, русизмов не прибавилось и переписано ≤30 % (это замена местоимений и окончаний).
+ */
+export async function alignChunkAddress(ctx: AiCtx, cur: string, target: "ty" | "vy", ectx: EditContext | undefined, allowed?: { ty: number; vy: number }, relaxTags = false): Promise<AddressResult> {
+  const st = addressStats(cur);
+  const wrong = target === "ty" ? st.vy : st.ty;
+  const wrongWords = target === "ty" ? st.vyWords : st.tyWords;
+  const limit = allowed ? (target === "ty" ? allowed.vy : allowed.ty) : 0;
+  if (wrong <= limit) return { html: cur, fixed: false, note: "" };
+  const L = langPack(ectx?.lang);
+  const label = target === "ty" ? "ти" : "ви";
+  const other = target === "ty" ? "ви" : "ти";
+  try {
+    const raw = await editChunk(ctx, L.addressNote(target, wrongWords).trim(), cur, "", { title: ectx?.title, h1: ectx?.h1, lang: ectx?.lang, anchors: ectx?.anchors });
+    const fixed = repairPlaceholders(cur, matchDashStyle(cur, raw));
+    const issues = validateChunk(cur, fixed);
+    const after = addressStats(fixed);
+    const afterWrong = target === "ty" ? after.vy : after.ty;
+    const pct = rewritePct(cur, fixed);
+    if (!chunkIsFatal(issues, relaxTags) && countRussianisms(fixed) <= countRussianisms(cur) && !mixedScriptWords(fixed).some((w) => !mixedScriptWords(cur).includes(w)) && afterWrong < wrong && pct <= 30) {
+      return { html: fixed, fixed: true, note: `звертання приведено до «${label}» як в оригіналі (форм на «${other}» було ${wrong}, лишилося ${afterWrong})` };
+    }
+    return { html: cur, fixed: false, note: `в оригіналі «${label}», у тексті лишилися форми ${wrongWords.slice(0, 6).join(", ")} — вирівняти не вдалося (переписано ${pct}%)` };
+  } catch (e) {
+    if (e instanceof AiError && e.cls.kind === "fatal_run") throw e;
+    return { html: cur, fixed: false, note: `звертання не вирівняно — ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/**
+ * Финальный проход по всей статье (защищённый HTML): обращение как в оригинале до нуля чужих форм, по секциям, до двух кругов.
+ * Нужен, потому что постредактура выравнивает только внутри своих фрагментов, а врезки и хвост статьи оставались на «ви».
+ */
+export async function alignAddressAll(ctx: AiCtx, html: string, sourceHtml: string, ectx: EditContext | undefined): Promise<{ html: string; warnings: QualityIssue[]; changedWords: number }> {
+  const warnings: QualityIssue[] = [];
+  const target = dominantAddress(sourceHtml);
+  if (!target || langPack(ectx?.lang).code !== "UK") return { html, warnings: [{ code: "address_skip", detail: "в оригіналі звертання не визначено — пропуск" }], changedWords: 0 };
+  const allowed = addressStats(sourceHtml);
+  let chunks = chunkBySections(html, 1, 9000);
+  for (let round = 0; round < 2; round++) {
+    const before = chunks.join("");
+    const stBefore = addressStats(before);
+    if ((target === "ty" ? stBefore.vy : stBefore.ty) <= (target === "ty" ? allowed.vy : allowed.ty)) break;
+    chunks = await mapLimit(chunks, CHUNK_CONCURRENCY, async (c) => (await alignChunkAddress(ctx, c, target, ectx, { ty: 0, vy: 0 })).html);
+  }
+  const out = chunks.join("");
+  const st = addressStats(out);
+  const left = target === "ty" ? st.vy : st.ty;
+  if (left > (target === "ty" ? allowed.vy : allowed.ty)) warnings.push({ code: "address_mixed", detail: `після вирівнювання лишилося форм на «${target === "ty" ? "ви" : "ти"}»: ${left} (${(target === "ty" ? st.vyWords : st.tyWords).slice(0, 8).join(", ")})` });
+  return { html: out, warnings, changedWords: changedWordCount(html, out) };
 }
 
 /* ---------------- H2 ---------------- */
@@ -416,6 +480,29 @@ export async function runHeadings(ctx: AiCtx, html: string, prompt: string, ectx
   if (ectx?.h1) ctxLines.push(`${L.h1Label}: ${ectx.h1}`);
   const content = await chat(ctx, L.headingsSystem, `${ctxLines.length ? ctxLines.join("\n") + "\n\n" : ""}${L.headingsInstruction}\n${prompt}\n\n${L.headingsList}\n${list}\n\n${L.headingsTail}`, 0.4);
   const parsed = parseHeadings(content, originals.length);
+  // Заголовок — только из слов своего раздела: прилагательное/существительное, которого в разделе и в старом H2 нет
+  // («найсміливіший», «зігрітися», «вечірнього виходу»), — заголовок остаётся прежним. Один и тот же зачин —
+  // не больше чем у трети заголовков (стаффинг ключом «Блакитна сукня…» ×13).
+  const sections = sectionsOf(html).slice(1);
+  const stem = (w: string) => w.slice(0, Math.max(4, w.length - 2));
+  const wordsOf = (s: string) => visibleText(s).toLowerCase().split(/[^\p{L}'’]+/u).filter((w) => w.length >= 5);
+  const starts = new Map<string, number>();
+  const maxSame = Math.max(1, Math.ceil(originals.length / 3));
+  const rejected: string[] = [];
+  parsed.forEach((next, i) => {
+    if (!next) return;
+    const allowed = new Set([...wordsOf(sections[i] ?? ""), ...wordsOf(originals[i] ?? ""), ...wordsOf(ectx?.title ?? ""), ...wordsOf(ectx?.h1 ?? "")].map(stem));
+    const foreign = wordsOf(next).filter((w) => !allowed.has(stem(w)) && !/^(?:який|яка|яке|які|коли|чому|скільки|навіщо|замість|проти|через|перед|після|поруч)$/.test(w));
+    const superlative = /(?:^|[^\p{L}])най\p{L}{4,}/iu.test(next) && !/(?:^|[^\p{L}])най\p{L}{4,}/iu.test(originals[i] ?? "");
+    const start = wordsOf(next).slice(0, 2).join(" ");
+    const n = (starts.get(start) ?? 0) + 1;
+    starts.set(start, n);
+    if (foreign.length || superlative || (start && n > maxSame)) {
+      rejected.push(`H2 #${i + 1}: ${foreign.length ? `слова не з розділу (${foreign.slice(0, 3).join(", ")})` : superlative ? "найвищий ступінь" : "однаковий зачин"} — лишено початковий`);
+      parsed[i] = undefined as unknown as string;
+    }
+  });
+  if (rejected.length) warnings.push({ code: "headings_rejected", detail: rejected.join("; ") });
   let replaced = 0;
   let idx = 0;
   const out = html.replace(re, (full, inner: string) => {
