@@ -12,7 +12,7 @@ type Prompt = { id: string; name: string; purpose: string };
 type Scenario = { id: string; name: string; settings: DeeplSettings };
 type Post = { id: number; title: string; date: string; status: string; link: string; categories: number[] };
 
-const MODELS = [RECOMMENDED_MODELS.edit, RECOMMENDED_MODELS.headings, "anthropic/claude-haiku-5.5", "google/gemini-2.5-flash"];
+const MODELS = [RECOMMENDED_MODELS.edit, RECOMMENDED_MODELS.headings, "mistralai/mistral-small-3.2-24b-instruct", "deepseek/deepseek-v4.1-flash", "anthropic/claude-haiku-5.5", "google/gemini-2.5-flash-lite", "google/gemini-2.5-flash"];
 const SOURCE_LANGS = DEEPL_LANGS.filter((l) => !l.targetOnly);
 const baseCode = (c: string) => c.split("-")[0]!;
 
@@ -305,7 +305,7 @@ export function NewJobForm({ sites, prompts, scenarios, initial, initialSite, ha
                 <input className="input" list="deepl-models" value={s.headingsModel} placeholder="пусто — как для постредактуры" onChange={(e) => upd({ headingsModel: e.target.value })} />
               </label>
               <datalist id="deepl-models">{MODELS.map((m) => <option key={m} value={m} />)}</datalist>
-              <p className="help">Подобраны на тестах: {RECOMMENDED_MODELS.edit} — самая дешёвая и точная в правке перевода; {RECOMMENDED_MODELS.headings} — лучшие H2 без штампов.{" "}
+              <p className="help">Подобраны на стенде 04.11.2026 (28 моделей, украинские промты): {RECOMMENDED_MODELS.edit} — точечная правка без русизмов, ≈$0.04 за статью; дешевле — mistral-small-3.2 (≈$0.01, медленная); {RECOMMENDED_MODELS.headings} — лучшие H2 без штампов.{" "}
                 {(s.model !== RECOMMENDED_MODELS.edit || s.headingsModel !== RECOMMENDED_MODELS.headings) && (
                   <button type="button" className="underline" onClick={() => upd({ model: RECOMMENDED_MODELS.edit, headingsModel: RECOMMENDED_MODELS.headings })}>Поставить рекомендованные</button>
                 )}

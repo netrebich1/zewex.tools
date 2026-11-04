@@ -16,12 +16,14 @@ export const MAX_JOB_ITEMS = 500;
 export type TranslateStep = { source: string; target: string };
 
 /**
- * Модели OpenRouter по стенду 2026-10-15 (scripts/deepl/model-bench.ts, статьи после UK→EN→DE→UK, 10 моделей):
- * постредактура — deepseek-v4-flash ($0.09/$0.18 за 1M): точечно чинит искажения перевода по оригиналу, ни одного отказа проверки,
- * самая дешёвая; H2 — gpt-6-luna ($0.10/$0.50): держит формулу промта «сущность + кут», без выдуманных обещаний и штампов.
- * Модели, переписывающие текст обратно к оригиналу (qwen3.7/3.8-flash, gemini-3.1-flash-lite, deepseek-v4.1-flash), не брать.
+ * Модели OpenRouter по стенду 2026-11-04 (scripts/deepl/model-bench.ts, 28 моделей, украинские промты, docs/deepl/bench-2026-11-04.md):
+ * постредактура — gpt-5.6-luna ($0.20/$1.20 за 1M, ≈$0.015 за проход по статье): все секции приняты, правки точечные и по делу
+ * (каблучка/покриття/смуга), ни одного русизма. Дешевле и приемлемо: mistral-small-3.2 (≈$0.004, медленная), deepseek-v4.1-flash (≈$0.006).
+ * deepseek-v4-flash с ноября 2026 добавляет русизмы в украинский текст — не брать. Gemini: 2.5-flash-lite почти не правит,
+ * 3.5-flash-lite возвращает формулировки оригинала и меняет лицо, 3.5+ flash дороги (reasoning) и переписывают.
+ * H2 — gpt-6-luna ($0.10/$0.50): держит формулу промта «сущность + кут», без выдуманных обещаний и штампов.
  */
-export const RECOMMENDED_MODELS = { edit: "deepseek/deepseek-v4-flash", headings: "openai/gpt-6-luna" } as const;
+export const RECOMMENDED_MODELS = { edit: "openai/gpt-5.6-luna", headings: "openai/gpt-6-luna" } as const;
 
 export type DeeplSettings = {
   translateSteps: TranslateStep[];

@@ -50,7 +50,7 @@
      "minPct": 25,
      "maxPct": 70
     },
-    "model": "deepseek/deepseek-v4-flash",
+    "model": "openai/gpt-5.6-luna",
     "publish": {
      "enabled": false,
      "target": "source",
@@ -87,7 +87,7 @@
      "minPct": 50,
      "maxPct": 100
     },
-    "model": "deepseek/deepseek-v4-flash",
+    "model": "openai/gpt-5.6-luna",
     "publish": {
      "enabled": false,
      "target": "source",

@@ -37,16 +37,19 @@ const DEFAULT_MODELS = [
 
 type Call = { text: string; cost: number; ms: number; inT: number; outT: number; error?: string };
 
-async function call(key: string, model: string, system: string, user: string, temperature: number): Promise<Call> {
+async function call(key: string, model: string, system: string, user: string, temperature: number, noReasoningField = false): Promise<Call> {
   const t = Date.now();
   try {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "zewex deepl bench" },
-      body: JSON.stringify({ model, temperature, messages: [{ role: "system", content: system }, { role: "user", content: user }], reasoning: { effort: "none" }, usage: { include: true } }),
+      body: JSON.stringify({ model, temperature, messages: [{ role: "system", content: system }, { role: "user", content: user }], ...(noReasoningField ? {} : { reasoning: { effort: "none" } }), usage: { include: true } }),
       signal: AbortSignal.timeout(180_000),
     });
     const j = (await res.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { cost?: number; prompt_tokens?: number; completion_tokens?: number }; error?: { message?: string } };
+    // Модели с обязательным reasoning (glm-5.3-flash, minimax-m3.1-flash) не принимают effort=none — повтор без поля.
+    if (res.status === 400 && !noReasoningField && /reasoning/i.test(j.error?.message ?? "")) return call(key, model, system, user, temperature, true);
+    if (res.status === 429 && !noReasoningField) { await new Promise((r) => setTimeout(r, 15_000)); return call(key, model, system, user, temperature, true); }
     if (!res.ok) return { text: "", cost: 0, ms: Date.now() - t, inT: 0, outT: 0, error: `${res.status} ${j.error?.message ?? ""}`.slice(0, 200) };
     const text = String(j.choices?.[0]?.message?.content ?? "").replace(/^\s*```(?:html)?\s*/i, "").replace(/```\s*$/, "").trim();
     return { text, cost: j.usage?.cost ?? 0, ms: Date.now() - t, inT: j.usage?.prompt_tokens ?? 0, outT: j.usage?.completion_tokens ?? 0 };
