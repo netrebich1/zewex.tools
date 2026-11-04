@@ -36,7 +36,7 @@ type QueueRole = { kind: "active"; limit: number } | { kind: "waiting" };
 /**
  * Очередь сайтов команды для блога (2026-11-04): та же настройка, что у статей — ArtTeamSettings.queueSites
  * («Очередь: сайтов сразу» на экране «Автозапуск»). N сайтов команды с неначатыми постами (кто раньше запущен —
- * по самому старому неначатому) получают всю мощность блог-воркера поровну, остальные ждут. Когда у сайта неначатые
+ * по самому старому неначатому) получают долю команды в мощности блог-воркера поровну, остальные ждут. Когда у сайта неначатые
  * кончаются, его место сразу получает следующий — без cron и ручных переключений.
  */
 async function blogQueueRoles(tx: Prisma.TransactionClient, sites: { id: string; teamId: string }[], maxConcurrent: number): Promise<Map<string, QueueRole>> {
@@ -50,9 +50,12 @@ async function blogQueueRoles(tx: Prisma.TransactionClient, sites: { id: string;
   const oldest = new Map(fresh.map((f) => [f.siteId, f._min.createdAt?.getTime() ?? 0]));
   const cap = Number(process.env.BLOG_WORKER_CONCURRENCY || 4);
   const total = maxConcurrent > 0 ? Math.min(maxConcurrent, cap) : cap;
-  for (const t of teams) {
-    const line = queued.filter((s) => s.teamId === t.teamId && oldest.has(s.id)).sort((a, b) => oldest.get(a.id)! - oldest.get(b.id)!);
-    const limit = Math.max(1, Math.floor(total / t.queueSites));
+  // Мощность делится поровну между командами, у которых есть неначатые посты: команды пишут параллельно,
+  // и одна не забирает весь потолок у другой. Команда закончила — её доля сама уходит остальным.
+  const lines = teams.map((t) => ({ t, line: queued.filter((s) => s.teamId === t.teamId && oldest.has(s.id)).sort((a, b) => oldest.get(a.id)! - oldest.get(b.id)!) }));
+  const share = Math.max(1, Math.floor(total / Math.max(1, lines.filter((x) => x.line.length).length)));
+  for (const { t, line } of lines) {
+    const limit = Math.max(1, Math.floor(share / t.queueSites));
     line.forEach((s, i) => roles.set(s.id, i < t.queueSites ? { kind: "active", limit } : { kind: "waiting" }));
   }
   return roles;
