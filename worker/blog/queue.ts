@@ -144,6 +144,9 @@ export async function releasePost(postId: string, delayMs = 0, note?: string, op
       ...(opts.refund ? { attempts: { decrement: 1 } } : {}),
     },
   });
+  // Возврат без единой засчитанной попытки на первом этапе (нет ключа, лимит провайдера) — пост по сути не начат:
+  // для очереди команды он остаётся «неначатым», иначе сайт выпадает из очереди и команда теряет долю мощности.
+  if (opts.refund) await prisma.blogPost.updateMany({ where: { id: postId, status: "PENDING", attempts: { lte: 0 }, stage: "research" }, data: { startedAt: null } });
 }
 
 async function giveUpInterrupted(a: { id: string; teamId: string; siteId: string; attempts: number; stage: string }) {
