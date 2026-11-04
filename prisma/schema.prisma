@@ -1667,6 +1667,8 @@ model DeeplItem {
   stages           Json?
   warnings         Json?
   keywordReport    Json?
+  /// Оценка качества итога главным редактором (ИИ): баллы по секциям и замечания (src/lib/deepl/judge.ts)
+  quality          Json?
   /// pending | processing | done | warning | error | stopped
   status           String    @default("pending")
   stage            String    @default("pending")

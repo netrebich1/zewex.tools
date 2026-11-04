@@ -6,7 +6,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Alert, Badge, Card } from "@/components/ui";
 import { publishDeeplItem, publishDeeplReady, retryDeeplItems, revertDeeplItem } from "@/actions/deepl";
-import { ITEM_STATUS_LABELS, STAGE_LABELS, type DeeplSettings } from "@/lib/deepl/types";
+import { ITEM_STATUS_LABELS, QUALITY_LABELS, STAGE_LABELS, type DeeplSettings, type QualityReport } from "@/lib/deepl/types";
 import type { JobItemRow } from "@/lib/deepl/jobs";
 import { ITEM_TONE } from "./DeeplNav";
 import { DiffView } from "./DiffView";
@@ -97,7 +97,7 @@ export function RunView({ jobId, initialStatus, initialItems, publishDefaults }:
         <div className="table-wrap">
           <table className="table">
             <thead>
-              <tr><th className="col-sm">#</th><th>Статья</th><th>Статус</th><th className="col-sm">Ключи</th><th className="col-sm">WordPress</th><th></th></tr>
+              <tr><th className="col-sm">#</th><th>Статья</th><th>Статус</th><th className="col-sm">Оценка</th><th className="col-sm">Ключи</th><th className="col-sm">$</th><th className="col-sm">WordPress</th><th></th></tr>
             </thead>
             <tbody>
               {shown.map((it) => {
@@ -118,7 +118,9 @@ export function RunView({ jobId, initialStatus, initialItems, publishDefaults }:
                         <Badge tone={ITEM_TONE[it.status] ?? "neutral"}>{ITEM_STATUS_LABELS[it.status] ?? it.status}</Badge>
                         {it.status === "processing" && <div className="help">{STAGE_LABELS[it.stage] ?? it.stage}</div>}
                       </td>
+                      <td className="col-sm whitespace-nowrap">{it.quality ? <Badge tone={qualityTone(it.quality.total)}>{it.quality.total.toFixed(1)}</Badge> : <span className="help">—</span>}</td>
                       <td className="col-sm help whitespace-nowrap">{it.keywordReport.length ? `${kwOk}/${it.keywordReport.length} в норме` : "—"}</td>
+                      <td className="col-sm help whitespace-nowrap">{it.costUsd ? `$${it.costUsd.toFixed(3)}` : "—"}</td>
                       <td className="col-sm whitespace-nowrap">
                         {it.publishedUrl ? <a href={it.publishedUrl} target="_blank" rel="noreferrer" className="hover:underline">{it.publishMode === "new" ? "новый пост" : "обновлён"} ↗</a> : it.revertedAt ? <span className="help">возвращён оригинал</span> : it.sourceUrl ? <a href={it.sourceUrl} target="_blank" rel="noreferrer" className="help hover:underline">исходник ↗</a> : "—"}
                       </td>
@@ -126,7 +128,7 @@ export function RunView({ jobId, initialStatus, initialItems, publishDefaults }:
                     </tr>
                     {open === it.id && (
                       <tr>
-                        <td colSpan={6} className="!p-0">
+                        <td colSpan={8} className="!p-0">
                           {/* На телефоне панель по ширине карточки и не уезжает при прокрутке таблицы вбок. */}
                           <div className="sticky left-4 w-[calc(100vw-4rem-2px)] sm:static sm:w-auto">
                             <ItemPanel jobId={jobId} item={it} publishDefaults={publishDefaults} />
@@ -259,6 +261,8 @@ function ItemPanel({ jobId, item, publishDefaults }: { jobId: string; item: JobI
         </>
       )}
 
+      {item.quality && <QualityBlock q={item.quality} />}
+
       {item.keywordReport.length > 0 && (
         <div>
           <div className="label">Ключи (было в исходнике → сейчас, норма)</div>
@@ -311,6 +315,38 @@ function ItemPanel({ jobId, item, publishDefaults }: { jobId: string; item: JobI
 }
 
 /** Предпросмотр HTML статьи в изолированном фрейме (скрипты чужого контента не выполняются). */
+const qualityTone = (t: number): "ok" | "warn" | "danger" => (t >= 4.5 ? "ok" : t >= 3.5 ? "warn" : "danger");
+const ADDR: Record<string, string> = { ty: "«ти»", vy: "«ви»" };
+
+/** Оценка «главного редактора»: баллы по шкалам, метрики кода и цитаты с исправлениями. */
+function QualityBlock({ q }: { q: QualityReport }) {
+  const m = q.metrics;
+  return (
+    <div>
+      <div className="label">Оценка качества итога ({q.model}, секций {q.sections}, ${q.costUsd.toFixed(4)})</div>
+      <div className="flex flex-wrap gap-1.5">
+        <Badge tone={qualityTone(q.total)}>итого {q.total.toFixed(1)} / 5</Badge>
+        {(Object.keys(QUALITY_LABELS) as Array<keyof typeof QUALITY_LABELS>).map((k) => (
+          <Badge key={k} tone={qualityTone(q.scores[k])}>{QUALITY_LABELS[k]} {q.scores[k].toFixed(1)}</Badge>
+        ))}
+      </div>
+      <div className="help mt-1.5">
+        русизмов в итоге {m.russianisms} · штампов {m.clichesFinal} (в исходнике {m.clichesSource}) · обращение в исходнике {ADDR[m.addressSource ?? ""] ?? "смешано/нет"}, в итоге {ADDR[m.addressFinal ?? ""] ?? "смешано/нет"}{m.addressMixed ? " — смешаны «ти» и «ви»" : ""}
+      </div>
+      {q.issues.length > 0 && (
+        <details className="mt-1.5">
+          <summary className="cursor-pointer text-[14px] font-medium">Замечания редактора ({q.issues.length})</summary>
+          <ul className="mt-2 space-y-1 text-[13px]">
+            {q.issues.map((it, i) => (
+              <li key={i}><span className="font-mono text-[12px] text-muted">{QUALITY_LABELS[it.k as keyof typeof QUALITY_LABELS] ?? it.k}{it.section != null ? ` · секц. ${it.section + 1}` : ""}</span> — «{it.q}»{it.fix ? <span className="text-muted"> → {it.fix}</span> : null}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function Preview({ html }: { html: string }) {
   const doc = `<!doctype html><html><head><meta charset="utf-8"><style>body{font:15px/1.6 system-ui,sans-serif;color:#1a1a1a;margin:12px 16px;}img{max-width:100%;height:auto}h2{font-size:20px;margin:20px 0 8px}a{color:#c2410c}</style></head><body>${html.replace(/\[caption[^\]]*\]|\[\/caption\]/g, "")}</body></html>`;
   return <iframe sandbox="" srcDoc={doc} className="h-[480px] w-full rounded-lg border border-line bg-white" title="Предпросмотр" />;

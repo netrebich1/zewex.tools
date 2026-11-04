@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
-import { createJob, deleteJob, publishItem, publishReady, resumeJob, retryItems, revertItem, stopJob, type LaunchPost } from "@/lib/deepl/jobs";
+import { cloneJob, createJob, deleteJob, publishItem, publishReady, resumeJob, retryItems, revertItem, stopJob, type LaunchPost } from "@/lib/deepl/jobs";
 import { checkDeeplKey, deeplHint, mapLimit, refreshDeeplUsage, resetDeeplPool } from "@/lib/deepl/deepl";
 import { BASE_PATH, parseSettings, type DeeplSettings } from "@/lib/deepl/types";
 
@@ -98,6 +98,19 @@ export async function retryDeeplItems(_p: FormState, f: FormData): Promise<FormS
   } catch (e) {
     return fail(e);
   }
+}
+
+/** Копия прогона теми же статьями на текущих промтах и рекомендованных моделях — сравнить новую редактуру со старой. */
+export async function cloneDeeplJob(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  let id: string;
+  try {
+    if (!(await prisma.deeplKey.count({ where: { isActive: true, deletedAt: null } }))) throw new Error("Нет рабочих ключей DeepL — сначала добавьте или включите ключ");
+    id = await cloneJob(me, str(f, "id"));
+  } catch (e) {
+    return fail(e);
+  }
+  redirect(runPath(id));
 }
 
 export async function deleteDeeplJob(_p: FormState, f: FormData): Promise<FormState> {

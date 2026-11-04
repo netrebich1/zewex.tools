@@ -33,6 +33,17 @@ export type LangPack = {
   fragmentLabel: string;
   /** Указания при повторе фрагмента: [обычный повтор, 1-й за пересказ, 2-й, 3-й] */
   retryNotes: { full: string; rewrite: string[] };
+  /** Термины исходной секции, которых нет во фрагменте (перевод заменил синонимами) */
+  glossary: string;
+  glossaryHeader: string;
+  /** Отдельный проход: выровнять обращение к читательнице под оригинал */
+  addressNote: (target: "ty" | "vy", words: string[]) => string;
+  /** Стилистический проход после постредактуры: канцелярит и штампы */
+  stylePrompt: string;
+  styleChecklist: string;
+  /** Оценка качества секции главным редактором (JSON) */
+  judgeSystem: string;
+  judgeUser: (original: string, edited: string) => string;
   headingsSystem: string;
   headingsInstruction: string;
   headingsList: string;
@@ -74,9 +85,37 @@ const UK: LangPack = {
 - предмет чи термін підмінено (було «каблучка» — стало «обручка»; «плащ» → «дощовик»; «мигдаль» як форма нігтів) — поверни правильний термін;
 - колір, матеріал, число, бренд, назва, ситуація передають інше (було «рудий» — стало «червоний») — поверни як в оригіналі;
 - звертання до читачки змінилося (в оригіналі «ви» — у тексті «ти», або навпаки) — приведи до оригіналу в усьому фрагменті;
-- з'явилося те, чого в оригіналі немає («на моєму пальці», зайве «я»), або зникло важливе уточнення — виправ коротко, в межах речення;
+- з'явилося те, чого в оригіналі немає («на моєму пальці», зайве «я», «дорогоцінний» камінь замість «невеликого камінця»), або зникло важливе уточнення — виправ коротко, в межах речення;
+- ПРОТИЛЕЖНОСТІ й дрібні означення звіряй окремо, слово за словом: «з/без» («топ на бретелях» ≠ «топ без бретелей»), «на/під», «відкриті/прикриті», «довгий/короткий», «вище/нижче коліна», «світлий/темний», «новорічний/різдвяний», «на навчанні/в університеті», «черевики/ботильйони» — переклад часто міняє їх непомітно;
+- один предмет у секції називається одним словом від початку до кінця (не «кремова сукня» на початку і «молочний колір» далі — як в оригіналі);
 - розірвані чи зайві лапки навколо назв — виправ.
 Якщо фрагмент передає зміст оригіналу правильно — виправляй лише мову.`,
+  glossary: `ТЕРМІНИ ОРИГІНАЛУ (обов'язково):
+Нижче слова, якими в оригіналі цієї секції названо предмети, деталі й дії, а у фрагменті їх немає — переклад замінив їх синонімами чи описами. Де у фрагменті стоїть синонім або невдалий переклад саме цього предмета, поверни слово оригіналу в потрібній формі (одне слово замість одного слова). Речення не переписуй, нових слів із цього списку не вставляй туди, де про це не йдеться.`,
+  glossaryHeader: "Слова оригіналу, яких бракує у фрагменті:",
+  addressNote: (target, words) =>
+    target === "ty"
+      ? `ЗВЕРТАННЯ (єдине завдання цього проходу): в оригіналі авторка звертається до читачки на «ти». У фрагменті лишилися форми на «ви»: ${words.slice(0, 12).join(", ")}. Переведи ВСЕ звертання на «ти» у всьому фрагменті: «ви» → «ти», «вас/вам» → «тебе/тобі», «ваш» → «твій», дієслова мн. числа → одн. («розчешіть» → «розчеши», «обирайте» → «обирай», «можете» → «можеш»). Більше НІЧОГО не змінюй: решту тексту поверни символ у символ.\n\n`
+      : `ЗВЕРТАННЯ (єдине завдання цього проходу): в оригіналі авторка звертається до читачки на «ви». У фрагменті лишилися форми на «ти»: ${words.slice(0, 12).join(", ")}. Переведи ВСЕ звертання на «ви» у всьому фрагменті: «ти» → «ви», «тебе/тобі» → «вас/вам», «твій» → «ваш», дієслова одн. числа → мн. («розчеши» → «розчешіть», «обирай» → «обирайте»). Більше НІЧОГО не змінюй: решту тексту поверни символ у символ.\n\n`,
+  stylePrompt: `Завдання цього проходу — зняти канцелярит і рекламні штампи, які з'явилися після машинного перекладу, і повернути тексту сухий, конкретний тон авторки. Факти, терміни, порядок речень, ключові слова, звертання й посилання не чіпати. Правиться лише саме місце зі штампом, решта речення лишається дослівно. Якщо у фрагменті штампів нема — поверни його без змін.`,
+  styleChecklist: `ЩО САМЕ ЗНІМАТИ (тільки це):
+1. Канцелярські конструкції → проста дієслівна форма тими ж словами: «перевага полягає в тому, що після свят…» → «після свят…»; «є більш практичною» → «практичніша»; «що є очевидною перевагою» → «і це плюс»; «являє собою» → «це»; «дозволяє створити» → «створює»; «з метою» → «щоб».
+2. Оцінні рекламні штампи → нейтральне слово або прибрати: «ідеально підходить / ідеальний вибір / просто ідеально» → «підходить», «пасує», «годиться»; «справжня знахідка», «надає нотку зухвалості» → «додає різкості»; «чудово доповнює» → «доповнює»; «вишуканий образ» → лишити конкретику без оцінки. Не більше одного оцінного слова на абзац.
+3. Зайві вставні слова «крім того», «варто зазначити», «у свою чергу», «безсумнівно», «як ніколи» — прибрати, якщо речення читається без них.
+4. Одне й те саме слово в сусідніх реченнях («виглядає… виглядає… виглядає», «ідеально… ідеально») — одне з них замінити синонімом або прибрати.
+5. Довгі книжні сполучники «оскільки», «тоді як», «завдяки чому», «у поєднанні з» там, де оригінал сухий — «бо», «а», «тому», «з». Не більше одного-двох таких у реченні.
+НЕ робити: не додавати фактів, не повертати формулювань оригіналу, не міняти терміни (сукня, каблучка, чубчик, покриття), не змінювати звертання «ти/ви», не переставляти речення, не чіпати ключові слова з Title/H1.`,
+  judgeSystem: `Ти — головна редакторка українського жіночого онлайн-видання. Оцінюєш роботу літредакторки над машинним перекладом: порівнюєш ОРИГІНАЛ секції (до ланцюжка перекладів) і ВІДРЕДАГОВАНИЙ текст (переклад навмисно перефразовано — це нормально; збіг формулювань з оригіналом НЕ потрібен).
+Відповідай ТІЛЬКИ JSON без пояснень і markdown:
+{"mova":1-5,"fakty":1-5,"terminy":1-5,"zvertannia":1-5,"styl":1-5,"issues":[{"k":"mova|fakty|terminy|zvertannia|styl","q":"точна цитата з відредагованого тексту, до 12 слів","fix":"як має бути, коротко"}]}
+Шкали (5 — бездоганно, 3 — помітні огріхи, 1 — читати неможливо):
+- mova: чиста українська — без русизмів, суржику, кальок, граматичних помилок, неузгоджених форм, помилкових чергувань у/в, з/із/зі.
+- fakty: усе як в оригіналі — предмети, кольори, матеріали, числа, назви, «з/без», «на/під», ситуації; нічого не вигадано і не загублено.
+- terminy: предметна лексика як в оригіналі й як у живих українських медіа (каблучка, сукня, чубчик, покриття, рубчик), один предмет — одним словом по всій секції.
+- zvertannia: звертання до читачки («ти» чи «ви») як в оригіналі й без змішування в одному тексті; авторка в жіночому роді.
+- styl: сухий конкретний тон авторки без канцеляриту («полягає в тому, що», «є більш»), рекламних штампів («ідеально підходить», «справжня знахідка», «нотка зухвалості»), повторів одного слова і книжних сполучників; речення читаються природно.
+issues — до 6 найважливіших, спочатку факти, потім мова. Якщо огріхів нема — issues: [].`,
+  judgeUser: (original, edited) => `ОРИГІНАЛ СЕКЦІЇ:\n"""\n${original}\n"""\n\nВІДРЕДАГОВАНИЙ ТЕКСТ:\n"""\n${edited}\n"""\n\nJSON:`,
   referenceHeader: "ОРИГІНАЛ ФРАГМЕНТА (лише для звірки, не копіювати):",
   anchors: `ПОСИЛАННЯ Й АНКОРИ (обов'язково):
 - Посилання сховано за службовими тегами <x-ph i="N"></x-ph>. Текст анкора змінювати НЕ МОЖНА — він уже заданий.
@@ -166,8 +205,29 @@ Use the original only to find and fix translation distortions:
 - colour, material, number, brand, name, situation differ — restore as in the original;
 - the form of address changed (formal vs informal) — align with the original throughout the fragment;
 - something appeared that is not in the original, or an important detail was lost — fix briefly, within the sentence;
+- OPPOSITES and small qualifiers must be checked word by word: with/without, on/under, open/covered, long/short, above/below the knee, light/dark — translation flips them silently;
+- one object is called by one word throughout the section, as in the original;
 - broken or stray quotation marks around names — fix.
 If the fragment conveys the meaning correctly — fix only the language.`,
+  glossary: `TERMS OF THE ORIGINAL (mandatory):
+Below are the words the original of this section uses for objects, details and actions that are absent from the fragment — translation replaced them with synonyms or descriptions. Where the fragment has a synonym or a poor translation of that very object, restore the original word in the right form (one word for one word). Do not rewrite sentences and do not insert these words where the text is not about them.`,
+  glossaryHeader: "Words of the original missing from the fragment:",
+  addressNote: (target, words) =>
+    `FORM OF ADDRESS (the only task of this pass): the original addresses the reader ${target === "ty" ? "informally (singular 'you')" : "formally (plural/polite 'you')"}. The fragment still has the other form: ${words.slice(0, 12).join(", ")}. Convert ALL forms of address in the whole fragment to the original one — pronouns, possessives and verb forms. Change NOTHING else: return the rest character for character.\n\n`,
+  stylePrompt: `This pass only removes bureaucratic and advertising clichés brought in by machine translation and restores the author's dry, concrete tone. Do not touch facts, terms, sentence order, keywords, form of address or links. Edit only the spot with the cliché; the rest of the sentence stays verbatim. If the fragment has no clichés, return it unchanged.`,
+  styleChecklist: `WHAT TO REMOVE (only this):
+1. Bureaucratic constructions → a plain verb form with the same words ("the advantage lies in the fact that" → drop it; "is more practical" → "is handier"; "represents" → "is"; "allows to create" → "creates").
+2. Evaluative advertising clichés → neutral word or remove: "perfect choice", "fits perfectly", "a real find", "adds a touch of boldness" → "suits", "adds edge". At most one evaluative word per paragraph.
+3. Filler openers "in addition", "it is worth noting", "in turn", "undoubtedly" — remove if the sentence reads without them.
+4. The same word in neighbouring sentences — replace one with a synonym or remove.
+5. Heavy bookish connectors where the original is plain — use short ones.
+DO NOT: add facts, bring back the original wording, change terms, change the form of address, reorder sentences, touch Title/H1 keywords.`,
+  judgeSystem: `You are the editor-in-chief of a women's online magazine. You assess a copy editor's work on a machine translation: compare the ORIGINAL section (before the chain of translations) and the EDITED text (deliberately rephrased — wording need not match the original).
+Answer ONLY with JSON, no explanations or markdown:
+{"mova":1-5,"fakty":1-5,"terminy":1-5,"zvertannia":1-5,"styl":1-5,"issues":[{"k":"mova|fakty|terminy|zvertannia|styl","q":"exact quote from the edited text, up to 12 words","fix":"what it should be, briefly"}]}
+Scales (5 — flawless, 3 — noticeable flaws, 1 — unreadable): mova — clean language of the article, grammar and agreement; fakty — everything as in the original (objects, colours, numbers, names, with/without), nothing invented or lost; terminy — domain vocabulary as in the original and in living media, one object = one word; zvertannia — form of address as in the original, no mixing, author in feminine; styl — dry concrete tone without bureaucratic or advertising clichés and repetitions.
+issues — up to 6 most important, facts first. If none — issues: [].`,
+  judgeUser: (original, edited) => `ORIGINAL SECTION:\n"""\n${original}\n"""\n\nEDITED TEXT:\n"""\n${edited}\n"""\n\nJSON:`,
   referenceHeader: "ORIGINAL FRAGMENT (for checking only, do not copy):",
   anchors: `LINKS AND ANCHORS (mandatory):
 - Links are hidden behind service tags <x-ph i="N"></x-ph>. The anchor text must NOT be changed — it is already set.

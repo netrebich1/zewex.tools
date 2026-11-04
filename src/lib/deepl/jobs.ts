@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { ITEM_LEASE_SECONDS, publishHtml } from "./process";
 import { getPost, requireSite, savePost, siteCreds } from "./wp";
-import { MAX_JOB_ITEMS, type DeeplSettings } from "./types";
+import { DEPRECATED_MODELS, MAX_JOB_ITEMS, parseSettings, type DeeplSettings, type QualityReport } from "./types";
 
 /* ---------- Доступ ---------- */
 
@@ -70,6 +70,46 @@ export async function createJob(me: CurrentUser, accessId: string, settings: Dee
     })),
   });
   return job.id;
+}
+
+/**
+ * Копия прогона теми же статьями (исходники берутся из копируемого прогона — сравнение один в один, без повторной
+ * загрузки из WordPress; переводы придут из кэша DeepL). Настройки — те же, но промты обновляются до текущих текстов
+ * по promptId, снятые со стенда модели заменяются рекомендованными, пакет «качество текста» включён по умолчанию.
+ */
+export async function cloneJob(me: CurrentUser, jobId: string): Promise<string> {
+  const job = await requireJob(me, jobId);
+  const items = await prisma.deeplItem.findMany({ where: { jobId }, orderBy: { position: "asc" }, select: { wpPostId: true, title: true, sourceUrl: true, wpStatus: true, wpDate: true, sourceHtml: true } });
+  if (!items.length) throw new Error("В прогоне нет статей");
+  const s = parseSettings(job.settings);
+  const ids = [s.headings.promptId, s.postEdit.promptId].filter(Boolean);
+  const prompts = ids.length ? await prisma.deeplPrompt.findMany({ where: { id: { in: ids } } }) : [];
+  const body = (id: string, fallback: string) => prompts.find((p) => p.id === id)?.body ?? fallback;
+  const settings: DeeplSettings = {
+    ...s,
+    headings: { ...s.headings, prompt: body(s.headings.promptId, s.headings.prompt) },
+    postEdit: { ...s.postEdit, prompt: body(s.postEdit.promptId, s.postEdit.prompt) },
+    model: DEPRECATED_MODELS[s.model] ?? s.model,
+    headingsModel: DEPRECATED_MODELS[s.headingsModel] ?? s.headingsModel,
+    publish: { ...s.publish, enabled: false },
+  };
+  const copy = await prisma.deeplJob.create({
+    data: {
+      teamId: job.teamId,
+      createdById: me.id,
+      accessId: job.accessId,
+      siteName: job.siteName,
+      name: `${job.name} · копия`.slice(0, 120),
+      status: "QUEUED",
+      settings: settings as unknown as Prisma.InputJsonValue,
+      total: items.length,
+    },
+    select: { id: true },
+  });
+  await prisma.deeplItem.createMany({
+    data: items.map((p, i) => ({ jobId: copy.id, position: i, wpPostId: p.wpPostId, title: p.title, sourceUrl: p.sourceUrl, wpStatus: p.wpStatus, wpDate: p.wpDate, sourceHtml: p.sourceHtml })),
+  });
+  return copy.id;
 }
 
 /* ---------- Очередь (воркер) ---------- */
@@ -174,7 +214,7 @@ export async function retryItems(me: CurrentUser, jobId: string, itemIds: string
       where: { id: it.id },
       data: {
         status: "pending", stage: "pending", error: null, warnings: Prisma.JsonNull, workerId: null, leaseUntil: null, finishedAt: null,
-        ...(full ? { stages: stages.filter((s) => s?.key === "source") as unknown as Prisma.InputJsonValue, finalHtml: null, keywordReport: Prisma.JsonNull } : {}),
+        ...(full ? { stages: stages.filter((s) => s?.key === "source") as unknown as Prisma.InputJsonValue, finalHtml: null, keywordReport: Prisma.JsonNull, quality: Prisma.JsonNull } : {}),
       },
     });
   }
@@ -276,12 +316,13 @@ export type JobItemRow = {
   status: string; stage: string; error: string | null; warnings: Array<{ code: string; detail: string }>; keywordReport: Array<{ key: string; source: number; current: number; min: number; max: number; ok: boolean }>;
   publishedUrl: string | null; publishedAt: Date | null; publishMode: string | null; revertedAt: Date | null; hasOriginal: boolean;
   costUsd: number; deeplChars: number; startedAt: Date | null; finishedAt: Date | null; stageKeys: string[];
+  quality: QualityReport | null;
 };
 
 /** Статьи прогона без тяжёлых HTML (для таблицы и опроса раз в несколько секунд). */
 export async function jobItems(jobId: string): Promise<JobItemRow[]> {
   const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-    SELECT id, position, title, sourceUrl, wpPostId, wpStatus, wpDate, status, stage, error, warnings, keywordReport, publishedUrl, publishedAt, publishMode,
+    SELECT id, position, title, sourceUrl, wpPostId, wpStatus, wpDate, status, stage, error, warnings, keywordReport, quality, publishedUrl, publishedAt, publishMode,
       revertedAt, (originalWpHtml IS NOT NULL) AS hasOriginal, costUsd, deeplChars, startedAt, finishedAt,
       JSON_EXTRACT(stages, '$[*].key') AS stageKeys
     FROM DeeplItem WHERE jobId = ${jobId} ORDER BY position ASC`;
@@ -320,5 +361,6 @@ export async function jobItems(jobId: string): Promise<JobItemRow[]> {
     startedAt: (r.startedAt as Date | null) ?? null,
     finishedAt: (r.finishedAt as Date | null) ?? null,
     stageKeys: json<string[]>(r.stageKeys, []),
+    quality: json<QualityReport | null>(r.quality, null),
   }));
 }

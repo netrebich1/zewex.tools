@@ -24,6 +24,17 @@ export type TranslateStep = { source: string; target: string };
  * H2 — gpt-6-luna ($0.10/$0.50): держит формулу промта «сущность + кут», без выдуманных обещаний и штампов.
  */
 export const RECOMMENDED_MODELS = { edit: "openai/gpt-5.6-luna", headings: "openai/gpt-6-luna" } as const;
+/** Модели, которые при копировании прогона заменяются рекомендованными (стенд 2026-11-04: добавляют русизмы). */
+export const DEPRECATED_MODELS: Record<string, string> = { "deepseek/deepseek-v4-flash": RECOMMENDED_MODELS.edit };
+/** Оценка качества итога: отдельная недорогая модель, не та, что правила (меньше самооценки). */
+export const JUDGE_MODEL = "openai/gpt-6-luna";
+
+/**
+ * Пакет «качество текста» (2026-11-04, разбор стенда): после постредактуры оставались смешение «ти/ви», канцелярит
+ * из немецкого звена перевода и мелкие сдвиги фактов. address/glossary — внутри постредактуры, style — отдельный этап,
+ * judge — оценка итога по секциям (баллы мова/факти/терміни/звертання/стиль и цитаты) на странице прогона.
+ */
+export type QualitySettings = { address: boolean; glossary: boolean; style: boolean; judge: boolean; judgeModel: string };
 
 export type DeeplSettings = {
   translateSteps: TranslateStep[];
@@ -36,6 +47,7 @@ export type DeeplSettings = {
   /** Модель OpenRouter для заголовков H2; пусто — как `model` */
   headingsModel: string;
   publish: { enabled: boolean; target: "source" | "new"; status: "draft" | "pending" | "publish" };
+  quality: QualitySettings;
 };
 
 export const DEFAULT_SETTINGS: DeeplSettings = {
@@ -50,6 +62,7 @@ export const DEFAULT_SETTINGS: DeeplSettings = {
   model: RECOMMENDED_MODELS.edit,
   headingsModel: RECOMMENDED_MODELS.headings,
   publish: { enabled: false, target: "source", status: "draft" },
+  quality: { address: true, glossary: true, style: true, judge: true, judgeModel: JUDGE_MODEL },
 };
 
 /** Языки DeepL: исходные — базовые коды, целевые — с вариантами (EN-GB, EN-US, PT-BR…). */
@@ -117,6 +130,8 @@ export const STAGE_LABELS: Record<string, string> = {
   headings: "заголовки H2",
   post_edit: "постредактура",
   keyword_topup: "добор ключей",
+  style: "стиль",
+  judge: "оценка качества",
   publish: "публикация",
   publishing: "публикация",
   done: "готово",
@@ -134,6 +149,21 @@ export type Snapshot = {
 };
 
 export type Warning = { code: string; detail: string };
+
+/** Оценка качества итоговой статьи (1–5 по шкалам) с цитатами; считается по секциям и усредняется. */
+export type QualityIssueNote = { k: string; q: string; fix: string; section?: number };
+export type QualityReport = {
+  model: string;
+  sections: number;
+  scores: { mova: number; fakty: number; terminy: number; zvertannia: number; styl: number };
+  /** среднее по пяти шкалам */
+  total: number;
+  issues: QualityIssueNote[];
+  /** метрики кода: русизмы, штампы, обращение в исходнике и итоге */
+  metrics: { russianisms: number; clichesSource: number; clichesFinal: number; addressSource: string | null; addressFinal: string | null; addressMixed: boolean };
+  costUsd: number;
+};
+export const QUALITY_LABELS: Record<keyof QualityReport["scores"], string> = { mova: "мова", fakty: "факты", terminy: "термины", zvertannia: "обращение", styl: "стиль" };
 export type KeywordStat = { key: string; source: number; current: number; min: number; max: number; ok: boolean };
 
 const bool = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
@@ -155,6 +185,7 @@ export function parseSettings(json: unknown): DeeplSettings {
   const p = (s.postEdit ?? {}) as Partial<DeeplSettings["postEdit"]>;
   const seo = (s.seo ?? {}) as Partial<DeeplSettings["seo"]>;
   const pub = (s.publish ?? {}) as Partial<DeeplSettings["publish"]>;
+  const q = (s.quality ?? {}) as Partial<QualitySettings>;
   const minPct = clamp(seo.minPct, DEFAULT_SETTINGS.seo.minPct, 0, 100);
   return {
     translateSteps: steps,
@@ -174,6 +205,13 @@ export function parseSettings(json: unknown): DeeplSettings {
       target: pub.target === "new" ? "new" : "source",
       status: pub.status === "publish" || pub.status === "pending" ? pub.status : "draft",
     },
+    quality: {
+      address: bool(q.address, true),
+      glossary: bool(q.glossary, true),
+      style: bool(q.style, true),
+      judge: bool(q.judge, true),
+      judgeModel: typeof q.judgeModel === "string" && q.judgeModel.trim() ? q.judgeModel.trim() : JUDGE_MODEL,
+    },
   };
 }
 
@@ -186,7 +224,9 @@ export function describeSettings(s: DeeplSettings): string {
   }
   if (s.headings.enabled) parts.push("H2");
   if (s.postEdit.enabled) parts.push("постредактура");
+  if (s.postEdit.enabled && s.quality.style) parts.push("стиль");
   if (s.seo.enabled && s.postEdit.enabled) parts.push(`ключи ${s.seo.minPct}–${s.seo.maxPct}%`);
+  if (s.postEdit.enabled && s.quality.judge) parts.push("оценка");
   if (s.publish.enabled) parts.push(`публикация (${s.publish.target === "source" ? "в исходный пост" : "новым постом"}, ${s.publish.status})`);
   return parts.join(" · ") || "без этапов";
 }

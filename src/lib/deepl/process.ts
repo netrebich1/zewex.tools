@@ -7,13 +7,15 @@
 import { Prisma, type DeeplItem, type DeeplJob } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import {
-  anchorsFromTokens, changedWordCount, checkIntegrity, countKeyword, detectLangMismatch, extractKeywords, keywordTarget, matchDashStyle,
+  anchorsFromTokens, changedWordCount, checkIntegrity, countCliches, countKeyword, detectLangMismatch, extractKeywords, keywordTarget, matchDashStyle,
   protectHtml, restoreHtml, type QualityIssue,
 } from "./html";
 import { runTranslate, sourceCode, translateKeywords } from "./deepl";
 import { keywordTopupPrompt, runEdit, runHeadings, type AiCtx } from "./edit";
+import { judgeArticle } from "./judge";
+import { langPack } from "./lang";
 import { getPost, savePost, siteCreds } from "./wp";
-import { parseSettings, type KeywordStat, type Snapshot, type Warning } from "./types";
+import { parseSettings, type KeywordStat, type QualityReport, type Snapshot, type Warning } from "./types";
 
 export const ITEM_LEASE_SECONDS = 180;
 
@@ -157,8 +159,26 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
           sections: 3, maxTextGrowthPct: 12, maxRewritePct: 22,
           // Оригинал той же секции — сверить термины, факты и обращение после цепочки переводов (формулировки не возвращаются).
           referenceHtml: steps.length ? protectHtml(sourceHtml).text : undefined,
+          // Пакет «качество текста»: обращение «ти/ви» как в оригинале, термины оригинала, без новых штампов.
+          alignAddress: cfg.quality.address, glossary: cfg.quality.glossary, noCliches: true,
         }),
       });
+      if (cfg.quality.style) {
+        // Канцелярит из немецкого звена перевода («полягає в тому, що», «ідеально підходить») — отдельный короткий проход,
+        // чтобы постредактура занималась языком и фактами, а не стилем. Штампов после него должно стать меньше.
+        plan.push({
+          id: "style#0", stage: "style", label: "Стиль", allowPartial: true,
+          run: async (h) => {
+            const before = countCliches(h);
+            const r = await runEdit(ai, h, langPack(finalLang).stylePrompt, { title, h1, lang: finalLang, lightTouch: true, mode: "style", anchors: anchorTexts }, true, {
+              sections: 3, maxTextGrowthPct: 2, maxRewritePct: 14, noCliches: true,
+            });
+            const after = countCliches(r.html);
+            r.warnings.push({ code: "cliches", detail: `штампов и канцелярита: было ${before}, стало ${after} (в исходнике ${countCliches(sourceHtml)})` });
+            return r;
+          },
+        });
+      }
       if (seoOn) {
         plan.push({
           id: "kw_topup#0", stage: "keyword_topup", label: "Добор ключей", allowPartial: true,
@@ -283,6 +303,19 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
       if (over.length) warnings.push({ code: "keywords_above_max", detail: `Ключи выше максимума: ${over.map((r) => `${r.key} (${r.current}/${r.max})`).join(", ")}` });
     }
 
+    // Оценка итога «главным редактором»: баллы по шкалам и цитаты — на страницу прогона. Сбой оценки статью не портит.
+    let quality: QualityReport | null = null;
+    if (cfg.quality.judge && cfg.postEdit.enabled && !aborted && finalHtml.trim() !== sourceHtml.trim()) {
+      const why = await touch("judge");
+      if (why) return await interrupted(why);
+      try {
+        quality = await judgeArticle({ ...ai, model: cfg.quality.judgeModel }, sourceHtml, finalHtml, finalLang);
+        if (quality.metrics.addressMixed) warnings.push({ code: "address_mixed", detail: "в итоге смешаны обращения «ти» и «ви»" });
+      } catch (e) {
+        warnings.push({ code: "judge_failed", detail: `оценка качества не выполнена: ${e instanceof Error ? e.message : String(e)}` });
+      }
+    }
+
     const needsReview = aborted || problems.length > 0;
     let published: { link: string; id: number; mode: string } | null = null;
     if (cfg.publish.enabled && !needsReview) {
@@ -301,6 +334,7 @@ export async function processItem(item: DeeplItem, job: DeeplJob, workerId: stri
         stages: snapshots as unknown as Prisma.InputJsonValue,
         warnings: uniqueWarnings(warnings) as unknown as Prisma.InputJsonValue,
         keywordReport: seoReport as unknown as Prisma.InputJsonValue,
+        quality: quality ? (quality as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         stage: aborted ? "review" : "done",
         status: needsReview ? "warning" : "done",
         error: needsReview ? problems.slice(0, 3).join(" | ") || "Цепочка остановлена" : null,

@@ -7,8 +7,9 @@ import { disableKey, resolveSlot, runSlot, type ResolvedSlot } from "@/lib/run";
 import { AiError, classifyAiError } from "@/lib/pins/ai/errors";
 import { acquire } from "@/lib/pins/ai/limiter";
 import {
-  changedWordCount, chunkBySections, chunkHtml, chunkIsFatal, countKeyword, countRussianisms, detectMasculineVoice, findRussianisms, matchDashStyle,
-  protectHtml, repairPlaceholders, restoreHtml, rewritePct, stripKeywordQuotes, validateChunk, visibleText, visibleTextLength, type QualityIssue,
+  addressStats, changedWordCount, chunkBySections, chunkHtml, chunkIsFatal, countCliches, countKeyword, countRussianisms, detectMasculineVoice, dominantAddress,
+  findRussianisms, matchDashStyle, protectHtml, repairPlaceholders, restoreHtml, rewritePct, sourceGlossary, stripKeywordQuotes, validateChunk, visibleText,
+  visibleTextLength, type QualityIssue,
 } from "./html";
 import { mapLimit } from "./deepl";
 import { langPack } from "./lang";
@@ -41,6 +42,10 @@ export interface EditContext {
   keywordDeficits?: { key: string; need: number }[];
   /** оригинал этого же фрагмента до цепочки переводов (видимый текст) — только для сверки смысла и терминов */
   reference?: string;
+  /** слова оригинала, которых во фрагменте нет (перевод заменил синонимами) — вернуть термин там, где стоит синоним */
+  glossary?: string[];
+  /** "style" — стилистический проход (канцелярит и штампы) вместо чек-листа постредактуры */
+  mode?: "edit" | "style";
 }
 
 /**
@@ -57,9 +62,11 @@ export function contextBlock(ctx?: EditContext): string {
   if (lines.length) block += `${L.contextHeader}\n${lines.join("\n")}\n\n`;
   if (ctx.lightTouch) {
     block += `${L.lightTouch}\n\n`;
-    if (!ctx.keywordDeficits?.length) block += `${L.checklist}\n\n`;
+    if (ctx.mode === "style") block += `${L.styleChecklist}\n\n`;
+    else if (!ctx.keywordDeficits?.length) block += `${L.checklist}\n\n`;
   }
   if (ctx.reference?.trim()) block += `${L.reference}\n${L.referenceHeader}\n"""\n${ctx.reference.trim().slice(0, 8000)}\n"""\n\n`;
+  if (ctx.glossary?.length) block += `${L.glossary}\n${L.glossaryHeader}\n${ctx.glossary.join(", ")}\n\n`;
   if (ctx.anchors?.length) block += `${L.anchors}\n${L.anchorsHeader}\n${ctx.anchors.slice(0, 40).map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\n`;
   if (ctx.keywordDeficits?.length) block += `${L.keywords}\n${L.keywordsHeader}\n${ctx.keywordDeficits.slice(0, 20).map((k) => L.keywordLine(k.key, k.need)).join("\n")}\n\n`;
   if (ctx.lightTouch || ctx.anchors?.length) block += `${L.quotes}\n\n`;
@@ -145,6 +152,12 @@ export type EditOpts = {
   relaxTags?: boolean;
   /** исходная статья до переводов (защищённый HTML): каждому фрагменту даётся его же секция для сверки */
   referenceHtml?: string;
+  /** после принятия фрагмента выровнять обращение «ти/ви» под оригинал отдельным проходом (нужен referenceHtml, UK) */
+  alignAddress?: boolean;
+  /** давать модели термины оригинала, которых нет во фрагменте (нужен referenceHtml) */
+  glossary?: boolean;
+  /** фрагмент с большим числом канцелярских штампов, чем на входе, отклоняется */
+  noCliches?: boolean;
 };
 
 /** Статья по секциям: [0] — всё до первого H2, дальше по одной секции на каждый H2. */
@@ -199,7 +212,12 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
   const keywordTargets = new Map(deficits.map((d) => [d.key, countKeyword(protectedHtml, d.key) + d.need]));
   const refs = opts.referenceHtml ? referencesFor(chunks, opts.referenceHtml) : [];
   const ctxFor = (i: number): EditContext | undefined => {
-    if (!deficits.length) return refs[i] ? { ...(ectx ?? {}), reference: refs[i] } : ectx;
+    if (!deficits.length) {
+      if (!refs[i]) return ectx;
+      // Термины оригинала, которых во фрагменте нет: перевод заменил их синонимами (каблучка → кільце, рубчик → ребристий).
+      const glossary = opts.glossary ? sourceGlossary(refs[i]!, visibleText(chunks[i]!)) : [];
+      return { ...(ectx ?? {}), reference: refs[i], ...(glossary.length ? { glossary } : {}) };
+    }
     if (!opts.retryKeywordDeficits) return { ...(ectx as EditContext), keywordDeficits: perChunk[i] };
     // Пересчёт после каждого фрагмента: ключ, пропущенный в одной секции, предлагается следующим.
     const current = out.join("");
@@ -218,6 +236,7 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
     const isUk = langPack(ectx?.lang).code === "UK";
     const srcRu = isUk ? countRussianisms(src) : 0;
     const srcRuWords = new Set(isUk ? findRussianisms(src) : []);
+    const srcCliches = opts.noCliches && isUk ? countCliches(src) : 0;
     const grade = (candidate: string): QualityIssue[] => {
       const list = validateChunk(src, candidate);
       const afterText = visibleTextLength(candidate);
@@ -232,6 +251,11 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
       if (isUk && countRussianisms(candidate) > srcRu) {
         const added = findRussianisms(candidate).filter((w) => !srcRuWords.has(w));
         list.push({ code: "russianisms", detail: `модель добавила русизмы: ${added.slice(0, 6).join(", ")}` });
+      }
+      // Канцелярит и рекламные штампы («ідеально підходить», «полягає в тому, що») правка добавлять не должна.
+      if (opts.noCliches && isUk) {
+        const n = countCliches(candidate);
+        if (n > srcCliches) list.push({ code: "cliches", detail: `модель добавила канцелярские штампы: было ${srcCliches}, стало ${n}` });
       }
       return list;
     };
@@ -292,11 +316,50 @@ export async function runEdit(ctx: AiCtx, html: string, prompt: string, ectx: Ed
     warnings.push({ code: "chunk_rollback", detail: `фрагмент ${i + 1}: результат не прошёл проверку и после 3 повторов (${last.map((x) => x.detail).join("; ")}) — оставлен исходный фрагмент` });
   };
 
+  /**
+   * Обращение «ти/ви» как в оригинале. Цепочка переводов уводит «ти» в «ви», и ни одна модель в общей правке этого
+   * не выравнивает (стенд 2026-11-04: «розтріпайте… попроси» в одном абзаце). Отдельный проход с единственной задачей;
+   * принимается, только если «чужих» форм стало меньше, а остальное не переписано.
+   */
+  const fixAddress = async (i: number) => {
+    const ref = refs[i];
+    if (!opts.alignAddress || !ref || deficits.length || langPack(ectx?.lang).code !== "UK") return;
+    const target = dominantAddress(ref);
+    if (!target) return;
+    const cur = out[i]!;
+    const st = addressStats(cur);
+    const refSt = addressStats(ref);
+    const wrong = target === "ty" ? st.vy : st.ty;
+    const wrongWords = target === "ty" ? st.vyWords : st.tyWords;
+    if (wrong <= (target === "ty" ? refSt.vy : refSt.ty)) return;
+    const L = langPack(ectx?.lang);
+    try {
+      const raw = await editChunk(ctx, L.addressNote(target, wrongWords).trim(), cur, "", { title: ectx?.title, h1: ectx?.h1, lang: ectx?.lang, anchors: ectx?.anchors });
+      const fixed = repairPlaceholders(cur, matchDashStyle(cur, raw));
+      const issues = validateChunk(cur, fixed);
+      const after = addressStats(fixed);
+      const afterWrong = target === "ty" ? after.vy : after.ty;
+      const pct = rewritePct(cur, fixed);
+      if (!chunkIsFatal(issues, opts.relaxTags) && countRussianisms(fixed) <= countRussianisms(cur) && afterWrong < wrong && pct <= 30) {
+        out[i] = fixed;
+        warnings.push({ code: "address_fixed", detail: `фрагмент ${i + 1}: звертання приведено до «${target === "ty" ? "ти" : "ви"}» як в оригіналі (форм на «${target === "ty" ? "ви" : "ти"}» було ${wrong}, лишилося ${afterWrong})` });
+      } else {
+        warnings.push({ code: "address_mixed", detail: `фрагмент ${i + 1}: в оригіналі «${target === "ty" ? "ти" : "ви"}», у тексті лишилися форми ${wrongWords.slice(0, 6).join(", ")} — вирівняти не вдалося (переписано ${pct}%)` });
+      }
+    } catch (e) {
+      if (e instanceof AiError && e.cls.kind === "fatal_run") throw e;
+      warnings.push({ code: "address_mixed", detail: `фрагмент ${i + 1}: звертання не вирівняно — ${e instanceof Error ? e.message : String(e)}` });
+    }
+  };
+
   const indexes = chunks.map((_, i) => i);
   if (opts.retryKeywordDeficits) {
     for (const i of indexes) await doChunk(i);
   } else {
-    await mapLimit(indexes, CHUNK_CONCURRENCY, (i) => doChunk(i));
+    await mapLimit(indexes, CHUNK_CONCURRENCY, async (i) => {
+      await doChunk(i);
+      await fixAddress(i);
+    });
   }
 
   const joined = out.join("");

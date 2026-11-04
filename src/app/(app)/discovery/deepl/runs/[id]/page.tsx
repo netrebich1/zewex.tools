@@ -9,7 +9,7 @@ import { JOB_TONE } from "@/components/deepl/DeeplNav";
 import { DeeplHeader } from "@/components/deepl/DeeplHeader";
 import { RunView } from "@/components/deepl/RunView";
 import { canAccessJob, jobItems } from "@/lib/deepl/jobs";
-import { deleteDeeplJob, resumeDeeplJob, retryDeeplItems, stopDeeplJob } from "@/actions/deepl";
+import { cloneDeeplJob, deleteDeeplJob, resumeDeeplJob, retryDeeplItems, stopDeeplJob } from "@/actions/deepl";
 import { describeSettings, JOB_STATUS_LABELS, parseSettings } from "@/lib/deepl/types";
 import { fmtDate } from "@/lib/utils";
 
@@ -58,6 +58,11 @@ export default async function DeeplRunPage({ params }: { params: Promise<{ id: s
             {!live && items.length > 0 && (
               <ActionForm action={retryDeeplItems} className="inline" hidden={{ id, all: "1" }}>
                 <SubmitButton className="btn-ghost" pendingText="…" confirm={`Перезапустить весь прогон (${items.length} статей) заново с исходника? Уже переведённое возьмётся из кэша бесплатно.`}>Перезапустить весь прогон</SubmitButton>
+              </ActionForm>
+            )}
+            {!live && items.length > 0 && (
+              <ActionForm action={cloneDeeplJob} className="inline" hidden={{ id }}>
+                <SubmitButton className="btn-ghost" pendingText="…" confirm={`Скопировать прогон (${items.length} статей) и запустить заново на текущих промтах и рекомендованных моделях? Этот прогон останется как есть — для сравнения. Переводы возьмутся из кэша.`}>Копия на новой редактуре</SubmitButton>
               </ActionForm>
             )}
             <Link href={`/discovery/deepl/new?from=${id}`} className="btn-ghost">Новый прогон с этими настройками</Link>
