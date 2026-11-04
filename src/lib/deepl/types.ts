@@ -26,6 +26,17 @@ export type TranslateStep = { source: string; target: string };
 export const RECOMMENDED_MODELS = { edit: "openai/gpt-5.6-luna", headings: "openai/gpt-6-luna" } as const;
 /** Модели, которые при копировании прогона заменяются рекомендованными (стенд 2026-11-04: добавляют русизмы). */
 export const DEPRECATED_MODELS: Record<string, string> = { "deepseek/deepseek-v4-flash": RECOMMENDED_MODELS.edit };
+/** Модели для кнопки «Копия на новой редактуре»: сравнить один прогон на разных моделях постредактуры. */
+export const CLONE_MODELS: { value: string; label: string }[] = [
+  { value: "", label: "модель как в прогоне (устаревшие → рекомендованная)" },
+  { value: "openai/gpt-5.6-luna", label: "GPT-5.6 Luna — рекомендованная" },
+  { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite — дешёвая" },
+  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+  { value: "google/gemini-3.5-flash-lite", label: "Gemini 3.5 Flash Lite" },
+  { value: "anthropic/claude-haiku-5.5", label: "Claude Haiku 5.5" },
+  { value: "mistralai/mistral-small-3.2-24b-instruct", label: "Mistral Small 3.2 — самая дешёвая" },
+  { value: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash" },
+];
 /** Оценка качества итога: отдельная недорогая модель, не та, что правила (меньше самооценки). */
 export const JUDGE_MODEL = "openai/gpt-6-luna";
 

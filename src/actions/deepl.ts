@@ -106,7 +106,7 @@ export async function cloneDeeplJob(_p: FormState, f: FormData): Promise<FormSta
   let id: string;
   try {
     if (!(await prisma.deeplKey.count({ where: { isActive: true, deletedAt: null } }))) throw new Error("Нет рабочих ключей DeepL — сначала добавьте или включите ключ");
-    id = await cloneJob(me, str(f, "id"));
+    id = await cloneJob(me, str(f, "id"), { model: str(f, "model") });
   } catch (e) {
     return fail(e);
   }

@@ -77,7 +77,7 @@ export async function createJob(me: CurrentUser, accessId: string, settings: Dee
  * загрузки из WordPress; переводы придут из кэша DeepL). Настройки — те же, но промты обновляются до текущих текстов
  * по promptId, снятые со стенда модели заменяются рекомендованными, пакет «качество текста» включён по умолчанию.
  */
-export async function cloneJob(me: CurrentUser, jobId: string): Promise<string> {
+export async function cloneJob(me: CurrentUser, jobId: string, override: { model?: string } = {}): Promise<string> {
   const job = await requireJob(me, jobId);
   const items = await prisma.deeplItem.findMany({ where: { jobId }, orderBy: { position: "asc" }, select: { wpPostId: true, title: true, sourceUrl: true, wpStatus: true, wpDate: true, sourceHtml: true } });
   if (!items.length) throw new Error("В прогоне нет статей");
@@ -89,17 +89,18 @@ export async function cloneJob(me: CurrentUser, jobId: string): Promise<string> 
     ...s,
     headings: { ...s.headings, prompt: body(s.headings.promptId, s.headings.prompt) },
     postEdit: { ...s.postEdit, prompt: body(s.postEdit.promptId, s.postEdit.prompt) },
-    model: DEPRECATED_MODELS[s.model] ?? s.model,
+    model: override.model?.trim() || (DEPRECATED_MODELS[s.model] ?? s.model),
     headingsModel: DEPRECATED_MODELS[s.headingsModel] ?? s.headingsModel,
     publish: { ...s.publish, enabled: false },
   };
+  const short = settings.model.split("/").pop() ?? settings.model;
   const copy = await prisma.deeplJob.create({
     data: {
       teamId: job.teamId,
       createdById: me.id,
       accessId: job.accessId,
       siteName: job.siteName,
-      name: `${job.name} · копия`.slice(0, 120),
+      name: `${job.name.replace(/ · копия.*$/, "")} · копия (${short})`.slice(0, 120),
       status: "QUEUED",
       settings: settings as unknown as Prisma.InputJsonValue,
       total: items.length,

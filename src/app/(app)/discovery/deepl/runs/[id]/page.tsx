@@ -10,7 +10,7 @@ import { DeeplHeader } from "@/components/deepl/DeeplHeader";
 import { RunView } from "@/components/deepl/RunView";
 import { canAccessJob, jobItems } from "@/lib/deepl/jobs";
 import { cloneDeeplJob, deleteDeeplJob, resumeDeeplJob, retryDeeplItems, stopDeeplJob } from "@/actions/deepl";
-import { describeSettings, JOB_STATUS_LABELS, parseSettings } from "@/lib/deepl/types";
+import { CLONE_MODELS, describeSettings, JOB_STATUS_LABELS, parseSettings } from "@/lib/deepl/types";
 import { fmtDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -61,7 +61,10 @@ export default async function DeeplRunPage({ params }: { params: Promise<{ id: s
               </ActionForm>
             )}
             {!live && items.length > 0 && (
-              <ActionForm action={cloneDeeplJob} className="inline" hidden={{ id }}>
+              <ActionForm action={cloneDeeplJob} className="inline-flex items-center gap-1" hidden={{ id }}>
+                <select name="model" className="input w-auto" defaultValue="" title="Модель постредактуры для копии">
+                  {CLONE_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
                 <SubmitButton className="btn-ghost" pendingText="…" confirm={`Скопировать прогон (${items.length} статей) и запустить заново на текущих промтах и рекомендованных моделях? Этот прогон останется как есть — для сравнения. Переводы возьмутся из кэша.`}>Копия на новой редактуре</SubmitButton>
               </ActionForm>
             )}
