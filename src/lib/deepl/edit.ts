@@ -484,7 +484,12 @@ export async function runHeadings(ctx: AiCtx, html: string, prompt: string, ectx
   // («найсміливіший», «зігрітися», «вечірнього виходу»), — заголовок остаётся прежним. Один и тот же зачин —
   // не больше чем у трети заголовков (стаффинг ключом «Блакитна сукня…» ×13).
   const sections = sectionsOf(html).slice(1);
-  const stem = (w: string) => w.slice(0, Math.max(4, w.length - 2));
+  // Корень — первые 5 букв: «висушити/висушування», «джинси/джинсах», «зволоження/зволожувач» — одно слово.
+  const stem = (w: string) => w.replace(/[’']/g, "").slice(0, 5);
+  // Служебные слова заголовков ничего не обещают — их не считаем чужими.
+  const NEUTRAL = /^(?:який|яка|яке|які|коли|чому|скільки|навіщо|замість|проти|через|перед|після|поруч|варто|треба|потрібно|можна|важливо|поширені|запитання|питання|перевір\p{L}*|обира\p{L}*|обрат\p{L}*|почат\p{L}*|робит\p{L}*|зробит\p{L}*|різних|ситуаціях|варіант\p{L}*|способ\p{L}*|порад\p{L}*|помилк\p{L}*|швидко|правильно|своєї|свого|своїх)$/u;
+  // Оценки и обещания, которых нет в разделе, — сразу отказ даже одним словом.
+  const PROMISE = /^(?:ідеальн|бездоган|чудов|неймовір|ефектн|розкішн|вишукан|елегантн|стильн|модн|сміли|зігр|вечірн|святков|гарантов|легк|ідеал)/u;
   const wordsOf = (s: string) => visibleText(s).toLowerCase().split(/[^\p{L}'’]+/u).filter((w) => w.length >= 5);
   const starts = new Map<string, number>();
   const maxSame = Math.max(1, Math.ceil(originals.length / 3));
@@ -492,13 +497,15 @@ export async function runHeadings(ctx: AiCtx, html: string, prompt: string, ectx
   parsed.forEach((next, i) => {
     if (!next) return;
     const allowed = new Set([...wordsOf(sections[i] ?? ""), ...wordsOf(originals[i] ?? ""), ...wordsOf(ectx?.title ?? ""), ...wordsOf(ectx?.h1 ?? "")].map(stem));
-    const foreign = wordsOf(next).filter((w) => !allowed.has(stem(w)) && !/^(?:який|яка|яке|які|коли|чому|скільки|навіщо|замість|проти|через|перед|після|поруч)$/.test(w));
+    const foreign = wordsOf(next).filter((w) => !allowed.has(stem(w)) && !NEUTRAL.test(w));
+    const promise = foreign.some((w) => PROMISE.test(w));
     const superlative = /(?:^|[^\p{L}])най\p{L}{4,}/iu.test(next) && !/(?:^|[^\p{L}])най\p{L}{4,}/iu.test(originals[i] ?? "");
     const start = wordsOf(next).slice(0, 2).join(" ");
     const n = (starts.get(start) ?? 0) + 1;
     starts.set(start, n);
-    if (foreign.length || superlative || (start && n > maxSame)) {
-      rejected.push(`H2 #${i + 1}: ${foreign.length ? `слова не з розділу (${foreign.slice(0, 3).join(", ")})` : superlative ? "найвищий ступінь" : "однаковий зачин"} — лишено початковий`);
+    // Одно новое нейтральное слово — нормальная редактура; отказ — от двух чужих слов или от оценки/обещания.
+    if (foreign.length >= 2 || promise || superlative || (start && n > maxSame)) {
+      rejected.push(`H2 #${i + 1}: ${foreign.length >= 2 || promise ? `слова не з розділу (${foreign.slice(0, 3).join(", ")})` : superlative ? "найвищий ступінь" : "однаковий зачин"} — лишено початковий`);
       parsed[i] = undefined as unknown as string;
     }
   });
