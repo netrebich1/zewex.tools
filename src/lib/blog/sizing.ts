@@ -126,7 +126,8 @@ export function formatRange(s: Pick<Scenario, "key" | "structure">, n: number | 
     return [Math.round(c * lo + base), Math.round(c * hi + base + 200)];
   };
   switch (s.key) {
-    case "checklist": return [600, 1400];
+    // Чеклист с заданным числом пунктов: 60 пунктов в 650 слов не уместить (проверка качества роняла статью за перебор объёма)
+    case "checklist": return n ? per(10, 16, 350) : [600, 1400];
     case "big_list": return per(10, 16, 250);
     case "workout": return per(80, 130, 350);
     case "plan": return [1000, 2200];

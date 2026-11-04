@@ -14,7 +14,7 @@ export type QualityResult = {
   patch: { sections: Array<{ id: string; html: string; wordCount: number }>; photos: Array<{ id: string; altText: string }> };
 };
 
-const JUNK_RE = /\b(as an ai|i cannot|i can't help|let me think|the user wants|here is the json|lorem ipsum)\b/i;
+const JUNK_RE = /\b(as an ai|i cannot (?:help|assist|provide|fulfill|comply)|i can't help|let me think|the user wants|here is the json|lorem ipsum)\b/i;
 
 /** Выдуманный личный опыт («I've tried both methods»): автору запрещено, проверяем детерминированно. */
 export const INVENTED_EXPERIENCE = /\b(I(?:'ve| have) (?:tried|tested|used|been using|learned from trying)|I tested|I tried (?:both|every|all|it|them|this)|in my (?:own )?(?:experience|testing|tests)|after (?:years|months|weeks) of (?:testing|trying))\b/i;
