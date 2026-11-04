@@ -25,7 +25,8 @@ export const plan: StageHandler = async (ctx) => {
   const { ai: perPageAi, pinora: perPagePinora } = rc.recipe.mix;
   const sets = await prisma.pinSet.findMany({ where: { siteId: rc.site.id, setKind: "ai", id: { in: rc.recipe.sets.aiSetIds } } });
   // Блоговые статьи (2026-10-26, lib/pins/articleKind.ts) получают ИИ-пины из блоговых стилей своего типа
-  // (категория blog в ai-styles.json) независимо от наборов сайта; подборки — из наборов сайта без блоговых стилей.
+  // (категория blog в ai-styles.json); подборки — из наборов сайта без блоговых стилей. С 2026-11-04: если в наборах
+  // прогона есть блоговые стили (набор вроде «Blog Small»), блоговые статьи берут стили только из них.
   const kinds = await articleKindsFor(rc.site.wpConnectionId, todo);
   const blogTodo = todo.filter((p) => kinds.get(p.id)?.kind);
   const ideaTodo = todo.filter((p) => !kinds.get(p.id)?.kind);
@@ -45,7 +46,9 @@ export const plan: StageHandler = async (ctx) => {
   const prior = await prisma.pinRunItem.groupBy({ by: ["styleId"], where: { runId: rc.run.id, engine: "OPENAI" }, _count: { _all: true } });
   for (const p of prior) if (p.styleId) usedCounts.set(p.styleId, p._count._all);
 
-  const ideaSets = sets.map((s) => {
+  // Чисто блоговый набор подборкам не нужен, если в прогоне есть наборы с обычными стилями.
+  const withIdeaStyles = sets.filter((s) => (s.styleIds as string[]).some((id) => !isBlogAiStyle(id)));
+  const ideaSets = (withIdeaStyles.length ? withIdeaStyles : sets).map((s) => {
     const ids = s.styleIds as string[];
     const noBlog = ids.filter((id) => !isBlogAiStyle(id));
     return { id: s.id, name: s.name, topic: s.topic, styleIds: noBlog.length ? noBlog : ids };
@@ -66,15 +69,20 @@ export const plan: StageHandler = async (ctx) => {
     for (const p of blogTodo) { const k = kinds.get(p.id)!.kind!; byKind.set(k, [...(byKind.get(k) ?? []), p]); }
     // у блоговых стилей по 5 подстилей — одной статье разные стили, а не два подстиля одного
     const familyOf = (id: string) => getAiStyle(id)?.variantOf ?? id;
-    const universal = blogUniversalStyles().map((s) => s.id);
+    // Блоговые стили наборов прогона: есть — выбор ниже идёт только среди них.
+    const setBlog = new Set(sets.flatMap((s) => (s.styleIds as string[]).filter((id) => isBlogAiStyle(id))));
+    const fromSet = (ids: string[]) => (setBlog.size ? ids.filter((id) => setBlog.has(id)) : ids);
+    const universal = fromSet(blogUniversalStyles().map((s) => s.id));
     for (const [kind, list] of byKind) {
       // Не меньше половины ИИ-пинов статьи — универсальные стили (каркас + подстройка под тему), остальное — узкие
-      // стили под тип статьи; узких под тип нет — все из универсальных. Без универсальных в библиотеке — как раньше.
-      const narrow = blogNarrowStylesFor(kind).map((s) => s.id);
+      // стили под тип статьи; узких под тип нет — все из универсальных. Без универсальных — стили типа статьи
+      // (из набора; в наборе нет стилей этого типа — весь блоговый набор).
+      const narrow = fromSet(blogNarrowStylesFor(kind).map((s) => s.id));
       if (!universal.length) {
+        const own = fromSet(blogAiStylesFor(kind).map((s) => s.id));
         aiRows.push(...planAiPins({
           pages: list.map((p) => ({ id: p.id, topic: "", existingAiCount: countOf(p.id, "OPENAI"), quota: p.pinQuota })),
-          sets: [{ id: "blog", name: "Blog", topic: "", styleIds: blogAiStylesFor(kind).map((s) => s.id) }],
+          sets: [{ id: "blog", name: "Blog", topic: "", styleIds: own.length ? own : [...setBlog] }],
           exclusions, perPage: perPageBlogAi, seed: hash32(`${rc.settings.seed}|blog|${kind}`), usedCounts, familyOf,
         }));
         continue;
