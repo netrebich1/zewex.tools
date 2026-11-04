@@ -31,6 +31,33 @@ export function orderCandidates(cand: Cand[], runningBySite: Map<string, number>
     .map((x) => x.c);
 }
 
+type QueueRole = { kind: "active"; limit: number } | { kind: "waiting" };
+
+/**
+ * Очередь сайтов команды для блога (2026-11-04): та же настройка, что у статей — ArtTeamSettings.queueSites
+ * («Очередь: сайтов сразу» на экране «Автозапуск»). N сайтов команды с неначатыми постами (кто раньше запущен —
+ * по самому старому неначатому) получают всю мощность блог-воркера поровну, остальные ждут. Когда у сайта неначатые
+ * кончаются, его место сразу получает следующий — без cron и ручных переключений.
+ */
+async function blogQueueRoles(tx: Prisma.TransactionClient, sites: { id: string; teamId: string }[], maxConcurrent: number): Promise<Map<string, QueueRole>> {
+  const roles = new Map<string, QueueRole>();
+  const teamIds = [...new Set(sites.map((s) => s.teamId))];
+  if (!teamIds.length) return roles;
+  const teams = await tx.artTeamSettings.findMany({ where: { teamId: { in: teamIds }, queueSites: { gt: 0 } }, select: { teamId: true, queueSites: true } });
+  if (!teams.length) return roles;
+  const queued = sites.filter((s) => teams.some((t) => t.teamId === s.teamId));
+  const fresh = await tx.blogPost.groupBy({ by: ["siteId"], where: { siteId: { in: queued.map((s) => s.id) }, status: "PENDING", startedAt: null }, _min: { createdAt: true } });
+  const oldest = new Map(fresh.map((f) => [f.siteId, f._min.createdAt?.getTime() ?? 0]));
+  const cap = Number(process.env.BLOG_WORKER_CONCURRENCY || 4);
+  const total = maxConcurrent > 0 ? Math.min(maxConcurrent, cap) : cap;
+  for (const t of teams) {
+    const line = queued.filter((s) => s.teamId === t.teamId && oldest.has(s.id)).sort((a, b) => oldest.get(a.id)! - oldest.get(b.id)!);
+    const limit = Math.max(1, Math.floor(total / t.queueSites));
+    line.forEach((s, i) => roles.set(s.id, i < t.queueSites ? { kind: "active", limit } : { kind: "waiting" }));
+  }
+  return roles;
+}
+
 export async function claimPost(workerId: string): Promise<BlogPost | null> {
   // Дешёвая проверка без транзакции: то же базовое условие, что у выборки кандидатов ниже (надмножество) — пустая очередь не открывает транзакцию.
   const any = await prisma.$queryRaw<Array<{ id: string }>>`SELECT id FROM BlogPost WHERE status = 'PENDING' AND (nextRunAt IS NULL OR nextRunAt <= NOW(3)) LIMIT 1`;
@@ -45,22 +72,28 @@ export async function claimPost(workerId: string): Promise<BlogPost | null> {
       for (const r of runningRows) { runningBySite.set(r.siteId, r._count._all); runningTotal += r._count._all; }
       if ((g?.maxConcurrent ?? 0) > 0 && runningTotal >= (g?.maxConcurrent ?? 0)) return null;
 
-      const sites = await tx.blogSite.findMany({ where: { isActive: true }, select: { id: true, settings: true } });
+      const sites = await tx.blogSite.findMany({ where: { isActive: true }, select: { id: true, teamId: true, settings: true } });
+      const roles = await blogQueueRoles(tx, sites, g?.maxConcurrent ?? 0);
       const limitBySite = new Map<string, number>();
       const open: string[] = [];
       for (const site of sites) {
-        const limit = mergeSiteSettings(site.settings).concurrency;
+        const role = roles.get(site.id);
+        const own = mergeSiteSettings(site.settings).concurrency;
+        const limit = role?.kind === "active" ? Math.max(own, role.limit) : own;
         limitBySite.set(site.id, limit);
         if ((runningBySite.get(site.id) ?? 0) < limit) open.push(site.id);
       }
       if (!open.length) return null;
+      // Ждущий сайт очереди команды берёт только начатые посты (вернувшиеся после сбоя) — новые не начинает.
+      const startedOnly = sites.filter((s) => roles.get(s.id)?.kind === "waiting").map((s) => s.id);
+      const noFresh = startedOnly.length ? Prisma.sql`AND NOT (siteId IN (${Prisma.join(startedOnly)}) AND startedAt IS NULL)` : Prisma.empty;
 
       const picked = await tx.$queryRaw<Cand[]>`
         SELECT id, siteId FROM (
           SELECT id, siteId, priority, createdAt,
                  ROW_NUMBER() OVER (PARTITION BY siteId ORDER BY priority DESC, createdAt ASC) AS rn
           FROM BlogPost
-          WHERE status = 'PENDING' AND (nextRunAt IS NULL OR nextRunAt <= NOW(3)) AND siteId IN (${Prisma.join(open)})
+          WHERE status = 'PENDING' AND (nextRunAt IS NULL OR nextRunAt <= NOW(3)) AND siteId IN (${Prisma.join(open)}) ${noFresh}
         ) t
         WHERE rn <= ${CANDIDATES_PER_SITE}
         ORDER BY priority DESC, createdAt ASC
