@@ -609,6 +609,14 @@ export function tagsAreSafeDrift(source: string, output: string): boolean {
   return total <= Math.max(4, Math.round(base * 0.1));
 }
 
+/** Раскладка плейсхолдеров по блокам (абзац, заголовок, пункт списка, ячейка): какие id в каком блоке. */
+export function placeholderLayout(html: string): string {
+  return html
+    .split(/(?=<(?:p|h[1-6]|li|td|th|blockquote|figcaption)\b)/i)
+    .map((b) => [...b.matchAll(PH_RE)].map((m) => Number(m[1] ?? m[2])).sort((x, y) => x - y).join(","))
+    .join("|");
+}
+
 /** Detect truncated / broken translations. */
 export function validateChunk(source: string, output: string): QualityIssue[] {
   const issues: QualityIssue[] = [];
@@ -620,6 +628,11 @@ export function validateChunk(source: string, output: string): QualityIssue[] {
   const ph2 = countPlaceholders(output);
   if (ph1 !== ph2) {
     issues.push({ code: "placeholders", detail: `Плейсхолдеры: было ${ph1}, стало ${ph2}` });
+  }
+  // Ссылка/вставка должна остаться в своём абзаце: модель переносила ссылки из строки навигации в текст,
+  // а на их месте в подписи и заголовке пропадали слова. Порядок внутри абзаца может меняться (перевод).
+  else if (placeholderLayout(source) !== placeholderLayout(output)) {
+    issues.push({ code: "placeholders", detail: "Ссылка или вставка переехала в другой абзац" });
   }
   const openA = (source.match(/<[a-zA-Z][^>]*>/g) || []).length;
   const openB = (output.match(/<[a-zA-Z][^>]*>/g) || []).length;
