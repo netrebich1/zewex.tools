@@ -11,6 +11,7 @@ const CHAINS: string[][] = [
   ["EN", "DE"], ["EN", "FR"], ["EN", "ES"], ["EN", "PL"], ["EN", "CS"], ["EN", "NL"], ["EN", "JA"], ["EN", "TR"],
   ["DE", "EN"], ["DE", "PL"], ["FR", "EN"], ["FR", "PL"], ["PL", "EN"], ["PL", "DE"], ["ES", "PL"], ["IT", "PL"], ["JA", "EN"], ["JA", "PL"],
   ["EN", "DE", "PL"], ["EN", "JA", "PL"],
+  ["PL", "RU"],
 ];
 const ARTICLES = {
   blog: { jobId: "c4a72cae-2441-4b2c-ac37-f680ffdfcf37", position: 0, kind: "блог" },

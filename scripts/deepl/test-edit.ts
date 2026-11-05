@@ -16,7 +16,7 @@ const INPUT = {
   blog: { jobId: "9f935b89-6839-4b6e-80cf-a9f16fee2178", kind: "блог" },
   ideas: { jobId: "efce961d-0f00-4d41-9398-2f6e2e01ee9f", kind: "подборка" },
 } as const;
-const PL_POSITION = 5; // «06 · UK→PL→UK»
+const PL_POSITION = Number(process.env.INPUT_POS || 5); // «06 · UK→PL→UK»
 
 const MODELS = [
   "openai/gpt-5.6-luna", "openai/gpt-6-luna", "openai/gpt-6.1-terra", "google/gemini-3.8-flash", "google/gemini-4-argon",
@@ -313,14 +313,14 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
       if (taken.some((x) => x.status === "done" && x.title.split(" · ")[1] === tag)) { console.log("skip", tag); return; }
     }
     const extra = EXTRA.includes(m) && (v === "G" || v === "H" || !MODELS.includes(m));
-    const position = NEW.has(v) ? nextPos++ : extra ? 60 + VARIANTS.indexOf(v) * EXTRA.length + EXTRA.indexOf(m) : v === "G" || v === "H" ? 6 * MODELS.length + (v === "H" ? G_MODELS.length : 0) + G_MODELS.indexOf(m) : VARIANTS.indexOf(v) * MODELS.length + Math.max(0, MODELS.indexOf(m));
-    const label = `${String(position + 1).padStart(2, "0")} · ${v}${NEW.has(v) ? process.env.TAG ?? "" : ""}/${m.split("/")[1]}`;
+    const position = Number(process.env.POS_OFFSET || 0) + (NEW.has(v) ? nextPos++ : extra ? 60 + VARIANTS.indexOf(v) * EXTRA.length + EXTRA.indexOf(m) : v === "G" || v === "H" ? 6 * MODELS.length + (v === "H" ? G_MODELS.length : 0) + G_MODELS.indexOf(m) : VARIANTS.indexOf(v) * MODELS.length + Math.max(0, MODELS.indexOf(m)));
+    const label = `${String(position + 1).padStart(2, "0")} · ${process.env.CHAIN ?? ""}${v}${NEW.has(v) ? process.env.TAG ?? "" : ""}/${m.split("/")[1]}`;
     if (await prisma.deeplItem.findFirst({ where: { jobId: job!.id, position, status: "done" } })) { console.log("skip", label); return; }
     await prisma.deeplItem.deleteMany({ where: { jobId: job!.id, position } });
     const st: Stat = { cost: 0, inT: 0, outT: 0, rollback: 0, chunks: chunks.length, applied: 0, missed: 0, errors: [] };
     const stages: unknown[] = [
       { key: "source", label: "Исходный", html: sourceHtml, chars: sourceHtml.length },
-      { key: "translate#0:UK>PL>UK", label: "Перевод UK→PL→UK", html: translated, chars: translated.length },
+      { key: "translate#0:UK>PL>UK", label: process.env.CHAIN_LABEL || "Перевод UK→PL→UK", html: translated, chars: translated.length },
     ];
     const snap = (k: string, lbl: string, cs: string[]) => { const h = restoreHtml(cs.join(""), tokens, "UK"); stages.push({ key: k, label: lbl, html: h, chars: h.length }); };
     let cur = chunks;
