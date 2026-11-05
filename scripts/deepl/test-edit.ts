@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { decryptSecret } from "@/lib/crypto";
 import {
   anchorsFromTokens, chunkBySections, chunkIsFatal, findTermPairs, matchDashStyle, overlapPct, placeholderLayout, protectHtml, repairPlaceholders,
-  restoreHtml, rewritePct, sourceGlossary, validateChunk, visibleText,
+  restoreHtml, rewritePct, sourceGlossary, validateChunk, visibleText, visibleTextLength, dominantAddress,
 } from "@/lib/deepl/html";
 import { contextBlock, referencesFor } from "@/lib/deepl/edit";
 import { mapLimit } from "@/lib/deepl/deepl";
@@ -22,9 +22,10 @@ const MODELS = [
   "openai/gpt-5.6-luna", "openai/gpt-6-luna", "openai/gpt-6.1-terra", "google/gemini-3.8-flash", "google/gemini-4-argon",
   "anthropic/claude-haiku-5.5", "anthropic/claude-sonnet-5.5",
 ];
-const VARIANTS = ["A", "B", "C", "D", "E", "F"] as const;
+const VARIANTS = ["A", "B", "C", "D", "E", "F", "G", "H"] as const;
+const G_MODELS = ["google/gemini-2.5-flash-lite", "google/gemini-2.5-flash", "openai/gpt-6-luna"];
 type V = (typeof VARIANTS)[number];
-const VNAME: Record<V, string> = { A: "A как сейчас", B: "B список правок", C: "C точечно+живость", D: "D перестройка фраз", E: "E правки+стиль", F: "F точечно без оригинала" };
+const VNAME: Record<V, string> = { A: "A как сейчас", B: "B список правок", C: "C точечно+живость", D: "D перестройка фраз", E: "E правки+стиль", F: "F точечно без оригинала", G: "G три простых прохода", H: "H три прохода, второй с оригиналом" };
 
 /* ---------------- промпты ---------------- */
 
@@ -82,6 +83,32 @@ const SYS_JSON = `Ти — головна редакторка українсь�
 Що шукати:
 ${WHAT}
 Пройди кожен абзац, підпис до фото, пункт списку й клітинку таблиці. Зазвичай огріхів 2–6 на абзац. Де огріхів немає — нічого не вигадуй.`;
+
+
+const KEEP = `Більше НІЧОГО не змінюй: слів синонімами не заміняй, речень не перебудовуй, нічого не додавай і не скорочуй. Решту тексту поверни символ у символ. Якщо таких помилок у фрагменті немає — поверни його без змін.`;
+
+const G1 = (address: string) => `Завдання цього проходу одне — УЗГОДЖЕННЯ після машинного перекладу. Виправ тільки:
+1. Відмінок, рід і число: іменник, прикметник і дієслово мають узгоджуватися («щільне полотно… а тонке лишається», не «тонка»; «волосся висохло», не «висохли»; «на майже сухому волоссі»).
+2. Прийменник після дієслова, чергування у/в, і/й, з/із/зі («із Шотландії»).
+3. Речення біля службового тегу <x-ph i="N"></x-ph> (це посилання): слова до і після тегу мають складатися з ним в одне граматично ціле речення. Якщо після посилання стоїть друге дієслово без сполучника («…пише, що… зазначає»), додай «і»; якщо перед тегом злипся пробіл — постав його.
+4. Звертання до читачки — тільки на «${address}» в усьому фрагменті разом із дієсловами, заголовками й таблицями.
+5. Авторка — жінка: «я обрала», «я б почала».
+${KEEP}`;
+
+const G2 = (title: string, gl: string[], pairs: string[]) => `Завдання цього проходу одне — СЛОВА, ЯКІ ПЕРЕКЛАД ПІДМІНИВ і які не пасують темі статті «${title}». Знайди слово, що називає не той предмет або не має сенсу в цій темі, і заміни ОДНЕ слово на ОДНЕ слово в потрібній формі.
+Типові підміни після польської: «простий» замість «прямий» (крій, силует); «черевики», «туфлі», «взуття» там, де мова про чоботи; «штанина», «верхня частина черевика» замість «халява»; «у смужку» замість «у рубчик»; «стилізація» замість «образ»; «в моді» замість «в міді»; «лусочка волосся» замість «кутикула»; «турбан» замість «тюрбан»; назви видань латиницею замість кирилиці (TSN → ТСН).
+${gl.length ? `Слова, якими ці предмети названо в оригіналі статті і яких у фрагменті бракує: ${gl.join(", ")}. Постав таке слово лише там, де у фрагменті стоїть його підміна.\n` : ""}${pairs.length ? `Знайдені підміни (виправ усі форми):\n${pairs.map((x) => `- ${x}`).join("\n")}\n` : ""}Один предмет називається одним словом у всьому фрагменті.
+${KEEP}`;
+
+const G2_REF = `Нижче ОРИГІНАЛ цієї секції. Звір із ним кожне речення фрагмента ЛИШЕ за змістом: предмет, деталь, колір, число, «з/без», напрямок, хто що робить. Де переклад назвав інший предмет або перекрутив факт — заміни саме це слово на правильне. Формулювань оригіналу не переноси: речення фрагмента лишаються своїми словами, міняється тільки хибне слово.
+ОРИГІНАЛ СЕКЦІЇ (лише для звірки змісту):`;
+
+const G3 = `Завдання цього проходу одне — ЧУЖІ СЛОВА Й КАЛЬКИ. Заміни слово чи короткий зворот українським відповідником такої самої довжини або коротшим:
+1. Русизми й суржик: російські слова, закінчення й форми («резинка» → «гумка», «слідуючий» → «наступний», «прилягаючий» → «облеглий» або «обтягнутий»); активні дієприкметники на -ючий, -ячий.
+2. Полонізми: «стилізація», «сукенка», «елегантський», «вигідний» у значенні «зручний».
+3. Канцелярські кальки перекладу: «викликає відчуття холоду» → «холодить»; «запобігає прилипанню» → «не дає липнути»; «є + іменник» («найпоширенішою помилкою є») → тире або дієслово; «за допомогою» → орудний відмінок; «у разі», «з метою», «слід», «необхідно» → «якщо», «щоб», «треба».
+4. Сміття кодування: &#x27; та подібні коди замість апострофа.
+${KEEP}`;
 
 /* ---------------- вызов модели ---------------- */
 
@@ -150,7 +177,7 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
   };
 
   /** Один HTML-проход по фрагментам: плохой фрагмент повторяется один раз, затем остаётся как был. */
-  const htmlPass = async (model: string, st: Stat, input: string[], build: (i: number, chunk: string) => { system: string; user: string }, temperature: number): Promise<string[]> => {
+  const htmlPass = async (model: string, st: Stat, input: string[], build: (i: number, chunk: string) => { system: string; user: string }, temperature: number, maxRewrite?: number): Promise<string[]> => {
     const out = [...input];
     await mapLimit(input.map((_, i) => i), 3, async (i) => {
       const src = input[i]!;
@@ -160,7 +187,8 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
         st.cost += r.cost; st.inT += r.inT; st.outT += r.outT;
         if (r.error) { st.errors.push(r.error); continue; }
         const cand = repairPlaceholders(src, matchDashStyle(src, r.text));
-        if (!chunkIsFatal(validateChunk(src, cand))) { out[i] = cand; return; }
+        const ok = !chunkIsFatal(validateChunk(src, cand)) && (maxRewrite === undefined || (rewritePct(src, cand) <= maxRewrite && visibleTextLength(cand) >= visibleTextLength(src) * 0.94));
+        if (ok) { out[i] = cand; return; }
       }
       st.rollback++;
     });
@@ -197,10 +225,10 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
     return out;
   };
 
-  const todo = variants.flatMap((v) => models.map((m) => ({ v, m })));
+  const todo = variants.flatMap((v) => (v === "G" || v === "H" ? G_MODELS : models).map((m) => ({ v, m })));
   const rows: string[] = [];
   await mapLimit(todo, 6, async ({ v, m }) => {
-    const position = VARIANTS.indexOf(v) * MODELS.length + Math.max(0, MODELS.indexOf(m));
+    const position = v === "G" || v === "H" ? 6 * MODELS.length + (v === "H" ? G_MODELS.length : 0) + G_MODELS.indexOf(m) : VARIANTS.indexOf(v) * MODELS.length + Math.max(0, MODELS.indexOf(m));
     const label = `${String(position + 1).padStart(2, "0")} · ${v}/${m.split("/")[1]}`;
     if (await prisma.deeplItem.findFirst({ where: { jobId: job!.id, position, status: "done" } })) { console.log("skip", label); return; }
     await prisma.deeplItem.deleteMany({ where: { jobId: job!.id, position } });
@@ -229,6 +257,15 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
     } else if (v === "D") {
       cur = await htmlPass(m, st, cur, (i, c) => ({ system: SYS_HTML, user: userFor(i, P_D, c, true) }), 0.4);
       snap("edit#0", "Перестройка фраз", cur);
+    } else if (v === "G" || v === "H") {
+      const address = dominantAddress(visibleText(srcProt)) === "ty" ? "ти" : "ви";
+      const plain = (instruction: string, c: string) => ({ system: SYS_HTML, user: `${instruction}\n\nHTML-фрагмент:\n${c}` });
+      cur = await htmlPass(m, st, cur, (_i, c) => plain(G1(address), c), 0.1, 15);
+      snap("agree#0", "1. Согласование", cur);
+      cur = await htmlPass(m, st, cur, (i, c) => { const ref = refs[i]; const ins = G2(baseTitle, ref ? sourceGlossary(ref, visibleText(c)) : [], ref ? findTermPairs(ref, c) : []); return plain(v === "H" && ref ? `${ins}\n\n${G2_REF}\n"""\n${ref.slice(0, 8000)}\n"""` : ins, c); }, 0.1, v === "H" ? 18 : 12);
+      snap("terms#0", "2. Подмены перевода", cur);
+      cur = await htmlPass(m, st, cur, (_i, c) => plain(G3, c), 0.1, 12);
+      snap("calques#0", "3. Чужие слова и кальки", cur);
     } else if (v === "F") {
       cur = await htmlPass(m, st, cur, (i, c) => ({ system: SYS_HTML, user: userFor(i, P_C.replace(/проти оригіналу/, "за глуздом і темою статті"), c, false) }), 0.2);
       snap("edit#0", "Точечная правка без оригинала", cur);
