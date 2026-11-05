@@ -25,7 +25,7 @@ const stem = (w: string) => w.replace(/[’']/g, "").slice(0, 5);
   const jobId = process.argv[2]!;
   const model = process.argv[3] || "openai/gpt-6-luna";
   const job = await prisma.deeplJob.findUniqueOrThrow({ where: { id: jobId } });
-  const items = await prisma.deeplItem.findMany({ where: { jobId, status: "done" }, orderBy: { position: "asc" } });
+  const items = await prisma.deeplItem.findMany({ where: { jobId, status: "done", position: { gte: Number(process.env.MINPOS || 0) } }, orderBy: { position: "asc" } });
   const rows: string[] = [];
   await mapLimit(items, 4, async (it) => {
     const src = it.sourceHtml!;

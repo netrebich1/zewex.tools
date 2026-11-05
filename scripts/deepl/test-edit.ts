@@ -22,11 +22,12 @@ const MODELS = [
   "openai/gpt-5.6-luna", "openai/gpt-6-luna", "openai/gpt-6.1-terra", "google/gemini-3.8-flash", "google/gemini-4-argon",
   "anthropic/claude-haiku-5.5", "anthropic/claude-sonnet-5.5",
 ];
-const VARIANTS = ["A", "B", "C", "D", "E", "F", "G", "H"] as const;
+const VARIANTS = ["A", "B", "C", "D", "E", "F", "G", "H", "K", "L", "M", "N", "P", "Q", "R"] as const;
+const NEW = new Set(["K", "L", "M", "N", "P", "Q", "R"]);
 const EXTRA = ["anthropic/claude-haiku-5.5", "deepseek/deepseek-v4.1-flash", "deepseek/deepseek-v4-pro"];
 const G_MODELS = ["google/gemini-2.5-flash-lite", "google/gemini-2.5-flash", "openai/gpt-6-luna"];
 type V = (typeof VARIANTS)[number];
-const VNAME: Record<V, string> = { A: "A как сейчас", B: "B список правок", C: "C точечно+живость", D: "D перестройка фраз", E: "E правки+стиль", F: "F точечно без оригинала", G: "G три простых прохода", H: "H три прохода, второй с оригиналом" };
+const VNAME: Record<V, string> = { A: "A как сейчас", B: "B список правок", C: "C точечно+живость", D: "D перестройка фраз", E: "E правки+стиль", F: "F точечно без оригинала", G: "G три простых прохода", H: "H три прохода, второй с оригиналом", K: "K точечная правка + защита от копирования", L: "L короткий промпт + защита", M: "M список правок + стиль", N: "N точечная без канцелярита", P: "P сверка по польскому тексту", Q: "Q сверка по английскому тексту", R: "R сверка по двум переводам" };
 
 /* ---------------- промпты ---------------- */
 
@@ -54,6 +55,39 @@ ${NO_COPY}
 ${WHAT}
 
 Чого не робити: не переказувати, не об'єднувати й не переставляти речення, не прикрашати текст оцінними словами, не міняти слово на синонім без причини.`;
+
+const P_L = `Перед тобою HTML-фрагмент статті після машинного перекладу й ОРИГІНАЛ цієї секції. Переклад сказав те саме іншими словами — так і має лишитися. Твоя робота — коректура перекладу, а не повернення оригіналу.
+Крок 1. Порівняй кожне речення фрагмента з оригіналом ЗА ЗМІСТОМ. Якщо переклад назвав інший предмет, колір, число, дію чи адресата — заміни тільки це слово на правильне (після польської часто: «простий» замість «прямий», «черевики/туфлі» замість «чоботи», «штанина» замість «халява», «у смужку» замість «у рубчик», «стилізація» замість «образ», «волосся» у множині).
+Крок 2. Виправ граматику: відмінки, рід, число, прийменники, звертання «ти/ви» як в оригіналі в усьому фрагменті, жіночий рід авторки.
+Крок 3. Речення з тегом <x-ph>: слова до і після тегу мають читатися з посиланням як одне ціле речення; додай загублений сполучник чи пробіл, прибери зайве дієслово.
+Крок 4. Зніми канцелярит перекладу простим словом: «є + іменник», «слід», «необхідно», «за допомогою», «протягом», «викликає відчуття холоду» → «холодить», «запобігає прилипанню» → «не дає липнути», «полягає в тому, щоб».
+ЗАБОРОНЕНО: переписувати речення словами оригіналу; міняти слово, яке не є помилкою; додавати факти; скорочувати зміст. У кожному реченні більшість слів перекладу лишається на місці.`;
+
+const P_N = `Це коректура машинного перекладу, а не рерайт. Речення лишаються на своїх місцях і зі своїми словами; ти виправляєш тільки помилки. Речення без помилок поверни дослівно.
+Текст навмисно перефразовано перекладом. Формулювань оригіналу не повертай: оригінал дано лише для звірки змісту.
+Що виправляти:
+1. ЗМІСТ: слово, яке називає не той предмет, колір, число, дію, адресата, ніж в оригіналі, — заміни одним правильним словом. Типові підміни після польської: «простий» замість «прямий»; «черевики», «туфлі» замість «чоботи»; «штанина» замість «халява»; «у смужку» замість «у рубчик»; «стилізація» замість «образ»; «в моді» замість «в міді»; «розчешіть» замість «розділіть».
+2. УЗГОДЖЕННЯ: відмінок, рід, число, прийменник, «волосся» — однина; звертання «ти/ви» як в оригіналі в усьому фрагменті; авторка — жінка.
+3. ПОСИЛАННЯ: слова до і після тегу <x-ph> читаються з ним як одне ціле речення (загублений сполучник, пробіл, зайве дієслово).
+4. ЧУЖІ СЛОВА: русизми, полонізми, активні дієприкметники на -ючий, латинські коди &#x27;, латиниця в назвах, які в оригіналі кирилицею.`;
+
+const P_REF = (lang: string) => `Це коректура машинного перекладу, а не рерайт. Речення лишаються на своїх місцях і зі своїми словами; ти виправляєш тільки помилки. Речення без помилок поверни дослівно.
+Для звірки ЗМІСТУ нижче дано цю саму секцію ${lang} мовою — це еталон того, що хотіла сказати авторка: предмети, числа, дії, адресат, порядок думок. Українські слова вибирай сама; терміни бери зі списку слів оригіналу, якщо його подано.
+Що виправляти:
+1. ЗМІСТ: слово чи зворот, що каже не те, що в еталоні (інший предмет, колір, число, дія, адресат, загублене чи зайве заперечення), — заміни одним правильним словом. Типові підміни: «простий» замість «прямий» (крій); «черевики», «туфлі» замість «чоботи»; «штанина» замість «халява»; «у смужку» замість «у рубчик»; «стилізація» замість «образ»; «в моді» замість «в міді»; «розчешіть» замість «розділіть»; «лусочка» замість «кутикула».
+2. УЗГОДЖЕННЯ: відмінок, рід, число, прийменник; «волосся» — однина; звертання до читачки однакове в усьому фрагменті (якщо в еталоні ввічливе звертання — «ви»); авторка — жінка.
+3. ПОСИЛАННЯ: слова до і після тегу <x-ph> читаються з ним як одне ціле речення (загублений сполучник, пробіл, зайве дієслово).
+4. ЧУЖІ СЛОВА Й КАНЦЕЛЯРИТ: русизми, полонізми, дієприкметники на -ючий; «є + іменник», «слід», «необхідно», «за допомогою», «полягає в тому, щоб», «викликає відчуття холоду» — простим словом.
+Нових фактів не додавай, змісту не скорочуй.`;
+
+const P_R = `Це коректура машинного перекладу, а не рерайт. Речення лишаються на своїх місцях і зі своїми словами; ти виправляєш тільки помилки. Речення без помилок поверни дослівно.
+Для звірки ЗМІСТУ нижче дано цю саму секцію у двох незалежних перекладах оригіналу — польською та англійською. Це еталон того, що сказала авторка: предмети, числа, дії, адресат. Довіряй тому, у чому обидва еталони сходяться. Якщо вони розходяться між собою або фрагмент уже збігається хоча б з одним — нічого не міняй. Українські слова вибирай сама; терміни бери зі списку слів оригіналу, якщо його подано.
+Що виправляти:
+1. ЗМІСТ: слово чи зворот, що каже не те, що в обох еталонах (інший предмет, колір, число, дія, адресат, загублене чи зайве заперечення), — заміни одним правильним словом. Типові підміни: «простий» замість «прямий» (крій); «штанина» замість «халява»; «у смужку» замість «у рубчик»; «стилізація» замість «образ»; «в моді» замість «в міді»; «розчешіть» замість «розділіть»; «лусочка» замість «кутикула»; «за хвилину» замість «скоро». Взуття називай як у списку слів оригіналу: високі (kozaki, boots) — «чоботи», низькі (botki, ankle boots) — «ботильйони» або «черевики».
+2. УЗГОДЖЕННЯ: відмінок, рід, число, прийменник; «волосся» — однина («волосся сохне», «висушіть його»); звертання до читачки однакове в усьому фрагменті, разом із заголовками й таблицями (якщо в польському еталоні звертання на «ви»/множина — «ви»); авторка — жінка.
+3. ПОСИЛАННЯ: тег <x-ph> — це кілька слів посилання, які вже стоять у тексті. Речення має читатися разом із ними: «Вранці матимете легкі <x-ph>», а не «волосся буде легким <x-ph>»; між двома дієсловами довкола тегу потрібен сполучник («…<x-ph> і зазначає»); перед тегом — пробіл.
+4. ЧУЖІ СЛОВА Й КАНЦЕЛЯРИТ: русизми, полонізми, дієприкметники на -ючий; «є + іменник», «слід», «необхідно», «за допомогою», «полягає в тому, щоб», «щодо того, щоб», «викликає відчуття холоду» — простим словом.
+Нових фактів не додавай, змісту не скорочуй, порад не перевертай: якщо у фрагменті «не розчісуйте», перевір за еталонами, чим саме.`;
 
 const P_D = `Текст після перекладу звучить як переклад. Твоє завдання — щоб він читався так, ніби авторка написала його сама: коротко, дієсловами, прямо до читачки. Це редактура по реченнях, не переказ статті.
 ${NO_COPY}
@@ -114,16 +148,19 @@ ${KEEP}`;
 /* ---------------- вызов модели ---------------- */
 
 type Call = { text: string; cost: number; inT: number; outT: number; error?: string };
-async function call(key: string, model: string, system: string, user: string, temperature: number, noReasoning = false, attempt = 0): Promise<Call> {
+const REASON_MODE = new Map<string, number>();
+async function call(key: string, model: string, system: string, user: string, temperature: number, _unused = false, attempt = 0): Promise<Call> {
+  const mode = REASON_MODE.get(model) ?? 0;
+  const noReasoning = mode >= 2;
   try {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "X-Title": "zewex deepl edit test" },
-      body: JSON.stringify({ model, temperature, messages: [{ role: "system", content: system }, { role: "user", content: user }], ...(noReasoning ? {} : { reasoning: { effort: "none" } }), usage: { include: true } }),
+      body: JSON.stringify({ model, temperature, messages: [{ role: "system", content: system }, { role: "user", content: user }], ...(noReasoning ? {} : { reasoning: { effort: mode === 0 ? "none" : "minimal" } }), usage: { include: true } }),
       signal: AbortSignal.timeout(240_000),
     });
     const j = (await res.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { cost?: number; prompt_tokens?: number; completion_tokens?: number }; error?: { message?: string } };
-    if (res.status === 400 && !noReasoning) return call(key, model, system, user, temperature, true, attempt);
+    if (res.status === 400 && !noReasoning) { REASON_MODE.set(model, mode + 1); return call(key, model, system, user, temperature, false, attempt); }
     if ((res.status === 429 || res.status >= 500) && attempt < 3) { await new Promise((r) => setTimeout(r, 8000 * (attempt + 1))); return call(key, model, system, user, temperature, noReasoning, attempt + 1); }
     if (!res.ok) return { text: "", cost: 0, inT: 0, outT: 0, error: `${res.status} ${j.error?.message ?? ""}`.slice(0, 200) };
     const text = String(j.choices?.[0]?.message?.content ?? "").replace(/^\s*```(?:html|json)?\s*/i, "").replace(/```\s*$/, "").trim();
@@ -169,12 +206,21 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
   const anchors = anchorsFromTokens(tokens).map((x) => x.text);
   const chunks = chunkBySections(prot, 3, 9000);
   const refs = referencesFor(chunks, srcProt);
+  const chainJob = a.jobId;
+  const stageText = async (position: number, prefix: string) => {
+    const it = await prisma.deeplItem.findFirstOrThrow({ where: { jobId: chainJob, position } });
+    const stg = (it.stages as Array<{ key: string; html: string }>).find((x) => x.key.startsWith(prefix));
+    return stg ? referencesFor(chunks, protectHtml(stg.html).text) : chunks.map(() => undefined);
+  };
+  const refsPL = await stageText(5, "translate#0:UK>PL");
+  const refsEN = await stageText(0, "translate#0:UK>EN");
+  console.log("alt refs", refsPL.filter(Boolean).length, refsEN.filter(Boolean).length);
   console.log("chunks", chunks.length, "refs", refs.filter(Boolean).length);
 
-  const userFor = (i: number, instruction: string, chunk: string, withRef: boolean) => {
+  const userFor = (i: number, instruction: string, chunk: string, withRef: boolean, alt?: { refs: (string | undefined)[]; label: string }) => {
     const ref = withRef ? refs[i] : undefined;
     const gl = ref ? sourceGlossary(ref, visibleText(chunk)) : [];
-    return `Title статті: ${baseTitle}\n\n${instruction}\n\n${ref ? `ОРИГІНАЛ СЕКЦІЇ (лише для звірки змісту, термінів і ритму; не копіювати):\n"""\n${ref.slice(0, 8000)}\n"""\n\n` : ""}${gl.length ? `Слова оригіналу, яких бракує у фрагменті (перевір, чи переклад не підмінив їх): ${gl.join(", ")}\n\n` : ""}HTML-фрагмент:\n${chunk}`;
+    return `Title статті: ${baseTitle}\n\n${instruction}\n\n${alt?.refs[i] ? `${alt.label}:\n"""\n${alt.refs[i]!.slice(0, 18000)}\n"""\n\n` : ref && !alt ? `ОРИГІНАЛ СЕКЦІЇ (лише для звірки змісту, термінів і ритму; не копіювати):\n"""\n${ref.slice(0, 8000)}\n"""\n\n` : ""}${gl.length ? `Слова оригіналу, яких бракує у фрагменті (перевір, чи переклад не підмінив їх): ${gl.join(", ")}\n\n` : ""}HTML-фрагмент:\n${chunk}`;
   };
 
   /** Один HTML-проход по фрагментам: плохой фрагмент повторяется один раз, затем остаётся как был. */
@@ -192,6 +238,32 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
         if (ok) { out[i] = cand; return; }
       }
       st.rollback++;
+    });
+    return out;
+  };
+
+  /** HTML-проход с защитой от возврата оригинала: если совпадение 5-словных фраз с оригиналом секции выросло сильнее порога — повтор с пометкой, затем берётся вариант с меньшим совпадением. */
+  const guardedPass = async (model: string, st: Stat, input: string[], instruction: string, temperature: number, maxGain: number, alt?: { refs: (string | undefined)[]; label: string }): Promise<string[]> => {
+    const out = [...input];
+    await mapLimit(input.map((_, i) => i), 3, async (i) => {
+      const src = input[i]!;
+      const ref = refs[i] ?? "";
+      const base = ref ? overlapPct(ref, src, 5) : 0;
+      let best: { html: string; ov: number } | null = null;
+      for (let t = 0; t < 3; t++) {
+        const note = t === 0 ? "" : `УВАГА: попередня відповідь повернула формулювання оригіналу. Зроби ще раз: виправ лише хибні слова й граматику, решту слів перекладу лиши дослівно як у фрагменті.\n\n`;
+        const r = await call(key, model, SYS_HTML, userFor(i, note + instruction, src, true, alt), temperature);
+        st.cost += r.cost; st.inT += r.inT; st.outT += r.outT;
+        if (r.error) { st.errors.push(r.error); continue; }
+        const cand = repairPlaceholders(src, matchDashStyle(src, r.text));
+        const vi = validateChunk(src, cand);
+        if (chunkIsFatal(vi) || visibleTextLength(cand) < visibleTextLength(src) * 0.78) { if (process.env.DEBUG) console.log("REJECT", model, i, t, JSON.stringify(vi).slice(0, 300), visibleTextLength(cand), visibleTextLength(src), r.text.slice(0, 200)); continue; }
+        const ov = ref ? overlapPct(ref, cand, 5) : 0;
+        if (!best || ov < best.ov) best = { html: cand, ov };
+        if (ov - base <= maxGain) break;
+        st.missed++; // повторов из-за копирования
+      }
+      if (best) out[i] = best.html; else st.rollback++;
     });
     return out;
   };
@@ -226,12 +298,18 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
     return out;
   };
 
+  const taken = await prisma.deeplItem.findMany({ where: { jobId: job.id }, select: { position: true, title: true, status: true } });
+  let nextPos = Math.max(99, ...taken.map((x) => x.position)) + 1;
   const todo = variants.flatMap((v) => ((v === "G" || v === "H") && !process.argv[4] ? G_MODELS : models).map((m) => ({ v, m })));
   const rows: string[] = [];
   await mapLimit(todo, 6, async ({ v, m }) => {
+    if (NEW.has(v)) {
+      const tag = `${v}${process.env.TAG ?? ""}/${m.split("/")[1]}`;
+      if (taken.some((x) => x.status === "done" && x.title.split(" · ")[1] === tag)) { console.log("skip", tag); return; }
+    }
     const extra = EXTRA.includes(m) && (v === "G" || v === "H" || !MODELS.includes(m));
-    const position = extra ? 60 + VARIANTS.indexOf(v) * EXTRA.length + EXTRA.indexOf(m) : v === "G" || v === "H" ? 6 * MODELS.length + (v === "H" ? G_MODELS.length : 0) + G_MODELS.indexOf(m) : VARIANTS.indexOf(v) * MODELS.length + Math.max(0, MODELS.indexOf(m));
-    const label = `${String(position + 1).padStart(2, "0")} · ${v}/${m.split("/")[1]}`;
+    const position = NEW.has(v) ? nextPos++ : extra ? 60 + VARIANTS.indexOf(v) * EXTRA.length + EXTRA.indexOf(m) : v === "G" || v === "H" ? 6 * MODELS.length + (v === "H" ? G_MODELS.length : 0) + G_MODELS.indexOf(m) : VARIANTS.indexOf(v) * MODELS.length + Math.max(0, MODELS.indexOf(m));
+    const label = `${String(position + 1).padStart(2, "0")} · ${v}${NEW.has(v) ? process.env.TAG ?? "" : ""}/${m.split("/")[1]}`;
     if (await prisma.deeplItem.findFirst({ where: { jobId: job!.id, position, status: "done" } })) { console.log("skip", label); return; }
     await prisma.deeplItem.deleteMany({ where: { jobId: job!.id, position } });
     const st: Stat = { cost: 0, inT: 0, outT: 0, rollback: 0, chunks: chunks.length, applied: 0, missed: 0, errors: [] };
@@ -259,6 +337,21 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
     } else if (v === "D") {
       cur = await htmlPass(m, st, cur, (i, c) => ({ system: SYS_HTML, user: userFor(i, P_D, c, true) }), 0.4);
       snap("edit#0", "Перестройка фраз", cur);
+    } else if (v === "K" || v === "L" || v === "N") {
+      cur = await guardedPass(m, st, cur, v === "K" ? P_C : v === "L" ? P_L : P_N, 0.2, Number(process.env.MAXGAIN || 22));
+      snap("edit#0", VNAME[v], cur);
+    } else if (v === "R") {
+      const both = chunks.map((_, i) => (refsPL[i] && refsEN[i] ? `[POLSKI]\n${refsPL[i]}\n\n[ENGLISH]\n${refsEN[i]}` : undefined));
+      cur = await guardedPass(m, st, cur, P_R, 0.2, 22, { refs: both, label: "ЕТАЛОН ЗМІСТУ (два переклади оригіналу)" });
+      snap("edit#0", VNAME[v], cur);
+    } else if (v === "P" || v === "Q") {
+      cur = await guardedPass(m, st, cur, P_REF(v === "P" ? "польською" : "англійською"), 0.2, 22, v === "P" ? { refs: refsPL, label: "ЕТАЛОН ЗМІСТУ (польською)" } : { refs: refsEN, label: "ЕТАЛОН ЗМІСТУ (англійською)" });
+      snap("edit#0", VNAME[v], cur);
+    } else if (v === "M") {
+      cur = await fixPass(m, st, cur);
+      snap("fix#0", "Список правок", cur);
+      cur = await htmlPass(m, st, cur, (i, c) => ({ system: SYS_HTML, user: userFor(i, P_STYLE, c, false) }), 0.2, 20);
+      snap("style#0", "Стиль без оригинала", cur);
     } else if (v === "G" || v === "H") {
       const address = dominantAddress(visibleText(srcProt)) === "ty" ? "ти" : "ви";
       const plain = (instruction: string, c: string) => ({ system: SYS_HTML, user: `${instruction}\n\nHTML-фрагмент:\n${c}` });
