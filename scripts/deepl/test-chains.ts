@@ -21,7 +21,7 @@ const tgt = (l: string) => (l === "EN" ? "EN-GB" : l === "PT" ? "PT-PT" : l);
 (async () => {
   const which = process.argv[2] as keyof typeof ARTICLES;
   const only = process.argv[3] ? new Set(process.argv[3].split(",").map(Number)) : null;
-  const a = ARTICLES[which];
+  const a = process.env.SRC_JOB ? { jobId: process.env.SRC_JOB, position: Number(process.env.SRC_POS || 0), kind: "подборка" } : ARTICLES[which];
   if (!a) throw new Error("blog|ideas");
   const src = await prisma.deeplItem.findFirstOrThrow({ where: { jobId: a.jobId, position: a.position }, include: { job: true } });
   const sourceHtml = src.sourceHtml!;

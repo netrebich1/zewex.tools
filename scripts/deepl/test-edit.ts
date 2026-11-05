@@ -172,11 +172,16 @@ async function call(key: string, model: string, system: string, user: string, te
   }
 }
 
+/** Ссылки, которых не было во фрагменте: модель не имеет права вставлять свои <a>. */
+/** Снять ссылки, которые модель вставила сама: текст остаётся, тег убирается. */
+const unlink = (src: string, out: string) => (/<a[ >]/i.test(src) ? out : out.replace(/<a[ >][^>]*>/gi, "").replace(/<[/]a>/gi, ""));
+const newLinks = (src: string, cand: string) => Math.max(0, (cand.match(/<a[ >]/gi) ?? []).length - (src.match(/<a[ >]/gi) ?? []).length);
+
 type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks: number; applied: number; missed: number; errors: string[] };
 
 (async () => {
   const which = process.argv[2] as keyof typeof INPUT;
-  const a = INPUT[which];
+  const a = process.env.INPUT_JOB ? { jobId: process.env.INPUT_JOB, kind: "подборка" } : INPUT[which];
   if (!a) throw new Error("blog|ideas");
   const variants = (process.argv[3] && process.argv[3] !== "all" ? process.argv[3].split(",") : [...VARIANTS]) as V[];
   const models = process.argv[4] ? process.argv[4].split(",") : MODELS;
@@ -208,8 +213,8 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
   const refs = referencesFor(chunks, srcProt);
   const chainJob = a.jobId;
   const stageText = async (position: number, prefix: string) => {
-    const it = await prisma.deeplItem.findFirstOrThrow({ where: { jobId: chainJob, position } });
-    const stg = (it.stages as Array<{ key: string; html: string }>).find((x) => x.key.startsWith(prefix));
+    const it = await prisma.deeplItem.findFirst({ where: { jobId: chainJob, position } });
+    const stg = ((it?.stages ?? []) as Array<{ key: string; html: string }>).find((x) => x.key.startsWith(prefix));
     return stg ? referencesFor(chunks, protectHtml(stg.html).text) : chunks.map(() => undefined);
   };
   const refsPL = await stageText(5, "translate#0:UK>PL");
@@ -233,8 +238,8 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
         const r = await call(key, model, system, user, temperature);
         st.cost += r.cost; st.inT += r.inT; st.outT += r.outT;
         if (r.error) { st.errors.push(r.error); continue; }
-        const cand = repairPlaceholders(src, matchDashStyle(src, r.text));
-        const ok = !chunkIsFatal(validateChunk(src, cand)) && (maxRewrite === undefined || (rewritePct(src, cand) <= maxRewrite && visibleTextLength(cand) >= visibleTextLength(src) * 0.94));
+        const cand = repairPlaceholders(src, matchDashStyle(src, unlink(src, r.text)));
+        const ok = !chunkIsFatal(validateChunk(src, cand)) && newLinks(src, cand) === 0 && (maxRewrite === undefined || (rewritePct(src, cand) <= maxRewrite && visibleTextLength(cand) >= visibleTextLength(src) * 0.94));
         if (ok) { out[i] = cand; return; }
       }
       st.rollback++;
@@ -255,9 +260,9 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
         const r = await call(key, model, SYS_HTML, userFor(i, note + instruction, src, true, alt), temperature);
         st.cost += r.cost; st.inT += r.inT; st.outT += r.outT;
         if (r.error) { st.errors.push(r.error); continue; }
-        const cand = repairPlaceholders(src, matchDashStyle(src, r.text));
+        const cand = repairPlaceholders(src, matchDashStyle(src, unlink(src, r.text)));
         const vi = validateChunk(src, cand);
-        if (chunkIsFatal(vi) || visibleTextLength(cand) < visibleTextLength(src) * 0.78) { if (process.env.DEBUG) console.log("REJECT", model, i, t, JSON.stringify(vi).slice(0, 300), visibleTextLength(cand), visibleTextLength(src), r.text.slice(0, 200)); continue; }
+        if (chunkIsFatal(vi) || newLinks(src, cand) > 0 || visibleTextLength(cand) < visibleTextLength(src) * 0.78) { if (process.env.DEBUG) console.log("REJECT", model, i, t, JSON.stringify(vi).slice(0, 300), visibleTextLength(cand), visibleTextLength(src), r.text.slice(0, 200)); continue; }
         const ov = ref ? overlapPct(ref, cand, 5) : 0;
         if (!best || ov < best.ov) best = { html: cand, ov };
         if (ov - base <= maxGain) break;
