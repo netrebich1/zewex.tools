@@ -8,7 +8,8 @@ import { BASE, CURRENCIES, fmtAmount, normCur, rateLabel, todayYmd } from "@/lib
 type Opt = { id: string; label: string };
 export type OpFormRefs = {
   dirs: { id: string; name: string; label: string; parentId: string | null }[];
-  cats: { id: string; name: string; kind: "EXPENSE" | "INCOME" | "ANY" }[];
+  /** dirIds — направления верхнего уровня, где категория предлагается; пусто — во всех. */
+  cats: { id: string; name: string; kind: "EXPENSE" | "INCOME" | "ANY"; dirIds: string[] }[];
   partners: Opt[];
   accounts: string[];
   /** Контрагенты: недавние и частые первыми. */
@@ -114,7 +115,14 @@ export function OpForm({ refs, initial, myPartnerId, onDone, lockDirection }: { 
   const picked = refs.dirs.find((d) => d.id === v.directionId);
   const topId = picked ? picked.parentId ?? picked.id : "";
   const subs = refs.dirs.filter((d) => d.parentId === topId);
-  const cats = useMemo(() => refs.cats.filter((c) => c.kind === "ANY" || c.kind === v.type || c.id === v.categoryId), [refs.cats, v.type, v.categoryId]);
+  const cats = useMemo(() => refs.cats.filter((c) => c.id === v.categoryId || ((c.kind === "ANY" || c.kind === v.type) && (!topId || !c.dirIds.length || c.dirIds.includes(topId)))), [refs.cats, v.type, v.categoryId, topId]);
+  // Смена направления: категория, которой в новом направлении нет, снимается.
+  const setDir = (id: string) => setV((s) => {
+    const d = refs.dirs.find((x) => x.id === id);
+    const top = d ? d.parentId ?? d.id : "";
+    const c = refs.cats.find((x) => x.id === s.categoryId);
+    return { ...s, directionId: id, categoryId: c && top && c.dirIds.length && !c.dirIds.includes(top) ? "" : s.categoryId };
+  });
   const curList = (CURRENCIES as readonly string[]).includes(cur) ? [...CURRENCIES] : [...CURRENCIES, cur];
   // Контрагент: в выбранной категории — только её контрагенты, без категории — недавние.
   const cpRef = useRef<HTMLInputElement>(null);
@@ -137,7 +145,11 @@ export function OpForm({ refs, initial, myPartnerId, onDone, lockDirection }: { 
 
       <div className="grid grid-cols-3 gap-1 rounded-xl bg-ink/5 p-1">
         {TABS.map((t) => (
-          <button key={t.key} type="button" onClick={() => set("type", t.key)} className={`rounded-lg px-2 py-1.5 text-[13.5px] font-medium transition ${v.type === t.key ? "bg-surface text-ink shadow-[var(--shadow-card)]" : "text-muted hover:text-ink"}`}>
+          <button key={t.key} type="button" onClick={() => setV((s) => {
+            // Категория расхода не переезжает в доход (и наоборот): иначе доход попадает в отчёте в расходную строку.
+            const kind = refs.cats.find((c) => c.id === s.categoryId)?.kind;
+            return { ...s, type: t.key, categoryId: s.type === t.key || kind === "ANY" || kind === t.key ? s.categoryId : "" };
+          })} className={`rounded-lg px-2 py-1.5 text-[13.5px] font-medium transition ${v.type === t.key ? "bg-surface text-ink shadow-[var(--shadow-card)]" : "text-muted hover:text-ink"}`}>
             {"short" in t ? <><span className="sm:hidden">{t.short}</span><span className="hidden sm:inline">{t.label}</span></> : t.label}
           </button>
         ))}
@@ -177,7 +189,7 @@ export function OpForm({ refs, initial, myPartnerId, onDone, lockDirection }: { 
         <>
           {!lockDirection && (
             <Row label="Направление">
-              {tops.map((d) => <Chip key={d.id} on={topId === d.id} onClick={() => set("directionId", topId === d.id ? "" : d.id)}>{d.name}</Chip>)}
+              {tops.map((d) => <Chip key={d.id} on={topId === d.id} onClick={() => setDir(topId === d.id ? "" : d.id)}>{d.name}</Chip>)}
             </Row>
           )}
           {subs.length > 0 && (

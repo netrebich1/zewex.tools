@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { balances, settlePlan, type BalPartner } from "./balance";
+import { balances, breakdown, settlePlan, type BalPartner } from "./balance";
 import { PNL_LINES } from "./pnl";
 
 /* ---------- Период ---------- */
@@ -37,7 +37,7 @@ export type DirOption = { id: string; name: string; label: string; parentId: str
 export async function loadRefs() {
   const [dirs, cats, partners, cps, usage] = await Promise.all([
     prisma.finDirection.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }] }),
-    prisma.finCategory.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }] }),
+    prisma.finCategory.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }], include: { directions: { select: { directionId: true } } } }),
     prisma.finPartner.findMany({ orderBy: [{ order: "asc" }, { name: "asc" }] }),
     prisma.finCounterparty.findMany({ orderBy: { name: "asc" }, include: { categories: { select: { categoryId: true } } } }),
     prisma.finOp.groupBy({ by: ["counterpartyId"], where: { deletedAt: null, counterpartyId: { not: null } }, _count: true, _max: { date: true } }),
@@ -52,7 +52,8 @@ export async function loadRefs() {
   }
   return {
     dirs, parents, dirOptions,
-    cats,
+    // dirIds — направления верхнего уровня, где категория предлагается; пусто — во всех.
+    cats: cats.map(({ directions, ...c }) => ({ ...c, dirIds: directions.map((d) => d.directionId) })),
     partners: partners.map((p) => ({ id: p.id, name: p.name, userId: p.userId, sharePct: Number(p.sharePct), order: p.order })),
     // Контрагенты: чаще и недавно используемые — первыми (так их и показывает форма).
     counterparties: cps
@@ -65,8 +66,48 @@ export async function loadRefs() {
 
 export async function debtState(partners: BalPartner[]) {
   const ops = await prisma.finOp.findMany({ where: { deletedAt: null }, select: { type: true, amountEur: true, partnerId: true, toPartnerId: true } });
-  const bal = balances(partners, ops.map((o) => ({ ...o, amountEur: Number(o.amountEur) })));
-  return { bal, plan: settlePlan(partners, bal) };
+  const list = ops.map((o) => ({ ...o, amountEur: Number(o.amountEur) }));
+  const bal = balances(partners, list);
+  return { bal, plan: settlePlan(partners, bal), detail: breakdown(partners, list) };
+}
+
+/* ---------- Доходы ---------- */
+
+export type IncomeRow = { id: string | null; name: string; total: number; count: number; per: Record<string, number>; children: IncomeRow[] };
+
+/** Доходы за период: по направлениям (с подразделами) и по категориям, в разрезе «кто получил». */
+export async function incomeSummary(range: { from?: Date; to?: Date }, partners: BalPartner[], dirs: { id: string; name: string; parentId: string | null }[], cats: { id: string; name: string }[]) {
+  const ops = await prisma.finOp.findMany({ where: { deletedAt: null, type: "INCOME", ...dateWhere(range) }, select: { amountEur: true, directionId: true, categoryId: true, partnerId: true } });
+  const blank = (id: string | null, name: string): IncomeRow => ({ id, name, total: 0, count: 0, per: Object.fromEntries(partners.map((p) => [p.id, 0])), children: [] });
+  const put = (r: IncomeRow, partnerId: string, v: number) => { r.total += v; r.count++; if (partnerId in r.per) r.per[partnerId] += v; };
+  const all = blank(null, "Всего");
+  const byDir = new Map<string | null, IncomeRow>(), byCat = new Map<string | null, IncomeRow>();
+  const dirName = new Map(dirs.map((d) => [d.id, d.name])), catName = new Map(cats.map((c) => [c.id, c.name]));
+  for (const o of ops) {
+    const v = Number(o.amountEur);
+    put(all, o.partnerId, v);
+    const d = o.directionId && dirName.has(o.directionId) ? o.directionId : null;
+    if (!byDir.has(d)) byDir.set(d, blank(d, d ? dirName.get(d)! : "Без направления"));
+    put(byDir.get(d)!, o.partnerId, v);
+    const c = o.categoryId && catName.has(o.categoryId) ? o.categoryId : null;
+    if (!byCat.has(c)) byCat.set(c, blank(c, c ? catName.get(c)! : "Без категории"));
+    put(byCat.get(c)!, o.partnerId, v);
+  }
+  // Дерево: у направления — свои доходы + доходы подразделов.
+  const tree: IncomeRow[] = [];
+  for (const p of dirs.filter((d) => !d.parentId)) {
+    const own = byDir.get(p.id);
+    const kids = dirs.filter((d) => d.parentId === p.id).map((c) => byDir.get(c.id)).filter((x): x is IncomeRow => !!x);
+    if (!own && !kids.length) continue;
+    const top = blank(p.id, p.name);
+    for (const r of [own, ...kids]) if (r) { top.total += r.total; top.count += r.count; for (const k in r.per) top.per[k] += r.per[k]; }
+    top.children = own && kids.length ? [{ ...own, id: null, name: "без подраздела" }, ...kids] : kids;
+    tree.push(top);
+  }
+  tree.sort((a, b) => b.total - a.total);
+  const none = byDir.get(null);
+  if (none) tree.push(none);
+  return { all, tree, cats: [...byCat.values()].sort((a, b) => b.total - a.total) };
 }
 
 /* ---------- Сводка за период ---------- */

@@ -84,7 +84,8 @@ export default async function FinanceHome({ searchParams }: { searchParams: Prom
               ) : (
                 <p className="mt-2 text-[22px] sm:text-[28px] font-bold tracking-tight text-ok">Все в расчёте</p>
               )}
-              <p className="help mt-3">Плюс — человек вложил больше своей доли, ему должны. Доходы, полученные на свой кошелёк, считаются деньгами компании у этого человека.</p>
+              <DebtDetail detail={debt.detail} f={f} />
+              <p className="help mt-3">Плюс — человек вложил больше своей доли, ему должны. Доходы, полученные на свой кошелёк, считаются деньгами компании у этого человека: они уменьшают его вклад.</p>
             </section>
           )}
 
@@ -174,6 +175,32 @@ export default async function FinanceHome({ searchParams }: { searchParams: Prom
         </div>
       </div>
     </>
+  );
+}
+
+/** Из чего сложился долг: оплаченные расходы, полученные доходы, возвраты и доля каждого — за всё время. */
+function DebtDetail({ detail, f }: { detail: Awaited<ReturnType<typeof debtState>>["detail"]; f: Fmt }) {
+  const { lines, expense, income } = detail;
+  const settled = lines.some((l) => l.gave || l.got);
+  const net = expense - income;
+  const cell = "text-right tabular-nums whitespace-nowrap";
+  return (
+    <div className="mt-4 border-t border-line pt-3">
+      <p className="text-[13.5px] text-ink-2">
+        За всё время: расходы <b className="tabular-nums">{f(expense)}</b>, доходы <b className="tabular-nums text-ok">{f(income)}</b>{" "}
+        <Link href="/finance/income" className="underline hover:text-ink">по направлениям</Link>. {net >= 0 ? "Убыток" : "Прибыль"} <b className="tabular-nums">{f(Math.abs(net))}</b> делится по долям.
+      </p>
+      <div className="table-wrap mt-2"><table className="table">
+        <thead><tr><th />{lines.map((l) => <th key={l.id} className="text-right">{l.name}</th>)}</tr></thead>
+        <tbody>
+          <tr><td>Оплатил расходов</td>{lines.map((l) => <td key={l.id} className={cell}>{f(l.paid)}</td>)}</tr>
+          <tr><td>Получил доходов на свой счёт</td>{lines.map((l) => <td key={l.id} className={cell}>{l.received ? `−${f(l.received)}` : "—"}</td>)}</tr>
+          {settled && <tr><td>Возвраты: отдал − получил</td>{lines.map((l) => <td key={l.id} className={cell}>{f(l.gave - l.got, { sign: true })}</td>)}</tr>}
+          <tr><td>{net >= 0 ? "Его доля убытка" : "Его доля прибыли"} <span className="help">· {lines.map((l) => `${l.sharePct}%`).join(" / ")}</span></td>{lines.map((l) => <td key={l.id} className={cell}>{f(-l.lossShare, { sign: true })}</td>)}</tr>
+          <tr className="font-semibold"><td>Итог</td>{lines.map((l) => <td key={l.id} className={`${cell} ${l.balance < -0.005 ? "text-warn" : l.balance > 0.005 ? "text-ok" : ""}`}>{Math.abs(l.balance) < 0.005 ? "в расчёте" : `${l.balance > 0 ? "ему должны" : "должен"} ${f(Math.abs(l.balance))}`}</td>)}</tr>
+        </tbody>
+      </table></div>
+    </div>
   );
 }
 

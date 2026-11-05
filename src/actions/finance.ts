@@ -165,8 +165,16 @@ export async function saveCategory(_p: FinState, f: FormData): Promise<FinState>
     if (!name) throw new Error("Впишите название");
     const pnl = isPnlLine(str(f, "pnl")) ? (str(f, "pnl") as ReturnType<typeof pnlLine>["key"]) : "OPEX";
     const kind = pnlLine(pnl).kind;
-    if (id) await prisma.finCategory.update({ where: { id }, data: { name, pnl, kind } });
-    else await prisma.finCategory.create({ data: { name, pnl, kind, order: (await prisma.finCategory.count()) + 1 } });
+    // Галочки направлений (`dirs`, только верхний уровень); ни одной — категория предлагается во всех.
+    const tops = new Set((await prisma.finDirection.findMany({ where: { parentId: null }, select: { id: true } })).map((d) => d.id));
+    const dirs = [...new Set(f.getAll("dirs").map(String))].filter((d) => tops.has(d));
+    await prisma.$transaction(async (tx) => {
+      const cat = id ? await tx.finCategory.update({ where: { id }, data: { name, pnl, kind } }) : await tx.finCategory.create({ data: { name, pnl, kind, order: (await tx.finCategory.count()) + 1 } });
+      if (f.has("dirsPresent")) {
+        await tx.finCategoryDirection.deleteMany({ where: { categoryId: cat.id } });
+        if (dirs.length) await tx.finCategoryDirection.createMany({ data: dirs.map((directionId) => ({ categoryId: cat.id, directionId })) });
+      }
+    });
     return done("Категория сохранена");
   } catch (e) {
     return fail(e);

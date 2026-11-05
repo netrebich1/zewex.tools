@@ -17,7 +17,7 @@ export async function financeContext(me: CurrentUser) {
   const factor = await displayFactor(cur);
   const form: OpFormRefs = {
     dirs: refs.dirOptions.filter((d) => !d.archived).map((d) => ({ id: d.id, name: d.name, label: d.label, parentId: d.parentId })),
-    cats: refs.cats.filter((c) => !c.archived).map((c) => ({ id: c.id, name: c.name, kind: c.kind })),
+    cats: refs.cats.filter((c) => !c.archived).map((c) => ({ id: c.id, name: c.name, kind: c.kind, dirIds: c.dirIds })),
     partners: refs.partners.map((p) => ({ id: p.id, label: p.name })),
     accounts: accountRows.map((a) => a.account!).filter(Boolean),
     counterparties: refs.counterparties.filter((c) => !c.archived).map((c) => ({ id: c.id, name: c.name, categoryIds: c.categoryIds })),

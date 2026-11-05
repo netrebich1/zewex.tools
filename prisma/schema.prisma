@@ -1451,6 +1451,7 @@ model FinDirection {
   parent   FinDirection?  @relation("FinDirTree", fields: [parentId], references: [id], onDelete: Cascade)
   children FinDirection[] @relation("FinDirTree")
   ops      FinOp[]
+  categories FinCategoryDirection[]
 }
 
 model FinCategory {
@@ -1462,6 +1463,18 @@ model FinCategory {
   archived Boolean         @default(false)
   ops      FinOp[]
   counterparties FinCounterpartyCategory[]
+  directions FinCategoryDirection[]
+}
+
+/// Категория привязана к направлению верхнего уровня: в форме она предлагается только в нём. Без привязок — во всех.
+model FinCategoryDirection {
+  categoryId  String
+  directionId String
+  category    FinCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  direction   FinDirection @relation(fields: [directionId], references: [id], onDelete: Cascade)
+
+  @@id([categoryId, directionId])
+  @@index([directionId])
 }
 
 /// Контрагент: кому платим (Ahrefs, Hetzner, фрилансер) или от кого получаем. Может быть в нескольких категориях.

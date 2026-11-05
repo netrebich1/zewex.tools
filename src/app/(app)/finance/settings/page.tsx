@@ -12,11 +12,56 @@ import { Badge, Card } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
-const pnlSelect = (value: string) => (
+type CatRow = { id: string; name: string; pnl: string; archived: boolean; dirIds: string[] };
+type TopDir = { id: string; name: string; archived: boolean };
+
+/** Строки P&L для списка: доходам — выручка и прочее, расходам — расходные строки и прочее. */
+const pnlSelect = (value: string, kind: "INCOME" | "EXPENSE") => (
   <select name="pnl" className="input w-auto" defaultValue={value} title="Строка отчёта P&L">
-    {PNL_LINES.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+    {PNL_LINES.filter((l) => l.kind === kind || l.kind === "ANY" || l.key === value).map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
   </select>
 );
+
+const dirChecks = (tops: TopDir[], on: string[]) => (
+  <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-[13.5px]">
+    <span className="help">Направления{on.length ? "" : " (все)"}:</span>
+    {tops.filter((d) => !d.archived || on.includes(d.id)).map((d) => (
+      <label key={d.id} className="inline-flex items-center gap-1.5"><input type="checkbox" name="dirs" value={d.id} defaultChecked={on.includes(d.id)} /> {d.name}</label>
+    ))}
+  </div>
+);
+
+/** Список категорий одного вида: название, строка P&L, в каких направлениях предлагать. */
+function CatCard({ title, description, kind, pnlDefault, cats, tops }: { title: string; description: string; kind: "INCOME" | "EXPENSE"; pnlDefault: string; cats: CatRow[]; tops: TopDir[] }) {
+  return (
+    <Card title={title} description={description}>
+      <ul className="divide-y divide-line">
+        {cats.map((c) => (
+          <li key={c.id} className={`py-2.5 ${c.archived ? "opacity-60" : ""}`}>
+            <div className="flex flex-wrap items-start gap-2">
+              <ActionForm action={saveCategory} hidden={{ id: c.id, dirsPresent: "1" }} className="flex flex-1 flex-wrap items-center gap-2">
+                <input name="name" className="input flex-1 min-w-[140px]" defaultValue={c.name} />
+                {pnlSelect(c.pnl, kind)}
+                <SubmitButton className="btn-ghost btn-sm" pendingText="…">OK</SubmitButton>
+                {dirChecks(tops, c.dirIds)}
+              </ActionForm>
+              <ActionForm action={saveCategory} hidden={{ id: c.id, archived: c.archived ? "0" : "1" }} className="inline">
+                <SubmitButton className="btn-ghost btn-sm" pendingText="…">{c.archived ? "Вернуть" : "Скрыть"}</SubmitButton>
+              </ActionForm>
+              {c.archived && <Badge>скрыта</Badge>}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <ActionForm action={saveCategory} hidden={{ dirsPresent: "1" }} className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+        <input name="name" className="input flex-1 min-w-[140px]" placeholder={kind === "INCOME" ? "Новая категория дохода" : "Новая категория расхода"} required />
+        {pnlSelect(pnlDefault, kind)}
+        <SubmitButton className="btn-primary btn-sm" pendingText="…">Добавить</SubmitButton>
+        {dirChecks(tops, [])}
+      </ActionForm>
+    </Card>
+  );
+}
 
 /** Настройки финансов: партнёры и доли, направления (2 уровня), категории. Скрытое остаётся в старых операциях. */
 export default async function FinanceSettings() {
@@ -70,30 +115,10 @@ export default async function FinanceSettings() {
             </div>
           </Card>
 
-          <Card title="Категории" description="У каждой категории — строка отчёта P&L: выручка, прямые, операционные, налоги, прочее. Категории выручки предлагаются для доходов, остальные — для расходов. Скрытая категория не предлагается в форме, но остаётся в старых операциях.">
-            <ul className="divide-y divide-line">
-              {refs.cats.map((c) => (
-                <li key={c.id} className="py-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <ActionForm action={saveCategory} hidden={{ id: c.id }} className="flex flex-1 flex-wrap items-center gap-2">
-                      <input name="name" className="input flex-1 min-w-[140px]" defaultValue={c.name} />
-                      {pnlSelect(c.pnl)}
-                      <SubmitButton className="btn-ghost btn-sm" pendingText="…">OK</SubmitButton>
-                    </ActionForm>
-                    <ActionForm action={saveCategory} hidden={{ id: c.id, archived: c.archived ? "0" : "1" }} className="inline">
-                      <SubmitButton className="btn-ghost btn-sm" pendingText="…">{c.archived ? "Вернуть" : "Скрыть"}</SubmitButton>
-                    </ActionForm>
-                    {c.archived && <Badge>скрыта</Badge>}
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <ActionForm action={saveCategory} className="mt-3 flex flex-wrap items-end gap-2 border-t border-line pt-3">
-              <input name="name" className="input flex-1 min-w-[140px]" placeholder="Новая категория" required />
-              {pnlSelect("OPEX")}
-              <SubmitButton className="btn-primary btn-sm" pendingText="…">Добавить</SubmitButton>
-            </ActionForm>
-          </Card>
+          <CatCard title="Категории доходов" kind="INCOME" pnlDefault="REVENUE" cats={refs.cats.filter((c) => c.kind === "INCOME" || c.kind === "ANY")} tops={refs.parents}
+            description="Откуда приходят деньги. У каждого направления могут быть свои: отметьте направления у категории — и в форме дохода она будет предлагаться только в них. Без отметок — во всех." />
+          <CatCard title="Категории расходов" kind="EXPENSE" pnlDefault="OPEX" cats={refs.cats.filter((c) => c.kind === "EXPENSE")} tops={refs.parents}
+            description="Строка отчёта P&L: прямые, операционные, налоги. Категорию тоже можно показывать только в отмеченных направлениях. Скрытая не предлагается в форме, но остаётся в старых операциях." />
         </div>
 
         <div className="space-y-4">
