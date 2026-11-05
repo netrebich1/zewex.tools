@@ -23,6 +23,7 @@ const MODELS = [
   "anthropic/claude-haiku-5.5", "anthropic/claude-sonnet-5.5",
 ];
 const VARIANTS = ["A", "B", "C", "D", "E", "F", "G", "H"] as const;
+const EXTRA = ["anthropic/claude-haiku-5.5", "deepseek/deepseek-v4.1-flash", "deepseek/deepseek-v4-pro"];
 const G_MODELS = ["google/gemini-2.5-flash-lite", "google/gemini-2.5-flash", "openai/gpt-6-luna"];
 type V = (typeof VARIANTS)[number];
 const VNAME: Record<V, string> = { A: "A как сейчас", B: "B список правок", C: "C точечно+живость", D: "D перестройка фраз", E: "E правки+стиль", F: "F точечно без оригинала", G: "G три простых прохода", H: "H три прохода, второй с оригиналом" };
@@ -225,10 +226,11 @@ type Stat = { cost: number; inT: number; outT: number; rollback: number; chunks:
     return out;
   };
 
-  const todo = variants.flatMap((v) => (v === "G" || v === "H" ? G_MODELS : models).map((m) => ({ v, m })));
+  const todo = variants.flatMap((v) => ((v === "G" || v === "H") && !process.argv[4] ? G_MODELS : models).map((m) => ({ v, m })));
   const rows: string[] = [];
   await mapLimit(todo, 6, async ({ v, m }) => {
-    const position = v === "G" || v === "H" ? 6 * MODELS.length + (v === "H" ? G_MODELS.length : 0) + G_MODELS.indexOf(m) : VARIANTS.indexOf(v) * MODELS.length + Math.max(0, MODELS.indexOf(m));
+    const extra = EXTRA.includes(m) && (v === "G" || v === "H" || !MODELS.includes(m));
+    const position = extra ? 60 + VARIANTS.indexOf(v) * EXTRA.length + EXTRA.indexOf(m) : v === "G" || v === "H" ? 6 * MODELS.length + (v === "H" ? G_MODELS.length : 0) + G_MODELS.indexOf(m) : VARIANTS.indexOf(v) * MODELS.length + Math.max(0, MODELS.indexOf(m));
     const label = `${String(position + 1).padStart(2, "0")} · ${v}/${m.split("/")[1]}`;
     if (await prisma.deeplItem.findFirst({ where: { jobId: job!.id, position, status: "done" } })) { console.log("skip", label); return; }
     await prisma.deeplItem.deleteMany({ where: { jobId: job!.id, position } });
