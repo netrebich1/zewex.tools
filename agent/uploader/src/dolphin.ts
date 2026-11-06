@@ -85,8 +85,9 @@ export class Dolphin {
     try {
       if (!this.authed) await this.login();
       await fetchAll((page) => this.get(`/v1.0/browser_profiles?limit=50&page=${page}`));
-      if (out.length) return out;
+      if (out.length) { await this.checkAccount(out); return out; }
     } catch (e) {
+      if (e instanceof AgentError && e.kind === "dolphin_auth" && this.wrongAccount) throw e;
       if (e instanceof AgentError && e.kind === "dolphin_offline") throw e;
       log.warn("локальный список профилей не прочитан, пробую облачный API", e);
     }
@@ -98,8 +99,31 @@ export class Dolphin {
     return out;
   }
 
+  /**
+   * Локальный API отдаёт профили того аккаунта, в который вошло приложение Dolphin, а не аккаунта токена.
+   * Сверяем с облачным списком по токену команды: ни одного общего профиля → Dolphin на ПК в чужом аккаунте.
+   */
+  private wrongAccount = false;
+  private async checkAccount(local: DolphinProfile[]): Promise<void> {
+    if (!this.token) return;
+    let cloud: string[];
+    try {
+      const res = await fetch("https://dolphin-anty-api.com/browser_profiles?limit=50&page=1", { headers: { Authorization: `Bearer ${this.token}` }, signal: AbortSignal.timeout(30000) });
+      if (!res.ok) return;
+      const j = (await res.json().catch(() => ({}))) as { data?: Array<{ id?: unknown }> };
+      cloud = (Array.isArray(j.data) ? j.data : []).map((p) => String(p?.id ?? "")).filter(Boolean);
+    } catch { return; }
+    const ids = new Set(local.map((p) => p.id));
+    this.wrongAccount = cloud.length ? !cloud.some((id) => ids.has(id)) : local.length > 0;
+    if (this.wrongAccount) throw this.wrongAccountError();
+  }
+  private wrongAccountError() {
+    return new AgentError("dolphin_auth", "Dolphin Anty на этом ПК вошёл в другой аккаунт, не в аккаунт вашей команды (токен в настройках портала). Выйдите из аккаунта в Dolphin и войдите в свой.");
+  }
+
   /** Запуск профиля с автоматизацией → адрес CDP. */
   async start(profileId: string): Promise<{ port: number; wsEndpoint: string; ws: string }> {
+    if (this.wrongAccount) throw this.wrongAccountError();
     if (!this.authed) await this.login();
     let r = await this.get<{ success?: boolean; automation?: { port?: number; wsEndpoint?: string }; error?: string; message?: string }>(`/v1.0/browser_profiles/${profileId}/start?automation=1`, 120000);
     if (r.status === 401) { this.authed = false; await this.login(); r = await this.get(`/v1.0/browser_profiles/${profileId}/start?automation=1`, 120000); }

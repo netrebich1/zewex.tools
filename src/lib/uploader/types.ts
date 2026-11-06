@@ -33,7 +33,7 @@ export const TRANSIENT: ReadonlySet<string> = new Set<ErrorKind>(["dolphin_offli
 
 export const ERROR_LABELS: Record<ErrorKind, string> = {
   dolphin_offline: "Dolphin Anty не запущен на ПК агента",
-  dolphin_auth: "Dolphin не принял токен API — проверьте токен в настройках",
+  dolphin_auth: "Dolphin: токен не принят или Dolphin на ПК вошёл в чужой аккаунт",
   profile_not_found: "Профиль Dolphin не найден — проверьте сопоставление",
   profile_busy: "Профиль уже открыт в Dolphin — закройте его и повторите",
   proxy_failed: "Прокси профиля не отвечает — смените прокси в Dolphin или выберите другой профиль",

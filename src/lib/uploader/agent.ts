@@ -69,22 +69,27 @@ export async function profiles(ctx: Ctx, b: Body) {
   // Профили принадлежат команде агента: их аккаунт Dolphin = токен этой команды.
   const teamId = await agentTeamId(ctx.agent);
   let n = 0;
+  // Профиль уже принадлежит другой команде — не перехватываем: значит, Dolphin на этом ПК вошёл в чужой аккаунт.
+  const ids = list.map((p) => str(p.id, 40)).filter((x): x is string => !!x);
+  const owned = await prisma.uplProfile.findMany({ where: { id: { in: ids }, teamId: { not: null } }, select: { id: true, teamId: true } });
+  const foreign = new Set(owned.filter((p) => teamId && p.teamId !== teamId).map((p) => p.id));
+  if (foreign.size) console.warn(`[uploader] агент «${ctx.agent.name}»: ${foreign.size} профилей другой команды не приняты — Dolphin на ПК вошёл в чужой аккаунт`);
   for (const p of list.slice(0, 5000)) {
     const id = str(p.id, 40);
     const name = str(p.name, 190);
-    if (!id || !name) continue;
+    if (!id || !name || foreign.has(id)) continue;
     const data = { agentId: ctx.agent.id, teamId, name, platform: str(p.platform, 20), tags: Array.isArray(p.tags) ? (p.tags.slice(0, 20) as Prisma.InputJsonValue) : Prisma.DbNull, seenAt: now };
     await prisma.uplProfile.upsert({ where: { id }, update: data, create: { id, ...data } });
     n++;
   }
   // Имена профилей в сопоставлениях обновляем (профиль могли переименовать в Dolphin).
-  const accounts = await prisma.uplAccount.findMany({ where: { profileId: { in: list.map((p) => str(p.id, 40)).filter((x): x is string => !!x) } }, select: { id: true, profileId: true, profileName: true } });
+  const accounts = await prisma.uplAccount.findMany({ where: { profileId: { in: ids.filter((id) => !foreign.has(id)) } }, select: { id: true, profileId: true, profileName: true } });
   for (const a of accounts) {
     const p = list.find((x) => str(x.id, 40) === a.profileId);
     const name = p ? str(p.name, 190) : null;
     if (name && name !== a.profileName) await prisma.uplAccount.update({ where: { id: a.id }, data: { profileName: name } });
   }
-  return { ok: true, saved: n };
+  return { ok: true, saved: n, foreign: foreign.size };
 }
 
 async function toAgentTask(t: UplTask): Promise<AgentTask> {

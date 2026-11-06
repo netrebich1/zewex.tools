@@ -6,6 +6,7 @@ import { hostname, platform, release } from "node:os";
 import { PortalClient } from "./api";
 import { askConfig, loadConfig } from "./config";
 import { Dolphin } from "./dolphin";
+import { AgentError } from "./errors";
 import { pause, sleep } from "./humanize";
 import { log } from "./log";
 import { AGENT_VERSION, DEFAULT_HUMANIZE, PROTOCOL, type AgentTask, type UplHumanize } from "./protocol";
@@ -65,7 +66,11 @@ async function main() {
   while (!shuttingDown) {
     try {
       if (Date.now() - lastHelloAt > (dolphinToken ? 10 : 2) * 60_000) await hello();
-      if (Date.now() - lastProfilesAt > 60 * 60_000) await syncProfiles().catch((e) => log.warn("список профилей не отправлен", e));
+      if (Date.now() - lastProfilesAt > 60 * 60_000) await syncProfiles().catch((e) => {
+        log.warn("список профилей не отправлен", e);
+        // Dolphin в чужом аккаунте: показываем в окне и на портале, повтор через 5 минут, а не на каждом опросе.
+        if (e instanceof AgentError && e.kind === "dolphin_auth") { log.setState(e.message); lastProfilesAt = Date.now() - 55 * 60_000; }
+      });
       const r = await api.next(running.size, log.state());
       await maybeUpdate(r.latest, r.latestUrl, running.size);
       for (const id of r.stop) stopRuns.add(id);
