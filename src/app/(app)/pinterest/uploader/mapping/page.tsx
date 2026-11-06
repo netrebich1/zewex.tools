@@ -7,6 +7,8 @@ import { matchScore, sameTeam, suggestProfiles } from "@/lib/uploader/match";
 import { setAccountStatusAction, setProfileAction } from "@/actions/uploader";
 import { AccountBadge, dt } from "@/components/uploader/ui";
 import { ProfileSelect } from "@/components/uploader/ProfileSelect";
+import { TeamReadinessCard } from "@/components/uploader/TeamReadiness";
+import { myReadiness } from "@/lib/uploader/teams";
 import { AcceptAllSure, AcceptSuggestion } from "@/components/uploader/MappingControls";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +20,11 @@ export const dynamic = "force-dynamic";
 export default async function UploaderMappingPage() {
   const me = await requireUploader();
   const sites = await visiblePinSites(me);
-  const [accounts, profiles, lastEvents] = await Promise.all([
+  const [accounts, profiles, lastEvents, ready] = await Promise.all([
     prisma.uplAccount.findMany({ where: { pinSiteId: { in: sites.map((s) => s.id) } } }),
     prisma.uplProfile.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, tags: true, seenAt: true, teamId: true } }),
     prisma.uplEvent.findMany({ where: { pinSiteId: { in: sites.map((s) => s.id) }, result: { not: "ok" } }, orderBy: { at: "desc" }, take: 30 }),
+    myReadiness(me),
   ]);
   const accBy = new Map(accounts.map((a) => [a.pinSiteId, a]));
   const takenBy = new Map<string, string>();
@@ -35,9 +38,9 @@ export default async function UploaderMappingPage() {
 
   return (
     <>
-      <PageHeader title="Сопоставление сайтов и профилей" subtitle="Один сайт = один аккаунт Pinterest = один профиль Dolphin Anty. Называйте профиль в Dolphin доменом сайта (или впишите домен в тег/заметку) — тогда портал предложит пару сам. Список профилей присылает агент (раз в час)." />
+      <PageHeader title="Сопоставление сайтов и профилей" subtitle="Один сайт = один аккаунт Pinterest = один профиль Dolphin Anty. Называйте профиль в Dolphin доменом сайта (или впишите домен в тег/заметку) — тогда портал предложит пару сам. В списке — только профили из Dolphin команды сайта; их присылает агент этой команды (при запуске и раз в час)." />
       <div className="space-y-4">
-        {!profiles.length && <Card><p className="help">Профилей пока нет: запустите (или перезапустите) агент на ПК с открытым Dolphin Anty — он пришлёт список при старте и затем раз в час. <Link href="/pinterest/uploader/agents" className="underline">Агенты</Link>.</p></Card>}
+        <TeamReadinessCard rows={ready} />
         <Card title={`Сайты · ${sites.length}`} description={unmapped ? `Без профиля: ${unmapped}${suggestions.size ? `, с предложением: ${suggestions.size}` : ""}. Выбор в строке сохраняется сразу.` : "Все сайты сопоставлены."} actions={<AcceptAllSure count={sure} />}>
           <div className="table-wrap"><table className="table">
             <thead><tr><th>Сайт</th><th>Профиль Dolphin</th><th>Предложение</th><th>Аккаунт Pinterest</th><th>Последняя заливка</th><th>Состояние</th><th></th></tr></thead>

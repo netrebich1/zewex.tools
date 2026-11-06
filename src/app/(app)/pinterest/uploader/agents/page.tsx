@@ -8,7 +8,8 @@ import { agentRows } from "@/lib/uploader/views";
 import { agentLatestVersion, downloads, olderVersion } from "@/lib/uploader/release";
 import { setRows } from "@/lib/uploader/sets";
 import { saveAgentAction, uploadAgentBuildAction } from "@/actions/uploader";
-import { agentTeamOptions, teamTokenRows } from "@/lib/uploader/teams";
+import { agentTeamOptions, myReadiness, teamTokenRows } from "@/lib/uploader/teams";
+import { TeamReadinessCard } from "@/components/uploader/TeamReadiness";
 import { AgentTokenForm, RevokeAgentButton } from "@/components/uploader/AgentControls";
 import { AgentBadge, ago } from "@/components/uploader/ui";
 
@@ -19,7 +20,7 @@ const TZS = ["Europe/Kyiv", "Europe/Warsaw", "Europe/Berlin", "Europe/Moscow", "
 /** Агенты: токены, состояние, параллельность, расписание; скачивание сборки; загрузка сборки (админ). */
 export default async function UploaderAgentsPage() {
   const me = await requireUploader();
-  const [agents, latest, dl, sets, teams, tokens] = await Promise.all([agentRows(me), agentLatestVersion(), downloads(), setRows(me), agentTeamOptions(me), teamTokenRows(me)]);
+  const [agents, latest, dl, sets, teams, tokens, ready] = await Promise.all([agentRows(me), agentLatestVersion(), downloads(), setRows(me), agentTeamOptions(me), teamTokenRows(me), myReadiness(me)]);
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
   const hasToken = new Set(tokens.filter((t) => t.hint).map((t) => t.teamId));
   const noTeam = agents.filter((a) => !a.teamId);
@@ -32,6 +33,7 @@ export default async function UploaderAgentsPage() {
         <div className="space-y-4">
           {noTeam.length > 0 && <div className="rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-[13.5px]"><b>Без команды: {noTeam.map((a) => a.name).join(", ")}.</b> Выберите команду в карточке агента — без неё он не получит токен Dolphin.</div>}
           {noToken.length > 0 && <div className="rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-[13.5px]"><b>Нет токена Dolphin API у команды: {noToken.map((t) => teamName.get(t) ?? t).join(", ")}.</b> Без него агенты команды не прочитают и не откроют профили. Токен вводит администратор или лид команды в <Link href="/pinterest/uploader/settings" className="underline">Настройках</Link> (кабинет dolphin-anty.com → API).</div>}
+          <TeamReadinessCard rows={ready} />
           <Card title={`Мои агенты · ${agents.length}`}>
             {agents.length === 0 ? <p className="help">Агентов нет. Добавьте справа, скачайте программу и вставьте в неё токен.</p> : (
               <div className="space-y-3">{agents.map((a) => (

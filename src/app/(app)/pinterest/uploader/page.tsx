@@ -18,7 +18,7 @@ export default async function UploaderTodayPage({ searchParams }: { searchParams
   const q = await searchParams;
   const today = todayKey(new Date(), TZ);
   const day = isDay(sp(q, "day") ?? "") ? (sp(q, "day") as string) : today;
-  const [rows, agents, runs, sets, profileCount] = await Promise.all([todayRows(me, day), agentRows(me), runRows(me, 5), setRows(me), prisma.uplProfile.count()]);
+  const [rows, agents, runs, sets, profileCount] = await Promise.all([todayRows(me, day), agentRows(me), runRows(me, 5), setRows(me), prisma.uplProfile.count({ where: { teamId: { in: me.activeTeamId ? [me.activeTeamId] : me.teamIds } } })]);
   const now = new Date();
   const withFile = rows.filter((r) => r.file);
   const uploaded = withFile.filter((r) => r.uploaded).length;
@@ -35,7 +35,7 @@ export default async function UploaderTodayPage({ searchParams }: { searchParams
     <>
       <PageHeader title={`Заливка на ${formatRu(day)}`} subtitle="Файл выгрузки каждого сайта агент загружает в Pinterest через профиль Dolphin Anty и ставит отметку в «Проектах». Запуск кнопкой или по расписанию агента." />
       <div className="space-y-4">
-        {profileCount === 0 && <div className="rounded-xl border border-warn/40 bg-warn-soft px-4 py-3 text-[13.5px]"><b>Список профилей Dolphin ещё не получен.</b> Агент присылает его при запуске и раз в час: перезапустите агент на ПК с открытым Dolphin, затем откройте <Link href="/pinterest/uploader/mapping" className="underline">Сопоставление</Link>.</div>}
+        {profileCount === 0 && <div className="rounded-xl border border-warn/40 bg-warn-soft px-4 py-3 text-[13.5px]"><b>Профилей Dolphin вашей команды пока нет.</b> Что не так — видно по шагам в <Link href="/pinterest/uploader/mapping" className="underline">«Готовности команды»</Link> на «Сопоставлении»; подробно — в <Link href="/pinterest/uploader/guide" className="underline">Инструкции</Link>.</div>}
         <div className="flex flex-wrap items-center gap-2">
           {quick(today, "Сегодня")}{quick(addDays(today, 1), "Завтра")}{quick(addDays(today, -1), "Вчера")}
           <span className="help ml-2">Сайтов с файлом: <b>{withFile.length}</b> · залито: <b>{uploaded}</b>{noProfile ? <> · <span className="text-warn">без профиля: {noProfile}</span> (<Link href="/pinterest/uploader/mapping" className="underline">сопоставить</Link>)</> : null}</span>

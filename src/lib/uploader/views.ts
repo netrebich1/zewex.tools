@@ -51,9 +51,9 @@ export type AgentRow = {
   hostInfo: Record<string, unknown> | null; settings: AgentSettings; schedule: AgentSchedule; tokenHint: string; createdAt: Date; teamId: string | null;
 };
 
-/** Агенты: свои (админ — все), с именами владельцев. */
+/** Агенты: свои (админ — все), выбрана команда в шапке — только её агенты; с именами владельцев. */
 export async function agentRows(me: CurrentUser): Promise<AgentRow[]> {
-  const agents = await prisma.uplAgent.findMany({ where: { revokedAt: null, ...(me.role === "ADMIN" ? {} : { userId: me.id }) }, orderBy: { createdAt: "desc" } });
+  const agents = await prisma.uplAgent.findMany({ where: { revokedAt: null, ...(me.role === "ADMIN" ? {} : { userId: me.id }), ...(me.activeTeamId ? { teamId: me.activeTeamId } : {}) }, orderBy: { createdAt: "desc" } });
   const users = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(agents.map((a) => a.userId))] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
   return agents.map((a) => ({
     id: a.id, name: a.name, teamId: a.teamId, userId: a.userId, userName: users.get(a.userId) ?? "сотрудник", status: a.status, state: a.state, lastSeenAt: a.lastSeenAt, version: a.version,
@@ -99,7 +99,8 @@ export async function runView(runId: string): Promise<RunView | null> {
 /** Список запусков (свои агенты или все для админа). */
 export async function runRows(me: CurrentUser, take = 50) {
   return prisma.uplRun.findMany({
-    where: me.role === "ADMIN" ? {} : { OR: [{ userId: me.id }, { agent: { userId: me.id } }] },
+    // Выбрана команда в шапке — только запуски агентов этой команды (и у админа).
+    where: { AND: [me.role === "ADMIN" ? {} : { OR: [{ userId: me.id }, { agent: { userId: me.id } }] }, me.activeTeamId ? { agent: { teamId: me.activeTeamId } } : {}] },
     orderBy: { createdAt: "desc" }, take,
     include: { agent: { select: { id: true, name: true } } },
   });
