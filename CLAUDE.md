@@ -180,3 +180,7 @@
 - Экраны `src/app/(app)/tasks/*`: дашборд (`stats`), `today` (`dayView`), `board` (канбан, drag-and-drop → `moveCard`), `tree`, `projects` + `projects/[id]` (дашборд проекта с подпроектами), `t/[id]` (карточка), `new`, `routines`, `reports`, `settings`. Компоненты `components/tasks/*`; `TkForm` — обёртка server action с сообщением и refresh.
 - Telegram: один бот на портал, long polling в воркере (`worker/tasks.ts` → `tasksPollLoop`, вебхук не нужен), обработка `lib/tasks/bot.ts`: текст → задача (кому открыт инструмент) или текстовый отчёт, голосовое → `lib/tasks/voice.ts` (слот `transcribe` → OpenAI `audio/transcriptions`, расход в `UsageLog`; слот `text` → пункты «что сделано») → `TkReport`; кнопки done/tmrw/today/moveall/delrep. Дайджесты (`lib/tasks/digest.ts`) утром/вечером в час из `TkSettings` — `tasksTick` в `worker/cron.ts` раз в минуту; мгновенные уведомления `notifyUser` (назначили, комментарий).
 - Правила ключей ИИ для расшифровки: страница проекта «Задачи» → слоты `transcribe` (модель `gpt-4o-mini-transcribe`, ≈$0.003/мин) и `text`.
+
+## Article Copy (раздел Pinterest, проект `copy`)
+- Мешап статей из уже одобренных фото сервиса «Статьи» (`/pinterest/copy`): карта ключей (ядро + формулировка), запас по командам, нишам и сайтам. Решения владельца, устройство и план — `docs/copy/README.md`.
+- Код: `src/lib/copy/*`, `src/actions/copy.ts`, `src/app/(app)/pinterest/copy/*`, `src/components/copy/*`; модели `CopySettings`, `CopySite`, `CopyCore`. Таблицы статей только читаются. Пересчёт карты — воркер (`copyTick` в `worker/cron.ts`).

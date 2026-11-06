@@ -255,6 +255,13 @@ for (const sl of blogSlots) {
   console.log(`blog seed: ${blogSeed.recipes.length} recipes (${created} new, ${updated} updated)`);
 }
 
+// ───────────────────────────── Article Copy (мешап статей из одобренных фото) ─────────────────────────────
+await prisma.project.upsert({
+  where: { slug: "copy" },
+  update: {},
+  create: { sectionId: pinterest.id, slug: "copy", name: "Article Copy", description: "Новые статьи из уже одобренных фото: карта ключей, запас по сайтам, сборка без повторной модерации", url: "/pinterest/copy", status: "ACTIVE", order: 5 },
+});
+
 // Финансы Wexora: закрытый инструмент (PRIVATE_TOOLS), видят владелец и те, кому он выдал доступ.
 const wexora = await prisma.section.findUnique({ where: { slug: "wexora" } });
 await prisma.project.upsert({

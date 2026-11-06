@@ -107,3 +107,7 @@
 - Режимы: `Article.photoReview=true` — после `select` статья ждёт модерации фото (PHOTO_REVIEW), текст после одобрения и сразу публикация; `false` — текст сразу, после `assemble` модерация статьи (REVIEW_PENDING). `publishMode: moderate_first` → черновик в WP, иначе publish.
 - Google Таблицы: `src/lib/articles/sheets.ts` (Sheets API под сервисным аккаунтом, ключ в `ArtSettings.sheetsKeyEnc`, ставит админ в настройках сайта — `components/articles/SheetsCard.tsx`). Вкладка = домен сайта, колонки по заголовкам; импорт на шаге «Ключи» нового запуска (`SheetImport.tsx`, `launchArticlesAction` с `source=sheet`: рецепт по номеру из «Сценарий», режим из «Режим»), статья помнит строку (`Article.sheetRow/sheetTab`); отчёт (ссылка, дата, статус) пишет этап `publish`, «ошибка» — `runner.fail`, досылка — `resyncSheets` в `worker/cron.ts`.
 - Слоты ключей проекта: `text_main`, `text_fast`, `vision`, `image_main`, `photo_dfs`, `photo_serp`. Файлы: `storage/articles/<id>/…`.
+
+## Article Copy (раздел Pinterest, проект `copy`)
+- Мешап статей из уже одобренных фото сервиса «Статьи» (`/pinterest/copy`): карта ключей (ядро + формулировка), запас по командам, нишам и сайтам. Решения владельца, устройство и план — `docs/copy/README.md`.
+- Код: `src/lib/copy/*`, `src/actions/copy.ts`, `src/app/(app)/pinterest/copy/*`, `src/components/copy/*`; модели `CopySettings`, `CopySite`, `CopyCore`. Таблицы статей только читаются. Пересчёт карты — воркер (`copyTick` в `worker/cron.ts`).

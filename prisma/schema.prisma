@@ -3558,3 +3558,72 @@ model TkSettings {
   lastError   String?   @db.Text
   updatedAt   DateTime  @updatedAt
 }
+
+// ───────────────────────────── Article Copy (раздел Pinterest, проект `copy`) ─────────────────────────────
+// Мешап статей из уже одобренных фото сервиса «Статьи»: тратимся только на текст. Этап 1 — карта ключей и запас
+// (docs/copy/README.md). Таблицы статей (Article, ArtPhoto, ArtPhotoCandidate) только читаются.
+
+/// Общие настройки Article Copy (одна строка id="main") и состояние пересчёта карты ключей
+model CopySettings {
+  id                 String    @id @default("main") @db.VarChar(8)
+  /// false — банк фото у каждой команды свой; true — общий на все команды (меняет только главный админ)
+  sharedBank         Boolean   @default(false)
+  /// Сколько фото в новой статье по умолчанию
+  photosPerArticle   Int       @default(25)
+  /// Максимум общих кадров с любой одной существующей статьёй, %
+  maxOverlapPct      Int       @default(30)
+  /// Сколько раз одно фото может стоять на одном сайте
+  maxPerSite         Int       @default(3)
+  /// Резерв берётся с оценкой ИИ не ниже этой
+  minReserveScore    Float     @default(8)
+  rebuildRequestedAt DateTime?
+  builtAt            DateTime?
+  buildMs            Int       @default(0)
+  buildError         String?   @db.Text
+  updatedAt          DateTime  @updatedAt
+}
+
+/// Сайт сервиса «Статьи», привязанный к Article Copy: на него можно публиковать мешап-статьи
+model CopySite {
+  id          String   @id @default(uuid()) @db.Char(36)
+  artSiteId   String   @unique @db.Char(36)
+  teamId      String
+  publish     Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([teamId])
+}
+
+/// Ядро ключа (ключ без формулировки и года) в разрезе команды и ниши: кто и как его уже писал и сколько из него можно собрать.
+/// Таблица пересобирается целиком (src/lib/copy/build.ts).
+model CopyCore {
+  id              String   @id @default(uuid()) @db.Char(36)
+  teamId          String
+  /// women | interior — группы ниш не смешиваются
+  grp             String   @db.VarChar(16)
+  niche           String   @db.VarChar(32)
+  core            String   @db.VarChar(191)
+  /// Опубликованных статей по ядру (в банке ядра)
+  articles        Int
+  /// [{k: ключ, m: формулировка, s: siteId, a: articleId, u: ссылка | null}] — статьи команды по ядру, любые статусы
+  formulations    Json
+  /// Сайты команды, где ядро уже стоит
+  siteIds         Json
+  /// Формулировки, занятые кем-либо (все команды)
+  usedModifiers   Json
+  freeModifiers   Int
+  photosPublished Int
+  /// Уникальные кадры резерва, которых нет среди опубликованных
+  photosReserve   Int
+  /// Сколько статей выходит по кадрам и правилу совпадения
+  byPhotos        Int
+  /// Привязанные сайты команды той же группы ниш, где ядра ещё нет
+  freeSites       Int
+  /// min(byPhotos, freeSites)
+  capacity        Int
+  builtAt         DateTime
+
+  @@unique([teamId, niche, core])
+  @@index([teamId, grp, capacity])
+}

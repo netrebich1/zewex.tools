@@ -17,6 +17,7 @@ import { keywordsArticleDatesTick, keywordsDaily, keywordsRequeueStale, keywords
 import { uploaderTick } from "@/lib/uploader/runs";
 import { newsDaily } from "./news";
 import { tasksTick } from "./tasks";
+import { copyTick } from "@/lib/copy/build";
 
 /** Периодические задачи воркера: сторож зависших задач, уборка (позже). */
 export function startCron(): () => void {
@@ -74,5 +75,8 @@ export function startCron(): () => void {
   // Задачи: регламенты → задачи, дайджесты в Telegram в свой час — раз в минуту (через 30 с после старта).
   const tasks = () => tasksTick().then((r) => { if (r.routines || r.digest) log.info(`tasks tick: routines +${r.routines}${r.digest ? `, digest ${r.digest}` : ""}`); }).catch((e) => log.warn("tasks tick failed", e));
   timers.push(setTimeout(tasks, 30_000), setInterval(tasks, 60_000));
+  // Article Copy: карта ключей и запас — пересчёт по запросу с экрана и раз в 6 часов (через 4 мин после старта, затем раз в минуту проверка).
+  const copy = () => copyTick().then((r) => { if (r.rebuilt) log.info(`copy map rebuilt: ${r.cores} cores in ${r.ms} ms`); }).catch((e) => log.warn("copy tick failed", e));
+  timers.push(setTimeout(copy, 4 * 60_000), setInterval(copy, 60_000));
   return () => timers.forEach(clearInterval);
 }
