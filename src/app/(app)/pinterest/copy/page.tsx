@@ -36,7 +36,7 @@ export default async function CopyHome({ searchParams }: { searchParams: Promise
       <div className="space-y-5">
         <Card title="Сколько можно собрать" description="«По кадрам» — сколько статей выходит из накопленных фото. «На сайты» — сколько из них есть куда поставить: привязанные сайты, где этой темы ещё нет.">
           {!st.builtAt ? (
-            <Empty title="Запас ещё не посчитан" hint="Первый расчёт идёт пару минут после выкладки. Обновите страницу чуть позже." />
+            <Empty title="Запас ещё не посчитан" hint="Расчёт занимает 4–5 минут. Обновите страницу чуть позже." />
           ) : (
             <>
               <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">

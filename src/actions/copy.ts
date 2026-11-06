@@ -38,7 +38,7 @@ export async function saveCopyRules(_p: FormState, f: FormData): Promise<FormSta
     });
   } catch (e) { return fail(e); }
   refresh();
-  return { ok: "Правила сохранены. Запас пересчитается в течение пары минут." };
+  return { ok: "Правила сохранены. Запас пересчитается за 4–5 минут." };
 }
 
 /** Привязка сайтов: отмеченные публикуют мешап-статьи. Меняются только сайты, которые человек видит. */
@@ -55,7 +55,7 @@ export async function saveCopySites(_p: FormState, f: FormData): Promise<FormSta
     await prisma.copySettings.update({ where: { id: "main" }, data: { rebuildRequestedAt: new Date() } });
   } catch (e) { return fail(e); }
   refresh();
-  return { ok: `Сайтов привязано: ${f.getAll("site").length}. Запас пересчитается в течение пары минут.` };
+  return { ok: `Сайтов привязано: ${f.getAll("site").length}. Запас пересчитается за 4–5 минут.` };
 }
 
 export async function requestCopyRebuild(_p: FormState, _f: FormData): Promise<FormState> {
@@ -65,5 +65,5 @@ export async function requestCopyRebuild(_p: FormState, _f: FormData): Promise<F
     await prisma.copySettings.update({ where: { id: "main" }, data: { rebuildRequestedAt: new Date() } });
   } catch (e) { return fail(e); }
   refresh();
-  return { ok: "Пересчёт запрошен, обновите страницу через минуту-две." };
+  return { ok: "Пересчёт запрошен, обновите страницу через 4–5 минут." };
 }
