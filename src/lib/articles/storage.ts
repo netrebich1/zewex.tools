@@ -7,7 +7,7 @@
  *   articles/<articleId>/gen/<n>.png                      сгенерированные картинки (формат «ИИ-фото»)
  */
 import { execFile } from "node:child_process";
-import { readFile, readdir, stat, statfs } from "node:fs/promises";
+import { readdir, stat, statfs } from "node:fs/promises";
 import { promisify } from "node:util";
 import sharp from "sharp";
 import { absPath, ensureDir, exists, publicUrl, removePath, writeFileAtomic } from "@/lib/pins/storage";
@@ -90,39 +90,18 @@ export async function purgeRejectedCandidateFiles(articleId: string, keepCandIds
 }
 
 /**
- * Банк одобренных кадров под мешап (решение владельца 2026-10-22, диск рос на ~11 ГБ/сутки): JPEG ≤1200 px, q80 —
- * для статьи-подборки на Pinterest этого хватает, вес ≈ вдвое меньше копии «как для WordPress» (≤1600, q85).
+ * Файлы одобренных кандидатов после публикации (решение владельца 2026-11-06: резерв хранится только ссылкой на источник,
+ * файлы банка занимали 44 ГБ). У вошедших в статью (`selectedIds`) удаляются оригинал и миниатюра: тот же кадр есть у фото
+ * статьи (миниатюра в photos/, файл — в медиатеке WordPress). У резерва и keep удаляется оригинал, миниатюра остаётся
+ * (экраны и будущий мешап); сам кадр при надобности скачивается заново по ArtPhotoCandidate.url. Возвращает, сколько байт освободили.
  */
-export const BANK_IMAGE = { maxSide: 1200, quality: 80 } as const;
-
-/** Кадр банка: уже JPEG не больше BANK_IMAGE.maxSide — не пережимаем (без потерь от повторного сжатия). */
-async function toBankJpeg(src: Buffer): Promise<Buffer | null> {
-  const meta = await sharp(src).metadata();
-  if (meta.format === "jpeg" && (meta.width ?? 0) <= BANK_IMAGE.maxSide && (meta.height ?? 0) <= BANK_IMAGE.maxSide) return null;
-  return sharp(src).rotate().resize({ width: BANK_IMAGE.maxSide, height: BANK_IMAGE.maxSide, fit: "inside", withoutEnlargement: true }).jpeg({ quality: BANK_IMAGE.quality, mozjpeg: true }).toBuffer();
-}
-
-/**
- * Хранить одобренных кандидатов в банке (BANK_IMAGE). У вошедших в статью (`selectedIds`) оригинал и миниатюра удаляются:
- * тот же кадр есть у фото статьи (миниатюра в photos/, файл — в медиатеке WordPress). Возвращает, сколько байт освободили.
- */
-export async function compactKeptCandidates(articleId: string, keepIds: Iterable<string>, selectedIds: Set<string>): Promise<number> {
+export async function dropKeptCandidateOriginals(articleId: string, keepIds: Iterable<string>, selectedIds: Set<string>): Promise<number> {
   let saved = 0;
   for (const id of keepIds) {
-    const rel = candidateRel(articleId, id);
-    if (selectedIds.has(id)) {
-      for (const r of [rel, candidateThumbRel(articleId, id)]) {
-        const size = await stat(absPath(r)).then((s) => s.size).catch(() => 0);
-        if (size) { await removePath(r).catch(() => {}); saved += size; }
-      }
-      continue;
-    }
-    let src: Buffer;
-    try { src = await readFile(absPath(rel)); } catch { continue; }
-    const out = await toBankJpeg(src).catch(() => null);
-    if (out && out.length < src.length) {
-      await writeFileAtomic(rel, out);
-      saved += src.length - out.length;
+    const rels = selectedIds.has(id) ? [candidateRel(articleId, id), candidateThumbRel(articleId, id)] : [candidateRel(articleId, id)];
+    for (const r of rels) {
+      const size = await stat(absPath(r)).then((s) => s.size).catch(() => 0);
+      if (size) { await removePath(r).catch(() => {}); saved += size; }
     }
   }
   return saved;

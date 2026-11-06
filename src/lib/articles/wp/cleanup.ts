@@ -7,7 +7,7 @@
  */
 import { prisma } from "@/lib/db";
 import { stat } from "node:fs/promises";
-import { absPath, compactKeptCandidates, purgeRejectedCandidateFiles, removePath } from "@/lib/articles/storage";
+import { absPath, dropKeptCandidateOriginals, purgeRejectedCandidateFiles, removePath } from "@/lib/articles/storage";
 
 /** Кандидаты, файлы которых храним всегда: одобренные ИИ-оценкой (под будущий мешап статей, решение 2026-10-19). */
 export const KEPT_CANDIDATE_STATUSES = ["keep", "selected", "reserve"];
@@ -51,7 +51,8 @@ export async function purgePublishedPhotos(articleId: string, opts: { force?: bo
  *  1. наша копия фото статьи удаляется, если фото есть в медиатеке WordPress (ArtPhoto.publicUrl → wpUrl); миниатюра,
  *     факты, описание, источник остаются — для мешапа файл берётся с wpUrl;
  *  2. у кандидатов, вошедших в статью, удаляются оригинал и миниатюра (дубль фото статьи), если их не добавила ИИ-модерация;
- *  3. резерв и keep хранятся в банке: JPEG ≤1200 px, q80 (BANK_IMAGE).
+ *  3. у резерва и keep удаляется оригинал (решение владельца 2026-11-06: резерв хранится ссылкой на источник —
+ *     ArtPhotoCandidate.url, миниатюра, описание и факты остаются; файл при надобности скачивается заново).
  * Только для статьи с записью на сайте, где все фото уже в медиатеке: иначе запись ссылается на наше хранилище.
  */
 export async function slimPublishedFiles(articleId: string, opts: { force?: boolean } = {}): Promise<{ savedBytes: number; photos: number } | null> {
@@ -72,8 +73,10 @@ export async function slimPublishedFiles(articleId: string, opts: { force?: bool
   const aiAdded = new Set(aiResults.flatMap((r) => ((r.added as Array<{ candidateId?: string }> | null) ?? []).map((x) => String(x?.candidateId || ""))).filter(Boolean));
   const kept = await prisma.artPhotoCandidate.findMany({ where: { articleId, status: { in: KEPT_CANDIDATE_STATUSES } }, select: { id: true, status: true } });
   const selected = new Set(kept.filter((c) => c.status === "selected" && !aiAdded.has(c.id)).map((c) => c.id));
-  saved += await compactKeptCandidates(articleId, kept.map((c) => c.id), selected);
+  saved += await dropKeptCandidateOriginals(articleId, kept.map((c) => c.id), selected);
   if (selected.size) await prisma.artPhotoCandidate.updateMany({ where: { id: { in: [...selected] } }, data: { path: "", thumbPath: "" } });
+  const linkOnly = kept.filter((c) => !selected.has(c.id)).map((c) => c.id);
+  if (linkOnly.length) await prisma.artPhotoCandidate.updateMany({ where: { id: { in: linkOnly }, path: { not: "" } }, data: { path: "" } });
   return { savedBytes: saved, photos };
 }
 

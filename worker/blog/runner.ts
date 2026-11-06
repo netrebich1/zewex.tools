@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db";
 import type { BlogPost, BlogStatus } from "@prisma/client";
 import { decryptSecret } from "@/lib/crypto";
 import { postCost } from "@/lib/blog/ai";
+import { purgeCandidateOriginals } from "@/lib/blog/storage";
 import { mergeSiteSettings, type BlogBrief, type BlogCursor, type BlogOutline, type BlogRecipeSnapshot } from "@/lib/blog/types";
 import { nextStage, stageLabel, type StageKey } from "@/lib/blog/stages";
 import { classifyFailure, inWords, isTransientError, retryPlan, TRANSIENT_DELAYS_MS, type Classified, type RetryKind } from "@/lib/articles/errors";
@@ -196,6 +197,8 @@ export async function processPost(post: BlogPost, workerId: string, shuttingDown
       if (!next) {
         await prisma.blogPost.update({ where: { id: current.id }, data: { status: "COMPLETED", stage: "done", workerId: null, leaseUntil: null, attempts: 0, finishedAt: new Date(), note: null, costUsd: await postCost(current.id) } });
         log.info(`blog post ${current.id} completed`);
+        // Оригиналы кандидатов после публикации не нужны (2026-11-06): остаются миниатюры и ссылки на источник.
+        void purgeCandidateOriginals(current.id).then(() => prisma.blogPhotoCandidate.updateMany({ where: { postId: current.id, path: { not: "" } }, data: { path: "" } })).catch(() => {});
         // История проекта (раздел «Проекты»): блоговая статья опубликована.
         void prisma.blogPost.findUnique({ where: { id: current.id }, select: { siteId: true, keyword: true, wpUrl: true, costUsd: true } }).then((p) => p && logEventByBlogSite(p.siteId, { kind: "blog_published", refId: current.id, summary: eventText.articlePublished(p.keyword, p.wpUrl), payload: { costUsd: p.costUsd } })).catch(() => {});
         return;

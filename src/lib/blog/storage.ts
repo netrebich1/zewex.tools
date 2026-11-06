@@ -35,3 +35,19 @@ export async function purgeCandidateFiles(postId: string, keepIds: Set<string>):
     if (!keepIds.has(id)) await removePath(`${dir}/${name}`).catch(() => {});
   }
 }
+
+/**
+ * После публикации поста (решение владельца 2026-11-06): оригиналы кандидатов больше не нужны — резерв служит только для
+ * замены фото на проверке до публикации. Миниатюры остаются для карточки поста. Возвращает число удалённых файлов.
+ */
+export async function purgeCandidateOriginals(postId: string): Promise<number> {
+  const dir = `${postDir(postId)}/cand`;
+  let names: string[] = [];
+  try { names = await readdir(absPath(dir)); } catch { return 0; }
+  let n = 0;
+  for (const name of names) {
+    if (name.endsWith(".thumb.webp")) continue;
+    await removePath(`${dir}/${name}`).then(() => { n++; }).catch(() => {});
+  }
+  return n;
+}
