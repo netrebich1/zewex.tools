@@ -21,7 +21,8 @@ import { audienceFacts } from "@/lib/articles/photo/audience";
 import { fallbackTrendBrief } from "@/lib/articles/photo/queries";
 import { buildCaption } from "@/lib/articles/photo/caption";
 import { recordPhotoFingerprints } from "@/lib/articles/photo/fingerprints";
-import type { ArtRunSettings, PhotoSearchConfig } from "@/lib/articles/types";
+import { mergeSiteSettings, type ArtRunSettings, type PhotoSearchConfig } from "@/lib/articles/types";
+import { loadTeamAutostart, teamAutostart } from "@/lib/articles/teamQueue";
 import type { CopySettings } from "@prisma/client";
 import { copySettings, type CoreForm } from "./build";
 import { groupOf, pickModifier, splitKeyword, swapModifier } from "./keys";
@@ -292,17 +293,27 @@ export async function buildForSite(site: Site, st: CopySettings, opts: { dry?: b
   return { result: null, tried };
 }
 
-/** Привязанные сайты и сколько статей каждому собрано сегодня. */
-export async function copySitesToday(): Promise<Array<Site & { today: number }>> {
+/** Привязанные сайты: сколько статей каждому собрано сегодня, включено ли написание и сколько собранных ещё не дописано. */
+export async function copySitesToday(): Promise<Array<Site & { today: number; writingOn: boolean; backlog: number }>> {
   const bound = await prisma.copySite.findMany({ where: { publish: true }, select: { artSiteId: true } });
   if (!bound.length) return [];
   const since = new Date(); since.setHours(0, 0, 0, 0);
-  const [sites, counts] = await Promise.all([
-    prisma.artSite.findMany({ where: { id: { in: bound.map((b) => b.artSiteId) }, isActive: true }, select: { id: true, teamId: true, name: true, nicheCode: true } }),
+  const [sites, counts, waiting, g, teams] = await Promise.all([
+    prisma.artSite.findMany({ where: { id: { in: bound.map((b) => b.artSiteId) }, isActive: true }, select: { id: true, teamId: true, name: true, nicheCode: true, settings: true } }),
     prisma.copyArticle.groupBy({ by: ["siteId"], where: { createdAt: { gte: since } }, _count: { _all: true } }),
+    prisma.$queryRaw<Array<{ siteId: string; c: bigint }>>`SELECT c.siteId, COUNT(*) c FROM CopyArticle c JOIN Article a ON a.id = c.articleId WHERE a.status IN ('PENDING','RUNNING') GROUP BY c.siteId`,
+    prisma.artSettings.findUnique({ where: { id: "main" }, select: { writingMaster: true } }),
+    loadTeamAutostart(prisma),
   ]);
   const by = new Map(counts.map((c) => [c.siteId, c._count._all]));
-  return sites.map((s) => ({ ...s, today: by.get(s.id) ?? 0 }));
+  const wait = new Map(waiting.map((w) => [w.siteId, Number(w.c)]));
+  return sites.map(({ settings, ...s }) => ({
+    ...s,
+    today: by.get(s.id) ?? 0,
+    // Те же выключатели, что смотрит очередь статей (worker/articles/queue.ts): система, команда, сайт.
+    writingOn: (g?.writingMaster ?? true) && teamAutostart(teams, s.teamId).writingMaster && mergeSiteSettings(settings).autostart.writingEnabled,
+    backlog: wait.get(s.id) ?? 0,
+  }));
 }
 
 /** Тик воркера (раз в минуту): до двух статей за проход, сайтам с меньшим числом сегодняшних статей — раньше. */
@@ -312,9 +323,16 @@ export async function copyAutoTick(): Promise<{ created: number; note: string }>
   if (!st.autoEnabled || !st.builtAt) return { created: 0, note: "" };
   running = true;
   try {
-    const sites = (await copySitesToday()).filter((s) => s.today < st.dailyPerSite && (siteWait.get(s.id) ?? 0) < Date.now()).sort((a, b) => a.today - b.today);
-    let created = 0;
+    const all = await copySitesToday();
     const notes: string[] = [];
+    // Написание выключено или собранные не дописываются — новые не собираем, чтобы статьи не копились молча.
+    const maxBacklog = Math.max(4, st.dailyPerSite * 2);
+    for (const s of all) {
+      if (!s.writingOn) notes.push(`${s.name}: написание выключено (сайт, команда или общий выключатель в «Статьях») — не собираем`);
+      else if (s.backlog >= maxBacklog) notes.push(`${s.name}: ${s.backlog} собранных статей ещё не дописаны — новые ждут`);
+    }
+    const sites = all.filter((s) => s.writingOn && s.backlog < maxBacklog && s.today < st.dailyPerSite && (siteWait.get(s.id) ?? 0) < Date.now()).sort((a, b) => a.today - b.today);
+    let created = 0;
     for (const s of sites) {
       if (created >= MAX_PER_TICK) break;
       const { result, tried } = await buildForSite(s, st);
@@ -323,7 +341,7 @@ export async function copyAutoTick(): Promise<{ created: number; note: string }>
       if (!result?.ok) notes.push(`${s.name}: ${tried.length ? tried.map((t) => (t.ok ? "" : `${t.core} — ${t.reason}`)).join("; ") : "подходящих ядер нет"}`);
     }
     const note = notes.join("\n").slice(0, 4000);
-    if (sites.length) await prisma.copySettings.update({ where: { id: "main" }, data: { autoAt: new Date(), autoNote: note } });
+    if (sites.length || note !== (st.autoNote ?? "")) await prisma.copySettings.update({ where: { id: "main" }, data: { autoAt: new Date(), autoNote: note } });
     return { created, note };
   } finally {
     running = false;
