@@ -264,6 +264,8 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
 /** Выбрать ядро для сайта и собрать статью: пробует несколько ядер, неудачные откладывает на 6 часов. */
 export async function buildForSite(site: Site, st: CopySettings, opts: { dry?: boolean; review?: boolean; core?: string } = {}): Promise<{ result: CopyPlanResult | null; tried: CopyPlanResult[] }> {
   const niches = await siteNiches(site.id);
+  // Пустой сайт без указанной ниши: неизвестно, женский он или интерьерный — автоматически на него не ставим.
+  if (!site.nicheCode && !niches.size) return { result: null, tried: [{ ok: false, core: "—", reason: "у сайта нет статей и не указана ниша — неизвестно, какие темы ему подходят" }] };
   const grp = groupOf(site.nicheCode ?? [...niches.keys()][0]);
   const since = new Date(Date.now() - 24 * 60 * 60_000);
   const [cores, recent] = await Promise.all([
@@ -272,7 +274,8 @@ export async function buildForSite(site: Site, st: CopySettings, opts: { dry?: b
   ]);
   const recentSet = new Set(recent.map((r) => `${r.niche}|${r.core}`));
   const now = Date.now();
-  const fit = cores.filter((c) => !((c.siteIds as string[] | null) ?? []).includes(site.id) && (!niches.size || niches.has(c.niche)) && (opts.core || (!recentSet.has(`${c.niche}|${c.core}`) && (skipped.get(`${site.teamId}|${c.niche}|${c.core}`) ?? 0) < now)));
+  // Ядро из одного слова («outfits», «style») — не тема: у таких статей темой была сама приставка, их не смешиваем.
+  const fit = cores.filter((c) => (opts.core || c.core.includes(" ")) && !((c.siteIds as string[] | null) ?? []).includes(site.id) && (!niches.size || niches.has(c.niche)) && (opts.core || (!recentSet.has(`${c.niche}|${c.core}`) && (skipped.get(`${site.teamId}|${c.niche}|${c.core}`) ?? 0) < now)));
   // Ниша — случайно, пропорционально тому, сколько сайт о ней пишет; внутри ниши — ядра с самым большим запасом.
   const nicheList = [...new Set(fit.map((c) => c.niche))];
   const weight = (x: string) => niches.get(x) ?? 1;
