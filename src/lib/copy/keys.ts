@@ -14,6 +14,24 @@ const LEAD = new Set(["classy", "trendy", "simple", "aesthetic", "cute", "elegan
 const TAIL = new Set(["ideas", "idea", "inspo", "inspiration"]);
 const YEAR = /^20\d\d$/;
 
+/** Запасные приставки, когда стандартные заняты (не меняют смысл темы; easy и best сюда не входят). */
+export const EXTRA_FORMULATIONS = ["stylish", "pretty", "gorgeous", "stunning", "beautiful", "lovely", "dreamy", "charming"] as const;
+
+/** Первая свободная формулировка ядра: стандартные по порядку, потом запасные; null — заняты все. */
+export function pickModifier(used: Iterable<string>): string | null {
+  const u = new Set(used);
+  for (const m of [...FORMULATIONS, ...EXTRA_FORMULATIONS]) if (!u.has(m)) return m;
+  return null;
+}
+
+/** Ключ с другой приставкой: «Classy Almond Nail Ideas 2027» + chic → «Chic Almond Nail Ideas 2027». */
+export function swapModifier(keyword: string, modifier: string): string {
+  const words = keyword.trim().split(/\s+/);
+  if (words.length > 1 && LEAD.has(words[0].toLowerCase().replace(/[^a-z]/g, ""))) words.shift();
+  if (modifier) words.unshift(modifier[0].toUpperCase() + modifier.slice(1));
+  return words.join(" ");
+}
+
 export type KeyParts = { core: string; modifier: string };
 
 export function splitKeyword(keyword: string): KeyParts {

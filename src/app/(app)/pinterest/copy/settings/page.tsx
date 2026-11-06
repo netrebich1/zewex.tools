@@ -2,7 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { Card, Empty, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { saveCopyRules, saveCopySites } from "@/actions/copy";
+import { saveCopyAuto, saveCopyRules, saveCopySites } from "@/actions/copy";
 import { settingsData } from "@/lib/copy/queries";
 import { GROUP_LABEL } from "@/lib/copy/keys";
 
@@ -44,12 +44,32 @@ export default async function CopySettingsPage() {
           )}
         </Card>
 
+        <Card title="Автосборка" description="Когда включена, система сама выбирает тему, свободную формулировку, сайт и кадры, пишет текст и публикует статью — без ручных шагов. Работает только по отмеченным выше сайтам.">
+          <ActionForm action={saveCopyAuto} className="space-y-4">
+            <label className="inline-flex items-center gap-2 text-[14px] font-medium">
+              <input type="checkbox" name="autoEnabled" defaultChecked={st.autoEnabled} disabled={!admin} />
+              Собирать и публиковать статьи автоматически
+            </label>
+            <div className="flex flex-wrap items-end gap-4">
+              <label className="block"><span className="label">Статей в сутки на один сайт</span><input name="dailyPerSite" type="number" min={1} max={50} defaultValue={st.dailyPerSite} disabled={!admin} className="input py-1.5 w-28" /></label>
+            </div>
+            <label className="inline-flex items-center gap-2 text-[14px]">
+              <input type="checkbox" name="reviewBeforePublish" defaultChecked={st.reviewBeforePublish} disabled={!admin} />
+              Показывать статью в модерации статей перед публикацией <span className="help">(выключено — публикуется сама)</span>
+            </label>
+            <p className="help">Текст пишется ключами ИИ той команды, чей сайт. Написание идёт в общей очереди сервиса «Статьи» и подчиняется его лимитам сайта.</p>
+            {admin && <div><SubmitButton className="btn-brand" pendingText="Сохраняю…">Сохранить</SubmitButton></div>}
+          </ActionForm>
+        </Card>
+
         <Card title="Правила сборки" description="По этим числам считается запас и будут собираться статьи. Меняет администратор; общий банк — только главный администратор.">
           <ActionForm action={saveCopyRules} className="space-y-4">
             <div className="flex flex-wrap items-end gap-4">
               <label className="block"><span className="label">Фото в статье</span><input name="photosPerArticle" type="number" min={5} max={100} defaultValue={st.photosPerArticle} disabled={!admin} className="input py-1.5 w-28" /></label>
               <label className="block"><span className="label">Общих кадров с одной статьёй, % не больше</span><input name="maxOverlapPct" type="number" min={0} max={100} defaultValue={st.maxOverlapPct} disabled={!admin} className="input py-1.5 w-28" /></label>
               <label className="block"><span className="label">Одно фото на сайте, раз не больше</span><input name="maxPerSite" type="number" min={1} max={10} defaultValue={st.maxPerSite} disabled={!admin} className="input py-1.5 w-28" /></label>
+              <label className="block"><span className="label">Доля резерва в статье, %</span><input name="reservePct" type="number" min={0} max={100} defaultValue={st.reservePct} disabled={!admin} className="input py-1.5 w-28" /></label>
+              <label className="block"><span className="label">Не собирать, если кадров меньше</span><input name="minPhotos" type="number" min={5} max={100} defaultValue={st.minPhotos} disabled={!admin} className="input py-1.5 w-28" /></label>
               <label className="block"><span className="label">Резерв с оценкой ИИ от</span><input name="minReserveScore" type="number" min={0} max={10} step={0.5} defaultValue={st.minReserveScore} disabled={!admin} className="input py-1.5 w-28" /></label>
             </div>
             <label className="inline-flex items-center gap-2 text-[14px]">

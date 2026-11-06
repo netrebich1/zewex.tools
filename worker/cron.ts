@@ -18,6 +18,7 @@ import { uploaderTick } from "@/lib/uploader/runs";
 import { newsDaily } from "./news";
 import { tasksTick } from "./tasks";
 import { copyTick } from "@/lib/copy/build";
+import { copyAutoTick } from "@/lib/copy/auto";
 
 /** Периодические задачи воркера: сторож зависших задач, уборка (позже). */
 export function startCron(): () => void {
@@ -78,5 +79,8 @@ export function startCron(): () => void {
   // Article Copy: карта ключей и запас — пересчёт по запросу с экрана и раз в 6 часов (через 4 мин после старта, затем раз в минуту проверка).
   const copy = () => copyTick().then((r) => { if (r.rebuilt) log.info(`copy map rebuilt: ${r.cores} cores in ${r.ms} ms`); }).catch((e) => log.warn("copy tick failed", e));
   timers.push(setTimeout(copy, 4 * 60_000), setInterval(copy, 60_000));
+  // Article Copy, автосборка: если включена — до двух мешап-статей в минуту на привязанные сайты в пределах суточной нормы.
+  timers.push(setInterval(() => copyAutoTick().then((r) => { if (r.created) log.info(`copy auto: +${r.created}
+${r.note}`); }).catch((e) => log.warn("copy auto failed", e)), 60_000));
   return () => timers.forEach(clearInterval);
 }

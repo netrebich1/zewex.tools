@@ -3576,6 +3576,18 @@ model CopySettings {
   maxPerSite         Int       @default(3)
   /// Резерв берётся с оценкой ИИ не ниже этой
   minReserveScore    Float     @default(8)
+  /// Автосборка: воркер сам выбирает ядро, формулировку, сайт и кадры и ставит статью в очередь сервиса «Статьи»
+  autoEnabled        Boolean   @default(false)
+  /// Сколько мешап-статей в сутки на один привязанный сайт
+  dailyPerSite       Int       @default(2)
+  /// Меньше этого числа кадров статью не собираем (ядро пропускается)
+  minPhotos          Int       @default(15)
+  /// Какую долю статьи стараемся взять из резерва, %
+  reservePct         Int       @default(60)
+  /// true — собранная статья ждёт одобрения в модерации статей; false — публикуется сама
+  reviewBeforePublish Boolean  @default(false)
+  autoAt             DateTime?
+  autoNote           String?   @db.Text
   rebuildRequestedAt DateTime?
   builtAt            DateTime?
   buildMs            Int       @default(0)
@@ -3626,4 +3638,28 @@ model CopyCore {
 
   @@unique([teamId, niche, core])
   @@index([teamId, grp, capacity])
+}
+
+/// Мешап-статья, собранная Article Copy: сама статья живёт в Article и идёт обычным конвейером с этапа «План по фото».
+model CopyArticle {
+  id            String   @id @default(uuid()) @db.Char(36)
+  articleId     String   @unique @db.Char(36)
+  teamId        String
+  siteId        String   @db.Char(36)
+  niche         String   @db.VarChar(32)
+  core          String   @db.VarChar(191)
+  modifier      String   @db.VarChar(32)
+  keyword       String
+  photos        Int
+  fromReserve   Int
+  fromPublished Int
+  /// Из скольких старых статей взяты кадры
+  donors        Int
+  /// Кадры резерва, которые не скачались по ссылке источника
+  lost          Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@index([siteId, createdAt])
+  @@index([teamId, niche, core])
+  @@index([createdAt])
 }

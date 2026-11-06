@@ -55,6 +55,26 @@ export async function settingsData(me: CurrentUser) {
   return { settings, sites: sites.map((s) => ({ id: s.id, name: s.name, team: s.team.name, grp: groupOf(s.nicheCode), articles: s._count.articles, bound: on.has(s.id) })) };
 }
 
+/** Собранные статьи: последние 300 с состоянием в конвейере статей, счётчики за сегодня и итог автосборки. */
+export async function articlesData(me: CurrentUser) {
+  const [teams, settings] = await Promise.all([visibleTeams(me), copySettings()]);
+  const teamIds = teams.map((t) => t.id);
+  const since = new Date(); since.setHours(0, 0, 0, 0);
+  const [rows, total, today] = await Promise.all([
+    prisma.copyArticle.findMany({ where: { teamId: { in: teamIds } }, orderBy: { createdAt: "desc" }, take: 300 }),
+    prisma.copyArticle.count({ where: { teamId: { in: teamIds } } }),
+    prisma.copyArticle.count({ where: { teamId: { in: teamIds }, createdAt: { gte: since } } }),
+  ]);
+  const [arts, sites] = await Promise.all([
+    prisma.article.findMany({ where: { id: { in: rows.map((r) => r.articleId) } }, select: { id: true, status: true, stage: true, wpUrl: true, costUsd: true, error: true } }),
+    prisma.artSite.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.siteId))] } }, select: { id: true, name: true } }),
+  ]);
+  const art = new Map(arts.map((a) => [a.id, a]));
+  const site = new Map(sites.map((s) => [s.id, s.name]));
+  const published = await prisma.article.count({ where: { id: { in: rows.map((r) => r.articleId) }, status: "COMPLETED" } });
+  return { settings, total, today, published, rows: rows.map((r) => ({ ...r, site: site.get(r.siteId) ?? "—", art: art.get(r.articleId) ?? null })) };
+}
+
 export async function coreData(me: CurrentUser, id: string) {
   const core = await prisma.copyCore.findUnique({ where: { id } });
   if (!core || (me.role !== "ADMIN" && !me.teamIds.includes(core.teamId))) return null;

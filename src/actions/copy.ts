@@ -33,6 +33,8 @@ export async function saveCopyRules(_p: FormState, f: FormData): Promise<FormSta
         maxOverlapPct: Math.round(num(f, "maxOverlapPct", cur.maxOverlapPct, 0, 100)),
         maxPerSite: Math.round(num(f, "maxPerSite", cur.maxPerSite, 1, 10)),
         minReserveScore: num(f, "minReserveScore", cur.minReserveScore, 0, 10),
+        minPhotos: Math.round(num(f, "minPhotos", cur.minPhotos, 5, 100)),
+        reservePct: Math.round(num(f, "reservePct", cur.reservePct, 0, 100)),
         rebuildRequestedAt: new Date(),
       },
     });
@@ -56,6 +58,21 @@ export async function saveCopySites(_p: FormState, f: FormData): Promise<FormSta
   } catch (e) { return fail(e); }
   refresh();
   return { ok: `Сайтов привязано: ${f.getAll("site").length}. Запас пересчитается за 4–5 минут.` };
+}
+
+/** Автосборка: включение, суточная норма на сайт, нужна ли проверка статьи перед публикацией. */
+export async function saveCopyAuto(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  if (me.role !== "ADMIN") return { error: "Автосборку включает только администратор" };
+  let on = false;
+  try {
+    const cur = await copySettings();
+    on = flag(f, "autoEnabled");
+    await prisma.copySettings.update({ where: { id: "main" }, data: { autoEnabled: on, dailyPerSite: Math.round(num(f, "dailyPerSite", cur.dailyPerSite, 1, 50)), reviewBeforePublish: flag(f, "reviewBeforePublish") } });
+  } catch (e) { return fail(e); }
+  refresh();
+  revalidatePath(`${COPY}/articles`);
+  return { ok: on ? "Автосборка включена: первые статьи появятся в течение пары минут." : "Автосборка выключена. Уже собранные статьи допишутся и опубликуются." };
 }
 
 export async function requestCopyRebuild(_p: FormState, _f: FormData): Promise<FormState> {
