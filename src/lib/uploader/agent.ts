@@ -5,11 +5,12 @@
 import { createHash } from "node:crypto";
 import { Prisma, type UplAgent, type UplTask } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { decryptSecret, randomToken } from "@/lib/crypto";
+import { randomToken } from "@/lib/crypto";
 import { canUseTool, resolvePermissions } from "@/lib/permissions";
 import { writeFileAtomic, publicUrl } from "@/lib/pins/storage";
 import { eventText, logEventByPinSite } from "@/lib/projects/events";
 import { matchScore } from "./match";
+import { agentTeamId, teamDolphinToken } from "./teams";
 import { applyVerify, leaseUntil, settleRun, uplSettings, verifyText } from "./runs";
 import { ERROR_LABELS, MAX_ATTEMPTS, PAUSE_HOURS, PROTOCOL, TRANSIENT, UPLOADER, parseHumanize, type AgentTask, type ErrorKind, type Step, type TaskResult, type VerifyResult } from "./types";
 
@@ -22,9 +23,9 @@ export class UploaderError extends Error {
 }
 
 /** Новый токен агента: сам токен показывается один раз, в базе — только sha256. */
-export async function issueAgentToken(userId: string, name: string): Promise<{ id: string; token: string }> {
+export async function issueAgentToken(userId: string, name: string, teamId: string | null = null): Promise<{ id: string; token: string }> {
   const token = `zxu_${randomToken(24)}`;
-  const a = await prisma.uplAgent.create({ data: { userId, name: name.slice(0, 120) || "Агент", tokenHash: hashToken(token), tokenHint: token.slice(0, 10) }, select: { id: true } });
+  const a = await prisma.uplAgent.create({ data: { userId, teamId, name: name.slice(0, 120) || "Агент", tokenHash: hashToken(token), tokenHint: token.slice(0, 10) }, select: { id: true } });
   return { id: a.id, token };
 }
 
@@ -52,12 +53,11 @@ async function touch(ctx: Ctx, b: Body, status: "online" | "busy" = "online") {
   ctx.agent = await prisma.uplAgent.update({ where: { id: ctx.agent.id }, data: { status, lastSeenAt: new Date(), ...(state ? { state } : {}), ...(version ? { version } : {}), ...(b.hostInfo && typeof b.hostInfo === "object" ? { hostInfo: b.hostInfo as Prisma.InputJsonValue } : {}) } });
 }
 
-/** Первое знакомство: токен Dolphin (расшифрованный — только агенту по его токену), «человечность», адрес массовой загрузки. */
+/** Первое знакомство: токен Dolphin команды агента (расшифрованный — только ему), «человечность», адрес массовой загрузки. */
 export async function hello(ctx: Ctx, b: Body) {
   await touch(ctx, b);
   const s = await uplSettings();
-  let dolphinToken: string | null = null;
-  try { dolphinToken = s.dolphinTokenEnc ? decryptSecret(s.dolphinTokenEnc) : null; } catch { dolphinToken = null; }
+  const dolphinToken = await teamDolphinToken(await agentTeamId(ctx.agent));
   return { protocol: PROTOCOL, agent: { id: ctx.agent.id, name: ctx.agent.name }, dolphinToken, humanize: parseHumanize(s.humanize), bulkUrl: s.bulkUrl, pollSec: 20 };
 }
 
@@ -66,12 +66,14 @@ export async function profiles(ctx: Ctx, b: Body) {
   await touch(ctx, b);
   const list = Array.isArray(b.profiles) ? (b.profiles as Array<Record<string, unknown>>) : [];
   const now = new Date();
+  // Профили принадлежат команде агента: их аккаунт Dolphin = токен этой команды.
+  const teamId = await agentTeamId(ctx.agent);
   let n = 0;
   for (const p of list.slice(0, 5000)) {
     const id = str(p.id, 40);
     const name = str(p.name, 190);
     if (!id || !name) continue;
-    const data = { agentId: ctx.agent.id, name, platform: str(p.platform, 20), tags: Array.isArray(p.tags) ? (p.tags.slice(0, 20) as Prisma.InputJsonValue) : Prisma.DbNull, seenAt: now };
+    const data = { agentId: ctx.agent.id, teamId, name, platform: str(p.platform, 20), tags: Array.isArray(p.tags) ? (p.tags.slice(0, 20) as Prisma.InputJsonValue) : Prisma.DbNull, seenAt: now };
     await prisma.uplProfile.upsert({ where: { id }, update: data, create: { id, ...data } });
     n++;
   }
@@ -239,7 +241,7 @@ export async function fail(ctx: Ctx, b: Body) {
   // Профиль не открылся (прокси, ядро, не тот аккаунт) — пробуем другой профиль Dolphin с тем же доменом сайта.
   if (kind === "proxy_failed" || kind === "browser_missing" || kind === "profile_not_found") {
     const tried = [...(prev.triedProfiles ?? []), t.profileId];
-    const twin = await twinProfile(t.pinSiteId, tried);
+    const twin = await twinProfile(t.pinSiteId, tried, t.profileId);
     if (twin) {
       await prisma.uplTask.update({ where: { id: t.id }, data: { status: "QUEUED", profileId: twin.id, attempts: 0, leaseUntil: null, step: null, error: msg, errorKind: kind, result: { ...result, triedProfiles: tried } as Prisma.InputJsonValue } });
       await event(t.pinSiteId, t.id, "fail", "error", `${t.day}: ${msg}; пробую другой профиль ${twin.name} (${twin.id})`);
@@ -273,14 +275,16 @@ export async function fail(ctx: Ctx, b: Body) {
 }
 
 /**
- * Другой профиль Dolphin для сайта: полный домен в имени/тегах/заметке, ещё не пробовали в этом задании
+ * Другой профиль Dolphin для сайта (той же команды): полный домен в имени/тегах/заметке, ещё не пробовали в этом задании
  * и он не привязан к другому сайту. Свежие (виденные агентом позже) — первыми.
  */
-async function twinProfile(pinSiteId: string, tried: string[]): Promise<{ id: string; name: string } | null> {
+async function twinProfile(pinSiteId: string, tried: string[], failedId: string): Promise<{ id: string; name: string } | null> {
   const site = await prisma.pinSite.findUnique({ where: { id: pinSiteId }, select: { id: true, name: true } });
   if (!site) return null;
+  // Только из того же аккаунта Dolphin (команды), что и упавший профиль: чужой агент его не откроет.
+  const team = (await prisma.uplProfile.findUnique({ where: { id: failedId }, select: { teamId: true } }))?.teamId ?? null;
   const [profiles, taken] = await Promise.all([
-    prisma.uplProfile.findMany({ where: { id: { notIn: tried } }, orderBy: { seenAt: "desc" }, select: { id: true, name: true, tags: true } }),
+    prisma.uplProfile.findMany({ where: { id: { notIn: tried }, ...(team ? { teamId: team } : {}) }, orderBy: { seenAt: "desc" }, select: { id: true, name: true, tags: true } }),
     prisma.uplAccount.findMany({ where: { pinSiteId: { not: pinSiteId }, profileId: { not: null } }, select: { profileId: true } }),
   ]);
   const busy = new Set(taken.map((a) => a.profileId));

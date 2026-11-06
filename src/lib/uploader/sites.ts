@@ -6,9 +6,12 @@ import { pinSiteWhere } from "@/lib/sites/access";
 
 export type SiteRow = { id: string; name: string; teamId: string; wpConnectionId: string | null };
 
-/** Активные сайты пинов, которые видит этот человек. */
+/**
+ * Активные сайты пинов, которые видит этот человек. Выбрана команда в шапке — только сайты этой команды, и у администратора
+ * тоже (иначе администратор другой команды видит в заливке все сайты портала).
+ */
 export async function visiblePinSites(me: CurrentUser): Promise<SiteRow[]> {
-  return prisma.pinSite.findMany({ where: { ...(await pinSiteWhere(me)), isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, teamId: true, wpConnectionId: true } });
+  return prisma.pinSite.findMany({ where: { ...(await pinSiteWhere(me)), isActive: true, ...(me.activeTeamId ? { teamId: me.activeTeamId } : {}) }, orderBy: { name: "asc" }, select: { id: true, name: true, teamId: true, wpConnectionId: true } });
 }
 
 /**

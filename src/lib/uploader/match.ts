@@ -7,9 +7,12 @@
  * (`UplAccount.pinUsername`), так что ошибочно привязанный профиль не зальёт чужой файл молча.
  */
 
-export type MatchSite = { id: string; name: string };
-export type MatchProfile = { id: string; name: string; tags?: unknown };
+export type MatchSite = { id: string; name: string; teamId?: string };
+export type MatchProfile = { id: string; name: string; tags?: unknown; teamId?: string | null };
 export type MatchAccount = { pinSiteId: string; profileId: string | null };
+
+/** Профиль из аккаунта Dolphin команды сайта (профили без команды — старые записи до 2026-11-06 — не предлагаем). */
+export const sameTeam = (site: MatchSite, p: MatchProfile) => !site.teamId || p.teamId === site.teamId;
 
 /** Домен сайта из его названия в портале: «https://povixi.com/» → «povixi.com», «www.» убирается. */
 export function siteDomain(name: string): string {
@@ -51,7 +54,7 @@ export function suggestProfiles(sites: MatchSite[], profiles: MatchProfile[], ac
   const bestForProfile = new Map<string, { score: number; sites: string[] }>();
   for (const s of sites) {
     if (mapped.has(s.id)) continue;
-    const list = free.map((p) => ({ p, score: matchScore(s, p) })).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.p.name.localeCompare(b.p.name));
+    const list = free.filter((p) => sameTeam(s, p)).map((p) => ({ p, score: matchScore(s, p) })).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.p.name.localeCompare(b.p.name));
     if (!list.length) continue;
     out.set(s.id, list.slice(0, 5).map(({ p, score }) => ({ pinSiteId: s.id, profileId: p.id, profileName: p.name, score, sure: false })));
     for (const { p, score } of list) {

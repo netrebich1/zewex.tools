@@ -6,7 +6,7 @@ import { Messages } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 
 /** Выдача токена агенту: токен показывается один раз, с кнопкой «Скопировать». */
-export function AgentTokenForm() {
+export function AgentTokenForm({ teams, defaultTeamId }: { teams: Array<{ id: string; name: string }>; defaultTeamId: string | null }) {
   const [state, action] = useActionState<TokenState, FormData>(issueAgentAction, {});
   const [copied, setCopied] = useState(false);
   return (
@@ -21,6 +21,13 @@ export function AgentTokenForm() {
       <label className="block">
         <span className="label">Название (чей ПК)</span>
         <input name="name" className="input" placeholder="например: ПК Влада" maxLength={120} />
+      </label>
+      <label className="block">
+        <span className="label">Команда (агент получит токен Dolphin этой команды и будет заливать только её профили)</span>
+        <select name="teamId" className="input" defaultValue={defaultTeamId ?? ""} required>
+          <option value="" disabled>— выберите команду —</option>
+          {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
       </label>
       <SubmitButton className="btn-brand" pendingText="Выдаю…">Добавить агента и выдать токен</SubmitButton>
     </form>

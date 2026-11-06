@@ -14,6 +14,7 @@ import { createRun, retryFailed, stopRun, uplSettings } from "@/lib/uploader/run
 import { ACCOUNT_STATUS_LABELS, DEFAULT_HUMANIZE, HUMANIZE_FIELDS, isDay, parseHumanize, parseSchedule, type UplHumanize } from "@/lib/uploader/types";
 import { suggestProfiles } from "@/lib/uploader/match";
 import { setFor } from "@/lib/uploader/sets";
+import { agentTeamOptions, teamTokenRows } from "@/lib/uploader/teams";
 
 export type FormState = { error?: string; ok?: string };
 export type TokenState = FormState & { token?: string };
@@ -29,7 +30,10 @@ const refresh = (...paths: string[]) => { revalidatePath(BASE); for (const p of 
 export async function issueAgentAction(_p: TokenState, f: FormData): Promise<TokenState> {
   const me = await requireUploader();
   try {
-    const { token } = await issueAgentToken(me.id, str(f, "name") || `Агент ${me.name}`);
+    const teams = await agentTeamOptions(me);
+    const teamId = str(f, "teamId") || me.activeTeamId || (teams.length === 1 ? teams[0].id : "");
+    if (!teams.some((t) => t.id === teamId)) throw new Error("Выберите команду агента: он получит токен Dolphin этой команды");
+    const { token } = await issueAgentToken(me.id, str(f, "name") || `Агент ${me.name}`, teamId);
     refresh(`${BASE}/agents`);
     return { ok: "Токен выдан. Скопируйте его сейчас — второй раз он не показывается.", token };
   } catch (e) { return fail(e); }
@@ -57,7 +61,9 @@ export async function saveAgentAction(_p: FormState, f: FormData): Promise<FormS
     if (setId && !(await setFor(me, setId))) throw new Error("Набор не найден");
     const schedule = { enabled: str(f, "enabled") === "on", time: /^\d{2}:\d{2}$/.test(time) ? time : parseSchedule(a.schedule).time, tz: str(f, "tz") || parseSchedule(a.schedule).tz, setId: setId || null };
     const name = str(f, "name").slice(0, 120) || a.name;
-    await prisma.uplAgent.update({ where: { id: a.id }, data: { name, settings: { parallel }, schedule } });
+    const teamId = str(f, "teamId");
+    if (teamId && !(await agentTeamOptions(me)).some((t) => t.id === teamId)) throw new Error("Нет доступа к этой команде");
+    await prisma.uplAgent.update({ where: { id: a.id }, data: { name, settings: { parallel }, schedule, ...(teamId ? { teamId } : {}) } });
     refresh(`${BASE}/agents`);
     return { ok: "Сохранено" };
   } catch (e) { return fail(e); }
@@ -82,9 +88,11 @@ export async function uploadAgentBuildAction(_p: FormState, f: FormData): Promis
 
 /** Привязка профиля к сайту с проверками (1 сайт = 1 профиль). Пустой profileId — снять. */
 async function bindProfile(me: CurrentUser, pinSiteId: string, profileId: string): Promise<string> {
-    if (!(await visiblePinSites(me)).some((s) => s.id === pinSiteId)) throw new Error("Сайт не найден или закрыт для вас");
+    const site = (await visiblePinSites(me)).find((s) => s.id === pinSiteId);
+    if (!site) throw new Error("Сайт не найден или закрыт для вас");
     const profile = profileId ? await prisma.uplProfile.findUnique({ where: { id: profileId } }) : null;
     if (profileId && !profile) throw new Error("Профиль не найден в списке агентов");
+    if (profile && profile.teamId !== site.teamId) throw new Error(`Профиль «${profile.name}» из Dolphin другой команды — сайту можно привязать только профиль своей команды`);
     const taken = profileId ? await prisma.uplAccount.findFirst({ where: { profileId, pinSiteId: { not: pinSiteId } }, select: { pinSiteId: true } }) : null;
     if (taken) {
       const other = await prisma.pinSite.findUnique({ where: { id: taken.pinSiteId }, select: { name: true } });
@@ -123,7 +131,7 @@ export async function acceptAllSureAction(): Promise<FormState> {
   const me = await requireUploader();
   try {
     const sites = await visiblePinSites(me);
-    const [profiles, accounts] = await Promise.all([prisma.uplProfile.findMany({ select: { id: true, name: true, tags: true } }), prisma.uplAccount.findMany({ where: { profileId: { not: null } }, select: { pinSiteId: true, profileId: true } })]);
+    const [profiles, accounts] = await Promise.all([prisma.uplProfile.findMany({ select: { id: true, name: true, tags: true, teamId: true } }), prisma.uplAccount.findMany({ where: { profileId: { not: null } }, select: { pinSiteId: true, profileId: true } })]);
     const sug = suggestProfiles(sites, profiles, accounts);
     let n = 0;
     for (const [siteId, list] of sug) {
@@ -242,15 +250,19 @@ export async function deleteRunAction(_p: FormState, f: FormData): Promise<FormS
 
 // ───────────── настройки ─────────────
 
+/** Токен Dolphin API команды: админ — любой команды, лид — своей. Агенты команды получат его при следующем выходе на связь. */
 export async function saveDolphinTokenAction(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUploader();
-  if (!isAdmin(me)) return { error: "Только администратор" };
+  const teamId = str(f, "teamId");
+  const row = (await teamTokenRows(me)).find((t) => t.teamId === teamId);
+  if (!row?.canEdit) return { error: "Токен команды меняет администратор или лид этой команды" };
   const token = str(f, "token");
   if (!token) return { error: "Вставьте токен Dolphin API" };
   try {
-    await prisma.uplSettings.upsert({ where: { id: "main" }, update: { dolphinTokenEnc: encryptSecret(token), dolphinHint: secretHint(token) }, create: { id: "main", dolphinTokenEnc: encryptSecret(token), dolphinHint: secretHint(token) } });
-    refresh(`${BASE}/settings`);
-    return { ok: "Токен Dolphin сохранён; агенты получат его при следующем выходе на связь" };
+    const data = { tokenEnc: encryptSecret(token), hint: secretHint(token), updatedById: me.id };
+    await prisma.uplTeamToken.upsert({ where: { teamId }, update: data, create: { teamId, ...data } });
+    refresh(`${BASE}/settings`, `${BASE}/agents`);
+    return { ok: `Токен Dolphin команды «${row.teamName}» сохранён; её агенты получат его при следующем выходе на связь` };
   } catch (e) { return fail(e); }
 }
 

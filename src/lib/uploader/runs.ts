@@ -11,6 +11,7 @@ import { todayKey } from "@/lib/pins/schedule/math";
 import { previewDay } from "./csv";
 import { userAsCurrent, visiblePinSites } from "./sites";
 import { setSiteIds } from "./sets";
+import { agentTeamId } from "./teams";
 import { ERROR_LABELS, LEASE_SEC, MAX_ATTEMPTS, OFFLINE_SEC, parseAgentSettings, parseSchedule, type ErrorKind, type TaskResult, type VerifyResult } from "./types";
 
 export type CreateRunInput = { agentId: string; day: string; siteIds: string[]; parallel?: number; source?: "manual" | "schedule"; force?: boolean; userId?: string | null };
@@ -38,6 +39,9 @@ export async function createRun(me: CurrentUser, input: CreateRunInput): Promise
   ]);
   const accBy = new Map(accounts.map((a) => [a.pinSiteId, a]));
   const uploaded = new Set(uploads.map((u) => u.pinSiteId));
+  // Профиль из аккаунта Dolphin другой команды агент не откроет (у него токен своей команды) — такой сайт пропускаем.
+  const agentTeam = await agentTeamId(agent);
+  const profileTeam = new Map((await prisma.uplProfile.findMany({ where: { id: { in: accounts.map((a) => a.profileId).filter((x): x is string => !!x) } }, select: { id: true, teamId: true } })).map((p) => [p.id, p.teamId]));
   const skipped: CreateRunResult["skipped"] = [];
   const tasks: Prisma.UplTaskCreateManyRunInput[] = [];
   let order = 0;
@@ -48,6 +52,7 @@ export async function createRun(me: CurrentUser, input: CreateRunInput): Promise
       tasks.push({ pinSiteId: s.id, profileId: acc?.profileId ?? "", day: input.day, phase: "upload", steps: [{ kind: "upload_csv" }], status: "SKIPPED", order: order++, error: reason.slice(0, 255), errorKind, finishedAt: now });
     };
     if (!acc?.profileId) { skip("профиль Dolphin не сопоставлен", "profile_not_found"); continue; }
+    if (agentTeam && profileTeam.get(acc.profileId) !== agentTeam) { skip("профиль из Dolphin другой команды — запускайте агентом этой команды", "profile_not_found"); continue; }
     if (acc.status === "needs_login") { skip(ERROR_LABELS.not_logged_in, "not_logged_in"); continue; }
     if (acc.status === "off" || acc.status === "banned") { skip(`аккаунт: ${acc.status === "off" ? "выключен" : "заблокирован"}`); continue; }
     if ((acc.status === "paused" || acc.status === "limited") && acc.pausedUntil && acc.pausedUntil > now) { skip(`аккаунт на паузе до ${acc.pausedUntil.toLocaleString("ru-RU", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`, "rate_limited"); continue; }

@@ -7,8 +7,8 @@ import { isAdmin, requireUploader } from "@/lib/uploader/access";
 import { agentRows } from "@/lib/uploader/views";
 import { agentLatestVersion, downloads, olderVersion } from "@/lib/uploader/release";
 import { setRows } from "@/lib/uploader/sets";
-import { saveAgentAction, saveDolphinTokenAction, uploadAgentBuildAction } from "@/actions/uploader";
-import { uplSettings } from "@/lib/uploader/runs";
+import { saveAgentAction, uploadAgentBuildAction } from "@/actions/uploader";
+import { agentTeamOptions, teamTokenRows } from "@/lib/uploader/teams";
 import { AgentTokenForm, RevokeAgentButton } from "@/components/uploader/AgentControls";
 import { AgentBadge, ago } from "@/components/uploader/ui";
 
@@ -19,24 +19,19 @@ const TZS = ["Europe/Kyiv", "Europe/Warsaw", "Europe/Berlin", "Europe/Moscow", "
 /** Агенты: токены, состояние, параллельность, расписание; скачивание сборки; загрузка сборки (админ). */
 export default async function UploaderAgentsPage() {
   const me = await requireUploader();
-  const [agents, latest, dl, sets, settings] = await Promise.all([agentRows(me), agentLatestVersion(), downloads(), setRows(me), uplSettings()]);
+  const [agents, latest, dl, sets, teams, tokens] = await Promise.all([agentRows(me), agentLatestVersion(), downloads(), setRows(me), agentTeamOptions(me), teamTokenRows(me)]);
+  const teamName = new Map(teams.map((t) => [t.id, t.name]));
+  const hasToken = new Set(tokens.filter((t) => t.hint).map((t) => t.teamId));
+  const noTeam = agents.filter((a) => !a.teamId);
+  const noToken = [...new Set(agents.map((a) => a.teamId).filter((t): t is string => !!t && !hasToken.has(t)))];
   const now = new Date();
   return (
     <>
       <PageHeader title="Агенты" subtitle="Агент — программа «Zewex Uploader» на ПК сотрудника рядом с Dolphin Anty. Он держит связь с порталом, получает задания и заливает файлы." />
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <div className="space-y-4">
-          {!settings.dolphinTokenEnc && (
-            <div className="rounded-xl border border-danger/40 bg-danger-soft p-4">
-              <p className="text-[13.5px]"><b>Шаг 0 — токен Dolphin API не задан.</b> Без него агент не может прочитать профили Dolphin и открыть их. Токен один на команду Dolphin (кабинет dolphin-anty.com → API), вводится один раз администратором.</p>
-              {isAdmin(me) ? (
-                <ActionForm action={saveDolphinTokenAction} className="mt-2 flex flex-wrap items-center gap-2">
-                  <input name="token" className="input font-mono text-[12.5px] min-w-[320px] flex-1" placeholder="вставьте токен Dolphin API" autoComplete="off" required />
-                  <SubmitButton className="btn-primary" pendingText="Сохраняю…">Сохранить токен Dolphin</SubmitButton>
-                </ActionForm>
-              ) : <p className="help mt-1">Попросите администратора ввести его в <Link href="/pinterest/uploader/settings" className="underline">Настройках</Link>.</p>}
-            </div>
-          )}
+          {noTeam.length > 0 && <div className="rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-[13.5px]"><b>Без команды: {noTeam.map((a) => a.name).join(", ")}.</b> Выберите команду в карточке агента — без неё он не получит токен Dolphin.</div>}
+          {noToken.length > 0 && <div className="rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-[13.5px]"><b>Нет токена Dolphin API у команды: {noToken.map((t) => teamName.get(t) ?? t).join(", ")}.</b> Без него агенты команды не прочитают и не откроют профили. Токен вводит администратор или лид команды в <Link href="/pinterest/uploader/settings" className="underline">Настройках</Link> (кабинет dolphin-anty.com → API).</div>}
           <Card title={`Мои агенты · ${agents.length}`}>
             {agents.length === 0 ? <p className="help">Агентов нет. Добавьте справа, скачайте программу и вставьте в неё токен.</p> : (
               <div className="space-y-3">{agents.map((a) => (
@@ -50,6 +45,13 @@ export default async function UploaderAgentsPage() {
                   {a.hostInfo && <div className="help mt-1">{[a.hostInfo.os, a.hostInfo.dolphin ? `Dolphin ${a.hostInfo.dolphin}` : null, a.hostInfo.profiles != null ? `профилей ${a.hostInfo.profiles}` : null].filter(Boolean).join(" · ")}</div>}
                   <AutoForm action={saveAgentAction} hidden={{ agentId: a.id }} className="mt-2 flex flex-wrap items-end gap-3" showOk>
                     <label className="block"><span className="label">Название</span><input name="name" className="input py-1 w-[180px]" defaultValue={a.name} /></label>
+                    <label className="block"><span className="label">Команда (токен Dolphin)</span>
+                      <select name="teamId" className="input py-1" defaultValue={a.teamId ?? ""}>
+                        <option value="" disabled>— выберите —</option>
+                        {teams.map((t) => <option key={t.id} value={t.id}>{t.name}{hasToken.has(t.id) ? "" : " · нет токена"}</option>)}
+                        {a.teamId && !teamName.has(a.teamId) ? <option value={a.teamId}>чужая команда</option> : null}
+                      </select>
+                    </label>
                     <label className="block"><span className="label">Профилей одновременно</span><input name="parallel" type="number" min={1} max={5} className="input py-1 w-[90px]" defaultValue={a.settings.parallel} /></label>
                     <label className="flex items-center gap-1.5 text-[13px] pb-2"><input type="checkbox" name="enabled" defaultChecked={a.schedule.enabled} /> Запускать каждый день в</label>
                     <input name="time" type="time" className="input py-1 w-[110px]" defaultValue={a.schedule.time} />
@@ -68,7 +70,7 @@ export default async function UploaderAgentsPage() {
           </Card>
         </div>
         <div className="space-y-4">
-          <Card title="Добавить агента"><AgentTokenForm /></Card>
+          <Card title="Добавить агента"><AgentTokenForm teams={teams} defaultTeamId={me.activeTeamId ?? (teams.length === 1 ? teams[0].id : null)} /></Card>
           <Card title="Скачать" description="Всё лежит на нашем сервере. Ничего дополнительно ставить не нужно.">
             <div className="space-y-2">
               {dl.agent ? <a href={dl.agent.url} className="btn-brand w-full">Zewex Uploader {dl.agent.version} · {dl.agent.sizeMb} МБ</a> : <span className="btn-ghost w-full opacity-60">Zewex Uploader (сборка появится после деплоя)</span>}

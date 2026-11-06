@@ -48,7 +48,7 @@ export async function todayRows(me: CurrentUser, day = todayKey(new Date(), TZ))
 
 export type AgentRow = {
   id: string; name: string; userId: string; userName: string; status: string; state: string | null; lastSeenAt: Date | null; version: string | null;
-  hostInfo: Record<string, unknown> | null; settings: AgentSettings; schedule: AgentSchedule; tokenHint: string; createdAt: Date;
+  hostInfo: Record<string, unknown> | null; settings: AgentSettings; schedule: AgentSchedule; tokenHint: string; createdAt: Date; teamId: string | null;
 };
 
 /** Агенты: свои (админ — все), с именами владельцев. */
@@ -56,7 +56,7 @@ export async function agentRows(me: CurrentUser): Promise<AgentRow[]> {
   const agents = await prisma.uplAgent.findMany({ where: { revokedAt: null, ...(me.role === "ADMIN" ? {} : { userId: me.id }) }, orderBy: { createdAt: "desc" } });
   const users = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(agents.map((a) => a.userId))] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
   return agents.map((a) => ({
-    id: a.id, name: a.name, userId: a.userId, userName: users.get(a.userId) ?? "сотрудник", status: a.status, state: a.state, lastSeenAt: a.lastSeenAt, version: a.version,
+    id: a.id, name: a.name, teamId: a.teamId, userId: a.userId, userName: users.get(a.userId) ?? "сотрудник", status: a.status, state: a.state, lastSeenAt: a.lastSeenAt, version: a.version,
     hostInfo: (a.hostInfo as Record<string, unknown> | null) ?? null, settings: parseAgentSettings(a.settings), schedule: parseSchedule(a.schedule), tokenHint: a.tokenHint, createdAt: a.createdAt,
   }));
 }

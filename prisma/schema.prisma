@@ -2887,6 +2887,8 @@ model UplAgent {
   /// {parallel:1}
   settings         Json?
   lastScheduledDay String?   @db.VarChar(10)
+  /// Команда портала (Team.id): агент получает токен Dolphin этой команды и заливает только её профили
+  teamId           String?   @db.VarChar(191)
   revokedAt        DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -2895,16 +2897,28 @@ model UplAgent {
   @@index([userId])
 }
 
+/// Токен Dolphin Anty API команды портала (у каждой команды свой аккаунт Dolphin — профили не пересекаются)
+model UplTeamToken {
+  teamId      String   @id @db.VarChar(191)
+  tokenEnc    String   @db.Text
+  hint        String   @db.VarChar(32)
+  updatedById String?  @db.VarChar(64)
+  updatedAt   DateTime @updatedAt
+}
+
 /// Профили Dolphin, которые видят агенты (для выпадающего списка сопоставления)
 model UplProfile {
   id       String   @id @db.VarChar(40)
   agentId  String?  @db.Char(36)
+  /// Команда агента, приславшего профиль (= чей аккаунт Dolphin)
+  teamId   String?  @db.VarChar(191)
   name     String   @db.VarChar(190)
   tags     Json?
   platform String?  @db.VarChar(20)
   seenAt   DateTime
 
   @@index([name])
+  @@index([teamId])
 }
 
 /// Сайт пинов ↔ профиль Dolphin ↔ состояние аккаунта Pinterest

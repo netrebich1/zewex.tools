@@ -5,27 +5,33 @@ import { isAdmin, requireUploader } from "@/lib/uploader/access";
 import { uplSettings } from "@/lib/uploader/runs";
 import { HUMANIZE_FIELDS, parseHumanize } from "@/lib/uploader/types";
 import { saveDolphinTokenAction, saveSettingsAction } from "@/actions/uploader";
+import { teamTokenRows } from "@/lib/uploader/teams";
 
 export const dynamic = "force-dynamic";
 
-/** Настройки: токен Dolphin API (один на команду Dolphin), «человечность» агента, задержки проверки, адрес массовой загрузки. */
+/** Настройки: токены Dolphin API по командам портала, «человечность» агента, задержки проверки, адрес массовой загрузки. */
 export default async function UploaderSettingsPage() {
   const me = await requireUploader();
-  const s = await uplSettings();
+  const [s, tokens] = await Promise.all([uplSettings(), teamTokenRows(me)]);
   const h = parseHumanize(s.humanize);
   const admin = isAdmin(me);
   return (
     <>
       <PageHeader title="Настройки" subtitle="Общие для всех агентов. Меняет администратор; агенты получают настройки при каждом выходе на связь, пересобирать программу не нужно." />
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Токен Dolphin Anty API" description="Выдаётся в кабинете Dolphin (dolphin-anty.com → API). Один на команду Dolphin; хранится зашифрованным, агенты получают его по своему токену.">
-          <p className="text-[13.5px] mb-2">Сейчас: {s.dolphinHint ? <code>{s.dolphinHint}</code> : <span className="text-warn">не задан — агенты не смогут открыть профили</span>}</p>
-          {admin && (
-            <ActionForm action={saveDolphinTokenAction} className="space-y-2">
-              <input name="token" className="input font-mono text-[12.5px]" placeholder="вставьте токен Dolphin API" autoComplete="off" />
-              <SubmitButton className="btn-primary" pendingText="Сохраняю…">Сохранить токен</SubmitButton>
-            </ActionForm>
-          )}
+        <Card title="Токены Dolphin Anty API по командам" description="У каждой команды свой аккаунт Dolphin и свой токен (dolphin-anty.com → API). Агент получает токен только своей команды, и в сопоставлении сайтам предлагаются только профили их команды — профили команд не пересекаются. Меняет администратор или лид команды; хранится зашифрованным.">
+          <div className="space-y-3">{tokens.map((t) => (
+            <div key={t.teamId} className="rounded-xl border border-line p-3">
+              <div className="flex flex-wrap items-center gap-2 text-[13.5px]"><b>{t.teamName}</b>{t.hint ? <code>{t.hint}</code> : <span className="text-warn">токен не задан — агенты команды не откроют профили</span>}{t.updatedAt ? <span className="help">· {t.updatedAt.toLocaleString("ru-RU", { timeZone: "Europe/Kyiv" })}</span> : null}</div>
+              {t.canEdit && (
+                <ActionForm action={saveDolphinTokenAction} className="mt-2 flex flex-wrap gap-2">
+                  <input type="hidden" name="teamId" value={t.teamId} />
+                  <input name="token" className="input font-mono text-[12.5px] min-w-[240px] flex-1" placeholder={`токен Dolphin API команды ${t.teamName}`} autoComplete="off" required />
+                  <SubmitButton className="btn-primary" pendingText="Сохраняю…">{t.hint ? "Заменить" : "Сохранить"}</SubmitButton>
+                </ActionForm>
+              )}
+            </div>
+          ))}</div>
         </Card>
         <Card title="Поведение агента («как человек»)" description="Диапазоны «от–до»: агент каждый раз берёт случайное значение. Проверка истории: через сколько минут после конца заливки и как часто повторять, если Pinterest ещё обрабатывает.">
           <ActionForm action={saveSettingsAction} className="space-y-3">
