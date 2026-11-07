@@ -13,7 +13,7 @@ let running = false;
 
 export type QuotaClass = (typeof VOL_CLASSES)[number] | "any";
 export type Quotas = Record<string, Partial<Record<QuotaClass, number>>>;
-export type BatchInput = { name: string; siteIds: string[]; quotas: Quotas; word: string; /** Только эти ядра (точное совпадение), в этом порядке — для ручных и тестовых партий. */ cores?: string[]; /** volume — сначала самые частотные темы (дописывание на растущий сайт); по умолчанию — с самым большим резервом. */ order?: "reserve" | "volume"; photos: number; photosMax?: number | null; maxPerWord?: number; review: boolean; noSeason: boolean; year: number | null; createdById: string };
+export type BatchInput = { name: string; siteIds: string[]; quotas: Quotas; word: string; /** Только эти ядра (точное совпадение), в этом порядке — для ручных и тестовых партий. */ cores?: string[]; /** volume — сначала самые частотные темы (дописывание на растущий сайт); по умолчанию — с самым большим резервом. */ order?: "reserve" | "volume"; photos: number; photosMax?: number | null; maxPerWord?: number; review: boolean; noSeason: boolean; year: number | null; /** Модель писателя вместо модели сценария (A/B тесты). */ writerModel?: string | null; createdById: string };
 export const QUOTA_CLASSES: QuotaClass[] = [...VOL_CLASSES, "any"];
 
 type CoreRow = { id: string; niche: string; core: string; volClass: string | null; volume: number | null; byPhotos: number; siteIds: unknown };
@@ -104,7 +104,7 @@ export async function planBatch(input: BatchInput): Promise<{ id: string; planne
   const batch = await prisma.copyBatch.create({
     data: {
       name: input.name.trim() || `Партия ${new Date().toLocaleDateString("ru-RU")}`, createdById: input.createdById, status: items.length ? "running" : "done",
-      siteIds: usable.map((s) => s.id), quotas: input.quotas, word, photos: input.photos, photosMax: input.photosMax && input.photosMax > input.photos ? input.photosMax : null, maxPerWord, review: input.review, noSeason: input.noSeason, year: input.year, planned: items.length, note, finishedAt: items.length ? null : new Date(),
+      siteIds: usable.map((s) => s.id), quotas: input.quotas, word, photos: input.photos, photosMax: input.photosMax && input.photosMax > input.photos ? input.photosMax : null, maxPerWord, review: input.review, noSeason: input.noSeason, year: input.year, writerModel: input.writerModel?.trim() || null, planned: items.length, note, finishedAt: items.length ? null : new Date(),
     },
     select: { id: true },
   });
@@ -117,7 +117,7 @@ export async function planBatch(input: BatchInput): Promise<{ id: string; planne
 /** Тик воркера (раз в минуту): собирает до ITEMS_PER_TICK пунктов идущих партий, старшие партии раньше. */
 export async function copyBatchTick(): Promise<{ built: number; failed: number }> {
   if (running) return { built: 0, failed: 0 };
-  const batches = await prisma.copyBatch.findMany({ where: { status: "running" }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, photos: true, photosMax: true, review: true, year: true } });
+  const batches = await prisma.copyBatch.findMany({ where: { status: "running" }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, photos: true, photosMax: true, review: true, year: true, writerModel: true } });
   if (!batches.length) return { built: 0, failed: 0 };
   running = true;
   let built = 0, failed = 0;
@@ -136,7 +136,7 @@ export async function copyBatchTick(): Promise<{ built: number; failed: number }
         let result: Awaited<ReturnType<typeof buildCopyArticle>>;
         if (!site) result = { ok: false, core: it.core, reason: "сайт удалён или выключен" };
         else if (!row) result = { ok: false, core: it.core, reason: "ядра больше нет в карте" };
-        else result = await buildCopyArticle(site, st, row, { review: b.review, photos: b.photosMax ? b.photos + Math.floor(Math.random() * (b.photosMax - b.photos + 1)) : b.photos, batchId: b.id, runName: `Article Copy · ${b.name}`, year: b.year ?? undefined }).catch((e) => ({ ok: false as const, core: it.core, reason: e instanceof Error ? e.message : String(e) }));
+        else result = await buildCopyArticle(site, st, row, { review: b.review, photos: b.photosMax ? b.photos + Math.floor(Math.random() * (b.photosMax - b.photos + 1)) : b.photos, batchId: b.id, runName: `Article Copy · ${b.name}`, year: b.year ?? undefined, writerModel: b.writerModel ?? undefined }).catch((e) => ({ ok: false as const, core: it.core, reason: e instanceof Error ? e.message : String(e) }));
         if (result.ok) {
           built++;
           await prisma.$transaction([

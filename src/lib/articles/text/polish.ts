@@ -177,7 +177,67 @@ export function mapTextNodes(html: string, fn: (t: string) => string): string {
     .join("");
 }
 
-export type PolishOpts = { usSpelling?: boolean; /** Не дотягивать заголовок до Title Case (мешап-статьи Article Copy пишут H2 в sentence case). */ keepHeadingCase?: boolean };
+export type PolishOpts = { usSpelling?: boolean; /** Не дотягивать заголовок до Title Case (мешап-статьи Article Copy пишут H2 в sentence case). */ keepHeadingCase?: boolean; /** Мешап Article Copy: заменять штампы, которые писатель не убирает по промпту (аудит v2 07.11). */ copy?: boolean };
+
+/**
+ * Штампы мешапа, которые deepseek-v4-flash оставляет вопреки промпту (судья v1 и v2: polished, sophisticated, reads as,
+ * «This style works best…»). Замена кодом, регистр сохраняется. Литеральное «nail polish» не трогаем.
+ */
+const COPY_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/(?<!nail |gel |the |a |fresh |clear )\bpolished\b/gi, "neat"],
+  [/\bsophisticated\b/gi, "grown-up"],
+  [/\breads as\b/gi, "looks"],
+  [/\bread as\b/gi, "look"],
+  [/\breading as\b/gi, "looking"],
+  [/\bThis (?:style|look|cut|color|shade|set|outfit|design|length|shape|finish|manicure|hairstyle|haircut|pairing|combination) works best\b/g, "It works best"],
+  [/\bThis (?:style|look|cut|color|shade|set|outfit|design|length|shape|finish|manicure|hairstyle|haircut|pairing|combination) (?:suits|flatters)\b/g, "It suits"],
+  [/\bchic\b/gi, "sharp"],
+  [/\beffortlessly\b/gi, "easily"],
+  [/\beffortless\b/gi, "easy"],
+  [/\bversatile\b/gi, "flexible"],
+  [/\btimeless\b/gi, "classic"],
+  [/\belevates\b/gi, "sharpens"],
+  [/\belevated\b/gi, "sharper"],
+  [/\belevate\b/gi, "sharpen"],
+  [/\bstunning\b/gi, "striking"],
+  [/\bstatement piece\b/gi, "focal piece"],
+  [/\bthe perfect balance\b/gi, "a good middle"],
+  [/\bwithout trying too hard\b/gi, "without effort"],
+  [/\bpop of color\b/gi, "bright accent"],
+  [/\bwardrobe staple\b/gi, "closet basic"],
+  [/\bgo-to\b/gi, "default"],
+];
+/** Заменить штампы мешапа в одном текстовом фрагменте. */
+export function replaceCopyCliches(text: string): string {
+  let s = text;
+  for (const [re, to] of COPY_REPLACEMENTS) s = s.replace(re, (m) => keepCase(m, to));
+  return s;
+}
+
+/** Салонная реплика: «Tell your stylist…», «Ask your nail tech…», «Bring this photo…», «Show your colorist…». */
+const SALON_RE = /\b(?:tell|ask|show|bring|request|book)\b[^.!?]{0,40}\b(?:stylist|colou?rist|nail tech|technician|tech|barber|salon|appointment|photo|picture|reference)\b/i;
+/**
+ * Мешап: салонная реплика не чаще чем в половине секций и не в двух соседних (правило промпта, которое писатель
+ * не выполняет). Лишние предложения вырезаются целиком; первая секция реплику сохраняет.
+ */
+export function trimSalonLines(htmls: string[], maxShare = 0.5): string[] {
+  const max = Math.max(1, Math.floor(htmls.length * maxShare));
+  let kept = 0;
+  let prevKept = false;
+  return htmls.map((html) => {
+    const has = SALON_RE.test(plainText(html));
+    if (!has) { prevKept = false; return html; }
+    if (kept < max && !prevKept) { kept++; prevKept = true; return html; }
+    prevKept = false;
+    // Вырезаем предложение с репликой внутри абзаца; пустой абзац уходит целиком.
+    const out = html.replace(/<p([^>]*)>([\s\S]*?)<\/p>/gi, (_m, attrs: string, inner: string) => {
+      const parts = inner.match(/[^.!?]+[.!?]+["”’']?\s*|[^.!?]+$/g) ?? [inner];
+      const left = parts.filter((p) => !SALON_RE.test(p.replace(/<[^>]+>/g, ""))).join("").trim();
+      return left ? `<p${attrs}>${left}</p>` : "";
+    });
+    return out.replace(/<li>\s*<\/li>/gi, "").replace(/<ul>\s*<\/ul>/gi, "");
+  });
+}
 
 /**
  * Полная детерминированная чистка HTML текста автора: тире, американское написание, парность абзацев,
@@ -194,6 +254,7 @@ export function polishHtml(html: unknown, opts: PolishOpts = {}): string {
     // Склеенные предложения «after a week.Apply cuticle oil» — пробел после точки перед словом с заглавной.
     x = x.replace(/([a-z\)])([.!?])([A-Z][a-z])/g, "$1$2 $3");
     if (opts.usSpelling) x = toUsSpellingText(x);
+    if (opts.copy) x = replaceCopyCliches(x);
     return x.replace(/ +([,.!?;:])/g, "$1");
   });
   // Запятая у края абзаца (после замены тире): в начале — вон, в конце — точка.

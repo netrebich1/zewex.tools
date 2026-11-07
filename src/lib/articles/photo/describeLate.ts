@@ -43,6 +43,26 @@ const COPY_RULES = `STRICTNESS RULES:
 
 export type LateDescribeResult = { needed: number; described: number; failed: number; costUsd: number; calls: number };
 
+/** Слова длины волос: описатель называет длину по обрезанному кадру (аудит v2 07.11: collarbone, mid-back там, где концов не видно). */
+const HAIR_LENGTH_RE = [
+  /\b(?:chin|jaw|jawline|collarbone|shoulder|chest|bra[- ]strap|mid[- ]back|waist|hip|armpit|elbow)[- ]length(?:\s+ends)?\b/gi,
+  /(?:,\s*)?\b(?:that|which|and)?\s*\b(?:falls?|falling|reach(?:es)?|reaching|ends?|ending|hits?|hitting|grazes?|grazing|sits?|sitting|cut|trimmed|skims?|skimming|lands?|landing|stops?|stopping|extends?|extending|hangs?|hanging)\s+(?:just\s+|right\s+|well\s+|down\s+)?(?:(?:to|at|past|below|above|around|near|beneath|beyond)\s+)?(?:the\s+|her\s+)?(?:chin|jaw|jawline|collarbones?|shoulders?|shoulder blades?|chest|bust|bra strap|mid[- ]back|waist|waistline|hips?|armpits?|lower back|elbows?|ribs?|ribcage)\b/gi,
+  /\b(?:long|short|medium|mid|shoulder)[- ]length\s+(?=hair|layers|cut|style|strands)/gi,
+  /\b(?:very|extra|super)?\s*(?:long|short)\s+(?=hair\b|strands\b|lengths?\b)/gi,
+];
+/** Убрать упоминания длины из описания волос; пробелы и знаки после вырезки приводятся в порядок. */
+export function stripHairLength(text: string): string {
+  let s = text;
+  for (const re of HAIR_LENGTH_RE) s = s.replace(re, "");
+  return s
+    .replace(/\b(?:with|that|which|and|but|of)\s*(?=[,.;])/g, "")
+    .replace(/\s+([,.;:])/g, "$1").replace(/,\s*,/g, ",").replace(/,\s*\./g, ".").replace(/\(\s*\)/g, "").replace(/ {2,}/g, " ").trim()
+    .replace(/(^|[.!?]\s+)[A-Za-z]+\.(?=\s|$)/g, "$1").replace(/ {2,}/g, " ").trim()
+    .replace(/(^|[.!?]\s+)([a-z])/g, (_m, a: string, c: string) => a + c.toUpperCase());
+}
+/** Факты, которые говорят о длине: length, hair_length, visible_length… */
+const LENGTH_FACT_RE = /length/i;
+
 const hasFacts = (facts: unknown) => !!sanitizeFacts(facts);
 
 /** Фото статьи, которым ещё нужно описание. */
@@ -72,7 +92,13 @@ export async function describeLatePhotos(ctx: LateDescribeCtx, photos: ArtPhoto[
     // Тонкие факты оценки дополняют полные там, где модель описания оставила поле пустым.
     const prev = (sanitizeFacts(p.facts) ?? {}) as Record<string, string>;
     const facts: Record<string, unknown> = { ...prev, ...d.facts };
-    await prisma.artPhoto.updateMany({ where: { id: p.id }, data: { facts: facts as object, description: d.description } });
+    let description = d.description;
+    if (ctx.single && profile.niche_code === "hair") {
+      // Мешап волос: длину не пишем вообще — ни в описании, ни в фактах.
+      description = stripHairLength(description);
+      for (const k of Object.keys(facts)) if (LENGTH_FACT_RE.test(k)) delete facts[k];
+    }
+    await prisma.artPhoto.updateMany({ where: { id: p.id }, data: { facts: facts as object, description } });
     res.described++;
   };
   for (const [id, d] of batch.described) {

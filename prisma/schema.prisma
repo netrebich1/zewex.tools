@@ -3718,6 +3718,8 @@ model CopyBatch {
   noSeason    Boolean         @default(true)
   /// Год в ключе статьи; null — как у статьи-донора
   year        Int?
+  /// Модель писателя (секции, вступление/заключение) вместо модели сценария — для A/B тестов; null — как в сценарии
+  writerModel String?         @db.VarChar(191)
   planned     Int             @default(0)
   built       Int             @default(0)
   failed      Int             @default(0)

@@ -17,7 +17,7 @@ import { prisma } from "@/lib/db";
 import { patchCount } from "@/lib/articles/text/countToken";
 import { looksLikeModelThinking, looksLikeRawJson } from "@/lib/articles/text/introOutroParse";
 import { stripEmphasis } from "@/lib/articles/text/textGuards";
-import { polishHeading, polishHtml, usesUsSpelling } from "@/lib/articles/text/polish";
+import { polishHeading, polishHtml, trimSalonLines, usesUsSpelling } from "@/lib/articles/text/polish";
 import { assembleArticleHtml, captionCfgFrom, type AssembleSection } from "@/lib/articles/text/html";
 import { focusKeywordOf } from "@/lib/articles/text/vars";
 import { applyQualityPatch, checkArticleQuality, isIntroOutroProblem } from "@/lib/articles/wp/qualityCheck";
@@ -53,14 +53,17 @@ export const assemble: ArtStageHandler = async (ctx) => {
   const keyword = focusKeywordOf(ctx);
   const caption = captionCfgFrom(recipe.photoSearch?.captionMode, recipe.photoSearch?.captionTemplate);
   // Детерминированная чистка (тире, американское написание, парность <p>) — и для статей, написанных до неё.
-  const pol = { usSpelling: usesUsSpelling(recipe.photoSearch?.language, recipe.photoSearch?.country), keepHeadingCase: !!(ctx.cursor as Record<string, unknown>).copy };
+  const isCopy = !!(ctx.cursor as Record<string, unknown>).copy;
+  const pol = { usSpelling: usesUsSpelling(recipe.photoSearch?.language, recipe.photoSearch?.country), keepHeadingCase: isCopy, copy: isCopy };
+  // Мешап: салонные реплики не чаще чем в половине секций и не подряд — кодом, писатель это правило не держит.
+  const htmls = isCopy ? trimSalonLines(active.map((s) => s.html || "")) : active.map((s) => s.html || "");
 
-  const sections: AssembleSection[] = active.map((s) => {
+  const sections: AssembleSection[] = active.map((s, i) => {
     const p = photoById.get(s.photoId!)!;
     return {
       position: s.position,
       heading: polishHeading(stripEmphasis(s.heading), pol),
-      html: polishHtml(stripEmphasis(s.html || ""), pol),
+      html: polishHtml(stripEmphasis(htmls[i]), pol),
       photo: {
         url: p.wpUrl || p.publicUrl,
         width: p.width,
