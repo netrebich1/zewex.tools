@@ -8,6 +8,8 @@ import { dashboardData } from "@/lib/copy/queries";
 import { FORMULATIONS, VOL_LABEL, fmtVolume, modifierLabel, nicheLabel } from "@/lib/copy/keys";
 import { fmtDate } from "@/lib/utils";
 
+type NicheStat = { published: number; reserve: number; uses1: number; uses2: number; uses3: number; usesLeft: number };
+
 export const dynamic = "force-dynamic";
 
 const n = (v: number) => v.toLocaleString("ru-RU");
@@ -18,6 +20,9 @@ export default async function CopyHome({ searchParams }: { searchParams: Promise
   const f = await searchParams;
   const d = await dashboardData(me, f);
   const st = d.settings;
+  const stats = ((st.stats as { niches?: Record<string, NicheStat> } | null)?.niches) ?? {};
+  const statRows = Object.entries(stats).sort((a, b) => b[1].usesLeft - a[1].usesLeft);
+  const statTotal = statRows.reduce((a, [, s]) => ({ published: a.published + s.published, reserve: a.reserve + s.reserve, uses1: a.uses1 + s.uses1, uses2: a.uses2 + s.uses2, uses3: a.uses3 + s.uses3, usesLeft: a.usesLeft + s.usesLeft }), { published: 0, reserve: 0, uses1: 0, uses2: 0, uses3: 0, usesLeft: 0 });
   const totals = d.summary.reduce((a, s) => ({ cores: a.cores + s.cores, byPhotos: a.byPhotos + s.byPhotos, capacity: a.capacity + s.capacity }), { cores: 0, byPhotos: 0, capacity: 0 });
   const qs = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
@@ -71,6 +76,31 @@ export default async function CopyHome({ searchParams }: { searchParams: Promise
             </>
           )}
         </Card>
+
+        {statRows.length > 0 && (
+          <Card title="Кадры: сколько использовано и сколько ещё можно" description={`Один кадр может стоять не больше ${st.maxUsesTotal} раз во всех статьях (исходная считается). «Осталось использований» — сколько раз кадры ниши ещё можно поставить; делённое на фото в статье — примерно сколько статей из этого выходит без учёта тем.`}>
+            <div className="table-wrap">
+              <table className="table">
+                <thead><tr><th>Ниша</th><th className="text-right">Фото в статьях</th><th className="text-right">Резерв (не публиковался)</th><th className="text-right">Стоит 1 раз</th><th className="text-right">2 раза</th><th className="text-right">{st.maxUsesTotal}+ раз (исчерпан)</th><th className="text-right">Осталось использований</th><th className="text-right">≈ статей по {st.photosPerArticle} фото</th></tr></thead>
+                <tbody>
+                  {statRows.map(([niche, s]) => (
+                    <tr key={niche}>
+                      <td>{nicheLabel(niche)}</td>
+                      <td className="text-right tabular-nums">{n(s.published)}</td>
+                      <td className="text-right tabular-nums">{n(s.reserve)}</td>
+                      <td className="text-right tabular-nums text-muted">{n(s.uses1)}</td>
+                      <td className="text-right tabular-nums text-muted">{n(s.uses2)}</td>
+                      <td className="text-right tabular-nums text-muted">{n(s.uses3)}</td>
+                      <td className="text-right tabular-nums font-semibold">{n(s.usesLeft)}</td>
+                      <td className="text-right tabular-nums">{n(Math.floor(s.usesLeft / Math.max(1, st.photosPerArticle)))}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-semibold"><td>Всего</td><td className="text-right tabular-nums">{n(statTotal.published)}</td><td className="text-right tabular-nums">{n(statTotal.reserve)}</td><td className="text-right tabular-nums">{n(statTotal.uses1)}</td><td className="text-right tabular-nums">{n(statTotal.uses2)}</td><td className="text-right tabular-nums">{n(statTotal.uses3)}</td><td className="text-right tabular-nums">{n(statTotal.usesLeft)}</td><td className="text-right tabular-nums">{n(Math.floor(statTotal.usesLeft / Math.max(1, st.photosPerArticle)))}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
 
         <Card title="Ядра и формулировки" description="Ядро — ключ без приставки и года. Формулировки одного ядра считаются одной темой. Частотность — Ads Manager (США) из «Подбора ключей»: ВЧ от 30 000, СЧ 10–30 000, НЧ 3 000–10 000. Показаны первые 300, сверху — где можно собрать больше всего."
           actions={<ActionForm action={requestCopyRebuild} className="flex items-center gap-2"><SubmitButton className="btn-ghost btn-sm" pendingText="…">Пересчитать</SubmitButton></ActionForm>}>

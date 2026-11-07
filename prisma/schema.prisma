@@ -3582,6 +3582,12 @@ model CopySettings {
   maxOverlapPct       Int       @default(30)
   /// Сколько раз одно фото может стоять на одном сайте
   maxPerSite          Int       @default(3)
+  /// Сколько раз одно фото может стоять во всех статьях вообще (статья-источник тоже считается)
+  maxUsesTotal        Int       @default(3)
+  /// Google-таблица, куда дописываются опубликованные мешап-статьи (вкладка = домен сайта)
+  sheetUrl            String?   @db.VarChar(500)
+  /// Сводка по кадрам с последнего пересчёта: {niches: {niche: {published, reserve, uses1, uses2, uses3, usesLeft}}}
+  stats               Json?
   /// Резерв берётся с оценкой ИИ не ниже этой
   minReserveScore     Float     @default(8)
   /// Автосборка: воркер сам выбирает ядро, формулировку, сайт и кадры и ставит статью в очередь сервиса «Статьи»
@@ -3609,6 +3615,8 @@ model CopySite {
   artSiteId   String   @unique @db.Char(36)
   teamId      String
   publish     Boolean  @default(true)
+  /// false — фото этого сайта в банк не берём (сайт-получатель мешапов, тестовый и т. п.)
+  donor       Boolean  @default(true)
   createdById String?
   createdAt   DateTime @default(now())
 
@@ -3655,13 +3663,13 @@ model CopyCore {
 
 /// Мешап-статья, собранная Article Copy: сама статья живёт в Article и идёт обычным конвейером с этапа «План по фото».
 model CopyArticle {
-  id            String   @id @default(uuid()) @db.Char(36)
-  articleId     String   @unique @db.Char(36)
+  id            String    @id @default(uuid()) @db.Char(36)
+  articleId     String    @unique @db.Char(36)
   teamId        String
-  siteId        String   @db.Char(36)
-  niche         String   @db.VarChar(32)
-  core          String   @db.VarChar(191)
-  modifier      String   @db.VarChar(32)
+  siteId        String    @db.Char(36)
+  niche         String    @db.VarChar(32)
+  core          String    @db.VarChar(191)
+  modifier      String    @db.VarChar(32)
   keyword       String
   photos        Int
   fromReserve   Int
@@ -3669,10 +3677,12 @@ model CopyArticle {
   /// Из скольких старых статей взяты кадры
   donors        Int
   /// Кадры резерва, которые не скачались по ссылке источника
-  lost          Int      @default(0)
+  lost          Int       @default(0)
   /// Партия, в которой статья собрана; null — суточная автосборка или ручной запуск
-  batchId       String?  @db.Char(36)
-  createdAt     DateTime @default(now())
+  batchId       String?   @db.Char(36)
+  /// Когда строка дописана в Google-таблицу публикаций
+  sheetAt       DateTime?
+  createdAt     DateTime  @default(now())
 
   @@index([siteId, createdAt])
   @@index([batchId])
@@ -3695,6 +3705,10 @@ model CopyBatch {
   /// Фильтр по слову в ядре («bob», «christmas»); пусто — любое
   word        String          @default("") @db.VarChar(191)
   photos      Int
+  /// Верхняя граница числа фото; null — ровно photos. Число выбирается случайно на каждую статью.
+  photosMax   Int?
+  /// Разнообразие: не больше стольких тем партии с одним и тем же словом в ядре
+  maxPerWord  Int             @default(3)
   review      Boolean         @default(false)
   /// Не брать сезонные темы (christmas, halloween, summer…)
   noSeason    Boolean         @default(true)

@@ -32,6 +32,8 @@ export async function saveCopyRules(_p: FormState, f: FormData): Promise<FormSta
         photosPerArticle: Math.round(num(f, "photosPerArticle", cur.photosPerArticle, 5, 100)),
         maxOverlapPct: Math.round(num(f, "maxOverlapPct", cur.maxOverlapPct, 0, 100)),
         maxPerSite: Math.round(num(f, "maxPerSite", cur.maxPerSite, 1, 10)),
+        maxUsesTotal: Math.round(num(f, "maxUsesTotal", cur.maxUsesTotal, 1, 20)),
+        sheetUrl: String(f.get("sheetUrl") ?? "").trim() || null,
         minReserveScore: num(f, "minReserveScore", cur.minReserveScore, 0, 10),
         minPhotos: Math.round(num(f, "minPhotos", cur.minPhotos, 5, 100)),
         reservePct: Math.round(num(f, "reservePct", cur.reservePct, 0, 100)),
@@ -49,15 +51,19 @@ export async function saveCopySites(_p: FormState, f: FormData): Promise<FormSta
   try {
     const visible = await prisma.artSite.findMany({ where: { ...(await artSiteWhere(me)), isActive: true }, select: { id: true, teamId: true } });
     const checked = new Set(f.getAll("site").map(String));
+    const donors = new Set(f.getAll("donor").map(String));
     for (const s of visible) {
-      if (checked.has(s.id)) await prisma.copySite.upsert({ where: { artSiteId: s.id }, update: { publish: true, teamId: s.teamId }, create: { artSiteId: s.id, teamId: s.teamId, publish: true, createdById: me.id } });
+      const publish = checked.has(s.id);
+      const donor = donors.has(s.id);
+      // Строка нужна, только если сайт отличается от умолчания «донор, не получатель».
+      if (publish || !donor) await prisma.copySite.upsert({ where: { artSiteId: s.id }, update: { publish, donor, teamId: s.teamId }, create: { artSiteId: s.id, teamId: s.teamId, publish, donor, createdById: me.id } });
       else await prisma.copySite.deleteMany({ where: { artSiteId: s.id } });
     }
     await copySettings();
     await prisma.copySettings.update({ where: { id: "main" }, data: { rebuildRequestedAt: new Date() } });
   } catch (e) { return fail(e); }
   refresh();
-  return { ok: `Сайтов привязано: ${f.getAll("site").length}. Запас пересчитается за 4–5 минут.` };
+  return { ok: `Получателей: ${f.getAll("site").length}, доноров: ${f.getAll("donor").length}. Запас пересчитается за 4–5 минут.` };
 }
 
 /** Автосборка: включение, суточная норма на сайт, нужна ли проверка статьи перед публикацией. */

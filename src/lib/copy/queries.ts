@@ -51,10 +51,11 @@ export async function settingsData(me: CurrentUser) {
   const [settings, sites, bound] = await Promise.all([
     copySettings(),
     prisma.artSite.findMany({ where: { ...(await artSiteWhere(me)), isActive: true }, select: { id: true, name: true, teamId: true, nicheCode: true, team: { select: { name: true } }, _count: { select: { articles: true } } }, orderBy: [{ teamId: "asc" }, { name: "asc" }] }),
-    prisma.copySite.findMany({ select: { artSiteId: true, publish: true } }),
+    prisma.copySite.findMany({ select: { artSiteId: true, publish: true, donor: true } }),
   ]);
   const on = new Set(bound.filter((b) => b.publish).map((b) => b.artSiteId));
-  return { settings, sites: sites.map((s) => ({ id: s.id, name: s.name, team: s.team.name, grp: groupOf(s.nicheCode), articles: s._count.articles, bound: on.has(s.id) })) };
+  const notDonor = new Set(bound.filter((b) => !b.donor).map((b) => b.artSiteId));
+  return { settings, sites: sites.map((s) => ({ id: s.id, name: s.name, team: s.team.name, grp: groupOf(s.nicheCode), articles: s._count.articles, bound: on.has(s.id), donor: !notDonor.has(s.id) })) };
 }
 
 /** Собранные статьи: последние 300 с состоянием в конвейере статей, счётчики за сегодня и итог автосборки. */

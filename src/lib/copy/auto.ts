@@ -80,7 +80,13 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
     select: { id: true, teamId: true, siteId: true, keyword: true, wpUrl: true, publishedAt: true, recipeId: true, createdById: true, recipeRef: { select: { nicheCode: true } }, site: { select: { nicheCode: true } } },
   })).filter((a) => splitKeyword(a.keyword).core === core && (a.recipeRef?.nicheCode || a.site.nicheCode || "other") === niche);
   if (all.some((a) => a.siteId === site.id)) return fail("тема уже есть на сайте");
-  const donors = all.filter((a) => a.publishedAt && a.wpUrl && (st.sharedBank || a.teamId === site.teamId)).sort((a, b) => yearOf(b.keyword) - yearOf(a.keyword) || b.publishedAt!.getTime() - a.publishedAt!.getTime());
+  const [mashups, notDonorRows] = await Promise.all([
+    prisma.copyArticle.findMany({ where: { articleId: { in: all.map((a) => a.id) } }, select: { articleId: true } }),
+    prisma.copySite.findMany({ where: { donor: false }, select: { artSiteId: true } }),
+  ]);
+  const mashupIds = new Set(mashups.map((m) => m.articleId));
+  const notDonor = new Set(notDonorRows.map((r) => r.artSiteId));
+  const donors = all.filter((a) => a.publishedAt && a.wpUrl && !mashupIds.has(a.id) && !notDonor.has(a.siteId) && (st.sharedBank || a.teamId === site.teamId)).sort((a, b) => yearOf(b.keyword) - yearOf(a.keyword) || b.publishedAt!.getTime() - a.publishedAt!.getTime());
   if (!donors.length) return fail("нет опубликованных статей по ядру");
 
   // ── Формулировка и ключ ──
@@ -92,7 +98,8 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
     modifier = pickModifier(used);
     if (modifier === null) return fail("свободных формулировок не осталось");
     keyword = swapModifier(donors[0].keyword, modifier);
-    if (opts.year) keyword = /20\d\d/.test(keyword) ? keyword.replace(/20\d\d(-20\d\d)?/, String(opts.year)) : `${keyword} ${opts.year}`;
+    // Год — всегда в конце ключа («Haircuts 2026 for Older Women» → «Haircuts for Older Women 2027»).
+    if (opts.year) keyword = `${keyword.replace(/\s*20\d\d(-20\d\d)?\s*/g, " ").replace(/\s+/g, " ").trim()} ${opts.year}`;
     if (!haveKeywords.has(keyword.toLowerCase()) && splitKeyword(keyword).core === core) break;
     used.add(modifier);
   }
@@ -158,7 +165,7 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
   const perArticle = new Map<string, number>();
   const taken = new Set<string>();
   const phashes = new Set<string>();
-  const canTake = (c: Cand) => !taken.has(c.sha) && !(c.phash && phashes.has(c.phash)) && (onSite.get(c.sha) ?? 0) < st.maxPerSite && [...(articlesOf.get(c.sha) ?? [])].every((a) => (perArticle.get(a) ?? 0) < cap);
+  const canTake = (c: Cand) => !taken.has(c.sha) && !(c.phash && phashes.has(c.phash)) && (onSite.get(c.sha) ?? 0) < st.maxPerSite && c.used < st.maxUsesTotal && [...(articlesOf.get(c.sha) ?? [])].every((a) => (perArticle.get(a) ?? 0) < cap);
   const mark = (c: Cand, d: 1 | -1) => {
     if (d > 0) { taken.add(c.sha); if (c.phash) phashes.add(c.phash); } else { if (c.phash) phashes.delete(c.phash); }
     for (const a of articlesOf.get(c.sha) ?? []) perArticle.set(a, (perArticle.get(a) ?? 0) + d);

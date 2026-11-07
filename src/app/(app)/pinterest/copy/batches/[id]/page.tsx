@@ -6,7 +6,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { setCopyBatchStatus } from "@/actions/copyBatch";
 import { batchData } from "@/lib/copy/batchQueries";
-import { VOL_LABEL, fmtVolume, nicheLabel } from "@/lib/copy/keys";
+import { VOL_LABEL, clusterOf, fmtVolume, nicheLabel } from "@/lib/copy/keys";
 import { stageLabel } from "@/lib/articles/stages";
 import { statusLabel } from "@/lib/articles/labels";
 import { fmtDate, fmtMoney } from "@/lib/utils";
@@ -22,13 +22,16 @@ export default async function CopyBatchPage({ params }: { params: Promise<{ id: 
   const b = d.batch;
   const admin = me.role === "ADMIN";
   const quotas = b.quotas as Record<string, Record<string, number>>;
+  const clusters = new Map<string, number>();
+  for (const it of d.items) { const k = `${nicheLabel(it.niche)} · ${clusterOf(it.core)}`; clusters.set(k, (clusters.get(k) ?? 0) + 1); }
+  const clusterRows = [...clusters.entries()].sort((a, b) => b[1] - a[1]);
   const pill = (label: string, v: number | string, tone = "bg-ink/5") => <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 ${tone}`}>{label}: <b className="tabular-nums">{v}</b></span>;
 
   return (
     <>
       <PageHeader
         title={b.name}
-        subtitle={`${d.author} · ${fmtDate(b.createdAt)} · сайтов ${d.sites.length} · фото в статье ${b.photos}${b.word ? ` · темы со словом «${b.word}»` : ""}${b.review ? " · с проверкой перед публикацией" : ""}${b.noSeason ? " · без сезонных" : ""}${b.year ? ` · год ${b.year}` : ""}`}
+        subtitle={`${d.author} · ${fmtDate(b.createdAt)} · сайтов ${d.sites.length} · фото в статье ${b.photosMax ? `${b.photos}–${b.photosMax}` : b.photos}${b.word ? ` · темы со словом «${b.word}»` : ""}${b.review ? " · с проверкой перед публикацией" : ""}${b.noSeason ? " · без сезонных" : ""}${b.year ? ` · год ${b.year}` : ""}`}
         back={{ href: "/pinterest/copy/batches", label: "Партии" }}
         actions={admin && b.status !== "done" ? (
           <ActionForm action={setCopyBatchStatus} className="flex items-center gap-2" hidden={{ id: b.id, op: b.status === "running" ? "pause" : "resume" }}>
@@ -65,6 +68,10 @@ export default async function CopyBatchPage({ params }: { params: Promise<{ id: 
             </div>
           </div>
           {b.note && <pre className="mt-3 whitespace-pre-wrap rounded-lg bg-brand-soft px-3 py-2 text-[12.5px] text-warn">{b.note}</pre>}
+          <div className="mt-3 text-[13px]">
+            <div className="label">Кластеры тем ({clusterRows.length}) · не больше {b.maxPerWord} тем с одним словом</div>
+            <div className="flex flex-wrap gap-1.5">{clusterRows.map(([k, v]) => <span key={k} className="rounded-full bg-ink/5 px-2.5 py-1 text-[12.5px]">{k} <b className="tabular-nums">{v}</b></span>)}</div>
+          </div>
           <p className="help mt-2">Собранные статьи дальше идут обычной очередью «Статей»: план → текст → публикация. Состояние каждой — в таблице ниже, обновляйте страницу.</p>
         </Card>
 

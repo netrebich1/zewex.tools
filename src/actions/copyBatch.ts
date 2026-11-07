@@ -28,10 +28,13 @@ export async function createCopyBatch(_p: FormState, f: FormData): Promise<FormS
   if (!total) return { error: "Впишите, сколько статей собрать, хотя бы в одну клетку" };
   if (total > 5000) return { error: "Не больше 5000 статей в одной партии" };
   const photos = Math.max(5, Math.min(100, Math.floor(Number(String(f.get("photos") ?? "").trim() || 0)) || 25));
+  const pm = Math.floor(Number(String(f.get("photosMax") ?? "").trim() || 0));
+  const photosMax = pm > photos ? Math.min(100, pm) : null;
+  const mw = Math.floor(Number(String(f.get("maxPerWord") ?? "").trim() || 0));
   let id = "";
   try {
     const y = Math.floor(Number(String(f.get("year") ?? "").trim()));
-    const r = await planBatch({ name: String(f.get("name") ?? ""), siteIds, quotas, word: String(f.get("word") ?? ""), photos, review: f.get("review") === "on", noSeason: f.get("noSeason") === "on", year: y >= 2024 && y <= 2035 ? y : null, createdById: me.id });
+    const r = await planBatch({ name: String(f.get("name") ?? ""), siteIds, quotas, word: String(f.get("word") ?? ""), photos, photosMax, maxPerWord: mw >= 1 && mw <= 50 ? mw : 3, review: f.get("review") === "on", noSeason: f.get("noSeason") === "on", year: y >= 2024 && y <= 2035 ? y : null, createdById: me.id });
     id = r.id;
   } catch (e) { return fail(e); }
   revalidatePath(`${COPY}/batches`);

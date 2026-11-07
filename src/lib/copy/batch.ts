@@ -6,14 +6,14 @@
 import { prisma } from "@/lib/db";
 import { copySettings } from "./build";
 import { buildCopyArticle, copySitesToday, siteNiches } from "./auto";
-import { SHARED_TEAM, VOL_CLASSES, VOL_LABEL, groupOf, isSeasonal, nicheLabel } from "./keys";
+import { SHARED_TEAM, VOL_CLASSES, VOL_LABEL, clusterWords, groupOf, isSeasonal, nicheLabel } from "./keys";
 
 const ITEMS_PER_TICK = 15;
 let running = false;
 
 export type QuotaClass = (typeof VOL_CLASSES)[number] | "any";
 export type Quotas = Record<string, Partial<Record<QuotaClass, number>>>;
-export type BatchInput = { name: string; siteIds: string[]; quotas: Quotas; word: string; photos: number; review: boolean; noSeason: boolean; year: number | null; createdById: string };
+export type BatchInput = { name: string; siteIds: string[]; quotas: Quotas; word: string; photos: number; photosMax?: number | null; maxPerWord?: number; review: boolean; noSeason: boolean; year: number | null; createdById: string };
 export const QUOTA_CLASSES: QuotaClass[] = [...VOL_CLASSES, "any"];
 
 type CoreRow = { id: string; niche: string; core: string; volClass: string | null; volume: number | null; byPhotos: number; siteIds: unknown };
@@ -62,6 +62,11 @@ export async function planBatch(input: BatchInput): Promise<{ id: string; planne
 
   const items: Array<{ niche: string; core: string; volClass: string | null; volume: number | null; siteId: string }> = [];
   const usedCores = new Set<string>();
+  // Разнообразие семантики: слово ядра («almond», «bob», «linen») — не чаще maxPerWord раз на партию.
+  const maxPerWord = Math.max(1, input.maxPerWord ?? 3);
+  const wordCount = new Map<string, number>();
+  const diverse = (core: string) => clusterWords(core).every((w) => (wordCount.get(w) ?? 0) < maxPerWord);
+  const takeWords = (core: string) => { for (const w of clusterWords(core)) wordCount.set(w, (wordCount.get(w) ?? 0) + 1); };
   const shortfalls: string[] = [];
   const fits = (s: (typeof usable)[number], c: CoreRow) =>
     s.grp === groupOf(c.niche) && (!s.niches.size || s.niches.has(c.niche)) && !((c.siteIds as string[] | null) ?? []).includes(s.id) && !done.has(`${s.id}|${c.niche}|${c.core}`);
@@ -75,11 +80,13 @@ export async function planBatch(input: BatchInput): Promise<{ id: string; planne
         if (got >= want) break;
         if (c.niche !== niche || !c.core.includes(" ") || (input.noSeason && isSeasonal(c.core)) || usedCores.has(`${c.niche}|${c.core}`)) continue;
         if (cls !== "any" && c.volClass !== cls) continue;
+        if (!diverse(c.core)) continue;
         // Сайт с наименьшим числом статей в партии, которому тема подходит, — раскладка получается ровной.
         const site = usable.filter((s) => fits(s, c)).sort((a, b) => a.count - b.count)[0];
         if (!site) continue;
         site.count++;
         usedCores.add(`${c.niche}|${c.core}`);
+        takeWords(c.core);
         items.push({ niche: c.niche, core: c.core, volClass: c.volClass, volume: c.volume, siteId: site.id });
         got++;
       }
@@ -95,7 +102,7 @@ export async function planBatch(input: BatchInput): Promise<{ id: string; planne
   const batch = await prisma.copyBatch.create({
     data: {
       name: input.name.trim() || `Партия ${new Date().toLocaleDateString("ru-RU")}`, createdById: input.createdById, status: items.length ? "running" : "done",
-      siteIds: usable.map((s) => s.id), quotas: input.quotas, word, photos: input.photos, review: input.review, noSeason: input.noSeason, year: input.year, planned: items.length, note, finishedAt: items.length ? null : new Date(),
+      siteIds: usable.map((s) => s.id), quotas: input.quotas, word, photos: input.photos, photosMax: input.photosMax && input.photosMax > input.photos ? input.photosMax : null, maxPerWord, review: input.review, noSeason: input.noSeason, year: input.year, planned: items.length, note, finishedAt: items.length ? null : new Date(),
     },
     select: { id: true },
   });
@@ -108,7 +115,7 @@ export async function planBatch(input: BatchInput): Promise<{ id: string; planne
 /** Тик воркера (раз в минуту): собирает до ITEMS_PER_TICK пунктов идущих партий, старшие партии раньше. */
 export async function copyBatchTick(): Promise<{ built: number; failed: number }> {
   if (running) return { built: 0, failed: 0 };
-  const batches = await prisma.copyBatch.findMany({ where: { status: "running" }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, photos: true, review: true, year: true } });
+  const batches = await prisma.copyBatch.findMany({ where: { status: "running" }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, photos: true, photosMax: true, review: true, year: true } });
   if (!batches.length) return { built: 0, failed: 0 };
   running = true;
   let built = 0, failed = 0;
@@ -127,7 +134,7 @@ export async function copyBatchTick(): Promise<{ built: number; failed: number }
         let result: Awaited<ReturnType<typeof buildCopyArticle>>;
         if (!site) result = { ok: false, core: it.core, reason: "сайт удалён или выключен" };
         else if (!row) result = { ok: false, core: it.core, reason: "ядра больше нет в карте" };
-        else result = await buildCopyArticle(site, st, row, { review: b.review, photos: b.photos, batchId: b.id, runName: `Article Copy · ${b.name}`, year: b.year ?? undefined }).catch((e) => ({ ok: false as const, core: it.core, reason: e instanceof Error ? e.message : String(e) }));
+        else result = await buildCopyArticle(site, st, row, { review: b.review, photos: b.photosMax ? b.photos + Math.floor(Math.random() * (b.photosMax - b.photos + 1)) : b.photos, batchId: b.id, runName: `Article Copy · ${b.name}`, year: b.year ?? undefined }).catch((e) => ({ ok: false as const, core: it.core, reason: e instanceof Error ? e.message : String(e) }));
         if (result.ok) {
           built++;
           await prisma.$transaction([
