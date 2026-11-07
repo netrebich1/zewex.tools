@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
-import { FORMULATIONS, SHARED_TEAM, capacityByPhotos, groupOf, splitKeyword } from "./keys";
+import { FORMULATIONS, SHARED_TEAM, capacityByPhotos, groupOf, splitKeyword, volClassOf } from "./keys";
 
 const REBUILD_EVERY_MS = 6 * 60 * 60_000;
 let running = false;
@@ -64,6 +64,13 @@ export async function rebuildCopy(): Promise<{ cores: number; ms: number }> {
   const reserve = await prisma.$queryRaw<Array<{ a: string; s: string }>>`SELECT c.articleId a, LEFT(c.sha256, 16) s FROM ArtPhotoCandidate c JOIN Article x ON x.id = c.articleId WHERE x.publishedAt IS NOT NULL AND x.wpUrl IS NOT NULL AND c.status IN ('reserve', 'keep') AND c.sha256 IS NOT NULL AND COALESCE(c.aiScore, 0) >= ${st.minReserveScore}`;
   for (const c of reserve) poolOfArticle.get(c.a)?.reserve.add(c.s);
 
+  // Частотность: ключи «Подбора ключей» (Ads Manager) сводятся к тем же ядрам, берётся максимум по ядру.
+  const volumes = new Map<string, number>();
+  for (const k of await prisma.kwKeyword.findMany({ where: { volume: { not: null } }, select: { phrase: true, volume: true } })) {
+    const { core } = splitKeyword(k.phrase);
+    if (core) volumes.set(core, Math.max(volumes.get(core) ?? 0, k.volume!));
+  }
+
   const builtAt = new Date();
   const data: Prisma.CopyCoreCreateManyInput[] = [];
   for (const r of rows.values()) {
@@ -78,6 +85,7 @@ export async function rebuildCopy(): Promise<{ cores: number; ms: number }> {
       id: randomUUID(), teamId: r.teamId, grp, niche: r.niche, core: r.core, articles: p?.articles ?? 0,
       formulations: r.forms, siteIds: [...r.sites], usedModifiers: usedMods, freeModifiers: FORMULATIONS.filter((m) => !usedMods.includes(m)).length,
       photosPublished: p?.published.size ?? 0, photosReserve: reserveOnly, byPhotos, freeSites, capacity: Math.min(byPhotos, freeSites), builtAt,
+      volume: volumes.get(r.core) ?? null, volClass: volClassOf(volumes.get(r.core)),
     });
   }
   const ops: Prisma.PrismaPromise<unknown>[] = [prisma.copyCore.deleteMany({})];

@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 
 const ITEMS: Array<{ href: string; label: string; exact?: boolean }> = [
   { href: "/pinterest/copy", label: "Запас", exact: true },
+  { href: "/pinterest/copy/batches", label: "Партии" },
   { href: "/pinterest/copy/articles", label: "Собранные статьи" },
   { href: "/pinterest/copy/settings", label: "Сайты и правила" },
 ];

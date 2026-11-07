@@ -34,6 +34,13 @@ export function swapModifier(keyword: string, modifier: string): string {
   return words.join(" ");
 }
 
+/** Классы частотности ядра (Ads Manager, США): ВЧ ≥ 30 000, СЧ 10–30 000, НЧ 3 000–10 000, мелкие < 3 000. */
+export const VOL_CLASSES = ["hi", "mid", "low"] as const;
+export type VolClass = (typeof VOL_CLASSES)[number];
+export const VOL_LABEL: Record<string, string> = { hi: "ВЧ", mid: "СЧ", low: "НЧ", small: "мелкие", none: "нет данных", any: "любые" };
+export const volClassOf = (v: number | null | undefined): string | null => (v == null ? null : v >= 30000 ? "hi" : v >= 10000 ? "mid" : v >= 3000 ? "low" : "small");
+export const fmtVolume = (v: number | null | undefined) => (v == null ? "—" : v >= 1000 ? `${Math.round(v / 1000)}k` : String(v));
+
 export type KeyParts = { core: string; modifier: string };
 
 export function splitKeyword(keyword: string): KeyParts {

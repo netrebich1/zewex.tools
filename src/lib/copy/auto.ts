@@ -58,7 +58,7 @@ function shuffle<T>(a: T[]): T[] {
 }
 
 /** Ниши, которые сайт реально ведёт (от 5 % его статей и не меньше 3); у пустого сайта — любые ниши его группы. */
-async function siteNiches(siteId: string): Promise<Map<string, number>> {
+export async function siteNiches(siteId: string): Promise<Map<string, number>> {
   const rows = await prisma.$queryRaw<Array<{ n: string | null; c: bigint }>>`SELECT r.nicheCode n, COUNT(*) c FROM Article a JOIN ArtRecipe r ON r.id = a.recipeId WHERE a.siteId = ${siteId} GROUP BY r.nicheCode`;
   const total = rows.reduce((s, r) => s + Number(r.c), 0);
   const out = new Map<string, number>();
@@ -67,7 +67,9 @@ async function siteNiches(siteId: string): Promise<Map<string, number>> {
 }
 
 /** Собрать одну статью по ядру для сайта. dry — без скачивания и записи (проверка подбора). */
-export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { niche: string; core: string; formulations: unknown }, opts: { dry?: boolean; review?: boolean } = {}): Promise<CopyPlanResult> {
+export type BuildOpts = { dry?: boolean; review?: boolean; /** Фото в статье вместо правила по умолчанию. */ photos?: number; /** Партия, в которой собирается статья, и имя её запуска в «Статьях». */ batchId?: string; runName?: string };
+
+export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { niche: string; core: string; formulations: unknown }, opts: BuildOpts = {}): Promise<CopyPlanResult> {
   const { niche, core } = coreRow;
   const fail = (reason: string): CopyPlanResult => ({ ok: false, core, reason });
 
@@ -150,7 +152,7 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
   const lists = shuffle([...byDonor.values()]);
   for (let i = 0; lists.some((l) => i < l.length); i++) for (const l of lists) if (i < l.length) pubQ.push(l[i]);
 
-  const n = Math.max(1, st.photosPerArticle);
+  const n = Math.max(1, opts.photos ?? st.photosPerArticle);
   const cap = Math.max(1, Math.floor((n * st.maxOverlapPct) / 100));
   const perArticle = new Map<string, number>();
   const taken = new Set<string>();
@@ -230,7 +232,7 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
   const uniqueMode = cfg.uniqueMode === "strict" || cfg.uniqueMode === "off" ? cfg.uniqueMode : "soft";
 
   const day = new Date().toLocaleDateString("ru-RU");
-  const runName = `Article Copy · ${day}`;
+  const runName = opts.runName ?? `Article Copy · ${day}`;
   const since = new Date(); since.setHours(0, 0, 0, 0);
   const run = (await prisma.artRun.findFirst({ where: { siteId: site.id, name: runName, createdAt: { gte: since } }, select: { id: true } }))
     ?? (await prisma.artRun.create({ data: { teamId: site.teamId, siteId: site.id, recipeId: shape.id, createdById, name: runName, settings: runSettings as unknown as Prisma.InputJsonValue }, select: { id: true } }));
@@ -252,7 +254,7 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
         },
       }),
       prisma.artPhoto.createMany({ data: rows }),
-      prisma.copyArticle.create({ data: { articleId, teamId: site.teamId, siteId: site.id, niche, core, modifier, keyword, photos: picked.length, fromReserve, fromPublished: picked.length - fromReserve, donors: usedDonors, lost } }),
+      prisma.copyArticle.create({ data: { articleId, teamId: site.teamId, siteId: site.id, niche, core, modifier, keyword, photos: picked.length, fromReserve, fromPublished: picked.length - fromReserve, donors: usedDonors, lost, batchId: opts.batchId ?? null } }),
     ]);
   } catch (e) {
     await removePath(articleDir(articleId)).catch(() => {});

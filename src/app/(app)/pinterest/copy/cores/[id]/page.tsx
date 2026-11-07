@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { Card, PageHeader } from "@/components/ui";
 import { coreData } from "@/lib/copy/queries";
-import { FORMULATIONS, modifierLabel, nicheLabel } from "@/lib/copy/keys";
+import { FORMULATIONS, VOL_LABEL, fmtVolume, modifierLabel, nicheLabel } from "@/lib/copy/keys";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ export default async function CopyCorePage({ params }: { params: Promise<{ id: s
 
   return (
     <>
-      <PageHeader title={c.core} subtitle={`${d.team} · ${nicheLabel(c.niche)} · опубликованных статей по ядру: ${c.articles}`} back={{ href: "/pinterest/copy", label: "Запас" }} />
+      <PageHeader title={c.core} subtitle={`${d.team} · ${nicheLabel(c.niche)} · частотность ${fmtVolume(c.volume)}${c.volClass ? ` (${VOL_LABEL[c.volClass]})` : ""} · опубликованных статей по ядру: ${c.articles}`} back={{ href: "/pinterest/copy", label: "Запас" }} />
       <div className="space-y-5">
         <Card title="Что можно собрать">
           <div className="flex flex-wrap gap-2 text-[13px]">

@@ -13,7 +13,7 @@ export async function visibleTeams(me: CurrentUser): Promise<Array<{ id: string;
   return prisma.team.findMany({ where: me.role === "ADMIN" ? {} : { id: { in: me.teamIds } }, select: { id: true, name: true }, orderBy: { name: "asc" } });
 }
 
-export type CopyFilters = { team?: string; niche?: string; q?: string; only?: string };
+export type CopyFilters = { team?: string; niche?: string; q?: string; only?: string; cls?: string };
 
 export async function dashboardData(me: CurrentUser, f: CopyFilters) {
   const [teams, settings] = await Promise.all([visibleTeams(me), copySettings()]);
@@ -24,11 +24,12 @@ export async function dashboardData(me: CurrentUser, f: CopyFilters) {
   const where: Prisma.CopyCoreWhereInput = { ...base };
   if (f.niche) where.niche = f.niche;
   if (f.q) where.core = { contains: f.q.trim().toLowerCase() };
+  if (f.cls) where.volClass = f.cls === "none" ? null : f.cls;
   if (f.only === "ready") where.capacity = { gt: 0 };
   if (f.only === "nosites") { where.byPhotos = { gt: 0 }; where.freeSites = 0; }
   const [summary, cores, total, sites] = await Promise.all([
     prisma.copyCore.groupBy({ by: ["teamId", "niche"], where: base, _count: { _all: true }, _sum: { articles: true, byPhotos: true, capacity: true, photosPublished: true, photosReserve: true } }),
-    prisma.copyCore.findMany({ where, orderBy: [{ capacity: "desc" }, { byPhotos: "desc" }, { articles: "desc" }, { core: "asc" }], take: 300, select: { id: true, teamId: true, niche: true, core: true, articles: true, freeModifiers: true, usedModifiers: true, photosPublished: true, photosReserve: true, byPhotos: true, freeSites: true, capacity: true } }),
+    prisma.copyCore.findMany({ where, orderBy: [{ capacity: "desc" }, { byPhotos: "desc" }, { articles: "desc" }, { core: "asc" }], take: 300, select: { id: true, teamId: true, niche: true, core: true, articles: true, freeModifiers: true, usedModifiers: true, photosPublished: true, photosReserve: true, byPhotos: true, freeSites: true, capacity: true, volume: true, volClass: true } }),
     prisma.copyCore.count({ where }),
     prisma.copySite.findMany({ where: { ...(settings.sharedBank ? {} : { teamId: { in: scope } }), publish: true }, select: { artSiteId: true, teamId: true } }),
   ]);

@@ -1,0 +1,29 @@
+/**
+ * Проверка планировщика партий без сборки: создаёт партию, сразу ставит на паузу, печатает раскладку и удаляет её.
+ *   sudo -u zewex_tools_usr -H npx tsx scripts/copy/batch-test.ts --site thefreshstyle.com --site styles-4-you.com --quota nails:hi=5,mid=5 --quota hair:low=4
+ * С --keep партия остаётся (на паузе) — продолжить можно с экрана.
+ */
+import { prisma } from "@/lib/db";
+import { planBatch, type Quotas } from "@/lib/copy/batch";
+
+async function main() {
+  const args = process.argv.slice(2);
+  const get = (k: string) => args.flatMap((a, i) => (a === k ? [args[i + 1]] : []));
+  const sites = await prisma.artSite.findMany({ where: { OR: get("--site").flatMap((s) => [{ name: s }, { id: s }]) }, select: { id: true, name: true } });
+  const quotas: Quotas = {};
+  for (const q of get("--quota")) {
+    const [niche, rest] = q.split(":");
+    quotas[niche] = Object.fromEntries(rest.split(",").map((p) => { const [k, v] = p.split("="); return [k, Number(v)]; }));
+  }
+  const user = await prisma.user.findFirst({ where: { role: "ADMIN" }, select: { id: true } });
+  const t0 = Date.now();
+  const r = await planBatch({ name: "Тест планировщика", siteIds: sites.map((s) => s.id), quotas, word: get("--word")[0] ?? "", photos: 25, review: true, createdById: user!.id });
+  await prisma.copyBatch.update({ where: { id: r.id }, data: { status: "paused" } });
+  const items = await prisma.copyBatchItem.findMany({ where: { batchId: r.id }, orderBy: { position: "asc" } });
+  const name = new Map(sites.map((s) => [s.id, s.name]));
+  console.log(`партия ${r.id}: запланировано ${r.planned} за ${Date.now() - t0} мс${r.note ? `\nзаметка: ${r.note}` : ""}`);
+  console.table(items.map((i) => ({ n: i.position, niche: i.niche, core: i.core, cls: i.volClass, vol: i.volume, site: name.get(i.siteId) })));
+  if (!args.includes("--keep")) { await prisma.copyBatch.delete({ where: { id: r.id } }); console.log("партия удалена"); }
+  await prisma.$disconnect();
+}
+main().catch((e) => { console.error(e); process.exit(1); });

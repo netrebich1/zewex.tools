@@ -5,7 +5,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { requestCopyRebuild } from "@/actions/copy";
 import { dashboardData } from "@/lib/copy/queries";
-import { FORMULATIONS, modifierLabel, nicheLabel } from "@/lib/copy/keys";
+import { FORMULATIONS, VOL_LABEL, fmtVolume, modifierLabel, nicheLabel } from "@/lib/copy/keys";
 import { fmtDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 const n = (v: number) => v.toLocaleString("ru-RU");
 
 /** Запас Article Copy: сколько ядер, формулировок и кадров накоплено и сколько новых статей из них выходит по правилам. */
-export default async function CopyHome({ searchParams }: { searchParams: Promise<{ team?: string; niche?: string; q?: string; only?: string }> }) {
+export default async function CopyHome({ searchParams }: { searchParams: Promise<{ team?: string; niche?: string; q?: string; only?: string; cls?: string }> }) {
   const me = await requireUser();
   const f = await searchParams;
   const d = await dashboardData(me, f);
@@ -31,7 +31,7 @@ export default async function CopyHome({ searchParams }: { searchParams: Promise
       <PageHeader
         title="Article Copy — запас"
         subtitle={`Новые статьи из уже одобренных фото: тратимся только на текст. Правила: ${st.photosPerArticle} фото в статье, не больше ${st.maxOverlapPct}% общих кадров с любой существующей статьёй, тема на сайте один раз, банк ${st.sharedBank ? "общий" : "у каждой команды свой"}.`}
-        actions={<Link href="/pinterest/copy/settings" className="btn-ghost">Сайты и правила</Link>}
+        actions={<div className="flex gap-2"><Link href="/pinterest/copy/batches/new" className="btn-brand">Новая партия</Link><Link href="/pinterest/copy/settings" className="btn-ghost">Сайты и правила</Link></div>}
       />
       <div className="space-y-5">
         <Card title="Сколько можно собрать" description="«По кадрам» — сколько статей выходит из накопленных фото. «На сайты» — сколько из них есть куда поставить: привязанные сайты, где этой темы ещё нет.">
@@ -72,7 +72,7 @@ export default async function CopyHome({ searchParams }: { searchParams: Promise
           )}
         </Card>
 
-        <Card title="Ядра и формулировки" description="Ядро — ключ без приставки и года. Формулировки одного ядра считаются одной темой. Показаны первые 300, сверху — где можно собрать больше всего."
+        <Card title="Ядра и формулировки" description="Ядро — ключ без приставки и года. Формулировки одного ядра считаются одной темой. Частотность — Ads Manager (США) из «Подбора ключей»: ВЧ от 30 000, СЧ 10–30 000, НЧ 3 000–10 000. Показаны первые 300, сверху — где можно собрать больше всего."
           actions={<ActionForm action={requestCopyRebuild} className="flex items-center gap-2"><SubmitButton className="btn-ghost btn-sm" pendingText="…">Пересчитать</SubmitButton></ActionForm>}>
           <form method="get" action="/pinterest/copy" className="mb-3 flex flex-wrap items-end gap-2">
             {d.teams.length > 1 && (
@@ -82,6 +82,9 @@ export default async function CopyHome({ searchParams }: { searchParams: Promise
             )}
             <label className="block"><span className="label">Ниша</span>
               <select name="niche" defaultValue={f.niche ?? ""} className="input py-1.5"><option value="">все</option>{d.niches.map((x) => <option key={x} value={x}>{nicheLabel(x)}</option>)}</select>
+            </label>
+            <label className="block"><span className="label">Частотность</span>
+              <select name="cls" defaultValue={f.cls ?? ""} className="input py-1.5"><option value="">любая</option><option value="hi">ВЧ (от 30k)</option><option value="mid">СЧ (10–30k)</option><option value="low">НЧ (3–10k)</option><option value="small">мелкие (до 3k)</option><option value="none">нет данных</option></select>
             </label>
             <label className="block"><span className="label">Показать</span>
               <select name="only" defaultValue={f.only ?? ""} className="input py-1.5"><option value="">все ядра</option><option value="ready">можно собрать сейчас</option><option value="nosites">кадры есть, сайтов нет</option></select>
@@ -95,12 +98,13 @@ export default async function CopyHome({ searchParams }: { searchParams: Promise
           ) : (
             <div className="table-wrap">
               <table className="table">
-                <thead><tr><th>Ядро</th><th className="hidden md:table-cell">Ниша</th><th className="text-right">Статей</th><th>Формулировки</th><th className="text-right">Фото</th><th className="text-right">Резерв</th><th className="text-right">По кадрам</th><th className="text-right">Свободных сайтов</th><th className="text-right">Можно собрать</th></tr></thead>
+                <thead><tr><th>Ядро</th><th className="hidden md:table-cell">Ниша</th><th className="text-right">Частотность</th><th className="text-right">Статей</th><th>Формулировки</th><th className="text-right">Фото</th><th className="text-right">Резерв</th><th className="text-right">По кадрам</th><th className="text-right">Свободных сайтов</th><th className="text-right">Можно собрать</th></tr></thead>
                 <tbody>
                   {d.cores.map((c) => (
                     <tr key={c.id}>
                       <td className="min-w-[180px]"><Link href={`/pinterest/copy/cores/${c.id}`} className="font-medium hover:underline">{c.core}</Link>{d.teams.length > 1 && <div className="help">{c.team}</div>}</td>
                       <td className="hidden md:table-cell text-muted">{nicheLabel(c.niche)}</td>
+                      <td className="text-right tabular-nums whitespace-nowrap" title={c.volume == null ? "ключа нет в «Подборе ключей»" : `${c.volume.toLocaleString("ru-RU")} — ${VOL_LABEL[c.volClass ?? "none"]}`}>{fmtVolume(c.volume)}{c.volClass && c.volClass !== "small" ? <span className="help ml-1">{VOL_LABEL[c.volClass]}</span> : null}</td>
                       <td className="text-right tabular-nums">{c.articles}</td>
                       <td className="text-[12.5px] text-muted" title={`Свободно из стандартных: ${FORMULATIONS.filter((m) => !c.usedModifiers.includes(m)).map(modifierLabel).join(", ") || "нет"}`}>{c.usedModifiers.map(modifierLabel).join(", ")} <span className="whitespace-nowrap">· свободно {c.freeModifiers}</span></td>
                       <td className="text-right tabular-nums text-muted">{c.photosPublished}</td>
