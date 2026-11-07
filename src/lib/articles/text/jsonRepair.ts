@@ -57,8 +57,36 @@ export function parseModelJson(text: string): unknown {
   try {
     return JSON.parse(slice);
   } catch { /* последняя попытка — достроить обрыв */ }
+  // Первый сбалансированный объект: flash-lite иногда дописывает после JSON обрывки («…"}\n."}\n"}»), и
+  // срез до последней «}» ломается (аудит мешап-статей 07.11.2026 — половина описаний фото терялась).
+  const first = firstJsonObject(cleaned);
+  if (first) {
+    try {
+      return JSON.parse(first);
+    } catch { /* ниже — достроить обрыв */ }
+  }
   const body = start !== -1 ? cleaned.slice(start) : cleaned;
   return JSON.parse(repairTruncatedJson(body));
+}
+
+/** Текст первого объекта `{…}` с учётом строк и экранирования; null, если объект не закрыт. */
+export function firstJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "{") depth++;
+    else if (c === "}") { depth--; if (depth === 0) return text.slice(start, i + 1); }
+  }
+  return null;
 }
 
 /** То же, но null вместо исключения. */
