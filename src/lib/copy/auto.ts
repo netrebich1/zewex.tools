@@ -25,7 +25,7 @@ import { mergeSiteSettings, type ArtRunSettings, type PhotoSearchConfig } from "
 import { loadTeamAutostart, teamAutostart } from "@/lib/articles/teamQueue";
 import type { CopySettings } from "@prisma/client";
 import { copySettings, type CoreForm } from "./build";
-import { groupOf, pickModifier, splitKeyword, swapModifier } from "./keys";
+import { SHARED_TEAM, groupOf, pickModifier, splitKeyword, swapModifier } from "./keys";
 
 const SKIP_MS = 6 * 60 * 60_000;
 const MAX_PER_TICK = 2;
@@ -270,8 +270,8 @@ export async function buildForSite(site: Site, st: CopySettings, opts: { dry?: b
   const grp = groupOf(site.nicheCode ?? [...niches.keys()][0]);
   const since = new Date(Date.now() - 24 * 60 * 60_000);
   const [cores, recent] = await Promise.all([
-    prisma.copyCore.findMany({ where: { teamId: site.teamId, grp, byPhotos: { gt: 0 }, ...(opts.core ? { core: opts.core } : {}) }, orderBy: [{ photosReserve: "desc" }, { photosPublished: "desc" }], take: 500, select: { niche: true, core: true, siteIds: true, formulations: true } }),
-    prisma.copyArticle.findMany({ where: { teamId: site.teamId, createdAt: { gte: since } }, select: { niche: true, core: true } }),
+    prisma.copyCore.findMany({ where: { teamId: st.sharedBank ? SHARED_TEAM : site.teamId, grp, byPhotos: { gt: 0 }, ...(opts.core ? { core: opts.core } : {}) }, orderBy: [{ photosReserve: "desc" }, { photosPublished: "desc" }], take: 500, select: { niche: true, core: true, siteIds: true, formulations: true } }),
+    prisma.copyArticle.findMany({ where: { ...(st.sharedBank ? {} : { teamId: site.teamId }), createdAt: { gte: since } }, select: { niche: true, core: true } }),
   ]);
   const recentSet = new Set(recent.map((r) => `${r.niche}|${r.core}`));
   const now = Date.now();

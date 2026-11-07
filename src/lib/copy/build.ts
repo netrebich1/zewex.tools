@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
-import { FORMULATIONS, capacityByPhotos, groupOf, splitKeyword } from "./keys";
+import { FORMULATIONS, SHARED_TEAM, capacityByPhotos, groupOf, splitKeyword } from "./keys";
 
 const REBUILD_EVERY_MS = 6 * 60 * 60_000;
 let running = false;
@@ -39,9 +39,10 @@ export async function rebuildCopy(): Promise<{ cores: number; ms: number }> {
     const { core, modifier } = splitKeyword(a.keyword);
     if (!core) continue;
     const niche = a.recipeRef?.nicheCode || a.site.nicheCode || "other";
-    const rk = `${a.teamId}|${niche}|${core}`;
+    const rowTeam = st.sharedBank ? SHARED_TEAM : a.teamId;
+    const rk = `${rowTeam}|${niche}|${core}`;
     let r = rows.get(rk);
-    if (!r) rows.set(rk, (r = { teamId: a.teamId, niche, core, forms: [], sites: new Set() }));
+    if (!r) rows.set(rk, (r = { teamId: rowTeam, niche, core, forms: [], sites: new Set() }));
     r.forms.push({ k: a.keyword, m: modifier, s: a.siteId, a: a.id, u: a.wpUrl });
     r.sites.add(a.siteId);
     const uk = `${niche}|${core}`;
@@ -71,7 +72,7 @@ export async function rebuildCopy(): Promise<{ cores: number; ms: number }> {
     if (p) for (const s of p.reserve) if (!p.published.has(s)) reserveOnly++;
     const grp = groupOf(r.niche);
     const usedMods = [...(used.get(`${r.niche}|${r.core}`) ?? [])];
-    const freeSites = artSites.filter((s) => s.teamId === r.teamId && groupOf(s.nicheCode) === grp && !r.sites.has(s.id)).length;
+    const freeSites = artSites.filter((s) => (st.sharedBank || s.teamId === r.teamId) && groupOf(s.nicheCode) === grp && !r.sites.has(s.id)).length;
     const byPhotos = p ? capacityByPhotos({ published: p.published.size, reserve: reserveOnly, articles: p.articles, perArticle: st.photosPerArticle, maxOverlapPct: st.maxOverlapPct }) : 0;
     data.push({
       id: randomUUID(), teamId: r.teamId, grp, niche: r.niche, core: r.core, articles: p?.articles ?? 0,

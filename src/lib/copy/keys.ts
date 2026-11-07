@@ -4,6 +4,8 @@
  * специально разными для разных сайтов, поэтому похожие ключи считаются одной темой.
  */
 export const PROJECT_SLUG = "copy";
+/** teamId строк CopyCore при общем банке: ядра всех команд склеены в одну карту. */
+export const SHARED_TEAM = "shared";
 export const COPY = "/pinterest/copy";
 
 /** Стандартный набор формулировок («» — ключ без приставки). */
