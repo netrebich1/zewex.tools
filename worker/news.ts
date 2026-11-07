@@ -49,6 +49,13 @@ export async function newsStartup(hostPrefix: string): Promise<void> {
   if (n) log.info(`news: ${n} interrupted run(s) closed`);
 }
 
+/** Зависшие прогоны (воркер упал посреди прогона) — закрыть. */
+export async function newsFailStale(): Promise<void> {
+  const n = await failStaleRuns();
+  if (n) log.info(`news: ${n} stale run(s) closed`);
+}
+
+/** Ночная уборка (04:00 по Киеву, worker/cron.ts): инфоповоды старше KEEP_DAYS, память старше MEMORY_DAYS. */
 export async function newsDaily(): Promise<void> {
   await failStaleRuns();
   const r = await purgeOld();

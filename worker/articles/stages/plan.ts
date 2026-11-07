@@ -243,6 +243,13 @@ export const plan: ArtStageHandler = async (ctx) => {
   const swapped = repairPhotoMapping(mapped);
   if (swapped) ctx.log(`план: ${swapped} секц. перепривязаны к своим фото по описанию (модель перепутала photo_n)`);
 
+  // Мешап: план отвечает за разнообразие заголовков. Код проверяет квоты (первое слово, «with», слово темы) и одним
+  // дешёвым вызовом переписывает только нарушившие заголовки (владелец 07.11: «план мы делаем, чтобы таких моментов не было»).
+  if (isCopy) {
+    const fixed = await enforceHeadingVariety(ctx, mapped.map((m) => ({ plan: m.plan, description: m.photo.description })), focusKeywordOf(ctx) || article.keyword);
+    if (fixed) ctx.log(`план: ${fixed} заголовков переписаны ради разнообразия (повтор первого слова, «with», слово темы)`);
+  }
+
   // Уникальные заголовки: ни одного повтора и почти-дубля (оригинал: 261-274).
   const usedHeadings = new Set<string>();
   // Слова ключа не считаются отличительными при сравнении заголовков (аудит 2026-10-14).
@@ -372,6 +379,64 @@ const jaccard = (a: Set<string>, b: Set<string>) => {
  * Меняет фото местами у пар секций, когда обе секции заметно ближе к описанию фото друг друга, чем к своему.
  * Возвращает число затронутых секций. Консервативно: порог 0.2 суммарного выигрыша, не больше N проходов.
  */
+const HEADING_PATTERNS = ["detail_first", "situation", "effect", "reader", "quieter_or_bolder", "number", "time", "verb_first"];
+const firstWord = (h: string) => (h.trim().split(/\s+/)[0] ?? "").toLowerCase().replace(/[^a-z0-9'-]/g, "");
+
+/** Какие заголовки нарушают квоты разнообразия: повтор первого слова, «with» больше трети, слово темы в начале больше трёх раз, одинаковые два последних слова. */
+export function headingViolations(h2s: string[], lockWords: string[]): Set<number> {
+  const bad = new Set<number>();
+  const n = h2s.length;
+  const seenFirst = new Map<string, number>();
+  const seenTail = new Map<string, number>();
+  let withCount = 0, lockStarts = 0;
+  const withMax = Math.ceil(n / 3), lockMax = 3;
+  h2s.forEach((h, i) => {
+    const words = h.toLowerCase().split(/\s+/).filter(Boolean);
+    const f = firstWord(h);
+    if (!words.length) return;
+    if (seenFirst.has(f)) bad.add(i); else seenFirst.set(f, i);
+    const tail = words.slice(-2).join(" ");
+    if (words.length >= 4 && seenTail.has(tail)) bad.add(i); else seenTail.set(tail, i);
+    if (words.includes("with")) { withCount++; if (withCount > withMax) bad.add(i); }
+    if (lockWords.some((w) => w && words.slice(0, 2).includes(w))) { lockStarts++; if (lockStarts > lockMax) bad.add(i); }
+  });
+  return bad;
+}
+
+/** Переписать нарушившие заголовки одним вызовом модели плана; вернуть число изменённых. */
+export async function enforceHeadingVariety(ctx: ArtStageCtx, items: Array<{ plan: JsonRecord; description: string | null }>, focusKeyword: string): Promise<number> {
+  const lockWords = focusKeyword.toLowerCase().split(/\s+/).filter((w) => w.length > 3 && !/^20\d\d$/.test(w));
+  const h2s = items.map((it) => String(it.plan.h2 || "").trim());
+  const bad = headingViolations(h2s, lockWords);
+  if (!bad.size) return 0;
+  const usedFirst = new Set(h2s.filter((_, i) => !bad.has(i)).map(firstWord));
+  const list = items.map((it, i) => ({ n: i + 1, h2: h2s[i], rewrite: bad.has(i), pattern: bad.has(i) ? HEADING_PATTERNS[i % HEADING_PATTERNS.length] : String(it.plan.h2_pattern || ""), facts: String(it.description || "").slice(0, 320) }));
+  const system = `You fix the headings of a photo-led article so that no two sections look alike. Rewrite ONLY the entries marked rewrite:true, keep the others untouched. Each rewritten heading: 5-9 words, sentence case (first word and proper nouns capitalized), no colon, dash or year, written in the given pattern (detail_first: the detail a reader notices first, then the base; situation: the idea for a reader situation; effect: what the idea does; reader: "When you want X without Y"; quieter_or_bolder: a take relative to the topic; number: a count leads; time: how it lives through the week; verb_first: a gerund opens). Every content word must come from that section's facts or from the topic "${focusKeyword}". The first word of a rewritten heading must differ from every other heading's first word and must not be one of: ${[...usedFirst].join(", ")}. Avoid the word "with" and do not start with the topic noun. No praise words. Return JSON only: {"headings":[{"n":1,"h2":"..."}]} for the rewritten entries.`;
+  try {
+    const r = await aiChat(ctx.ai, { slot: SLOTS.textFast, model: stageModel(ctx.recipe, STAGE_KEY), system, user: JSON.stringify({ topic: focusKeyword, sections: list }), json: true, temperature: 0.7, maxTokens: 3000, timeoutMs: 120_000 });
+    const out = (r.json && typeof r.json === "object" ? r.json : parseModelJsonSafe(r.text)) as JsonRecord | null;
+    const rows = asArray(out?.headings) as JsonRecord[];
+    let changed = 0;
+    const taken = new Set(usedFirst);
+    for (const row of rows) {
+      const i = Number(row.n) - 1;
+      const h2 = String(row.h2 || "").trim().replace(/[—–:]/g, ",").replace(/\s+/g, " ");
+      if (!bad.has(i) || !h2 || h2.split(" ").length < 4 || h2.split(" ").length > 12) continue;
+      const f = firstWord(h2);
+      if (taken.has(f)) continue;
+      taken.add(f);
+      items[i].plan.h2 = h2;
+      items[i].plan.name = h2;
+      items[i].plan.h2_pattern = list[i].pattern;
+      changed++;
+    }
+    return changed;
+  } catch (e) {
+    ctx.log(`разнообразие заголовков: вызов не удался (${e instanceof Error ? e.message : String(e)}), оставляем заголовки плана`);
+    return 0;
+  }
+}
+
 export function repairPhotoMapping(mapped: Array<{ plan: Record<string, unknown>; photo: { id: string; description: string | null; facts: unknown } }>): number {
   const sec = mapped.map((m) => words([m.plan.h2, m.plan.description, m.plan.visual_anchor, m.plan.ask_for, m.plan.art_technique, m.plan.outfit_summary, m.plan.room_summary].filter(Boolean).join(" ")));
   const pho = mapped.map((m) => words(`${m.photo.description ?? ""} ${Object.values((m.photo.facts as Record<string, unknown> | null) ?? {}).filter((x) => typeof x === "string").join(" ")}`));

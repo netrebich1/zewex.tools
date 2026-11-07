@@ -34,7 +34,7 @@ role: "hero" (position 1: the most literal match of the focus keyword and the st
 Ordering rules: no two adjacent sections share the dominant shade or the same styling; alternate bold and quiet, salon and DIY, longer and shorter, worn down and pulled back; fillers never at positions 1-2 or last. Explain the sequence in ordering_strategy (3-5 sentences).
 
 === 6. SECTION FIELDS ===
-- h2: sentence case (capitalize only the first word and proper nouns), 5-9 words, no colon, no dash, no "Look #N", no year. The heading leads with the detail a reader notices first or with her situation, and names the hair noun (bob, lob, layers, balayage, braid). Patterns to rotate: "<Detail> on <base or cut>" ("Caramel ribbons on a dark brown base"), "<Cut or color> for <situation>" ("Blunt collarbone lob for fine hair"), "<Style> that <does something>" ("Soft waves that hide a grow-out line"). Never start a heading with a length or with "Short/Medium/Long": that is the pattern of other sites. Across the article no two headings start with the same word, no three headings share the same pattern in a row, and the lock shade or cut opens at most three headings. Every word in the heading must come from the photo description or the lock; a description that starts with "Collage:" gets a heading about the shared element only, never a generic one ("Beautiful updo hairstyles").
+- h2_pattern and h2: see HEADINGS below. Never start a heading with a length or with "Short/Medium/Long": that is the pattern of other sites. A description that starts with "Collage:" gets a heading about the shared element only, never a generic one ("Beautiful updo hairstyles").
 - seo_keyword: one real search phrase per section, unique across the article, 2-5 words, a natural variation of the focus keyword matching this photo's actual features. Never the focus keyword itself.
 - description: 1-2 sentences defining the cut, color or style, only from the photo description.
 - visual_anchor: 2-4 concrete details copied from the photo description that the writer must name.
@@ -46,6 +46,18 @@ Ordering rules: no two adjacent sections share the dominant shade or the same st
 - cut, hair_length, texture, hair_color, bangs: short strings copied from the description, "" when not stated.
 Face-shape advice must be standard: a middle part and length below the chin elongate a round face; volume at the sides suits long faces; soft layers around the jaw soften a square face.
 
+=== HEADINGS (hard; the plan exists so that the article never reads as a list of look-alike sections) ===
+Every section gets h2_pattern, one of eight, and the h2 is written in that pattern:
+- detail_first: the detail a reader notices first, then the base ("Caramel ribbons on a dark brown base")
+- situation: the idea for a reader situation ("Blunt lob for fine hair that falls flat")
+- effect: what the idea does ("Soft waves that hide a grow-out line")
+- reader: a want without a cost ("When you want lightness without a visible root line")
+- quieter_or_bolder: a take relative to the lock ("A quieter take on copper, mostly at the ends")
+- number: a count leads ("Two tones, one blowout, ash over espresso")
+- time: how it lives through the week ("Curtain bangs that survive a wash-day skip")
+- verb_first: a gerund opens ("Softening a square jaw with layers at the chin")
+Quotas for the whole article: each pattern at most ceil(N/6) times and never in two sections in a row; the first word of every heading is unique across the article; the word "with" appears in at most a third of the headings; the lock noun (the cut or shade of the focus keyword: balayage, bob, curtain bangs…) opens at most three headings and appears in at most half of them; no heading ends with the same two words as another. Headings stay 5-9 words, sentence case (only the first word and proper nouns capitalized), no colon, no dash, no year, no "Look #N", and every content word comes from that photo's description or the lock (bob, lob, layers, balayage, braid). Headings are facts about the photo, never praise ("Gorgeous…", "Stunning…", "Perfect…").
+
 === 7. ARTICLE-LEVEL PLANS ===
 - intro_plan: p1_situation (the moment the reader is in: the consultation is booked, the fringe is growing out, she wants the locked cut or color but not the upkeep; one concrete sentence, no trend talk, no "I keep seeing"), p2_answer (the exact count, the spread from low upkeep to high and short to long, who it is for), p3_reader (one struggle this collection solves: fine hair that falls flat, a visible grow-out line, a fringe that will not sit), target_length "80-110 words".
 - outro_plan: approach "pick_by" (a short decision list: by hair density, by time for styling, by how often she can sit in the chair), decision_rule (one rule), final_thought (max 14 words, no first person), tone, target_length "70-110 words".
@@ -56,7 +68,7 @@ Never plan an FAQ block, a comparison table or a "trends" section.
 Specific and factual, American spelling. No marketing words: effortless, chic, elevate, stunning, timeless, seamless, game-changer, must-have, holy grail, hair goals, hair inspo, show-stopping, mane, tresses, locks (for hair), crowning glory. No em dashes or en dashes. Plain apostrophes. No emoji, brands, prices or links. Never "TBD", "N/A" or empty strings except where "" is allowed. Never mention scores, domains or input data.
 
 === 9. OUTPUT ===
-Valid JSON only: no fences, no comments, no text before or after. Before returning, check: one section per photo; every photo_n used once; positions continuous 1..N; every h2 is true for its photo_n and starts neither with a length nor with Short/Medium/Long; no length, bangs type or color placement anywhere that the description does not state; every seo_keyword unique and none equals the focus keyword; every visual_anchor detail exists in that description; ask_for and skip_if present in every section; no first person; no nail, makeup, outfit, brand or price words.
+Valid JSON only: no fences, no comments, no text before or after. Before returning, check: one section per photo; every photo_n used once; positions continuous 1..N; every h2 is true for its photo_n and starts neither with a length nor with Short/Medium/Long; every section has h2_pattern, no pattern twice in a row or more than ceil(N/6) times, no two headings share a first word, "with" in at most a third of headings, the lock noun opens at most three; no length, bangs type or color placement anywhere that the description does not state; every seo_keyword unique and none equals the focus keyword; every visual_anchor detail exists in that description; ask_for and skip_if present in every section; no first person; no nail, makeup, outfit, brand or price words.
 ===TEXT===
 Build the complete article plan from the selected real photos.
 
@@ -115,6 +127,7 @@ One example section object. Match this density, return only these fields. Never 
   "photo_n": 4,
   "position": 1,
   "role": "hero",
+  "h2_pattern": "detail_first",
   "h2": "Blunt baseline and a curtain fringe on a collarbone lob",
   "seo_keyword": "blunt lob with curtain bangs",
   "description": "A collarbone lob cut to one blunt baseline with a soft curtain fringe that splits past the brows; the description names no color technique.",

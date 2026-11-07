@@ -35,7 +35,7 @@ role: "hero" (position 1: the most literal match of the focus keyword and the st
 Ordering rules: no two adjacent sections share the dominant color or the same art type; alternate loud and quiet, salon and DIY, longer and shorter sets; fillers never at positions 1-2 or last. Explain the sequence in ordering_strategy (3-5 sentences).
 
 === 6. SECTION FIELDS ===
-- h2: sentence case (capitalize only the first word and proper nouns), 5-9 words, no colon, no dash, no "Look #N", no year. The heading leads with the detail a reader would notice first or with the reader's situation, and ends with the nail noun. Patterns to rotate: "<Detail> on <shape or base> nails" ("Hairline white tips on a milky base"), "<Design> for <situation>" ("Sheer pink jelly for short nail beds"), "<Design> that <does something>" ("Chrome French tips that hide grow-out"). Never start a heading with the shape or the length ("Short almond…", "Medium oval…"): that is the pattern of other sites. Across the article no two headings start with the same word, no three headings share the same pattern in a row, and the lock color or motif opens at most three headings. Every word in the heading must come from the photo description or the lock; a description that starts with "Collage:" gets a heading about the shared element only.
+- h2_pattern and h2: see HEADINGS below. Never start a heading with the shape or the length ("Short almond…", "Medium oval…"): that is the pattern of other sites. A description that starts with "Collage:" gets a heading about the shared element only.
 - seo_keyword: one real search phrase per section, unique across the article, 2-5 words, a natural variation of the focus keyword that matches this photo's actual features. Never the focus keyword itself.
 - description: 1-2 sentences, what the design is, only from the photo description.
 - visual_anchor: 2-4 concrete details copied from the photo description that the writer must name.
@@ -47,6 +47,18 @@ Ordering rules: no two adjacent sections share the dominant color or the same ar
 - nail_shape, nail_length, finish, art_technique: short strings copied from the description, "" when not stated.
 Accuracy facts the writer will repeat: gel and chrome come off with an acetone soak-off, never peeled; chrome powder is rubbed onto a cured no-wipe top coat; cat-eye magnet works on uncured gel; gel polish gets no "fill", fills are for builder, hard gel or acrylic; gel sets typically last two to three weeks.
 
+=== HEADINGS (hard; the plan exists so that the article never reads as a list of look-alike sections) ===
+Every section gets h2_pattern, one of eight, and the h2 is written in that pattern:
+- detail_first: the detail a reader notices first, then the base ("Hairline white tips on a milky base")
+- situation: the design for a reader situation ("Sheer pink jelly for short nail beds")
+- effect: what the design does ("Chrome tips that hide two weeks of grow-out")
+- reader: a want without a cost ("When you want sparkle without a full glitter set")
+- quieter_or_bolder: a take relative to the lock ("A quieter take on red, matte and squared off")
+- number: a count leads ("Two accent nails, eight plain, one shade of taupe")
+- time: how it lives through the week ("Gel tips that make it to the next appointment")
+- verb_first: a gerund opens ("Shortening the tip line on a long almond")
+Quotas for the whole article: each pattern at most ceil(N/6) times and never in two sections in a row; the first word of every heading is unique across the article; the word "with" appears in at most a third of the headings; the lock noun (the color, finish or motif of the focus keyword: chrome, French tip, red…) opens at most three headings and appears in at most half of them; no heading ends with the same two words as another. Headings stay 5-9 words, sentence case (only the first word and proper nouns capitalized), no colon, no dash, no year, no "Look #N", and every content word comes from that photo's description or the lock (tips, base, almond, chrome, French, jelly). Headings are facts about the photo, never praise ("Gorgeous…", "Stunning…", "Perfect…").
+
 === 7. ARTICLE-LEVEL PLANS ===
 - intro_plan: p1_situation (the moment the reader is in: the appointment is booked, the old set is lifting, she wants the lock property but is unsure which version; one concrete sentence, no trend talk, no "I keep seeing"), p2_answer (the exact count, the spread from plain to busy and short to long, who it is for), p3_reader (one struggle this collection solves), target_length "80-110 words".
 - outro_plan: approach "pick_by" (a short decision list: by nail length, by upkeep tolerance, by occasion), decision_rule (one rule), final_thought (max 14 words, no first person), tone, target_length "70-110 words".
@@ -57,7 +69,7 @@ Never plan an FAQ block, a comparison table or a "trends" section.
 Specific and factual, American spelling. No marketing words: effortless, chic, elevate, stunning, timeless, seamless, game-changer, must-have, holy grail, nail goals, nail inspo, show-stopping, obsessed. No em dashes or en dashes. Plain apostrophes. No emoji, brands, prices or links. Never write "TBD", "N/A" or leave a string empty except where "" is allowed. Never mention scores, domains or input data.
 
 === 9. OUTPUT ===
-Valid JSON only: no fences, no comments, no text before or after. Before returning, check: one section per photo; every photo_n used once; positions continuous 1..N; every h2 is true for its photo_n and starts neither with a shape nor a length; every seo_keyword unique and none equals the focus keyword; every visual_anchor detail exists in that photo's description; skip_if present in every section; no skin-tone claims; no first person.
+Valid JSON only: no fences, no comments, no text before or after. Before returning, check: one section per photo; every photo_n used once; positions continuous 1..N; every h2 is true for its photo_n and starts neither with a shape nor a length; every section has h2_pattern, no pattern twice in a row or more than ceil(N/6) times, no two headings share a first word, "with" in at most a third of headings, the lock noun opens at most three; every seo_keyword unique and none equals the focus keyword; every visual_anchor detail exists in that photo's description; skip_if present in every section; no skin-tone claims; no first person.
 ===TEXT===
 Build the complete article plan from the selected real photos.
 
@@ -113,6 +125,7 @@ One example section object. Match this density, return only these fields. Never 
   "photo_n": 4,
   "position": 1,
   "role": "hero",
+  "h2_pattern": "detail_first",
   "h2": "Hairline white tips on a milky sheer base",
   "seo_keyword": "milky micro french nails",
   "description": "A milky sheer base with a hairline white French tip and a glossy finish; the description names no shape.",

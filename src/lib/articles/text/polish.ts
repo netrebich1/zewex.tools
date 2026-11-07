@@ -206,12 +206,59 @@ const COPY_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bpop of color\b/gi, "bright accent"],
   [/\bwardrobe staple\b/gi, "closet basic"],
   [/\bgo-to\b/gi, "default"],
+  [/\bseamlessly\b/gi, "smoothly"],
+  [/\bseamless\b/gi, "smooth"],
+  [/\bsun-kissed\b/gi, "lighter"],
 ];
 /** Заменить штампы мешапа в одном текстовом фрагменте. */
 export function replaceCopyCliches(text: string): string {
   let s = text;
   for (const [re, to] of COPY_REPLACEMENTS) s = s.replace(re, (m) => keepCase(m, to));
   return s;
+}
+
+/** Убрать из абзацев предложения, подходящие под регулярку; пустые абзацы и пункты списка уходят. */
+function dropSentences(html: string, re: RegExp): string {
+  const out = html.replace(/<(p|li)([^>]*)>([\s\S]*?)<\/\1>/gi, (_m, tag: string, attrs: string, inner: string) => {
+    const parts = inner.match(/[^.!?]+[.!?]+["”’']?\s*|[^.!?]+$/g) ?? [inner];
+    const left = parts.filter((p) => !re.test(p.replace(/<[^>]+>/g, ""))).join("").trim();
+    return left ? `<${tag}${attrs}>${left}</${tag}>` : "";
+  });
+  return out.replace(/<ul[^>]*>\s*<\/ul>/gi, "");
+}
+
+/**
+ * Обороты с потолком на статью мешапа (судья 07.11: «trim every six to eight weeks» трижды, «Wondering…?» в соседних
+ * секциях, «purple shampoo once a week» в каждой второй). Сверх потолка предложение вырезается целиком; первые вхождения остаются.
+ */
+const ARTICLE_CAPS: Array<{ re: RegExp; max: number }> = [
+  { re: /\btrim(?:med|s)?\b[^.!?]{0,40}\bevery\s+(?:\w+(?:\s+to\s+\w+)?|\d+(?:-\d+)?)\s+weeks\b/i, max: 2 },
+  { re: /\b(?:wondering|curious|not sure|unsure)\b[^.!?]*\?/i, max: 1 },
+  { re: /\bpurple shampoo\b/i, max: 2 },
+  { re: /\bgloss(?:ing)? every\b/i, max: 1 },
+  { re: /\b(?:dry shampoo|heat protectant)\b/i, max: 3 },
+  { re: /\bthis one works\b/i, max: 1 },
+  { re: /\bthe pairing works\b/i, max: 1 },
+];
+export function capArticlePhrases(htmls: string[]): string[] {
+  const counts = ARTICLE_CAPS.map(() => 0);
+  return htmls.map((html) => {
+    let out = html;
+    ARTICLE_CAPS.forEach((c, k) => {
+      const n = (plainText(out).match(new RegExp(c.re.source, "gi")) || []).length;
+      if (!n) return;
+      if (counts[k] + n <= c.max) { counts[k] += n; return; }
+      // Часть вхождений ещё допустима: оставляем первые, остальные предложения вырезаем.
+      let allow = Math.max(0, c.max - counts[k]);
+      out = out.replace(/<(p|li)([^>]*)>([\s\S]*?)<\/\1>/gi, (_m, tag: string, attrs: string, inner: string) => {
+        const parts = inner.match(/[^.!?]+[.!?]+["”’']?\s*|[^.!?]+$/g) ?? [inner];
+        const left = parts.filter((p) => { if (!c.re.test(p.replace(/<[^>]+>/g, ""))) return true; if (allow > 0) { allow--; return true; } return false; }).join("").trim();
+        return left ? `<${tag}${attrs}>${left}</${tag}>` : "";
+      }).replace(/<ul[^>]*>\s*<\/ul>/gi, "");
+      counts[k] = c.max;
+    });
+    return out;
+  });
 }
 
 /** Салонная реплика: «Tell your stylist…», «Ask your nail tech…», «Bring this photo…», «Show your colorist…». */
@@ -230,12 +277,7 @@ export function trimSalonLines(htmls: string[], maxShare = 0.5): string[] {
     if (kept < max && !prevKept) { kept++; prevKept = true; return html; }
     prevKept = false;
     // Вырезаем предложение с репликой внутри абзаца; пустой абзац уходит целиком.
-    const out = html.replace(/<p([^>]*)>([\s\S]*?)<\/p>/gi, (_m, attrs: string, inner: string) => {
-      const parts = inner.match(/[^.!?]+[.!?]+["”’']?\s*|[^.!?]+$/g) ?? [inner];
-      const left = parts.filter((p) => !SALON_RE.test(p.replace(/<[^>]+>/g, ""))).join("").trim();
-      return left ? `<p${attrs}>${left}</p>` : "";
-    });
-    return out.replace(/<li>\s*<\/li>/gi, "").replace(/<ul>\s*<\/ul>/gi, "");
+    return dropSentences(html, SALON_RE);
   });
 }
 

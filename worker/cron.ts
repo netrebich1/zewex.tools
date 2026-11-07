@@ -15,7 +15,7 @@ import { deeplCheckKeys, deeplPurgeCache, deeplRequeueStale } from "./deepl";
 import { analyticsPurge, analyticsRequeueStale } from "./analytics";
 import { keywordsArticleDatesTick, keywordsDaily, keywordsRequeueStale, keywordsStyleTick } from "./keywords";
 import { uploaderTick } from "@/lib/uploader/runs";
-import { newsDaily } from "./news";
+import { newsDaily, newsFailStale } from "./news";
 import { tasksTick } from "./tasks";
 import { copyTick } from "@/lib/copy/build";
 import { copyAutoTick } from "@/lib/copy/auto";
@@ -71,9 +71,19 @@ export function startCron(): () => void {
   timers.push(setInterval(() => keywordsDaily().catch((e) => log.warn("keywords daily failed", e)), 24 * 60 * 60_000));
   // Заливка в Pinterest (Pin Uploader): агенты офлайн, просроченные аренды, фаза проверки, расписание — раз в минуту.
   timers.push(setInterval(() => uploaderTick().then((r) => { if (r.verify || r.scheduled) log.info(`uploader tick: verify ${r.verify}, scheduled ${r.scheduled}, stale ${r.stale}`); }).catch((e) => log.warn("uploader tick failed", e)), 60_000));
-  // Новости (Google Discover): уборка отсечённых материалов и старых векторов, зависшие прогоны — через 5 мин после старта и раз в сутки.
-  const news = () => newsDaily().catch((e) => log.warn("news daily failed", e));
-  timers.push(setTimeout(news, 5 * 60_000), setInterval(news, 24 * 60 * 60_000));
+  // Новости (Google Discover): уборка старых инфоповодов, избранного и векторов — только в 04:00 по Киеву (решение владельца 07.11:
+  // редакция работает до ночи, а раньше уборка шла через 5 мин после каждого перезапуска, то есть после каждого деплоя, и днём).
+  // Проверка раз в минуту; перезапуск в 04:xx повторит уборку — она идемпотентна.
+  let newsPurgedDay = "";
+  const news = () => {
+    const kyiv = new Date().toLocaleString("sv-SE", { timeZone: "Europe/Kyiv" });
+    if (kyiv.slice(11, 13) !== "04" || kyiv.slice(0, 10) === newsPurgedDay) return;
+    newsPurgedDay = kyiv.slice(0, 10);
+    newsDaily().catch((e) => log.warn("news daily failed", e));
+  };
+  timers.push(setInterval(news, 60_000));
+  // Зависшие прогоны новостей закрываются при старте воркера (newsStartup) и раз в час.
+  timers.push(setInterval(() => newsFailStale().catch((e) => log.warn("news failStaleRuns failed", e)), 60 * 60_000));
   // Задачи: регламенты → задачи, дайджесты в Telegram в свой час — раз в минуту (через 30 с после старта).
   const tasks = () => tasksTick().then((r) => { if (r.routines || r.digest) log.info(`tasks tick: routines +${r.routines}${r.digest ? `, digest ${r.digest}` : ""}`); }).catch((e) => log.warn("tasks tick failed", e));
   timers.push(setTimeout(tasks, 30_000), setInterval(tasks, 60_000));

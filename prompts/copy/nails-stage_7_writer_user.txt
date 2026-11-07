@@ -36,6 +36,8 @@ RULES FOR THIS BATCH
 - The first word of every section in this batch is different and is never This, The, That, A or These; never the same idiom twice; never the same closing move in two adjacent sections. The salon line appears in at most half of the sections of this batch; the skip_if exception in at most half, each time with a different phrasing.
 - Do not invent wear times, techniques or details that are not in the brief. No first person anywhere.
 
+- A question opens a section at most once in this batch, and only where the recipe opener is "question". An upkeep timing in weeks appears only in sections whose recipe has include_care, and never the same number of weeks twice. Never reuse the phrase named in the brief's note as "do not reuse".
+
 FINAL CHECK, per section, before output
 - Length and paragraph count follow the recipe. Three of the four moves are present (design sentence, decision, salon line or wear fact with a timing). Section openings differ.
 - Every shape, length, shade and finish word in the text exists in the brief's facts or visual_anchor.

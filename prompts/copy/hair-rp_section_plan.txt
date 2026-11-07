@@ -24,6 +24,9 @@ HARD DISTRIBUTION RULES:
 - include_care: at most 40%; include_occasion: at most 30%
 - include_diy_vs_salon and include_honest_minus: never in two sections in a row
 - never repeat an angle or an opener in adjacent sections; no angle more than 3 times in the article
+- the "question" opener at most twice in the article, never in the first section
+- a trim, toning or upkeep timing in weeks appears only in sections with include_care, and the note names a different rhythm each time (never the same "every N weeks" twice in the article)
+- the note of every section names one phrase the writer must NOT reuse from the previous section (its closing move, its idiom or its decision wording)
 - alternate lengths; never more than two sections of the same length in a row; at least 4 sections short
 - the first and the last section are never short
 - face shape or hair type advice appears in at least half the sections, never twice in a row with the same wording

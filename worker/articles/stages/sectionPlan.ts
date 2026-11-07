@@ -82,6 +82,8 @@ export function enforceDistribution(recipes: SectionRecipe[], angles: readonly s
   const maxSameAngle = Math.max(2, Math.ceil(total / 5));
 
   const angleCount: Record<string, number> = {};
+  const openerCount: Record<string, number> = {};
+  const maxSameOpener = Math.ceil(total / OPENERS.length) + 1;
   let lists = 0, cares = 0, occasions = 0;
 
   recipes.forEach((r, i) => {
@@ -96,6 +98,13 @@ export function enforceDistribution(recipes: SectionRecipe[], angles: readonly s
 
     if (!(OPENERS as readonly string[]).includes(r.opener)) r.opener = pick(OPENERS, i);
     if (prev && r.opener === prev.opener) r.opener = pick(OPENERS, i + 1);
+    // Квоты зачинов (аудит мешапа 07.11: «Wondering…?» в соседних секциях): вопрос — не больше двух на статью и не в первой секции,
+    // любой зачин — не больше ceil(N/6)+1 раз.
+    let og = 0;
+    while (og++ < OPENERS.length && ((r.opener === "question" && ((openerCount.question || 0) >= 2 || i === 0)) || (openerCount[r.opener] || 0) >= maxSameOpener || (prev && r.opener === prev.opener))) {
+      r.opener = pick(OPENERS, i + og + 1);
+    }
+    openerCount[r.opener] = (openerCount[r.opener] || 0) + 1;
 
     if (!(LENGTHS as readonly string[]).includes(r.length)) r.length = pick(LENGTHS, i);
     if (i >= 2 && recipes[i - 1].length === r.length && recipes[i - 2].length === r.length) {
