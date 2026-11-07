@@ -31,6 +31,16 @@ export type LateDescribeCtx = {
   single?: boolean;
 };
 
+/** Модель второй попытки одиночного описания, когда основная не дала разбираемого ответа. */
+const RETRY_MODEL = "openrouter:google/gemini-2.5-flash";
+/** Правила точности для описаний мешапа (аудит 07.11.2026: выдуманная длина волос, «подсветка» там, где её нет, коллажи). */
+const COPY_RULES = `STRICTNESS RULES:
+- State a length (hair: chin, collarbone, mid-back; nails: short, medium, long) ONLY if the ends are fully inside the frame; otherwise write "" and do not mention length in the description.
+- Highlights, streaks, balayage, money piece, root shadow: only when clearly distinct lighter or darker strands are visible; shine or lighting is not highlights.
+- Shape (nail shape, cut name, bangs type) only when unambiguous; otherwise "".
+- If the frame shows several people, several hands sets, a grid or a collage, start the description with "Collage:" and describe only the element they share.
+- Copy colors as seen (light blue is not lavender, beige is not nude, black is not dark gray).`;
+
 export type LateDescribeResult = { needed: number; described: number; failed: number; costUsd: number; calls: number };
 
 const hasFacts = (facts: unknown) => !!sanitizeFacts(facts);
@@ -74,8 +84,9 @@ export async function describeLatePhotos(ctx: LateDescribeCtx, photos: ArtPhoto[
     const p = byId.get(id);
     if (!p) continue;
     await ctx.tick?.(`Описание фото ${p.position}`);
-    const d = await describePhoto(ctx.ai, profile, keyword, p, model);
+    let d = await describePhoto(ctx.ai, profile, keyword, p, model, ctx.single ? { extraRules: COPY_RULES } : {});
     res.calls++;
+    if (!d && ctx.single) { d = await describePhoto(ctx.ai, profile, keyword, p, RETRY_MODEL, { extraRules: COPY_RULES }); res.calls++; }
     if (d) await save(p, d);
     else {
       res.failed++;

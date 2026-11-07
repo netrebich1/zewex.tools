@@ -14,7 +14,7 @@ const get = (k: string, d?: string) => { const i = args.indexOf(k); return i >= 
 const MODEL = get("--model", "openrouter:google/gemini-2.5-flash");
 const BANNED = ["effortless", "chic", "elevate", "stunning", "timeless", "seamless", "game-changer", "must-have", "holy grail", "show-stopping", "whether you", "picture this", "here's the thing", "pro tip", "obsessed", "vibe", "curated", "perfect for", "polished", "sophisticated", "versatile", "reads as", "the honest downside", "catches the light", "pop of color", "i keep seeing", "i'm booking", "my go-to"];
 
-const strip = (html: string) => html.replace(/<h2[^>]*>/gi, "\n## ").replace(/<\/h2>/gi, "\n").replace(/<li>/gi, "\n- ").replace(/<\/p>|<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\n{3,}/g, "\n\n").trim();
+const strip = (html: string) => html.replace(/\[caption[^\]]*\][\s\S]*?\[\/caption\]/gi, " ").replace(/\[\/?caption[^\]]*\]/gi, " ").replace(/<h2[^>]*>/gi, "\n## ").replace(/<\/h2>/gi, "\n").replace(/<li>/gi, "\n- ").replace(/<\/p>|<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\n{3,}/g, "\n\n").trim();
 
 async function main() {
   const batchId = get("--batch");

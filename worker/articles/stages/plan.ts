@@ -185,6 +185,17 @@ export const plan: ArtStageHandler = async (ctx) => {
     photos = await loadActivePhotos(article.id);
     ctx.log(`позднее описание: ${late.described} из ${late.needed} фото, ${late.calls} вызовов, $${late.costUsd.toFixed(4)}`);
   }
+  // Мешап: коллажи и кадры, которые так и не описались, в статью не идут (их заголовки получались общими и неверными),
+  // если после этого остаётся не меньше 15 фото.
+  if (isCopy) {
+    const COLLAGE = /^collage:|\b(collage|grid of|multiple (women|people|models|hands)|two women|three women|several women|side-by-side)\b/i;
+    const drop = photos.filter((p) => COLLAGE.test(p.description ?? "") || !String(p.description ?? "").trim());
+    if (drop.length && photos.length - drop.length >= 15) {
+      await prisma.artPhoto.updateMany({ where: { id: { in: drop.map((p) => p.id) } }, data: { excluded: true } });
+      ctx.log(`мешап: исключены ${drop.length} фото (коллаж или без описания): ${drop.map((p) => p.position).join(", ")}`);
+      photos = await loadActivePhotos(article.id);
+    }
+  }
   const describedNote = late.needed ? `; описаны ${late.described} фото${late.failed ? ` (без описания ${late.failed})` : ""}` : "";
 
   const { fashion: fashionC, interior: interiorC } = contractsFor(ctx);

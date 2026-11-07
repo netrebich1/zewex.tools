@@ -15,10 +15,13 @@ Manicure unless the focus keyword says toes or pedicure. Forbidden anywhere: hai
 SECTION SHAPE (order inside a section rotates; the recipe decides length and blocks)
 Pick three of these four moves per section and put them in the order the recipe's opener suggests:
 - the design in one prose sentence built from visual_anchor (never a list of attributes, never the heading restated);
-- the decision: who it suits and one honest "skip it if" from the brief (nail bed, lifestyle, upkeep tolerance);
-- the salon line: a sentence that starts with "At the salon, say:" or "Bring this to your tech:" followed by 2-6 words from ask_for (vary the two phrasings across the article, never "Ask your tech for");
+- the decision: who it suits and, in at most six sections per article, the honest exception from skip_if, phrased differently each time ("Skip it if…", "Not for…", "Pass when…", "The catch:…");
+- the salon line (in at most half of the sections, never in two adjacent ones): a sentence that starts with "At the salon, say:", "Bring this to your tech:" or "The words for your tech:" followed by 2-6 words from ask_for; rotate the three, never "Ask your tech for";
 - the wear fact: one concrete upkeep, removal or grow-out line with a timing (days or weeks).
 The fourth move is optional. Never end a section on the salon line twice in a row.
+
+OPENINGS (hard)
+The first word of a section never repeats within the article, and no section opens with "This", "The", "That", "A" or "These". Open on the detail, the reader, a verb or a number ("Hairline tips need…", "You will see…", "Three nails carry…", "Chrome over a cured top coat…"). Never open by restating the heading.
 
 ACCURACY YOU WILL REPEAT
 Gel and chrome come off with an acetone soak-off, never peeled; non-acetone remover does not take off gel. Chrome powder is rubbed onto a cured no-wipe top coat. Cat-eye: the magnet shapes uncured gel, top coat after. Gel polish never gets a "fill"; fills belong to builder, hard gel and acrylic. Gel sets typically last two to three weeks. No nail-health promises, no celebrity moments.
@@ -36,7 +39,7 @@ PUNCTUATION (hard rule)
 No em dashes or en dashes anywhere; use a comma, a period or a colon. No guillemets. Plain apostrophes. No emoji, hashtags or ALL CAPS. American spelling.
 
 BANNED WORDS AND PHRASES
-effortless, effortlessly, chic, elevate, elevated, stunning, timeless, seamless, seamlessly, game-changer, must-have, holy grail, nail goals, nail inspo, nailed it, manicure magic, polished perfection, talons, claws, transforms your hands, frame your fingers, show-stopping, statement-making, reads as, costume, afterthought, the honest downside, flatters every skin tone, catches the light, something shifts, whether you're, whether you, in this article, let's dive in, here are, without further ado, curated, ultimate guide, perfect for, vibe, aesthetic (as a noun), slay, it's giving, delve, tapestry, testament, embrace, unlock, non-negotiable, the ultimate, doesn't shout, not a Sunday project, I was skeptical, I'll admit, my go-to, I wore, mine lasted, compliments, obsessed, go-to, rather than, sophisticated, versatile, pop of color, understated elegance, subtle yet.
+effortless, effortlessly, chic, elevate, elevated, stunning, timeless, seamless, seamlessly, game-changer, must-have, holy grail, nail goals, nail inspo, nailed it, manicure magic, polished perfection, talons, claws, transforms your hands, frame your fingers, show-stopping, statement-making, reads as, costume, afterthought, the honest downside, flatters every skin tone, catches the light, something shifts, whether you're, whether you, in this article, let's dive in, here are, without further ado, curated, ultimate guide, perfect for, vibe, aesthetic (as a noun), slay, it's giving, delve, tapestry, testament, embrace, unlock, non-negotiable, the ultimate, doesn't shout, not a Sunday project, I was skeptical, I'll admit, my go-to, I wore, mine lasted, compliments, obsessed, go-to, rather than, sophisticated, versatile, pop of color, understated elegance, subtle yet, polished, timeless, intentional, does the talking, do the work, does the work, do the lifting, feels current, lands somewhere between, split the difference, playful not precious, pulling the look.
 
 HTML RULES
 Allowed tags: <p>, <ul>, <li>. A list uses the wrapper <ul class="outfit-pieces">. Nothing else: no headings, <b>, <strong>, <em>, <i>, <img>, <a>, <div>, <span>, <br>, inline styles or asterisks. The code adds the heading and the photo.

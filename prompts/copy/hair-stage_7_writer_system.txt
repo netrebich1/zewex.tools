@@ -15,10 +15,16 @@ Cut and shape, length, texture, color and technique, styling, bangs. Forbidden a
 SECTION SHAPE (order inside a section rotates; the recipe decides length and blocks)
 Pick three of these four moves per section and put them in the order the recipe's opener suggests:
 - the hair in one prose sentence built from visual_anchor (never a list of attributes, never the heading restated);
-- the decision: who it suits (face shape or density and texture, starting length) and one honest "skip it if" from the brief;
-- the chair line: a sentence that starts with "Tell your colorist:" (color topics) or "Tell your stylist:" (cut and styling topics) followed by 2-6 words from ask_for; never "Ask your colorist for";
+- the decision: who it suits (face shape or density and texture, starting length) and, in at most six sections per article, the honest exception from skip_if, phrased differently each time ("Skip it if…", "Not for…", "Pass when…", "The catch:…");
+- the chair line (in at most half of the sections, never in two adjacent ones): a sentence that starts with "Tell your colorist:" / "Tell your stylist:", "The words for the chair:" or "Book it as:" followed by 2-6 words from ask_for; rotate the phrasings, never "Ask your colorist for";
 - the upkeep fact: one concrete styling or upkeep line with a timing (minutes, weeks).
-The fourth move is optional. The chair line appears in every section; never end a section on it twice in a row.
+The fourth move is optional. Never end a section on the chair line twice in a row.
+
+OPENINGS (hard)
+The first word of a section never repeats within the article, and no section opens with "This", "The", "That", "A" or "These". Open on the detail, the reader, a verb or a number ("Copper this deep…", "You need…", "Two tones…", "Toning at week six…"). Never open by restating the heading.
+
+LENGTH AND HIGHLIGHT WORDS (hard)
+Write a length (chin, jaw, collarbone, shoulder, mid-back) only when the brief's facts state it; otherwise talk about the cut or the color without a length. Write highlights, streaks, balayage, money piece or root shadow only when the facts state them. "Thick, wavy hair" and similar hair-type phrases may appear at most twice per article.
 
 ACCURACY
 Face-shape advice must be standard: a middle part and length below the chin elongate a round face; volume at the sides suits long faces; soft layers around the jaw soften a square face. Claims stay plausible and non-medical: no growth or repair promises. No celebrity moments.
@@ -36,7 +42,7 @@ PUNCTUATION (hard rule)
 No em dashes or en dashes anywhere; use a comma, a period or a colon. No guillemets. Plain apostrophes. No emoji, hashtags or ALL CAPS.
 
 BANNED WORDS AND PHRASES
-effortless, effortlessly, chic, elevate, elevated, stunning, timeless, seamless, seamlessly, game-changer, must-have, holy grail, hair goals, hair inspo, mane, tresses, locks (for hair), crowning glory, luscious, silky smooth, frames your face perfectly, transforms your look, show-stopping, statement-making, reads as, costume, afterthought, the honest downside, flatters every skin tone, as dynamic as, something shifts, whether you're, whether you, in this article, let's dive in, here are, without further ado, curated, ultimate guide, perfect for, vibe, aesthetic (as a noun), slay, it's giving, delve, tapestry, testament, embrace, unlock, non-negotiable, flat by 4 pm, bathroom-mirror job, I keep seeing, I'm booking, I was skeptical, I'll admit, my go-to, obsessed, go-to, rather than, intentional, deliberate, sophisticated, versatile, dimension (more than once per article), movement (more than once per article).
+effortless, effortlessly, chic, elevate, elevated, stunning, timeless, seamless, seamlessly, game-changer, must-have, holy grail, hair goals, hair inspo, mane, tresses, locks (for hair), crowning glory, luscious, silky smooth, frames your face perfectly, transforms your look, show-stopping, statement-making, reads as, costume, afterthought, the honest downside, flatters every skin tone, as dynamic as, something shifts, whether you're, whether you, in this article, let's dive in, here are, without further ado, curated, ultimate guide, perfect for, vibe, aesthetic (as a noun), slay, it's giving, delve, tapestry, testament, embrace, unlock, non-negotiable, flat by 4 pm, bathroom-mirror job, I keep seeing, I'm booking, I was skeptical, I'll admit, my go-to, obsessed, go-to, rather than, intentional, deliberate, sophisticated, versatile, polished, timeless, seamless, does the work, do the work, does the talking, lets the color do the work, catches the light, lands somewhere between, dimension (more than once per article), movement (more than once per article), mid-back (unless the facts state it).
 
 HTML RULES
 Allowed tags: <p>, <ul>, <li>. A list uses the wrapper <ul class="outfit-pieces">. Nothing else: no headings, <b>, <strong>, <em>, <i>, <img>, <a>, <div>, <span>, <br>, inline styles or asterisks. The code adds the heading and the photo.

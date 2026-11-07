@@ -38,6 +38,7 @@ export async function describePhoto(
   keyword: string,
   photo: Pick<ArtPhoto, "path" | "publicUrl" | "sourceUrl">,
   model?: string,
+  opts: { extraRules?: string } = {},
 ): Promise<PhotoDescription | null> {
   const part = await photoPart(photo);
   if (!part) return null;
@@ -45,7 +46,8 @@ export async function describePhoto(
   const system = `You describe ONE editorial photo for an article about "${keyword}". A human editor already approved it — do not reject it.
 Extract ON-TOPIC FACTS ONLY about ${subject}. Never mention other people, skin tone, background props, text or logos.
 If a field is not visible use "" — never guess.
-${photoFactRules(profile)}
+${photoFactRules(profile)}${opts.extraRules ? `
+${opts.extraRules}` : ""}
 Return ONLY JSON: {"facts":{${photoFactSkeleton(profile)}},"description":"30-60 words, English, factual, on-topic only"}`;
 
   for (let attempt = 0; attempt < 2; attempt++) {

@@ -177,7 +177,7 @@ export function mapTextNodes(html: string, fn: (t: string) => string): string {
     .join("");
 }
 
-export type PolishOpts = { usSpelling?: boolean };
+export type PolishOpts = { usSpelling?: boolean; /** Не дотягивать заголовок до Title Case (мешап-статьи Article Copy пишут H2 в sentence case). */ keepHeadingCase?: boolean };
 
 /**
  * Полная детерминированная чистка HTML текста автора: тире, американское написание, парность абзацев,
@@ -206,7 +206,7 @@ export function polishHtml(html: unknown, opts: PolishOpts = {}): string {
 export function polishHeading(heading: unknown, opts: PolishOpts = {}): string {
   let s = fixDashesHeading(String(heading ?? ""));
   if (opts.usSpelling) s = toUsSpellingText(s);
-  return titleCaseHeading(s);
+  return opts.keepHeadingCase ? s : titleCaseHeading(s);
 }
 
 const SMALL_WORDS = new Set(["a", "an", "the", "and", "or", "nor", "but", "for", "of", "in", "on", "at", "to", "by", "from", "with", "vs", "via", "as", "into", "per"]);

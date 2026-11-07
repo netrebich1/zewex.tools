@@ -33,11 +33,11 @@ Each brief is one design: the section recipe (angle, opening, length, paragraphs
 RULES FOR THIS BATCH
 - Exactly {{batch_size}} sections, in the order given, section_number = the position from the brief.
 - First section: continue from previous_ending naturally. In batch 1, open cold, no throat-clearing, no "first up", no restating the heading.
-- Never the same opening move twice in the batch; never the same idiom twice; never the same closing move in two adjacent sections.
+- The first word of every section in this batch is different and is never This, The, That, A or These; never the same idiom twice; never the same closing move in two adjacent sections. The salon line appears in at most half of the sections of this batch; the skip_if exception in at most half, each time with a different phrasing.
 - Do not invent wear times, techniques or details that are not in the brief. No first person anywhere.
 
 FINAL CHECK, per section, before output
-- Length and paragraph count follow the recipe. Three of the four moves are present (design sentence, decision with skip_if, salon line, wear fact with a timing).
+- Length and paragraph count follow the recipe. Three of the four moves are present (design sentence, decision, salon line or wear fact with a timing). Section openings differ.
 - Every shape, length, shade and finish word in the text exists in the brief's facts or visual_anchor.
 - No <b>, <em>, <strong> or asterisks. No em dashes, no guillemets, no banned words, no brands, no dollar amounts, no hair, face or outfit words, no skin-tone claims. American spelling.
 

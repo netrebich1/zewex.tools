@@ -53,7 +53,7 @@ export const assemble: ArtStageHandler = async (ctx) => {
   const keyword = focusKeywordOf(ctx);
   const caption = captionCfgFrom(recipe.photoSearch?.captionMode, recipe.photoSearch?.captionTemplate);
   // Детерминированная чистка (тире, американское написание, парность <p>) — и для статей, написанных до неё.
-  const pol = { usSpelling: usesUsSpelling(recipe.photoSearch?.language, recipe.photoSearch?.country) };
+  const pol = { usSpelling: usesUsSpelling(recipe.photoSearch?.language, recipe.photoSearch?.country), keepHeadingCase: !!(ctx.cursor as Record<string, unknown>).copy };
 
   const sections: AssembleSection[] = active.map((s) => {
     const p = photoById.get(s.photoId!)!;

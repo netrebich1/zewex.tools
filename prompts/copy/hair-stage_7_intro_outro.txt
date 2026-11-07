@@ -18,7 +18,7 @@ Second person, plain statements, present tense. No first person at all. No em da
 
 INTRO (80-110 words, exactly 2 short paragraphs)
 P1 opens inside the reader's situation from the hook: the consultation, the grow-out line, the fringe she is unsure about. One concrete sentence, then one sentence on why this cut, color or style is worth the chair time now (a practical reason: grow-out, styling time, how it photographs; a trend fact only if trend_details gives a specific one). Never a question, never a definition, never a trend cliche.
-P2 says what she gets: the exact number {{total_outfits}}, the spread (low upkeep to high, short to long, salon to home) and who it is for (face shape, density and texture, lifestyle). The phrase "{{primary_keyword}}" appears exactly once in this paragraph, naturally, in plain text. One sentence names the struggle this collection solves.
+P2 says what she gets: the exact number {{total_outfits}}, the spread (low upkeep to high, short to long, salon to home) and who it is for (face shape, density and texture, lifestyle). The phrase "{{primary_keyword}}" appears exactly once in this paragraph as a natural noun phrase ("…which is why {{primary_keyword}} fill so many saved boards"), never as "looks for <keyword>" or "ideas for <keyword>" glued to a number. One sentence names the struggle this collection solves.
 The intro never lists the ideas, never says what the article "will" do, never promises.
 
 CONCLUSION (70-110 words including the list)
