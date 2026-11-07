@@ -1,13 +1,15 @@
 /**
  * Импорт декор-ключей с частотностью из выгрузки Google-таблицы «Темы 2027» (вкладка Decor → decor_all.tsv).
- *   npx tsx scripts/keywords/import-decor.ts <файл.tsv> [--min=1000] [--taken=2026-10-21T08:00:00Z] [--apply]
+ *   npx tsx scripts/keywords/import-decor.ts <файл.tsv> [--min=1000] [--taken=2026-10-21T08:00:00Z] [--niche=interior|auto] [--apply]
+ * --niche=auto — ниша по словам ключа (guessNiche: ногти / волосы / одежда) — для рождественских женских ключей.
  * Колонки: Ключ, Источник (исходник | найдено ИИ), Сезонность, Частотность (аудитория US/мес), Диапазон (от-до).
  * Ниша — interior; ключи, которые уже есть в базе (по нормализованной форме), не трогаются. Только частотность,
  * без снимков выдачи. Нужно Article Copy: классы ВЧ/СЧ/НЧ для интерьерных ядер.
  */
 import { readFileSync } from "node:fs";
 import { prisma } from "@/lib/db";
-import { normPhrase } from "@/lib/keywords/metrics";
+import { guessNiche, normPhrase } from "@/lib/keywords/metrics";
+import { classifySeason } from "@/lib/keywords/season";
 import { MIN_VOLUME } from "@/lib/keywords/types";
 
 const args = process.argv.slice(2);
@@ -16,6 +18,7 @@ const opt = (k: string) => args.find((a) => a.startsWith(`--${k}=`))?.split("=")
 const APPLY = args.includes("--apply");
 const MIN = Number(opt("min") ?? 1000);
 const TAKEN = new Date(opt("taken") ?? "2026-10-21T08:00:00Z");
+const NICHE = opt("niche") ?? "interior";
 if (!file) throw new Error("Укажите TSV-файл");
 
 async function main() {
@@ -44,7 +47,7 @@ async function main() {
   if (!APPLY) { console.log("без --apply ничего не записано"); await prisma.$disconnect(); return; }
   for (const d of data) {
     const k = await prisma.kwKeyword.create({
-      data: { phrase: d.phrase, norm: d.norm, niche: "interior", source: d.source, season: d.season, status: "new", volume: d.volume, volLower: d.lo, volUpper: d.hi, volAt: TAKEN, verdict: d.volume < MIN_VOLUME ? "low_volume" : null },
+      data: { phrase: d.phrase, norm: d.norm, niche: NICHE === "auto" ? guessNiche(d.phrase) : NICHE, source: d.source, season: d.season === "none" ? classifySeason(d.phrase) : d.season, status: "new", volume: d.volume, volLower: d.lo, volUpper: d.hi, volAt: TAKEN, verdict: d.volume < MIN_VOLUME ? "low_volume" : null },
       select: { id: true },
     });
     await prisma.kwVolume.create({ data: { keywordId: k.id, estimate: d.volume, lower: d.lo, upper: d.hi, takenAt: TAKEN } });
