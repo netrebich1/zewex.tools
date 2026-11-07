@@ -1,7 +1,7 @@
 /**
  * Аудит мешап-статей: соответствует ли каждая секция (заголовок + текст) своему фото. Модель зрения смотрит кадр и
  * текст секции и отвечает match: yes | partial | no с пояснением. Расход пишется на владельца ключей сайта.
- *   sudo -u zewex_tools_usr -H npx tsx scripts/copy/audit-photos.ts --batch <id> [--model openrouter:google/gemini-2.5-flash-lite] [--limit 300]
+ *   sudo -u zewex_tools_usr -H npx tsx scripts/copy/audit-photos.ts --batch <id> | --article <id> [--article <id>] [--model openrouter:google/gemini-2.5-flash-lite] [--limit 300]
  * Печатает сводку по статьям и все «partial»/«no».
  */
 import { readFile } from "node:fs/promises";
@@ -32,8 +32,11 @@ function sections(html: string): Section[] {
 
 async function main() {
   const batchId = get("--batch");
-  if (!batchId) throw new Error("--batch <id>");
-  const items = await prisma.copyBatchItem.findMany({ where: { batchId, status: "done", articleId: { not: null } }, orderBy: { position: "asc" } });
+  const articleIds = args.flatMap((a, i) => (a === "--article" ? [args[i + 1]] : []));
+  if (!batchId && !articleIds.length) throw new Error("--batch <id> или --article <id> …");
+  const items = batchId
+    ? await prisma.copyBatchItem.findMany({ where: { batchId, status: "done", articleId: { not: null } }, orderBy: { position: "asc" } })
+    : articleIds.map((id) => ({ articleId: id }));
   let checked = 0, cost = 0;
   const bad: string[] = [];
   const perArticle: Array<{ keyword: string; yes: number; partial: number; no: number; skipped: number }> = [];

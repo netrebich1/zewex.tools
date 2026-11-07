@@ -224,6 +224,12 @@ export const plan: ArtStageHandler = async (ctx) => {
   mapped.sort((a, b) => a.order - b.order);
   mapped.forEach((m, i) => (m.order = i + 1));
 
+  // Страховка от перепутанных photo_n (аудит мешап-статей 07.11.2026: модель вернула номера со сдвигом, и заголовки
+  // «сели» на чужие фото). План секции сверяется с описанием её фото по словам; если две секции явно лучше подходят
+  // к фото друг друга — меняем их фото местами. Порядок статьи (order) не трогаем.
+  const swapped = repairPhotoMapping(mapped);
+  if (swapped) ctx.log(`план: ${swapped} секц. перепривязаны к своим фото по описанию (модель перепутала photo_n)`);
+
   // Уникальные заголовки: ни одного повтора и почти-дубля (оригинал: 261-274).
   const usedHeadings = new Set<string>();
   // Слова ключа не считаются отличительными при сравнении заголовков (аудит 2026-10-14).
@@ -333,4 +339,43 @@ function asArrayOfStrings(v: unknown): string[] {
   if (Array.isArray(v)) return v.map((x) => String(x ?? "").trim()).filter(Boolean);
   if (v == null || v === "") return [];
   return [String(v)];
+}
+
+/* ───────── Сверка плана секции с описанием фото ───────── */
+
+const STOP = new Set(["the", "and", "with", "for", "that", "this", "are", "has", "have", "from", "into", "over", "onto", "nails", "nail", "hair", "outfit", "outfits", "photo", "shows", "features", "feature", "style", "look", "design", "designs", "each", "all", "its", "their", "one", "two", "some", "very", "finish", "glossy", "length", "medium", "long", "short"]);
+const words = (v: unknown): Set<string> => {
+  const text = typeof v === "string" ? v : v && typeof v === "object" ? Object.values(v as Record<string, unknown>).filter((x) => typeof x === "string").join(" ") : "";
+  return new Set((text.toLowerCase().match(/[a-z]{3,}/g) ?? []).filter((w) => !STOP.has(w)));
+};
+const jaccard = (a: Set<string>, b: Set<string>) => {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const w of a) if (b.has(w)) inter++;
+  return inter / (a.size + b.size - inter);
+};
+
+/**
+ * Меняет фото местами у пар секций, когда обе секции заметно ближе к описанию фото друг друга, чем к своему.
+ * Возвращает число затронутых секций. Консервативно: порог 0.2 суммарного выигрыша, не больше N проходов.
+ */
+export function repairPhotoMapping(mapped: Array<{ plan: Record<string, unknown>; photo: { id: string; description: string | null; facts: unknown } }>): number {
+  const sec = mapped.map((m) => words([m.plan.h2, m.plan.description, m.plan.visual_anchor, m.plan.ask_for, m.plan.art_technique, m.plan.outfit_summary, m.plan.room_summary].filter(Boolean).join(" ")));
+  const pho = mapped.map((m) => words(`${m.photo.description ?? ""} ${Object.values((m.photo.facts as Record<string, unknown> | null) ?? {}).filter((x) => typeof x === "string").join(" ")}`));
+  const sim = (i: number, j: number) => jaccard(sec[i], pho[j]);
+  const touched = new Set<number>();
+  for (let pass = 0; pass < mapped.length; pass++) {
+    let best: { i: number; j: number; gain: number } | null = null;
+    for (let i = 0; i < mapped.length; i++) {
+      for (let j = i + 1; j < mapped.length; j++) {
+        const gain = sim(i, j) + sim(j, i) - sim(i, i) - sim(j, j);
+        if (gain > 0.2 && (!best || gain > best.gain)) best = { i, j, gain };
+      }
+    }
+    if (!best) break;
+    [mapped[best.i].photo, mapped[best.j].photo] = [mapped[best.j].photo, mapped[best.i].photo];
+    [pho[best.i], pho[best.j]] = [pho[best.j], pho[best.i]];
+    touched.add(best.i); touched.add(best.j);
+  }
+  return touched.size;
 }
