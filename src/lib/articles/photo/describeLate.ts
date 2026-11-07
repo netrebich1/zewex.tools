@@ -27,6 +27,8 @@ export type LateDescribeCtx = {
   signal?: AbortSignal;
   tick?: (label: string) => Promise<void>;
   log?: (msg: string) => void;
+  /** Описывать по одному фото за вызов (мешап-статьи Article Copy): пачка из 8 кадров иногда путает описания между кадрами. */
+  single?: boolean;
 };
 
 export type LateDescribeResult = { needed: number; described: number; failed: number; costUsd: number; calls: number };
@@ -49,7 +51,9 @@ export async function describeLatePhotos(ctx: LateDescribeCtx, photos: ArtPhoto[
   if (!todo.length) return res;
   const model = stageModel(ctx.recipe, "rp_photo_rate");
   await ctx.tick?.(`Описание фото: ${todo.length}`);
-  const batch = await describePhotosBatch(ctx.ai, profile, keyword, todo, { model, signal: ctx.signal });
+  const batch = ctx.single
+    ? { described: new Map<string, { facts: Record<string, unknown>; description: string }>(), costUsd: 0, calls: 0, failed: todo.map((p) => p.id) }
+    : await describePhotosBatch(ctx.ai, profile, keyword, todo, { model, signal: ctx.signal });
   res.costUsd += batch.costUsd;
   res.calls += batch.calls;
 

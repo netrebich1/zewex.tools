@@ -249,7 +249,9 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
     id: s.photoId, articleId, candidateId: null, position: i + 1, path: s.path, thumbPath: s.thumbPath, publicUrl: publicUrl(s.path),
     sourceUrl: s.c.sourceUrl, sourcePageUrl: s.c.sourcePageUrl, sourceDomain: s.c.sourceDomain, width: s.width, height: s.height, sha256: s.c.sha, phash: s.c.phash,
     altText: s.c.altText, caption: s.c.caption ?? buildCaption(cfg, s.c.sourceDomain || null, s.c.sourcePageUrl || null) ?? "",
-    fileName: `${i + 1}-${s.c.sha.slice(0, 12)}.jpg`, facts: s.c.facts == null ? Prisma.DbNull : (s.c.facts as Prisma.InputJsonValue), description: s.c.description, aiScore: s.c.score || null,
+    // Описание и факты донора не переносим: аудит 07.11 показал, что часть описаний в банке относится к другим кадрам.
+    // Этап плана опишет каждый файл заново (describeLatePhotos, по одному кадру), ~$0.01 на статью.
+    fileName: `${i + 1}-${s.c.sha.slice(0, 12)}.jpg`, facts: Prisma.DbNull, description: null, aiScore: s.c.score || null,
   }));
   try {
     await prisma.$transaction([

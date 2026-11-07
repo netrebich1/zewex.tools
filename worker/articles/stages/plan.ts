@@ -178,7 +178,9 @@ export const plan: ArtStageHandler = async (ctx) => {
 
   // Позднее описание фото (cost-fixes-b): тонко оценённым (rateMode=slim) и фото без фактов — факты и описание
   // пачками до планирования; при полной оценке с фактами ничего не делает. Расход — в окне этапа plan.
-  const late = await describeLatePhotos({ ai: ctx.ai, recipe, signal: ctx.signal, tick: ctx.tick, log: ctx.log }, photos, profile, focusKeywordOf(ctx) || article.keyword);
+  // Мешап-статьи (Article Copy) приходят без описаний: каждый кадр описывается заново и по одному — так описание точно про этот файл.
+  const isCopy = !!(ctx.cursor as Record<string, unknown>).copy;
+  const late = await describeLatePhotos({ ai: ctx.ai, recipe, signal: ctx.signal, tick: ctx.tick, log: ctx.log, single: isCopy }, photos, profile, focusKeywordOf(ctx) || article.keyword);
   if (late.described) {
     photos = await loadActivePhotos(article.id);
     ctx.log(`позднее описание: ${late.described} из ${late.needed} фото, ${late.calls} вызовов, $${late.costUsd.toFixed(4)}`);
