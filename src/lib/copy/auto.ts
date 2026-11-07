@@ -106,8 +106,10 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
 
   // ── Сценарий и автор: как у статьи-донора (ключи ИИ — той же команды) ──
   const recipeIds = [...new Set(donors.filter((d) => d.teamId === site.teamId).map((d) => d.recipeId).filter((x): x is string => !!x))];
+  // Сценарий мешапа этой ниши (свои промпты, forCopy) — если есть; иначе сценарий статьи-донора.
   const recipes = await prisma.artRecipe.findMany({ where: { id: { in: recipeIds }, isActive: true, format: "REAL_PHOTO" } });
-  let recipeRow = recipeIds.map((id) => recipes.find((r) => r.id === id)).find(Boolean) ?? null;
+  let recipeRow = (await prisma.artRecipe.findFirst({ where: { forCopy: true, nicheCode: niche, isActive: true, format: "REAL_PHOTO" } }))
+    ?? recipeIds.map((id) => recipes.find((r) => r.id === id)).find(Boolean) ?? null;
   if (!recipeRow) {
     const mine = await prisma.article.findFirst({ where: { teamId: site.teamId, recipeRef: { nicheCode: niche, isActive: true, format: "REAL_PHOTO" } }, orderBy: { createdAt: "desc" }, select: { recipeRef: true } });
     recipeRow = mine?.recipeRef ?? null;

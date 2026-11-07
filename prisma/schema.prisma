@@ -894,6 +894,8 @@ model ArtRecipe {
   promptSetId    String?       @db.Char(36)
   isActive       Boolean       @default(true)
   isDefault      Boolean       @default(false)
+  /// Сценарий мешап-статей Article Copy для этой ниши (создаётся scripts/copy/apply-prompts.ts)
+  forCopy        Boolean       @default(false)
   /// {stage_key: prompt_id}
   stagePromptIds Json
   /// {stage_key: "provider:model"}

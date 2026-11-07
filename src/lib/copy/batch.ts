@@ -13,7 +13,7 @@ let running = false;
 
 export type QuotaClass = (typeof VOL_CLASSES)[number] | "any";
 export type Quotas = Record<string, Partial<Record<QuotaClass, number>>>;
-export type BatchInput = { name: string; siteIds: string[]; quotas: Quotas; word: string; photos: number; photosMax?: number | null; maxPerWord?: number; review: boolean; noSeason: boolean; year: number | null; createdById: string };
+export type BatchInput = { name: string; siteIds: string[]; quotas: Quotas; word: string; /** Только эти ядра (точное совпадение), в этом порядке — для ручных и тестовых партий. */ cores?: string[]; photos: number; photosMax?: number | null; maxPerWord?: number; review: boolean; noSeason: boolean; year: number | null; createdById: string };
 export const QUOTA_CLASSES: QuotaClass[] = [...VOL_CLASSES, "any"];
 
 type CoreRow = { id: string; niche: string; core: string; volClass: string | null; volume: number | null; byPhotos: number; siteIds: unknown };
@@ -52,11 +52,13 @@ export async function planBatch(input: BatchInput): Promise<{ id: string; planne
 
   const teamIds = [...new Set(usable.map((s) => s.teamId))];
   const word = input.word.trim().toLowerCase();
-  const cores: CoreRow[] = await prisma.copyCore.findMany({
-    where: { teamId: st.sharedBank ? SHARED_TEAM : { in: teamIds }, byPhotos: { gt: 0 }, core: { contains: word || " " } },
+  const only = input.cores?.map((c) => c.trim().toLowerCase()).filter(Boolean);
+  let cores: CoreRow[] = await prisma.copyCore.findMany({
+    where: { teamId: st.sharedBank ? SHARED_TEAM : { in: teamIds }, byPhotos: { gt: 0 }, ...(only?.length ? { core: { in: only } } : { core: { contains: word || " " } }) },
     orderBy: [{ photosReserve: "desc" }, { photosPublished: "desc" }],
     select: { id: true, niche: true, core: true, volClass: true, volume: true, byPhotos: true, siteIds: true },
   });
+  if (only?.length) cores = only.map((c) => cores.find((r) => r.core === c)).filter((r): r is CoreRow => !!r);
   // Темы, уже собранные мешапом (карта может отставать на часы): ядро на сайте — больше не ставим.
   const done = new Set((await prisma.copyArticle.findMany({ select: { siteId: true, niche: true, core: true } })).map((a) => `${a.siteId}|${a.niche}|${a.core}`));
 

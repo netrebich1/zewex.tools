@@ -1,0 +1,10 @@
+===SYSTEM===
+
+===TEXT===
+Write {{batch_size}} English sections for "{{focus_keyword}}" using ARTICLE CONTEXT, the section recipes, OUTFIT DETAILS and the verified PHOTO FACTS written from the file. The photo is the evidence and the facts are its only transcript. Piece mode centers the main piece. Look mode explains the complete outfit for the audience or occasion. Each section uses three of the four moves: the fit of the main item, the pairing logic (shoes only when the facts name them, exact type and color), the decision with the brief's skip_if, and the shopping line that starts with "To rebuild it, look for" or "Shop the idea, not the brand:" (categories, never brands; the keyword's own item first). Use the section keyword once only where it reads as natural English, never as a noun stack. The recipe decides length and paragraphs. Never the same opening move twice in the batch. No invented garments, colors, shoes or facts, no first person, no em dashes, FAQ, tables or emphasis. Return the exact JSON requested.
+
+ARTICLE CONTEXT
+{{article_context}}
+
+SECTION BRIEFS
+{{section_briefs}}
