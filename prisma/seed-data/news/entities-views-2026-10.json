@@ -1,0 +1,964 @@
+{
+ "about": "Персоны с наибольшими просмотрами у конкурентов за 30.09–29.10.2026 (TSN, УНІАН, Главред, 24 Канал, Lux FM), которых мы ещё не отслеживали. Собрано scripts/news/views-collect.ts + views-analyze.ts --new, вес по месту в рейтинге.",
+ "sources": [],
+ "entities": [
+  {
+   "name": "Володимир Кличко",
+   "type": "person",
+   "grp": "sport",
+   "weight": 1.1,
+   "aliases": [
+    "Володимир Кличко",
+    "Владимир Кличко",
+    "Volodymyr Klitschko",
+    "Кличко"
+   ]
+  },
+  {
+   "name": "Віталій Кличко",
+   "type": "person",
+   "grp": "sport",
+   "weight": 1.1,
+   "aliases": [
+    "Віталій Кличко",
+    "Виталий Кличко",
+    "Vitali Klitschko",
+    "Кличко"
+   ]
+  },
+  {
+   "name": "Потап",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.6,
+   "aliases": [
+    "Потап",
+    "Potap"
+   ]
+  },
+  {
+   "name": "Віктор Павлік",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.6,
+   "aliases": [
+    "Віктор Павлік",
+    "Виктор Павлик",
+    "Viktor Pavlik",
+    "Павлік"
+   ]
+  },
+  {
+   "name": "Катерина Тишкевич",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.6,
+   "aliases": [
+    "Катерина Тишкевич",
+    "Екатерина Тишкевич",
+    "Kateryna Tyshkevych",
+    "Тишкевич"
+   ]
+  },
+  {
+   "name": "Майкл Дуглас",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.3,
+   "aliases": [
+    "Майкл Дуглас",
+    "Michael Douglas",
+    "Дуглас"
+   ]
+  },
+  {
+   "name": "Алла Пугачова",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.3,
+   "aliases": [
+    "Алла Пугачова",
+    "Алла Пугачева",
+    "Alla Pugacheva",
+    "Пугачова"
+   ]
+  },
+  {
+   "name": "Антоніна Хижняк",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Антоніна Хижняк",
+    "Антонина Хижняк",
+    "Antonina Khyshniak",
+    "Хижняк"
+   ]
+  },
+  {
+   "name": "Ектор Хіменес-Браво",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Ектор Хіменес-Браво",
+    "Эктор Хименес-Браво",
+    "Hector Jimenez-Bravo",
+    "Хіменес-Браво"
+   ]
+  },
+  {
+   "name": "Юрій Нікітін",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Юрій Нікітін",
+    "Юрий Никитин",
+    "Yuriy Nikitin",
+    "Нікітін"
+   ]
+  },
+  {
+   "name": "Сергій Притула",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Сергій Притула",
+    "Сергей Притула",
+    "Serhiy Prytula",
+    "Притула"
+   ]
+  },
+  {
+   "name": "FIЇNKA",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "FIЇNKA"
+   ]
+  },
+  {
+   "name": "Фелікс Редька",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Фелікс Редька",
+    "Феликс Редька",
+    "Feliks Redka",
+    "Редька"
+   ]
+  },
+  {
+   "name": "Кузьма Скрябін",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Кузьма Скрябін",
+    "Кузьма Скрябин",
+    "Kuzma Skryabin",
+    "Скрябін"
+   ]
+  },
+  {
+   "name": "Дмитро Гордон",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Дмитро Гордон",
+    "Дмитрий Гордон",
+    "Dmytro Gordon",
+    "Гордон"
+   ]
+  },
+  {
+   "name": "Марина Боржемська",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Марина Боржемська",
+    "Марина Боржемская",
+    "Maryna Borzhemska",
+    "Боржемська"
+   ]
+  },
+  {
+   "name": "Катерина Осадча",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Катерина Осадча",
+    "Екатерина Осадчая",
+    "Kateryna Osadcha",
+    "Осадча"
+   ]
+  },
+  {
+   "name": "Лідія Таран",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Лідія Таран",
+    "Лидия Таран",
+    "Lidiia Taran",
+    "Таран"
+   ]
+  },
+  {
+   "name": "Олексій Цимбалюк",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Олексій Цимбалюк",
+    "Алексей Цимбалюк",
+    "Oleksii Tsymbaliuk",
+    "Цимбалюк"
+   ]
+  },
+  {
+   "name": "Володимир Остапчук",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Володимир Остапчук",
+    "Владимир Остапчук",
+    "Volodymyr Ostapchuk",
+    "Остапчук"
+   ]
+  },
+  {
+   "name": "Григорій Бакланов",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Григорій Бакланов",
+    "Григорий Бакланов",
+    "Hryhorii Baklanov",
+    "Бакланов"
+   ]
+  },
+  {
+   "name": "Таїсія Повалій",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Таїсія Повалій",
+    "Таисия Повалий",
+    "Taisia Povaliy",
+    "Повалій",
+    "Повалий"
+   ]
+  },
+  {
+   "name": "Брюс Вілліс",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.3,
+   "aliases": [
+    "Брюс Вілліс",
+    "Брюс Уиллис",
+    "Bruce Willis",
+    "Вілліс"
+   ]
+  },
+  {
+   "name": "Олена Кравець",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.3,
+   "aliases": [
+    "Олена Кравець",
+    "Елена Кравец",
+    "Olena Kravets",
+    "Кравець"
+   ]
+  },
+  {
+   "name": "Альона Омаргалієва",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Альона Омаргалієва",
+    "Алена Омаргалиева",
+    "Alona Omargalieva",
+    "Омаргалієва"
+   ]
+  },
+  {
+   "name": "Андрій Макаревич",
+   "type": "person",
+   "grp": "world",
+   "weight": 1,
+   "aliases": [
+    "Андрій Макаревич",
+    "Андрей Макаревич",
+    "Andrey Makarevich",
+    "Макаревич"
+   ]
+  },
+  {
+   "name": "Том Круз",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Том Круз",
+    "Tom Cruise",
+    "Круз"
+   ]
+  },
+  {
+   "name": "Міла Нітіч",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Міла Нітіч",
+    "Мила Нитич",
+    "Mila Nitich",
+    "Нітіч"
+   ]
+  },
+  {
+   "name": "Інна Мірошниченко",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Інна Мірошниченко",
+    "Инна Мирошниченко",
+    "Inna Miroshnychenko",
+    "Мірошниченко"
+   ]
+  },
+  {
+   "name": "DAVYD",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "DAVYD",
+    "Давид",
+    "Davyd",
+    "Давыд"
+   ]
+  },
+  {
+   "name": "Г'ю Джекман",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Г'ю Джекман",
+    "Хью Джекман",
+    "Hugh Jackman",
+    "Джекман"
+   ]
+  },
+  {
+   "name": "Наталка Денисенко",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Наталка Денисенко",
+    "Natalka Denysenko",
+    "Денисенко"
+   ]
+  },
+  {
+   "name": "Дженніфер Лоуренс",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Дженніфер Лоуренс",
+    "Дженнифер Лоуренс",
+    "Jennifer Lawrence",
+    "Лоуренс"
+   ]
+  },
+  {
+   "name": "Ані Лорак",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Ані Лорак",
+    "Лорак",
+    "Lorak"
+   ]
+  },
+  {
+   "name": "Кристина Горняк",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Кристина Горняк",
+    "Горняк",
+    "Hornyak",
+    "Христина Горняк",
+    "Khrystyna Horniak"
+   ]
+  },
+  {
+   "name": "Джим Керрі",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Джим Керрі",
+    "Джим Керри",
+    "Jim Carrey",
+    "Керрі"
+   ]
+  },
+  {
+   "name": "Ассія Ахат",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Ассія Ахат",
+    "Ассия Ахат",
+    "Assia Akhat",
+    "Ахат"
+   ]
+  },
+  {
+   "name": "Володимир Дантес",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Володимир Дантес",
+    "Владимир Дантес",
+    "Volodymyr Dantes",
+    "Дантес"
+   ]
+  },
+  {
+   "name": "В'ячеслав Кравцов",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "В'ячеслав Кравцов",
+    "Вячеслав Кравцов",
+    "Viacheslav Kravtsov",
+    "Кравцов"
+   ]
+  },
+  {
+   "name": "Гайтана Ессамі",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Гайтана Ессамі",
+    "Гайтана",
+    "Gaitana"
+   ]
+  },
+  {
+   "name": "Лєра Мандзюк",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Лєра Мандзюк",
+    "Лера Мандзюк",
+    "Lera Mandziuk",
+    "Мандзюк"
+   ]
+  },
+  {
+   "name": "Стас Шурінс",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Стас Шурінс",
+    "Стас Шуринс",
+    "Stas Shurins",
+    "Шурінс"
+   ]
+  },
+  {
+   "name": "Катерина Кузнецова",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Катерина Кузнецова",
+    "Екатерина Кузнецова",
+    "Kateryna Kuznetsova",
+    "Кузнецова"
+   ]
+  },
+  {
+   "name": "Олександр Усик",
+   "type": "person",
+   "grp": "sport",
+   "weight": 1.1,
+   "aliases": [
+    "Олександр Усик",
+    "Усик",
+    "Usyk"
+   ]
+  },
+  {
+   "name": "Євген Клопотенко",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Євген Клопотенко",
+    "Клопотенко",
+    "Klopotenko"
+   ]
+  },
+  {
+   "name": "Олена Світлицька",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Олена Світлицька",
+    "Елена Светлицкая",
+    "Olena Svitlytska",
+    "Світлицька"
+   ]
+  },
+  {
+   "name": "Олег Тополя",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Олег Тополя",
+    "Тополя",
+    "Topolia"
+   ]
+  },
+  {
+   "name": "Олексій Суханов",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Олексій Суханов",
+    "Алексей Суханов",
+    "Oleksii Sukhanov",
+    "Суханов"
+   ]
+  },
+  {
+   "name": "Александр Кравцов",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Александр Кравцов",
+    "Oleksandr Kravtsov",
+    "Кравцов"
+   ]
+  },
+  {
+   "name": "Ілона Гвоздьова",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Ілона Гвоздьова",
+    "Илона Гвоздева",
+    "Ilona Hvozdiova",
+    "Гвоздьова"
+   ]
+  },
+  {
+   "name": "Кейлі Куоко",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Кейлі Куоко",
+    "Кейли Куоко",
+    "Kaley Cuoco",
+    "Куоко"
+   ]
+  },
+  {
+   "name": "MARUV",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "MARUV",
+    "Марув",
+    "Maruv"
+   ]
+  },
+  {
+   "name": "Світлана Павелецька",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Світлана Павелецька",
+    "Светлана Павелецкая",
+    "Svitlana Paveletska",
+    "Павелецька"
+   ]
+  },
+  {
+   "name": "Софія Ротару",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Софія Ротару",
+    "София Ротару",
+    "Sofia Rotaru",
+    "Ротару"
+   ]
+  },
+  {
+   "name": "Юлія Буйновська",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Юлія Буйновська",
+    "Юлия Буйновская",
+    "Yuliia Buinovska",
+    "Буйновська"
+   ]
+  },
+  {
+   "name": "Олексій Комаровський",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Олексій Комаровський",
+    "Алексей Комаровский",
+    "Oleksii Komarovskyi",
+    "Комаровський"
+   ]
+  },
+  {
+   "name": "Ярослава Магучіх",
+   "type": "person",
+   "grp": "sport",
+   "weight": 1.1,
+   "aliases": [
+    "Ярослава Магучіх",
+    "Ярослава Магучих",
+    "Yaroslava Mahuchikh",
+    "Магучіх"
+   ]
+  },
+  {
+   "name": "Олена Мозгова",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Олена Мозгова",
+    "Елена Мозговая",
+    "Olena Mozgova",
+    "Мозгова"
+   ]
+  },
+  {
+   "name": "Ден Рейнольдс",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Ден Рейнольдс",
+    "Дэн Рейнольдс",
+    "Dan Reynolds",
+    "Рейнольдс"
+   ]
+  },
+  {
+   "name": "Назар Задніпровський",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Назар Задніпровський",
+    "Назар Заднепровский",
+    "Nazar Zadniprovskyi",
+    "Задніпровський"
+   ]
+  },
+  {
+   "name": "Андрій Бєдняков",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Андрій Бєдняков",
+    "Андрей Бедняков",
+    "Andrii Biedniakov",
+    "Бєдняков"
+   ]
+  },
+  {
+   "name": "Раміна Есхакзай",
+   "type": "person",
+   "grp": "ua_blogger",
+   "weight": 1.1,
+   "aliases": [
+    "Раміна Есхакзай",
+    "Рамина Эсхакзай",
+    "Ramina Eshakzai",
+    "Есхакзай"
+   ]
+  },
+  {
+   "name": "Еріка Колесніченко",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Еріка Колесніченко",
+    "Эрика Колесниченко",
+    "Erika Kolesnichenko",
+    "Колесніченко"
+   ]
+  },
+  {
+   "name": "Настя Цимбалару",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Настя Цимбалару",
+    "Nastia Tsymbalaru",
+    "Цимбалару"
+   ]
+  },
+  {
+   "name": "Алекс Топольський",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Алекс Топольський",
+    "Алекс Топольский",
+    "Alex Topolskyi",
+    "Топольський"
+   ]
+  },
+  {
+   "name": "Андрій Джеджула",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Андрій Джеджула",
+    "Андрей Джеджула",
+    "Andrii Dzhedzhula",
+    "Джеджула"
+   ]
+  },
+  {
+   "name": "Жерар Піке",
+   "type": "person",
+   "grp": "sport",
+   "weight": 1.1,
+   "aliases": [
+    "Жерар Піке",
+    "Жерар Пике",
+    "Gerard Piqué",
+    "Піке"
+   ]
+  },
+  {
+   "name": "Аліна Гросу",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Аліна Гросу",
+    "Алина Гросу",
+    "Alina Hrosu",
+    "Гросу"
+   ]
+  },
+  {
+   "name": "Інфанта Софія",
+   "type": "person",
+   "grp": "royal",
+   "weight": 1.1,
+   "aliases": [
+    "Інфанта Софія",
+    "Инфанта София",
+    "Infanta Sofia",
+    "Софія"
+   ]
+  },
+  {
+   "name": "Наталія Сумська",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Наталія Сумська",
+    "Наталия Сумская",
+    "Nataliia Sumska",
+    "Сумська"
+   ]
+  },
+  {
+   "name": "Ірина Горова",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Ірина Горова",
+    "Ирина Горовая",
+    "Iryna Horova",
+    "Горова"
+   ]
+  },
+  {
+   "name": "Степан Гіга",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Степан Гіга",
+    "Степан Гига",
+    "Stepan Hiha",
+    "Гіга"
+   ]
+  },
+  {
+   "name": "Джулія Робертс",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Джулія Робертс",
+    "Джулия Робертс",
+    "Julia Roberts",
+    "Робертс"
+   ]
+  },
+  {
+   "name": "Наталі Портман",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Наталі Портман",
+    "Натали Портман",
+    "Natalie Portman",
+    "Портман"
+   ]
+  },
+  {
+   "name": "Гіларі Свонк",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Гіларі Свонк",
+    "Хилари Суонк",
+    "Hilary Swank",
+    "Свонк"
+   ]
+  },
+  {
+   "name": "Барбара Палвін",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Барбара Палвін",
+    "Барбара Палвин",
+    "Barbara Palvin",
+    "Палвін"
+   ]
+  },
+  {
+   "name": "Кетрін Зета-Джонс",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Кетрін Зета-Джонс",
+    "Кэтрин Зета-Джонс",
+    "Catherine Zeta-Jones",
+    "Зета-Джонс"
+   ]
+  },
+  {
+   "name": "SKYLERR",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "SKYLERR",
+    "Скайлер",
+    "Skyler",
+    "Skylerr"
+   ]
+  },
+  {
+   "name": "Єва Лонгорія",
+   "type": "person",
+   "grp": "world",
+   "weight": 1.1,
+   "aliases": [
+    "Єва Лонгорія",
+    "Ева Лонгория",
+    "Eva Longoria",
+    "Лонгорія"
+   ]
+  },
+  {
+   "name": "Олена Тополя",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Олена Тополя",
+    "Елена Тополя",
+    "Olena Topolia",
+    "Тополя"
+   ]
+  },
+  {
+   "name": "Лілія Подкопаєва",
+   "type": "person",
+   "grp": "ua_top",
+   "weight": 1.1,
+   "aliases": [
+    "Лілія Подкопаєва",
+    "Лилия Подкопаева",
+    "Liliya Podkopayeva",
+    "Подкопаєва"
+   ]
+  }
+ ]
+}

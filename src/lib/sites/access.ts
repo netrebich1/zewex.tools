@@ -1,0 +1,103 @@
+/**
+ * Кто видит какой сайт. Уровень системы: доступ к сайту (SiteAccess) принадлежит команде-владельцу,
+ * может быть открыт ещё нескольким командам и ограничен списком сотрудников.
+ * Сайт сервиса (PinSite) наследует видимость своего доступа; сайты без доступа — по команде.
+ */
+import { prisma } from "@/lib/db";
+import type { CurrentUser } from "@/lib/auth";
+import type { Prisma } from "@prisma/client";
+import { canManageTeam, seesAllSites } from "@/lib/permissions";
+
+type AccessRow = { id: string; teamId: string; teams: { teamId: string }[]; viewers: { userId: string }[] };
+
+/**
+ * Видит ли пользователь сайт. Правило владельца: в команде каждый видит только СВОИ сайты, а не все сайты команды.
+ * Админ и право «все сайты» — всё; лидер команды — все сайты, которые принадлежат его команде или открыты ей;
+ * обычный сотрудник — только сайты, где он отмечен в «Кто видит сайт» (создатель сайта отмечается сам).
+ * Пустой список сотрудников больше НЕ означает «вся команда».
+ */
+export function canSeeAccess(me: CurrentUser, a: Omit<AccessRow, "id">): boolean {
+  if (seesAllSites(me)) return true;
+  const inTeam = me.teamIds.includes(a.teamId) || a.teams.some((t) => me.teamIds.includes(t.teamId));
+  if (!inTeam) return false;
+  if (a.viewers.some((v) => v.userId === me.id)) return true;
+  return me.leadTeamIds.includes(a.teamId) || a.teams.some((t) => me.leadTeamIds.includes(t.teamId));
+}
+
+/**
+ * Может ли менять сайт: доступ REST API, команды, видимость, подключение инструментов.
+ * Админ и «все сайты»; тот, кто управляет командой-владельцем (её лидер, право «команды: управлять»);
+ * сотрудник команды-владельца, отмеченный в «Кто видит сайт». Лидер команды, которой сайт только открыт, — смотрит.
+ */
+export function canEditAccess(me: CurrentUser, a: { teamId: string; viewers: { userId: string }[] }): boolean {
+  if (seesAllSites(me) || canManageTeam(me, a.teamId)) return true;
+  return me.teamIds.includes(a.teamId) && a.viewers.some((v) => v.userId === me.id);
+}
+
+export async function canEditSiteAccess(me: CurrentUser, accessId: string): Promise<boolean> {
+  const a = await prisma.siteAccess.findUnique({ where: { id: accessId }, select: { teamId: true, viewers: { select: { userId: true } } } });
+  return !!a && canEditAccess(me, a);
+}
+
+/** Id доступов, видимых пользователю; null — все (админ). */
+export async function visibleAccessIds(me: CurrentUser): Promise<string[] | null> {
+  if (seesAllSites(me)) return null;
+  if (!me.teamIds.length) return [];
+  const rows = await prisma.siteAccess.findMany({
+    where: { OR: [{ teamId: { in: me.teamIds } }, { teams: { some: { teamId: { in: me.teamIds } } } }] },
+    select: { id: true, teamId: true, teams: { select: { teamId: true } }, viewers: { select: { userId: true } } },
+  });
+  return rows.filter((r) => canSeeAccess(me, r)).map((r) => r.id);
+}
+
+/** Условие для SiteAccess.findMany. */
+export async function siteAccessWhere(me: CurrentUser): Promise<Prisma.SiteAccessWhereInput> {
+  const ids = await visibleAccessIds(me);
+  return ids === null ? {} : { id: { in: ids } };
+}
+
+/** Условие для PinSite.findMany: сайты видимых доступов; сайты без доступа (старые) видят только лидеры их команды. */
+export async function pinSiteWhere(me: CurrentUser): Promise<Prisma.PinSiteWhereInput> {
+  const ids = await visibleAccessIds(me);
+  if (ids === null) return {};
+  return { OR: [{ wpConnectionId: { in: ids } }, { wpConnectionId: null, teamId: { in: me.leadTeamIds } }] };
+}
+
+/** Условие для PinRun.findMany: прогоны видимых сайтов; прогоны без сайта — свои, а лидеру — всей команды. */
+export async function pinRunWhere(me: CurrentUser): Promise<Prisma.PinRunWhereInput> {
+  const ids = await visibleAccessIds(me);
+  if (ids === null) return {};
+  return { OR: [
+    { site: { OR: [{ wpConnectionId: { in: ids } }, { wpConnectionId: null, teamId: { in: me.leadTeamIds } }] } },
+    { siteId: null, OR: [{ createdById: me.id }, { teamId: { in: me.leadTeamIds } }] },
+  ] };
+}
+
+export async function canAccessSiteAccess(me: CurrentUser, accessId: string): Promise<boolean> {
+  if (seesAllSites(me)) return true;
+  const a = await prisma.siteAccess.findUnique({ where: { id: accessId }, select: { teamId: true, teams: { select: { teamId: true } }, viewers: { select: { userId: true } } } });
+  return !!a && canSeeAccess(me, a);
+}
+
+/** Доступ к сайту сервиса: через его доступ WordPress, а без него — по команде. */
+export async function canAccessPinSite(me: CurrentUser, site: { teamId: string; wpConnectionId: string | null }): Promise<boolean> {
+  if (seesAllSites(me)) return true;
+  if (site.wpConnectionId) {
+    const ok = await canAccessSiteAccess(me, site.wpConnectionId);
+    // Доступ удалён/недоступен, но сайт в своей команде — пусть остаётся виден команде.
+    if (ok) return true;
+  }
+  return !site.wpConnectionId && me.leadTeamIds.includes(site.teamId);
+}
+
+/** Прогон виден, если виден его сайт; прогон без сайта — по команде. */
+export async function canAccessRun(me: CurrentUser, run: { teamId: string; createdById?: string | null; site: { teamId: string; wpConnectionId: string | null } | null }): Promise<boolean> {
+  if (seesAllSites(me)) return true;
+  if (run.site) return canAccessPinSite(me, run.site);
+  return run.createdById === me.id || me.leadTeamIds.includes(run.teamId);
+}
+
+/** Команды, которым доступен сайт (владелец первым). */
+export function accessTeamIds(a: { teamId: string; teams: { teamId: string }[] }): string[] {
+  return [a.teamId, ...a.teams.map((t) => t.teamId).filter((t) => t !== a.teamId)];
+}

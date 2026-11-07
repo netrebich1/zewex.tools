@@ -1,0 +1,5181 @@
+{
+ "scenarios": [
+  {
+   "id": "267cea29-ee61-43f9-8079-4c7c081a6968",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "name": "Ногти — реальные фото",
+   "description": "Цепочка с реальными фото: поиск, технический фильтр, AI-оценка с описанием, отбор с загрузкой к себе, планирование по фото, текст секций по кадру, вступление и заключение, сборка с подписью источника, публикация.",
+   "is_default": false,
+   "stage5_mode": "single",
+   "stage5_prompt_id": null,
+   "stage5_group_id": null,
+   "stage55_mistakes_enabled": false,
+   "stage55_mistakes_percentage": 20,
+   "stage55_mistakes_prompt_id": null,
+   "stage55_mistakes_group_id": null,
+   "stage55_alternatives_enabled": false,
+   "stage55_alternatives_percentage": 20,
+   "stage55_alternatives_prompt_id": null,
+   "stage55_alternatives_group_id": null,
+   "execution_mode": "scenario",
+   "created_at": "2026-09-14 12:47:17.20651+00",
+   "updated_at": "2026-09-21 10:10:02.895+00",
+   "stage7_batch_size": 5,
+   "stage7_article_personality": null,
+   "stage7_target_word_count": "compact3",
+   "schema_enabled": true,
+   "stage64_enabled": true,
+   "stage55_review_enabled": true,
+   "nanobanana_reference_images": [],
+   "nanobanana_aspect_ratio": "3:4",
+   "nanobanana_resolution": "2K",
+   "stage55_enabled": true,
+   "ai_provider": "lovable",
+   "stage4_provider": "laozhang_nothinking",
+   "stage2_provider": "openrouter",
+   "stage36_provider": "laozhang_nothinking",
+   "stage51_provider": "openrouter",
+   "stage55_provider": "laozhang_nothinking",
+   "stage71_provider": "laozhang_nothinking",
+   "stage6_provider": "openrouter",
+   "stage77_provider": "laozhang_nothinking",
+   "stage3_priority_mode": null,
+   "stage35_enabled": true,
+   "disclaimer_text": null,
+   "disclaimer_font_size": 11,
+   "disclaimer_color": "#888888",
+   "nanobanana_aspect_ratios": [
+    "2:3",
+    "1:1",
+    "3:4"
+   ],
+   "article_type": "nails",
+   "stage1_provider": "laozhang_nothinking",
+   "parse_keyword_provider": "laozhang_nothinking",
+   "stage7_4_enabled": true,
+   "niche_code": "nails",
+   "article_format": "real_photo",
+   "subniche_code": null,
+   "prompt_set_id": "cfc57d0b-0793-4cc5-b223-3abdc6f48a73",
+   "is_active": true,
+   "pipeline_config": {},
+   "photo_search_config": {
+    "source": "dataforseo",
+    "country": "US",
+    "license": "any",
+    "language": "en",
+    "freshness": "any",
+    "min_score": 8,
+    "min_width": 450,
+    "image_type": "photo",
+    "min_height": 450,
+    "orientation": [
+     "tall",
+     "square"
+    ],
+    "unique_mode": "soft",
+    "writer_mode": "description",
+    "caption_mode": "domain_link",
+    "query_suffix": "",
+    "rating_model": "openrouter:google/gemini-2.5-flash-lite",
+    "exclude_domains": [
+     "alibaba.com",
+     "aliexpress.com",
+     "amazon.com",
+     "ebay.com",
+     "etsy.com",
+     "shein.com",
+     "temu.com",
+     "sewmamasew.com"
+    ],
+    "include_domains": [],
+    "candidates_total": 120,
+    "caption_template": "{credit} {domain}",
+    "rating_batch_size": 8
+   },
+   "publish_config": {},
+   "stage_prompt_ids": {
+    "rp_photo_plan": "b59ca1bd-3505-45b1-93ba-22a94e48a1f0",
+    "rp_photo_rate": "08417d46-1aa1-45db-8133-fe1a8ab85fc8",
+    "rp_section_plan": "022fb5d4-906f-4560-8562-6a9e29754398",
+    "stage_7_intro_outro": "b0e6dbb4-7e87-48a6-b010-2cc95b016413",
+    "stage_7_writer_user": "a29fb28f-e2fd-4d4b-84d6-47a2aaa29722",
+    "stage_7_writer_system": "9d6340d3-9e55-4db6-adef-d3a6b452862b"
+   },
+   "stage_models": {
+    "stage_2": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_photo_plan": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_photo_rate": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_photo_search": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_section_plan": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_6_image_seo": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_7_intro_outro": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_7_writer_user": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_7_writer_system": "openrouter:deepseek/deepseek-v4-flash"
+   },
+   "stage5_api_provider": "openai_image",
+   "stage51_model": "google/gemini-2.5-flash-lite",
+   "stage5_image_model": null,
+   "stage5_image_quality": null,
+   "stage5_image_size": null,
+   "stage16_provider": "openrouter",
+   "stage16_model": "google/gemini-2.5-flash-lite",
+   "publish_mode": "publish_then_edit",
+   "stage5_prompt_mode": "group",
+   "stage5_prompt_template_id": null,
+   "scenario_number": 2,
+   "seo_year_url_percent": 100
+  },
+  {
+   "id": "26eb4cd9-eb16-438d-be1a-ef352f66c800",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "name": "Ногти — AI-фото",
+   "description": null,
+   "is_default": false,
+   "stage5_mode": "group",
+   "stage5_prompt_id": "950041d9-5bb8-4592-ad20-c7bf0a67b6fb",
+   "stage5_group_id": "5fa78894-ea0a-49aa-ba87-9c279611bdf7",
+   "stage55_mistakes_enabled": false,
+   "stage55_mistakes_percentage": 20,
+   "stage55_mistakes_prompt_id": null,
+   "stage55_mistakes_group_id": null,
+   "stage55_alternatives_enabled": false,
+   "stage55_alternatives_percentage": 20,
+   "stage55_alternatives_prompt_id": null,
+   "stage55_alternatives_group_id": null,
+   "execution_mode": "scenario",
+   "created_at": "2026-09-11 12:22:27.295652+00",
+   "updated_at": "2026-09-14 07:44:29.413+00",
+   "stage7_batch_size": 4,
+   "stage7_article_personality": null,
+   "stage7_target_word_count": "compact3",
+   "schema_enabled": true,
+   "stage64_enabled": true,
+   "stage55_review_enabled": true,
+   "nanobanana_reference_images": [],
+   "nanobanana_aspect_ratio": "3:4",
+   "nanobanana_resolution": "2K",
+   "stage55_enabled": true,
+   "ai_provider": "lovable",
+   "stage4_provider": "laozhang_nothinking",
+   "stage2_provider": "openrouter",
+   "stage36_provider": "laozhang_nothinking",
+   "stage51_provider": "openrouter",
+   "stage55_provider": "laozhang_nothinking",
+   "stage71_provider": "laozhang_nothinking",
+   "stage6_provider": "openrouter",
+   "stage77_provider": "laozhang_nothinking",
+   "stage3_priority_mode": null,
+   "stage35_enabled": true,
+   "disclaimer_text": null,
+   "disclaimer_font_size": 11,
+   "disclaimer_color": "#888888",
+   "nanobanana_aspect_ratios": [
+    "2:3",
+    "1:1",
+    "3:4"
+   ],
+   "article_type": "nails",
+   "stage1_provider": "laozhang_nothinking",
+   "parse_keyword_provider": "laozhang_nothinking",
+   "stage7_4_enabled": true,
+   "niche_code": "nails",
+   "article_format": "generated_photo",
+   "subniche_code": null,
+   "prompt_set_id": "7d900c16-ccb3-4e64-945b-292959204cf8",
+   "is_active": true,
+   "pipeline_config": {},
+   "photo_search_config": {
+    "min_width": 450,
+    "min_height": 450,
+    "orientation": [
+     "tall",
+     "square"
+    ],
+    "caption_mode": "domain_link",
+    "exclude_domains": [
+     "sewmamasew.com"
+    ],
+    "caption_template": "{credit} {domain}"
+   },
+   "publish_config": {},
+   "stage_prompt_ids": {
+    "stage_2": "5d9c0bb1-5850-4b55-93cf-86ca0e24c401",
+    "stage_6_image_seo": "83208cf6-c157-404e-a285-5be6407bdb94",
+    "stage_7_intro_outro": "4b26aa91-8d36-45c1-8fee-82e7a8b43d28",
+    "stage_7_writer_user": "f8d184db-702c-4788-8c7d-9a85567e9e8c",
+    "stage_7_writer_system": "a2d41679-4e2f-458b-a42a-696a65626045"
+   },
+   "stage_models": {
+    "stage_2": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_5_1": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_6_image_seo": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_7_intro_outro": "openrouter:deepseek/deepseek-v4-pro-0813",
+    "stage_7_writer_user": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_7_writer_system": "openrouter:deepseek/deepseek-v4-flash"
+   },
+   "stage5_api_provider": "openai_image",
+   "stage51_model": "google/gemini-2.5-flash-lite",
+   "stage5_image_model": "gpt-image-2",
+   "stage5_image_quality": "low",
+   "stage5_image_size": "1024x1536",
+   "stage16_provider": "openrouter",
+   "stage16_model": null,
+   "publish_mode": "publish_then_edit",
+   "stage5_prompt_mode": "group",
+   "stage5_prompt_template_id": null,
+   "scenario_number": 1,
+   "seo_year_url_percent": 100
+  },
+  {
+   "id": "b6a71f55-787b-4065-ae0b-1718e524412c",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "name": "Волосы AI фото",
+   "description": null,
+   "is_default": false,
+   "stage5_mode": "group",
+   "stage5_prompt_id": null,
+   "stage5_group_id": "d44b615f-1187-4361-9b9c-76ec440d406a",
+   "stage55_mistakes_enabled": false,
+   "stage55_mistakes_percentage": 20,
+   "stage55_mistakes_prompt_id": null,
+   "stage55_mistakes_group_id": null,
+   "stage55_alternatives_enabled": false,
+   "stage55_alternatives_percentage": 20,
+   "stage55_alternatives_prompt_id": null,
+   "stage55_alternatives_group_id": null,
+   "execution_mode": "scenario",
+   "created_at": "2026-09-20 10:45:32.224675+00",
+   "updated_at": "2026-09-20 19:53:55.585+00",
+   "stage7_batch_size": 4,
+   "stage7_article_personality": null,
+   "stage7_target_word_count": "compact3",
+   "schema_enabled": true,
+   "stage64_enabled": true,
+   "stage55_review_enabled": true,
+   "nanobanana_reference_images": [],
+   "nanobanana_aspect_ratio": "3:4",
+   "nanobanana_resolution": "2K",
+   "stage55_enabled": true,
+   "ai_provider": "lovable",
+   "stage4_provider": "laozhang_nothinking",
+   "stage2_provider": "openrouter",
+   "stage36_provider": "laozhang_nothinking",
+   "stage51_provider": "openrouter",
+   "stage55_provider": "laozhang_nothinking",
+   "stage71_provider": "laozhang_nothinking",
+   "stage6_provider": "openrouter",
+   "stage77_provider": "laozhang_nothinking",
+   "stage3_priority_mode": null,
+   "stage35_enabled": true,
+   "disclaimer_text": null,
+   "disclaimer_font_size": 11,
+   "disclaimer_color": "#888888",
+   "nanobanana_aspect_ratios": [
+    "2:3",
+    "1:1",
+    "3:4"
+   ],
+   "article_type": "nails",
+   "stage1_provider": "laozhang_nothinking",
+   "parse_keyword_provider": "laozhang_nothinking",
+   "stage7_4_enabled": true,
+   "niche_code": "hair",
+   "article_format": "generated_photo",
+   "subniche_code": null,
+   "prompt_set_id": "73ec48fb-c668-4c27-967d-ce106b64c49d",
+   "is_active": true,
+   "pipeline_config": {},
+   "photo_search_config": {
+    "min_width": 450,
+    "min_height": 450,
+    "orientation": [
+     "tall",
+     "square"
+    ],
+    "caption_mode": "domain_link",
+    "exclude_domains": [
+     "sewmamasew.com"
+    ],
+    "caption_template": "{credit} {domain}"
+   },
+   "publish_config": {},
+   "stage_prompt_ids": {
+    "stage_2": "a0521072-e638-4a9d-b49a-0dbdcb82dec3",
+    "stage_6_image_seo": "6f101a51-09b8-411e-9aa0-fee9f02b3d83",
+    "stage_7_intro_outro": "2ec53ea2-9f85-4eac-b3f9-96ff74734c7f",
+    "stage_7_writer_user": "de0752f0-46b9-4008-801f-48d0325b1fa3",
+    "stage_5_scene_planner": "4007c70c-a2b4-451a-a626-0c4e42096216",
+    "stage_7_writer_system": "73767c5a-c6b9-4d99-9f24-20f509c72e5a"
+   },
+   "stage_models": {
+    "stage_2": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_5_1": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_6_image_seo": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_7_intro_outro": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_7_writer_user": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_5_scene_planner": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_7_writer_system": "openrouter:deepseek/deepseek-v4-flash"
+   },
+   "stage5_api_provider": "openai_image",
+   "stage51_model": "google/gemini-2.5-flash-lite",
+   "stage5_image_model": "gpt-image-2",
+   "stage5_image_quality": null,
+   "stage5_image_size": null,
+   "stage16_provider": null,
+   "stage16_model": null,
+   "publish_mode": "publish_then_edit",
+   "stage5_prompt_mode": "group",
+   "stage5_prompt_template_id": null,
+   "scenario_number": 4,
+   "seo_year_url_percent": 100
+  },
+  {
+   "id": "24896a02-6128-4fb0-9e84-9873e9c320a0",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "name": "Одежда · AI-фото",
+   "description": "Полная цепочка ниши одежда: концепты образов, генерация фото 2:3, SEO изображений, текст под образы, вступление и заключение",
+   "is_default": false,
+   "stage5_mode": "group",
+   "stage5_prompt_id": null,
+   "stage5_group_id": "c1a10000-0000-4000-8000-0000000000a1",
+   "stage55_mistakes_enabled": false,
+   "stage55_mistakes_percentage": 20,
+   "stage55_mistakes_prompt_id": null,
+   "stage55_mistakes_group_id": null,
+   "stage55_alternatives_enabled": false,
+   "stage55_alternatives_percentage": 20,
+   "stage55_alternatives_prompt_id": null,
+   "stage55_alternatives_group_id": null,
+   "execution_mode": "scenario",
+   "created_at": "2026-09-20 21:21:37.440938+00",
+   "updated_at": "2026-09-20 21:21:37.440938+00",
+   "stage7_batch_size": 4,
+   "stage7_article_personality": null,
+   "stage7_target_word_count": "compact3",
+   "schema_enabled": true,
+   "stage64_enabled": true,
+   "stage55_review_enabled": true,
+   "nanobanana_reference_images": [],
+   "nanobanana_aspect_ratio": "3:4",
+   "nanobanana_resolution": "2K",
+   "stage55_enabled": true,
+   "ai_provider": "lovable",
+   "stage4_provider": "laozhang_nothinking",
+   "stage2_provider": "openrouter",
+   "stage36_provider": "laozhang_nothinking",
+   "stage51_provider": "openrouter",
+   "stage55_provider": "laozhang_nothinking",
+   "stage71_provider": "laozhang_nothinking",
+   "stage6_provider": "openrouter",
+   "stage77_provider": "laozhang_nothinking",
+   "stage3_priority_mode": null,
+   "stage35_enabled": true,
+   "disclaimer_text": null,
+   "disclaimer_font_size": 11,
+   "disclaimer_color": "#888888",
+   "nanobanana_aspect_ratios": [
+    "2:3",
+    "1:1",
+    "3:4"
+   ],
+   "article_type": "nails",
+   "stage1_provider": "laozhang_nothinking",
+   "parse_keyword_provider": "laozhang_nothinking",
+   "stage7_4_enabled": true,
+   "niche_code": "outfits",
+   "article_format": "generated_photo",
+   "subniche_code": null,
+   "prompt_set_id": "c1a10000-0000-4000-8000-000000000001",
+   "is_active": true,
+   "pipeline_config": {},
+   "photo_search_config": {
+    "min_width": 450,
+    "min_height": 450,
+    "orientation": [
+     "tall",
+     "square"
+    ],
+    "caption_mode": "domain_link",
+    "exclude_domains": [
+     "sewmamasew.com"
+    ],
+    "caption_template": "{credit} {domain}"
+   },
+   "publish_config": {},
+   "stage_prompt_ids": {
+    "stage_2": "272335b3-98c1-43ad-88f6-88e65ab5f5af",
+    "stage_6_image_seo": "360d76e3-1d6a-480a-bec4-e494b64ff4d2",
+    "stage_7_intro_outro": "726405ec-3ab7-44a4-862a-311967f4c3b7",
+    "stage_7_writer_user": "2b50f610-c844-4a35-823f-94f5bb8072dd",
+    "stage_5_scene_planner": "fbe98275-cfec-454b-8524-1b87695b3e96",
+    "stage_7_writer_system": "3df27234-91f8-4cf3-aa27-ad1839919c48"
+   },
+   "stage_models": {
+    "stage_2": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_5_1": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_6_image_seo": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_7_intro_outro": "openrouter:deepseek/deepseek-v4-pro-0813",
+    "stage_7_writer_user": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_5_scene_planner": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_7_writer_system": "openrouter:deepseek/deepseek-v4-flash"
+   },
+   "stage5_api_provider": "openai_image",
+   "stage51_model": "google/gemini-2.5-flash-lite",
+   "stage5_image_model": "gpt-image-2",
+   "stage5_image_quality": "low",
+   "stage5_image_size": "1024x1536",
+   "stage16_provider": null,
+   "stage16_model": null,
+   "publish_mode": "publish_then_edit",
+   "stage5_prompt_mode": "group",
+   "stage5_prompt_template_id": null,
+   "scenario_number": 6,
+   "seo_year_url_percent": 100
+  },
+  {
+   "id": "93cd14c9-4953-4a13-a0aa-4df456453be6",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "name": "Волосы — реальные фото",
+   "description": "Цепочка с реальными фото для волос: стрижки, цвет и причёски. Поиск, технический фильтр, AI-оценка с описанием, отбор, планирование по фото, текст секций по кадру, вступление и заключение, сборка с подписью источника, публикация.",
+   "is_default": false,
+   "stage5_mode": "single",
+   "stage5_prompt_id": null,
+   "stage5_group_id": null,
+   "stage55_mistakes_enabled": false,
+   "stage55_mistakes_percentage": 20,
+   "stage55_mistakes_prompt_id": null,
+   "stage55_mistakes_group_id": null,
+   "stage55_alternatives_enabled": false,
+   "stage55_alternatives_percentage": 20,
+   "stage55_alternatives_prompt_id": null,
+   "stage55_alternatives_group_id": null,
+   "execution_mode": "scenario",
+   "created_at": "2026-09-20 17:59:56.373315+00",
+   "updated_at": "2026-09-21 10:09:32.857+00",
+   "stage7_batch_size": 5,
+   "stage7_article_personality": null,
+   "stage7_target_word_count": "compact3",
+   "schema_enabled": true,
+   "stage64_enabled": true,
+   "stage55_review_enabled": true,
+   "nanobanana_reference_images": [],
+   "nanobanana_aspect_ratio": "3:4",
+   "nanobanana_resolution": "2K",
+   "stage55_enabled": true,
+   "ai_provider": "lovable",
+   "stage4_provider": "laozhang_nothinking",
+   "stage2_provider": "openrouter",
+   "stage36_provider": "laozhang_nothinking",
+   "stage51_provider": "openrouter",
+   "stage55_provider": "laozhang_nothinking",
+   "stage71_provider": "laozhang_nothinking",
+   "stage6_provider": "openrouter",
+   "stage77_provider": "laozhang_nothinking",
+   "stage3_priority_mode": null,
+   "stage35_enabled": true,
+   "disclaimer_text": null,
+   "disclaimer_font_size": 11,
+   "disclaimer_color": "#888888",
+   "nanobanana_aspect_ratios": [
+    "2:3",
+    "1:1",
+    "3:4"
+   ],
+   "article_type": "hair",
+   "stage1_provider": "laozhang_nothinking",
+   "parse_keyword_provider": "laozhang_nothinking",
+   "stage7_4_enabled": true,
+   "niche_code": "hair",
+   "article_format": "real_photo",
+   "subniche_code": null,
+   "prompt_set_id": "9b1f0a52-4c77-4c2e-9ad4-5b20e7a0c101",
+   "is_active": true,
+   "pipeline_config": {},
+   "photo_search_config": {
+    "source": "dataforseo",
+    "country": "US",
+    "license": "any",
+    "language": "en",
+    "freshness": "any",
+    "min_score": 8,
+    "min_width": 450,
+    "image_type": "photo",
+    "min_height": 450,
+    "orientation": [
+     "tall",
+     "square"
+    ],
+    "unique_mode": "soft",
+    "writer_mode": "description",
+    "caption_mode": "domain_link",
+    "query_suffix": "",
+    "rating_model": "openrouter:google/gemini-2.5-flash-lite",
+    "exclude_domains": [
+     "alibaba.com",
+     "aliexpress.com",
+     "amazon.com",
+     "ebay.com",
+     "etsy.com",
+     "shein.com",
+     "temu.com",
+     "sewmamasew.com"
+    ],
+    "include_domains": [],
+    "candidates_total": 120,
+    "caption_template": "{credit} {domain}",
+    "rating_batch_size": 8
+   },
+   "publish_config": {},
+   "stage_prompt_ids": {
+    "rp_photo_plan": "4a2f81a7-1e8f-451a-8eee-b6975506435d",
+    "rp_photo_rate": "b770d517-0645-4ca8-8e40-a70ed754e943",
+    "rp_photo_search": "98076e2e-9af5-44f9-938c-47196b88c77b",
+    "rp_section_plan": "b685014b-e185-4f05-8ba3-b6be3d326051",
+    "stage_6_image_seo": "54686885-4b59-4da8-8881-b3c47fedc22a",
+    "stage_7_intro_outro": "4de1da12-e032-497b-a6d5-a9b3a286b633",
+    "stage_7_writer_user": "785382a2-7141-4c0a-81d8-551fc4b53558",
+    "stage_7_writer_system": "22b94976-cba9-40ee-8335-8b09242deded"
+   },
+   "stage_models": {
+    "stage_2": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_photo_plan": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_photo_rate": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_photo_search": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_section_plan": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_6_image_seo": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_7_intro_outro": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_7_writer_user": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_7_writer_system": "openrouter:deepseek/deepseek-v4-flash"
+   },
+   "stage5_api_provider": "openai_image",
+   "stage51_model": "google/gemini-2.5-flash-lite",
+   "stage5_image_model": null,
+   "stage5_image_quality": null,
+   "stage5_image_size": null,
+   "stage16_provider": "openrouter",
+   "stage16_model": "google/gemini-2.5-flash-lite",
+   "publish_mode": "publish_then_edit",
+   "stage5_prompt_mode": "group",
+   "stage5_prompt_template_id": null,
+   "scenario_number": 5,
+   "seo_year_url_percent": 100
+  },
+  {
+   "id": "24896a02-6128-4fb0-9e84-9873e9c320a1",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "name": "Одежда · реальные фото",
+   "description": "Реальные фото одежды: intent piece/look по исходному английскому Focus Keyword, строгий отбор и полная передача fashion_details в статью.",
+   "is_default": false,
+   "stage5_mode": "single",
+   "stage5_prompt_id": null,
+   "stage5_group_id": null,
+   "stage55_mistakes_enabled": false,
+   "stage55_mistakes_percentage": 20,
+   "stage55_mistakes_prompt_id": null,
+   "stage55_mistakes_group_id": null,
+   "stage55_alternatives_enabled": false,
+   "stage55_alternatives_percentage": 20,
+   "stage55_alternatives_prompt_id": null,
+   "stage55_alternatives_group_id": null,
+   "execution_mode": "auto",
+   "created_at": "2026-09-20 21:46:41.911101+00",
+   "updated_at": "2026-09-21 10:10:23.233+00",
+   "stage7_batch_size": 5,
+   "stage7_article_personality": "wry",
+   "stage7_target_word_count": "compact3",
+   "schema_enabled": true,
+   "stage64_enabled": true,
+   "stage55_review_enabled": true,
+   "nanobanana_reference_images": [],
+   "nanobanana_aspect_ratio": "3:4",
+   "nanobanana_resolution": "2K",
+   "stage55_enabled": true,
+   "ai_provider": "openrouter",
+   "stage4_provider": "laozhang_nothinking",
+   "stage2_provider": "openrouter",
+   "stage36_provider": "laozhang_nothinking",
+   "stage51_provider": "laozhang_nothinking",
+   "stage55_provider": "laozhang_nothinking",
+   "stage71_provider": "laozhang_nothinking",
+   "stage6_provider": "laozhang_nothinking",
+   "stage77_provider": "laozhang_nothinking",
+   "stage3_priority_mode": null,
+   "stage35_enabled": true,
+   "disclaimer_text": null,
+   "disclaimer_font_size": 11,
+   "disclaimer_color": "#888888",
+   "nanobanana_aspect_ratios": [
+    "2:3",
+    "1:1",
+    "3:4"
+   ],
+   "article_type": "nails",
+   "stage1_provider": "laozhang_nothinking",
+   "parse_keyword_provider": "laozhang_nothinking",
+   "stage7_4_enabled": true,
+   "niche_code": "outfits",
+   "article_format": "real_photo",
+   "subniche_code": null,
+   "prompt_set_id": "c1a10000-0000-4000-8000-000000000002",
+   "is_active": true,
+   "pipeline_config": {},
+   "photo_search_config": {
+    "source": "dataforseo",
+    "country": "US",
+    "license": "any",
+    "language": "en",
+    "freshness": "any",
+    "min_score": 8,
+    "min_width": 450,
+    "image_type": "photo",
+    "min_height": 450,
+    "orientation": [
+     "tall",
+     "square"
+    ],
+    "unique_mode": "soft",
+    "writer_mode": "description",
+    "caption_mode": "domain_link",
+    "query_suffix": "",
+    "rating_model": "openrouter:google/gemini-2.5-flash-lite",
+    "exclude_domains": [
+     "alibaba.com",
+     "aliexpress.com",
+     "amazon.com",
+     "ebay.com",
+     "etsy.com",
+     "shein.com",
+     "temu.com",
+     "sewmamasew.com"
+    ],
+    "include_domains": [],
+    "candidates_total": 150,
+    "caption_template": "{credit} {domain}",
+    "rating_batch_size": 8
+   },
+   "publish_config": {},
+   "stage_prompt_ids": {
+    "rp_photo_plan": "c1a11003-0000-4000-8000-000000000002",
+    "rp_photo_rate": "c1a11002-0000-4000-8000-000000000002",
+    "rp_photo_search": "c1a11001-0000-4000-8000-000000000002",
+    "rp_section_plan": "c1a11004-0000-4000-8000-000000000002",
+    "stage_6_image_seo": "c1a11008-0000-4000-8000-000000000002",
+    "stage_7_intro_outro": "c1a11007-0000-4000-8000-000000000002",
+    "stage_7_writer_user": "c1a11006-0000-4000-8000-000000000002",
+    "stage_7_writer_system": "c1a11005-0000-4000-8000-000000000002"
+   },
+   "stage_models": {
+    "rp_photo_plan": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_photo_rate": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_photo_search": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_section_plan": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_6_image_seo": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_7_intro_outro": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_7_writer_user": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_7_writer_system": "openrouter:deepseek/deepseek-v4-flash"
+   },
+   "stage5_api_provider": "openai_image",
+   "stage51_model": null,
+   "stage5_image_model": null,
+   "stage5_image_quality": null,
+   "stage5_image_size": null,
+   "stage16_provider": "openrouter",
+   "stage16_model": null,
+   "publish_mode": "publish_then_edit",
+   "stage5_prompt_mode": "group",
+   "stage5_prompt_template_id": null,
+   "scenario_number": 7,
+   "seo_year_url_percent": 100
+  },
+  {
+   "id": "c1a2ce00-0000-4000-8000-000000000001",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "name": "Интерьер и декор · AI-фото",
+   "description": "Полная цепочка ниши интерьер, декор и outdoor: режим element/room/style из ключа, концепты комнат и зон, генерация вертикальных кадров, SEO изображений, текст, вступление и заключение. Без FAQ и таблиц, счётчик идей меткой {{COUNT}}.",
+   "is_default": false,
+   "stage5_mode": "group",
+   "stage5_prompt_id": null,
+   "stage5_group_id": "c1a20000-0000-4000-8000-0000000000a1",
+   "stage55_mistakes_enabled": false,
+   "stage55_mistakes_percentage": 20,
+   "stage55_mistakes_prompt_id": null,
+   "stage55_mistakes_group_id": null,
+   "stage55_alternatives_enabled": false,
+   "stage55_alternatives_percentage": 20,
+   "stage55_alternatives_prompt_id": null,
+   "stage55_alternatives_group_id": null,
+   "execution_mode": "scenario",
+   "created_at": "2026-09-21 13:02:23.533591+00",
+   "updated_at": "2026-09-21 13:02:23.533591+00",
+   "stage7_batch_size": 4,
+   "stage7_article_personality": null,
+   "stage7_target_word_count": "compact3",
+   "schema_enabled": true,
+   "stage64_enabled": true,
+   "stage55_review_enabled": true,
+   "nanobanana_reference_images": [],
+   "nanobanana_aspect_ratio": "3:4",
+   "nanobanana_resolution": "2K",
+   "stage55_enabled": true,
+   "ai_provider": "lovable",
+   "stage4_provider": "laozhang_nothinking",
+   "stage2_provider": "openrouter",
+   "stage36_provider": "laozhang_nothinking",
+   "stage51_provider": "openrouter",
+   "stage55_provider": "laozhang_nothinking",
+   "stage71_provider": "laozhang_nothinking",
+   "stage6_provider": "openrouter",
+   "stage77_provider": "laozhang_nothinking",
+   "stage3_priority_mode": null,
+   "stage35_enabled": true,
+   "disclaimer_text": null,
+   "disclaimer_font_size": 11,
+   "disclaimer_color": "#888888",
+   "nanobanana_aspect_ratios": [
+    "2:3",
+    "1:1",
+    "3:4"
+   ],
+   "article_type": "nails",
+   "stage1_provider": "laozhang_nothinking",
+   "parse_keyword_provider": "laozhang_nothinking",
+   "stage7_4_enabled": true,
+   "niche_code": "interior",
+   "article_format": "generated_photo",
+   "subniche_code": null,
+   "prompt_set_id": "c1a20000-0000-4000-8000-000000000001",
+   "is_active": true,
+   "pipeline_config": {},
+   "photo_search_config": {
+    "min_width": 450,
+    "min_height": 450,
+    "orientation": [
+     "tall",
+     "square"
+    ],
+    "caption_mode": "domain_link",
+    "exclude_domains": [
+     "sewmamasew.com"
+    ],
+    "caption_template": "{credit} {domain}"
+   },
+   "publish_config": {},
+   "stage_prompt_ids": {
+    "stage_2": "c1a21001-0000-4000-8000-000000000001",
+    "stage_6_image_seo": "c1a21003-0000-4000-8000-000000000001",
+    "stage_7_intro_outro": "c1a21006-0000-4000-8000-000000000001",
+    "stage_7_writer_user": "c1a21005-0000-4000-8000-000000000001",
+    "stage_5_scene_planner": "c1a21002-0000-4000-8000-000000000001",
+    "stage_7_writer_system": "c1a21004-0000-4000-8000-000000000001"
+   },
+   "stage_models": {
+    "stage_2": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_6_image_seo": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_7_intro_outro": "openrouter:deepseek/deepseek-v4-pro-0813",
+    "stage_7_writer_user": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_5_scene_planner": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_7_writer_system": "openrouter:deepseek/deepseek-v4-flash"
+   },
+   "stage5_api_provider": "openai_image",
+   "stage51_model": "google/gemini-2.5-flash-lite",
+   "stage5_image_model": "gpt-image-2",
+   "stage5_image_quality": "low",
+   "stage5_image_size": "1024x1536",
+   "stage16_provider": null,
+   "stage16_model": null,
+   "publish_mode": "publish_then_edit",
+   "stage5_prompt_mode": "group",
+   "stage5_prompt_template_id": null,
+   "scenario_number": 8,
+   "seo_year_url_percent": 100
+  },
+  {
+   "id": "c1a2ce00-0000-4000-8000-000000000002",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "name": "Интерьер и декор · реальные фото",
+   "description": "Реальные фото интерьеров, декора и outdoor: контракт темы element/room/style по исходному английскому Focus Keyword, строгий отбор кадров, полная передача interior_details в статью.",
+   "is_default": false,
+   "stage5_mode": "single",
+   "stage5_prompt_id": null,
+   "stage5_group_id": null,
+   "stage55_mistakes_enabled": false,
+   "stage55_mistakes_percentage": 20,
+   "stage55_mistakes_prompt_id": null,
+   "stage55_mistakes_group_id": null,
+   "stage55_alternatives_enabled": false,
+   "stage55_alternatives_percentage": 20,
+   "stage55_alternatives_prompt_id": null,
+   "stage55_alternatives_group_id": null,
+   "execution_mode": "auto",
+   "created_at": "2026-09-21 13:02:23.533591+00",
+   "updated_at": "2026-09-25 16:48:37.12+00",
+   "stage7_batch_size": 5,
+   "stage7_article_personality": "wry",
+   "stage7_target_word_count": "compact3",
+   "schema_enabled": true,
+   "stage64_enabled": true,
+   "stage55_review_enabled": true,
+   "nanobanana_reference_images": [],
+   "nanobanana_aspect_ratio": "3:4",
+   "nanobanana_resolution": "2K",
+   "stage55_enabled": true,
+   "ai_provider": "openrouter",
+   "stage4_provider": "laozhang_nothinking",
+   "stage2_provider": "openrouter",
+   "stage36_provider": "laozhang_nothinking",
+   "stage51_provider": "laozhang_nothinking",
+   "stage55_provider": "laozhang_nothinking",
+   "stage71_provider": "laozhang_nothinking",
+   "stage6_provider": "laozhang_nothinking",
+   "stage77_provider": "laozhang_nothinking",
+   "stage3_priority_mode": null,
+   "stage35_enabled": true,
+   "disclaimer_text": null,
+   "disclaimer_font_size": 11,
+   "disclaimer_color": "#888888",
+   "nanobanana_aspect_ratios": [
+    "2:3",
+    "1:1",
+    "3:4"
+   ],
+   "article_type": "nails",
+   "stage1_provider": "laozhang_nothinking",
+   "parse_keyword_provider": "laozhang_nothinking",
+   "stage7_4_enabled": true,
+   "niche_code": "interior",
+   "article_format": "real_photo",
+   "subniche_code": null,
+   "prompt_set_id": "c1a20000-0000-4000-8000-000000000002",
+   "is_active": true,
+   "pipeline_config": {},
+   "photo_search_config": {
+    "source": "dataforseo",
+    "country": "US",
+    "license": "any",
+    "language": "en",
+    "freshness": "any",
+    "min_score": 8,
+    "min_width": 450,
+    "image_type": "photo",
+    "min_height": 450,
+    "orientation": [
+     "tall",
+     "square"
+    ],
+    "unique_mode": "soft",
+    "writer_mode": "description",
+    "caption_mode": "domain_link",
+    "query_suffix": "",
+    "rating_model": "openrouter:google/gemini-2.5-flash-lite",
+    "exclude_domains": [
+     "alibaba.com",
+     "aliexpress.com",
+     "amazon.com",
+     "ebay.com",
+     "etsy.com",
+     "shein.com",
+     "temu.com",
+     "sewmamasew.com"
+    ],
+    "include_domains": [],
+    "candidates_total": 150,
+    "caption_template": "{credit} {domain}",
+    "rating_batch_size": 8
+   },
+   "publish_config": {},
+   "stage_prompt_ids": {
+    "rp_photo_plan": "c1a21003-0000-4000-8000-000000000002",
+    "rp_photo_rate": "c1a21002-0000-4000-8000-000000000002",
+    "rp_photo_search": "c1a21001-0000-4000-8000-000000000002",
+    "rp_section_plan": "c1a21004-0000-4000-8000-000000000002",
+    "stage_6_image_seo": "c1a21008-0000-4000-8000-000000000002",
+    "stage_7_intro_outro": "c1a21007-0000-4000-8000-000000000002",
+    "stage_7_writer_user": "c1a21006-0000-4000-8000-000000000002",
+    "stage_7_writer_system": "c1a21005-0000-4000-8000-000000000002"
+   },
+   "stage_models": {
+    "rp_photo_plan": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_photo_rate": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_photo_search": "openrouter:google/gemini-2.5-flash-lite",
+    "rp_section_plan": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_6_image_seo": "openrouter:google/gemini-2.5-flash-lite",
+    "stage_7_intro_outro": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_7_writer_user": "openrouter:deepseek/deepseek-v4-flash",
+    "stage_7_writer_system": "openrouter:deepseek/deepseek-v4-flash"
+   },
+   "stage5_api_provider": "openai_image",
+   "stage51_model": null,
+   "stage5_image_model": null,
+   "stage5_image_quality": null,
+   "stage5_image_size": null,
+   "stage16_provider": "openrouter",
+   "stage16_model": null,
+   "publish_mode": "publish_then_edit",
+   "stage5_prompt_mode": "group",
+   "stage5_prompt_template_id": null,
+   "scenario_number": 9,
+   "seo_year_url_percent": 100
+  }
+ ],
+ "niches": [
+  {
+   "code": "outfits",
+   "name": "Одежда",
+   "emoji": "👗",
+   "sort_order": 10,
+   "is_active": true,
+   "created_at": "2026-09-09 11:14:06.815094+00",
+   "updated_at": "2026-09-09 11:14:06.815094+00",
+   "parent_code": null
+  },
+  {
+   "code": "nails",
+   "name": "Дизайн ногтей",
+   "emoji": "💅",
+   "sort_order": 50,
+   "is_active": true,
+   "created_at": "2026-09-09 11:14:06.815094+00",
+   "updated_at": "2026-09-09 11:14:06.815094+00",
+   "parent_code": null
+  },
+  {
+   "code": "blog",
+   "name": "Блоговая статья",
+   "emoji": "📝",
+   "sort_order": 70,
+   "is_active": true,
+   "created_at": "2026-09-09 11:14:06.815094+00",
+   "updated_at": "2026-09-09 11:14:06.815094+00",
+   "parent_code": null
+  },
+  {
+   "code": "hair",
+   "name": "Волосы",
+   "emoji": "💇",
+   "sort_order": 20,
+   "is_active": true,
+   "created_at": "2026-09-09 13:02:19.871425+00",
+   "updated_at": "2026-09-09 13:02:19.871425+00",
+   "parent_code": null
+  },
+  {
+   "code": "manicure",
+   "name": "Маникюр",
+   "emoji": "💅",
+   "sort_order": 10,
+   "is_active": true,
+   "created_at": "2026-09-09 13:02:19.871425+00",
+   "updated_at": "2026-09-09 13:02:19.871425+00",
+   "parent_code": "nails"
+  },
+  {
+   "code": "pedicure",
+   "name": "Педикюр",
+   "emoji": "🦶",
+   "sort_order": 11,
+   "is_active": true,
+   "created_at": "2026-09-09 13:02:19.871425+00",
+   "updated_at": "2026-09-09 13:02:19.871425+00",
+   "parent_code": "nails"
+  },
+  {
+   "code": "interior",
+   "name": "Дизайн интерьеров",
+   "emoji": "🛋️",
+   "sort_order": 60,
+   "is_active": true,
+   "created_at": "2026-09-09 11:14:06.815094+00",
+   "updated_at": "2026-09-21 13:02:21.599625+00",
+   "parent_code": null
+  },
+  {
+   "code": "decor",
+   "name": "Декор",
+   "emoji": "🪴",
+   "sort_order": 61,
+   "is_active": true,
+   "created_at": "2026-09-21 13:02:13.021754+00",
+   "updated_at": "2026-09-21 13:02:21.599625+00",
+   "parent_code": "interior"
+  },
+  {
+   "code": "outdoor",
+   "name": "Улица и двор",
+   "emoji": "🌿",
+   "sort_order": 62,
+   "is_active": true,
+   "created_at": "2026-09-21 13:02:13.021754+00",
+   "updated_at": "2026-09-21 13:02:21.599625+00",
+   "parent_code": "interior"
+  }
+ ],
+ "niche_profiles": [
+  {
+   "niche_code": "nails",
+   "label": "Дизайн ногтей",
+   "attributes": [
+    {
+     "key": "keyword_surface",
+     "label": "fingernails or toenails",
+     "values": [
+      "fingernails",
+      "toenails"
+     ],
+     "fallback": "fingernails"
+    },
+    {
+     "key": "keyword_nail_shape",
+     "label": "nail shape",
+     "values": [
+      "almond",
+      "coffin",
+      "square",
+      "oval",
+      "stiletto",
+      "ballerina",
+      "round",
+      "squoval",
+      "pipe",
+      "flare",
+      "lipstick",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_nail_length",
+     "label": "nail length",
+     "values": [
+      "short",
+      "medium",
+      "long",
+      "extra-long",
+      "micro",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_nail_color",
+     "label": "main colour"
+    },
+    {
+     "key": "keyword_nail_art",
+     "label": "design / art motif"
+    },
+    {
+     "key": "keyword_nail_technique",
+     "label": "technique",
+     "values": [
+      "gel",
+      "acrylic",
+      "dip powder",
+      "polygel",
+      "gel-x",
+      "press-on",
+      "regular polish",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_finish",
+     "label": "finish",
+     "values": [
+      "matte",
+      "glossy",
+      "glitter",
+      "chrome",
+      "cat eye",
+      "velvet",
+      "holographic",
+      "milky",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_aesthetic",
+     "label": "aesthetic"
+    },
+    {
+     "key": "keyword_occasion",
+     "label": "occasion"
+    },
+    {
+     "key": "keyword_season",
+     "label": "season",
+     "values": [
+      "summer",
+      "fall",
+      "winter",
+      "spring",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_age",
+     "label": "age group",
+     "values": [
+      "teen",
+      "20s",
+      "30s",
+      "40s",
+      "50s",
+      "60s",
+      "mature",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_skin_tone",
+     "label": "skin tone",
+     "values": [
+      "dark",
+      "brown",
+      "light",
+      "fair",
+      "olive",
+      "tan",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_setting",
+     "label": "setting"
+    }
+   ],
+   "required_visuals": [
+    {
+     "label": "length",
+     "values": {
+      "long": [
+       "long",
+       "extra",
+       "xl"
+      ],
+      "short": [
+       "short",
+       "shorter",
+       "stubby"
+      ],
+      "medium": [
+       "medium",
+       "mid"
+      ]
+     }
+    },
+    {
+     "label": "shape",
+     "values": {
+      "oval": [
+       "oval"
+      ],
+      "round": [
+       "round"
+      ],
+      "almond": [
+       "almond"
+      ],
+      "coffin": [
+       "coffin",
+       "ballerina"
+      ],
+      "square": [
+       "square"
+      ],
+      "squoval": [
+       "squoval"
+      ],
+      "stiletto": [
+       "stiletto"
+      ]
+     }
+    },
+    {
+     "label": "finish",
+     "values": {
+      "jelly": [
+       "jelly",
+       "sheer"
+      ],
+      "matte": [
+       "matte"
+      ],
+      "chrome": [
+       "chrome",
+       "mirror"
+      ],
+      "glossy": [
+       "glossy",
+       "gloss"
+      ],
+      "cat-eye": [
+       "cat"
+      ],
+      "glitter": [
+       "glitter",
+       "sparkle"
+      ]
+     }
+    },
+    {
+     "label": "colour",
+     "values": {
+      "red": [
+       "red"
+      ],
+      "blue": [
+       "blue"
+      ],
+      "gold": [
+       "gold"
+      ],
+      "grey": [
+       "grey",
+       "gray"
+      ],
+      "navy": [
+       "navy"
+      ],
+      "nude": [
+       "nude"
+      ],
+      "pink": [
+       "pink"
+      ],
+      "beige": [
+       "beige"
+      ],
+      "black": [
+       "black"
+      ],
+      "brown": [
+       "brown"
+      ],
+      "green": [
+       "green"
+      ],
+      "white": [
+       "white"
+      ],
+      "orange": [
+       "orange"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender"
+      ],
+      "silver": [
+       "silver"
+      ],
+      "yellow": [
+       "yellow"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine"
+      ]
+     }
+    }
+   ],
+   "exclusive_terms": [
+    {
+     "scope": "nail|manicure|pedicure",
+     "variants": [
+      [
+       "toenail",
+       "toenails",
+       "toe",
+       "toes",
+       "pedicure",
+       "pedi",
+       "feet",
+       "foot"
+      ],
+      [
+       "fingernail",
+       "fingernails",
+       "manicure",
+       "hand",
+       "hands",
+       "finger",
+       "fingers"
+      ]
+     ]
+    }
+   ],
+   "diversity_axes": [
+    {
+     "key": "color",
+     "values": {
+      "red": [
+       "red",
+       "cherry",
+       "scarlet"
+      ],
+      "blue": [
+       "blue",
+       "navy",
+       "cobalt",
+       "denim",
+       "teal"
+      ],
+      "gold": [
+       "gold",
+       "bronze",
+       "copper",
+       "champagne"
+      ],
+      "grey": [
+       "grey",
+       "gray",
+       "graphite",
+       "charcoal"
+      ],
+      "nude": [
+       "nude",
+       "beige",
+       "milky",
+       "sheer",
+       "taupe"
+      ],
+      "pink": [
+       "pink",
+       "fuchsia",
+       "magenta",
+       "rose"
+      ],
+      "black": [
+       "black",
+       "onyx"
+      ],
+      "brown": [
+       "brown",
+       "chocolate",
+       "mocha",
+       "espresso",
+       "caramel"
+      ],
+      "green": [
+       "green",
+       "emerald",
+       "sage",
+       "olive",
+       "mint"
+      ],
+      "white": [
+       "white",
+       "ivory"
+      ],
+      "orange": [
+       "orange",
+       "peach",
+       "coral",
+       "terracotta"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender",
+       "violet",
+       "plum"
+      ],
+      "silver": [
+       "silver",
+       "chrome",
+       "steel",
+       "pearlescent",
+       "pearl"
+      ],
+      "yellow": [
+       "yellow",
+       "butter",
+       "mustard"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine",
+       "maroon",
+       "oxblood",
+       "merlot",
+       "deep red"
+      ]
+     },
+     "weight": 3
+    },
+    {
+     "key": "design",
+     "values": {
+      "art": [
+       "nail art",
+       "snowflake",
+       "floral",
+       "flower",
+       "star",
+       "heart",
+       "marble",
+       "dots",
+       "polka",
+       "stripe",
+       "checker",
+       "animal",
+       "leopard",
+       "abstract",
+       "swirl",
+       "aura"
+      ],
+      "ombre": [
+       "ombre",
+       "gradient",
+       "baby boomer"
+      ],
+      "solid": [
+       "solid",
+       "single colour",
+       "single color",
+       "one colour",
+       "one color",
+       "plain"
+      ],
+      "french": [
+       "french",
+       "tip"
+      ]
+     },
+     "weight": 2.2
+    },
+    {
+     "key": "shape",
+     "values": {
+      "oval": [
+       "oval",
+       "round"
+      ],
+      "almond": [
+       "almond"
+      ],
+      "coffin": [
+       "coffin",
+       "ballerina"
+      ],
+      "square": [
+       "square",
+       "squoval"
+      ],
+      "stiletto": [
+       "stiletto",
+       "sharp point",
+       "pointed"
+      ]
+     },
+     "weight": 1.8
+    },
+    {
+     "key": "finish",
+     "values": {
+      "jelly": [
+       "jelly",
+       "sheer",
+       "translucent"
+      ],
+      "matte": [
+       "matte",
+       "velvet"
+      ],
+      "chrome": [
+       "chrome",
+       "metallic",
+       "mirror",
+       "foil"
+      ],
+      "glossy": [
+       "glossy",
+       "high gloss",
+       "shiny",
+       "high-shine"
+      ],
+      "glitter": [
+       "glitter",
+       "sparkle",
+       "shimmer",
+       "sequin"
+      ]
+     },
+     "weight": 1.2
+    },
+    {
+     "key": "length",
+     "values": {
+      "long": [
+       "long",
+       "extra long",
+       "extra-long"
+      ],
+      "short": [
+       "short"
+      ],
+      "medium": [
+       "medium length",
+       "mid-length",
+       "medium"
+      ]
+     },
+     "weight": 1
+    }
+   ],
+   "search_templates": {
+    "topup": [
+     "{keyword} ideas",
+     "{keyword} inspiration",
+     "{keyword} close up"
+    ],
+    "primary": [
+     "{keyword}"
+    ]
+   },
+   "constraint_specs": {
+    "source": "nailSpecs"
+   },
+   "concept_fields": [
+    "design",
+    "style_description",
+    "mood",
+    "occasion",
+    "color_palette",
+    "hero_piece"
+   ],
+   "fact_block": {
+    "note": "форма и длина ногтей обязательны в тексте секции",
+    "fields": [
+     "shape",
+     "length",
+     "colour",
+     "finish",
+     "technique",
+     "design"
+    ],
+    "photo_facts": {
+     "craft": "visible execution quality — line cleanliness, cuticle work, evenness",
+     "decor": "placement of art — french tips, lines, dots, foil, rhinestones, stickers, and on WHICH nails it sits",
+     "colors": "main shade + accent shades + any gradient/ombre direction",
+     "finish": "glossy / matte / shimmer / chrome / jelly / cat-eye / glitter density",
+     "framing": "what the shot shows — one hand, both hands, close macro, hand + toes",
+     "occasion": "season / event the design reads as, only if visible in the design itself",
+     "standout": "the single detail a reader notices first",
+     "difficulty": "\"diy\" | \"salon\" | \"salon-leaning\" + why in a few words",
+     "shape_length": "nail shape and length (e.g. \"medium almond\")"
+    },
+    "subject_label": "the nails / the design"
+   },
+   "is_active": true,
+   "created_at": "2026-09-19 21:33:12.268756+00",
+   "updated_at": "2026-09-19 21:33:12.268756+00"
+  },
+  {
+   "niche_code": "manicure",
+   "label": "Маникюр",
+   "attributes": [
+    {
+     "key": "keyword_surface",
+     "label": "fingernails or toenails",
+     "values": [
+      "fingernails",
+      "toenails"
+     ],
+     "fallback": "fingernails"
+    },
+    {
+     "key": "keyword_nail_shape",
+     "label": "nail shape",
+     "values": [
+      "almond",
+      "coffin",
+      "square",
+      "oval",
+      "stiletto",
+      "ballerina",
+      "round",
+      "squoval",
+      "pipe",
+      "flare",
+      "lipstick",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_nail_length",
+     "label": "nail length",
+     "values": [
+      "short",
+      "medium",
+      "long",
+      "extra-long",
+      "micro",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_nail_color",
+     "label": "main colour"
+    },
+    {
+     "key": "keyword_nail_art",
+     "label": "design / art motif"
+    },
+    {
+     "key": "keyword_nail_technique",
+     "label": "technique",
+     "values": [
+      "gel",
+      "acrylic",
+      "dip powder",
+      "polygel",
+      "gel-x",
+      "press-on",
+      "regular polish",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_finish",
+     "label": "finish",
+     "values": [
+      "matte",
+      "glossy",
+      "glitter",
+      "chrome",
+      "cat eye",
+      "velvet",
+      "holographic",
+      "milky",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_aesthetic",
+     "label": "aesthetic"
+    },
+    {
+     "key": "keyword_occasion",
+     "label": "occasion"
+    },
+    {
+     "key": "keyword_season",
+     "label": "season",
+     "values": [
+      "summer",
+      "fall",
+      "winter",
+      "spring",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_age",
+     "label": "age group",
+     "values": [
+      "teen",
+      "20s",
+      "30s",
+      "40s",
+      "50s",
+      "60s",
+      "mature",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_skin_tone",
+     "label": "skin tone",
+     "values": [
+      "dark",
+      "brown",
+      "light",
+      "fair",
+      "olive",
+      "tan",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_setting",
+     "label": "setting"
+    }
+   ],
+   "required_visuals": [
+    {
+     "label": "length",
+     "values": {
+      "long": [
+       "long",
+       "extra",
+       "xl"
+      ],
+      "short": [
+       "short",
+       "shorter",
+       "stubby"
+      ],
+      "medium": [
+       "medium",
+       "mid"
+      ]
+     }
+    },
+    {
+     "label": "shape",
+     "values": {
+      "oval": [
+       "oval"
+      ],
+      "round": [
+       "round"
+      ],
+      "almond": [
+       "almond"
+      ],
+      "coffin": [
+       "coffin",
+       "ballerina"
+      ],
+      "square": [
+       "square"
+      ],
+      "squoval": [
+       "squoval"
+      ],
+      "stiletto": [
+       "stiletto"
+      ]
+     }
+    },
+    {
+     "label": "finish",
+     "values": {
+      "jelly": [
+       "jelly",
+       "sheer"
+      ],
+      "matte": [
+       "matte"
+      ],
+      "chrome": [
+       "chrome",
+       "mirror"
+      ],
+      "glossy": [
+       "glossy",
+       "gloss"
+      ],
+      "cat-eye": [
+       "cat"
+      ],
+      "glitter": [
+       "glitter",
+       "sparkle"
+      ]
+     }
+    },
+    {
+     "label": "colour",
+     "values": {
+      "red": [
+       "red"
+      ],
+      "blue": [
+       "blue"
+      ],
+      "gold": [
+       "gold"
+      ],
+      "grey": [
+       "grey",
+       "gray"
+      ],
+      "navy": [
+       "navy"
+      ],
+      "nude": [
+       "nude"
+      ],
+      "pink": [
+       "pink"
+      ],
+      "beige": [
+       "beige"
+      ],
+      "black": [
+       "black"
+      ],
+      "brown": [
+       "brown"
+      ],
+      "green": [
+       "green"
+      ],
+      "white": [
+       "white"
+      ],
+      "orange": [
+       "orange"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender"
+      ],
+      "silver": [
+       "silver"
+      ],
+      "yellow": [
+       "yellow"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine"
+      ]
+     }
+    }
+   ],
+   "exclusive_terms": [
+    {
+     "scope": "nail|manicure|pedicure",
+     "variants": [
+      [
+       "toenail",
+       "toenails",
+       "toe",
+       "toes",
+       "pedicure",
+       "pedi",
+       "feet",
+       "foot"
+      ],
+      [
+       "fingernail",
+       "fingernails",
+       "manicure",
+       "hand",
+       "hands",
+       "finger",
+       "fingers"
+      ]
+     ]
+    }
+   ],
+   "diversity_axes": [
+    {
+     "key": "color",
+     "values": {
+      "red": [
+       "red",
+       "cherry",
+       "scarlet"
+      ],
+      "blue": [
+       "blue",
+       "navy",
+       "cobalt",
+       "denim",
+       "teal"
+      ],
+      "gold": [
+       "gold",
+       "bronze",
+       "copper",
+       "champagne"
+      ],
+      "grey": [
+       "grey",
+       "gray",
+       "graphite",
+       "charcoal"
+      ],
+      "nude": [
+       "nude",
+       "beige",
+       "milky",
+       "sheer",
+       "taupe"
+      ],
+      "pink": [
+       "pink",
+       "fuchsia",
+       "magenta",
+       "rose"
+      ],
+      "black": [
+       "black",
+       "onyx"
+      ],
+      "brown": [
+       "brown",
+       "chocolate",
+       "mocha",
+       "espresso",
+       "caramel"
+      ],
+      "green": [
+       "green",
+       "emerald",
+       "sage",
+       "olive",
+       "mint"
+      ],
+      "white": [
+       "white",
+       "ivory"
+      ],
+      "orange": [
+       "orange",
+       "peach",
+       "coral",
+       "terracotta"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender",
+       "violet",
+       "plum"
+      ],
+      "silver": [
+       "silver",
+       "chrome",
+       "steel",
+       "pearlescent",
+       "pearl"
+      ],
+      "yellow": [
+       "yellow",
+       "butter",
+       "mustard"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine",
+       "maroon",
+       "oxblood",
+       "merlot",
+       "deep red"
+      ]
+     },
+     "weight": 3
+    },
+    {
+     "key": "design",
+     "values": {
+      "art": [
+       "nail art",
+       "snowflake",
+       "floral",
+       "flower",
+       "star",
+       "heart",
+       "marble",
+       "dots",
+       "polka",
+       "stripe",
+       "checker",
+       "animal",
+       "leopard",
+       "abstract",
+       "swirl",
+       "aura"
+      ],
+      "ombre": [
+       "ombre",
+       "gradient",
+       "baby boomer"
+      ],
+      "solid": [
+       "solid",
+       "single colour",
+       "single color",
+       "one colour",
+       "one color",
+       "plain"
+      ],
+      "french": [
+       "french",
+       "tip"
+      ]
+     },
+     "weight": 2.2
+    },
+    {
+     "key": "shape",
+     "values": {
+      "oval": [
+       "oval",
+       "round"
+      ],
+      "almond": [
+       "almond"
+      ],
+      "coffin": [
+       "coffin",
+       "ballerina"
+      ],
+      "square": [
+       "square",
+       "squoval"
+      ],
+      "stiletto": [
+       "stiletto",
+       "sharp point",
+       "pointed"
+      ]
+     },
+     "weight": 1.8
+    },
+    {
+     "key": "finish",
+     "values": {
+      "jelly": [
+       "jelly",
+       "sheer",
+       "translucent"
+      ],
+      "matte": [
+       "matte",
+       "velvet"
+      ],
+      "chrome": [
+       "chrome",
+       "metallic",
+       "mirror",
+       "foil"
+      ],
+      "glossy": [
+       "glossy",
+       "high gloss",
+       "shiny",
+       "high-shine"
+      ],
+      "glitter": [
+       "glitter",
+       "sparkle",
+       "shimmer",
+       "sequin"
+      ]
+     },
+     "weight": 1.2
+    },
+    {
+     "key": "length",
+     "values": {
+      "long": [
+       "long",
+       "extra long",
+       "extra-long"
+      ],
+      "short": [
+       "short"
+      ],
+      "medium": [
+       "medium length",
+       "mid-length",
+       "medium"
+      ]
+     },
+     "weight": 1
+    }
+   ],
+   "search_templates": {
+    "topup": [
+     "{keyword} ideas",
+     "{keyword} inspiration",
+     "{keyword} close up"
+    ],
+    "primary": [
+     "{keyword}"
+    ]
+   },
+   "constraint_specs": {
+    "source": "nailSpecs"
+   },
+   "concept_fields": [
+    "design",
+    "style_description",
+    "mood",
+    "occasion",
+    "color_palette",
+    "hero_piece"
+   ],
+   "fact_block": {
+    "note": "форма и длина ногтей обязательны в тексте секции",
+    "fields": [
+     "shape",
+     "length",
+     "colour",
+     "finish",
+     "technique",
+     "design"
+    ],
+    "photo_facts": {
+     "craft": "visible execution quality — line cleanliness, cuticle work, evenness",
+     "decor": "placement of art — french tips, lines, dots, foil, rhinestones, stickers, and on WHICH nails it sits",
+     "colors": "main shade + accent shades + any gradient/ombre direction",
+     "finish": "glossy / matte / shimmer / chrome / jelly / cat-eye / glitter density",
+     "framing": "what the shot shows — one hand, both hands, close macro, hand + toes",
+     "occasion": "season / event the design reads as, only if visible in the design itself",
+     "standout": "the single detail a reader notices first",
+     "difficulty": "\"diy\" | \"salon\" | \"salon-leaning\" + why in a few words",
+     "shape_length": "nail shape and length (e.g. \"medium almond\")"
+    },
+    "subject_label": "the nails / the design"
+   },
+   "is_active": true,
+   "created_at": "2026-09-19 21:33:12.268756+00",
+   "updated_at": "2026-09-19 21:33:12.268756+00"
+  },
+  {
+   "niche_code": "pedicure",
+   "label": "Педикюр",
+   "attributes": [
+    {
+     "key": "keyword_surface",
+     "label": "fingernails or toenails",
+     "values": [
+      "fingernails",
+      "toenails"
+     ],
+     "fallback": "fingernails"
+    },
+    {
+     "key": "keyword_nail_shape",
+     "label": "nail shape",
+     "values": [
+      "almond",
+      "coffin",
+      "square",
+      "oval",
+      "stiletto",
+      "ballerina",
+      "round",
+      "squoval",
+      "pipe",
+      "flare",
+      "lipstick",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_nail_length",
+     "label": "nail length",
+     "values": [
+      "short",
+      "medium",
+      "long",
+      "extra-long",
+      "micro",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_nail_color",
+     "label": "main colour"
+    },
+    {
+     "key": "keyword_nail_art",
+     "label": "design / art motif"
+    },
+    {
+     "key": "keyword_nail_technique",
+     "label": "technique",
+     "values": [
+      "gel",
+      "acrylic",
+      "dip powder",
+      "polygel",
+      "gel-x",
+      "press-on",
+      "regular polish",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_finish",
+     "label": "finish",
+     "values": [
+      "matte",
+      "glossy",
+      "glitter",
+      "chrome",
+      "cat eye",
+      "velvet",
+      "holographic",
+      "milky",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_aesthetic",
+     "label": "aesthetic"
+    },
+    {
+     "key": "keyword_occasion",
+     "label": "occasion"
+    },
+    {
+     "key": "keyword_season",
+     "label": "season",
+     "values": [
+      "summer",
+      "fall",
+      "winter",
+      "spring",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_age",
+     "label": "age group",
+     "values": [
+      "teen",
+      "20s",
+      "30s",
+      "40s",
+      "50s",
+      "60s",
+      "mature",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_skin_tone",
+     "label": "skin tone",
+     "values": [
+      "dark",
+      "brown",
+      "light",
+      "fair",
+      "olive",
+      "tan",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_setting",
+     "label": "setting"
+    }
+   ],
+   "required_visuals": [
+    {
+     "label": "length",
+     "values": {
+      "long": [
+       "long",
+       "extra",
+       "xl"
+      ],
+      "short": [
+       "short",
+       "shorter",
+       "stubby"
+      ],
+      "medium": [
+       "medium",
+       "mid"
+      ]
+     }
+    },
+    {
+     "label": "shape",
+     "values": {
+      "oval": [
+       "oval"
+      ],
+      "round": [
+       "round"
+      ],
+      "almond": [
+       "almond"
+      ],
+      "coffin": [
+       "coffin",
+       "ballerina"
+      ],
+      "square": [
+       "square"
+      ],
+      "squoval": [
+       "squoval"
+      ],
+      "stiletto": [
+       "stiletto"
+      ]
+     }
+    },
+    {
+     "label": "finish",
+     "values": {
+      "jelly": [
+       "jelly",
+       "sheer"
+      ],
+      "matte": [
+       "matte"
+      ],
+      "chrome": [
+       "chrome",
+       "mirror"
+      ],
+      "glossy": [
+       "glossy",
+       "gloss"
+      ],
+      "cat-eye": [
+       "cat"
+      ],
+      "glitter": [
+       "glitter",
+       "sparkle"
+      ]
+     }
+    },
+    {
+     "label": "colour",
+     "values": {
+      "red": [
+       "red"
+      ],
+      "blue": [
+       "blue"
+      ],
+      "gold": [
+       "gold"
+      ],
+      "grey": [
+       "grey",
+       "gray"
+      ],
+      "navy": [
+       "navy"
+      ],
+      "nude": [
+       "nude"
+      ],
+      "pink": [
+       "pink"
+      ],
+      "beige": [
+       "beige"
+      ],
+      "black": [
+       "black"
+      ],
+      "brown": [
+       "brown"
+      ],
+      "green": [
+       "green"
+      ],
+      "white": [
+       "white"
+      ],
+      "orange": [
+       "orange"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender"
+      ],
+      "silver": [
+       "silver"
+      ],
+      "yellow": [
+       "yellow"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine"
+      ]
+     }
+    }
+   ],
+   "exclusive_terms": [
+    {
+     "scope": "nail|manicure|pedicure",
+     "variants": [
+      [
+       "toenail",
+       "toenails",
+       "toe",
+       "toes",
+       "pedicure",
+       "pedi",
+       "feet",
+       "foot"
+      ],
+      [
+       "fingernail",
+       "fingernails",
+       "manicure",
+       "hand",
+       "hands",
+       "finger",
+       "fingers"
+      ]
+     ]
+    }
+   ],
+   "diversity_axes": [
+    {
+     "key": "color",
+     "values": {
+      "red": [
+       "red",
+       "cherry",
+       "scarlet"
+      ],
+      "blue": [
+       "blue",
+       "navy",
+       "cobalt",
+       "denim",
+       "teal"
+      ],
+      "gold": [
+       "gold",
+       "bronze",
+       "copper",
+       "champagne"
+      ],
+      "grey": [
+       "grey",
+       "gray",
+       "graphite",
+       "charcoal"
+      ],
+      "nude": [
+       "nude",
+       "beige",
+       "milky",
+       "sheer",
+       "taupe"
+      ],
+      "pink": [
+       "pink",
+       "fuchsia",
+       "magenta",
+       "rose"
+      ],
+      "black": [
+       "black",
+       "onyx"
+      ],
+      "brown": [
+       "brown",
+       "chocolate",
+       "mocha",
+       "espresso",
+       "caramel"
+      ],
+      "green": [
+       "green",
+       "emerald",
+       "sage",
+       "olive",
+       "mint"
+      ],
+      "white": [
+       "white",
+       "ivory"
+      ],
+      "orange": [
+       "orange",
+       "peach",
+       "coral",
+       "terracotta"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender",
+       "violet",
+       "plum"
+      ],
+      "silver": [
+       "silver",
+       "chrome",
+       "steel",
+       "pearlescent",
+       "pearl"
+      ],
+      "yellow": [
+       "yellow",
+       "butter",
+       "mustard"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine",
+       "maroon",
+       "oxblood",
+       "merlot",
+       "deep red"
+      ]
+     },
+     "weight": 3
+    },
+    {
+     "key": "design",
+     "values": {
+      "art": [
+       "nail art",
+       "snowflake",
+       "floral",
+       "flower",
+       "star",
+       "heart",
+       "marble",
+       "dots",
+       "polka",
+       "stripe",
+       "checker",
+       "animal",
+       "leopard",
+       "abstract",
+       "swirl",
+       "aura"
+      ],
+      "ombre": [
+       "ombre",
+       "gradient",
+       "baby boomer"
+      ],
+      "solid": [
+       "solid",
+       "single colour",
+       "single color",
+       "one colour",
+       "one color",
+       "plain"
+      ],
+      "french": [
+       "french",
+       "tip"
+      ]
+     },
+     "weight": 2.2
+    },
+    {
+     "key": "shape",
+     "values": {
+      "oval": [
+       "oval",
+       "round"
+      ],
+      "almond": [
+       "almond"
+      ],
+      "coffin": [
+       "coffin",
+       "ballerina"
+      ],
+      "square": [
+       "square",
+       "squoval"
+      ],
+      "stiletto": [
+       "stiletto",
+       "sharp point",
+       "pointed"
+      ]
+     },
+     "weight": 1.8
+    },
+    {
+     "key": "finish",
+     "values": {
+      "jelly": [
+       "jelly",
+       "sheer",
+       "translucent"
+      ],
+      "matte": [
+       "matte",
+       "velvet"
+      ],
+      "chrome": [
+       "chrome",
+       "metallic",
+       "mirror",
+       "foil"
+      ],
+      "glossy": [
+       "glossy",
+       "high gloss",
+       "shiny",
+       "high-shine"
+      ],
+      "glitter": [
+       "glitter",
+       "sparkle",
+       "shimmer",
+       "sequin"
+      ]
+     },
+     "weight": 1.2
+    },
+    {
+     "key": "length",
+     "values": {
+      "long": [
+       "long",
+       "extra long",
+       "extra-long"
+      ],
+      "short": [
+       "short"
+      ],
+      "medium": [
+       "medium length",
+       "mid-length",
+       "medium"
+      ]
+     },
+     "weight": 1
+    }
+   ],
+   "search_templates": {
+    "topup": [
+     "{keyword} ideas",
+     "{keyword} inspiration",
+     "{keyword} close up"
+    ],
+    "primary": [
+     "{keyword}"
+    ]
+   },
+   "constraint_specs": {
+    "source": "nailSpecs"
+   },
+   "concept_fields": [
+    "design",
+    "style_description",
+    "mood",
+    "occasion",
+    "color_palette",
+    "hero_piece"
+   ],
+   "fact_block": {
+    "note": "форма и длина ногтей обязательны в тексте секции",
+    "fields": [
+     "shape",
+     "length",
+     "colour",
+     "finish",
+     "technique",
+     "design"
+    ],
+    "photo_facts": {
+     "craft": "visible execution quality — line cleanliness, cuticle work, evenness",
+     "decor": "placement of art — french tips, lines, dots, foil, rhinestones, stickers, and on WHICH nails it sits",
+     "colors": "main shade + accent shades + any gradient/ombre direction",
+     "finish": "glossy / matte / shimmer / chrome / jelly / cat-eye / glitter density",
+     "framing": "what the shot shows — one hand, both hands, close macro, hand + toes",
+     "occasion": "season / event the design reads as, only if visible in the design itself",
+     "standout": "the single detail a reader notices first",
+     "difficulty": "\"diy\" | \"salon\" | \"salon-leaning\" + why in a few words",
+     "shape_length": "nail shape and length (e.g. \"medium almond\")"
+    },
+    "subject_label": "the nails / the design"
+   },
+   "is_active": true,
+   "created_at": "2026-09-19 21:33:12.268756+00",
+   "updated_at": "2026-09-19 21:33:12.268756+00"
+  },
+  {
+   "niche_code": "hair",
+   "label": "Волосы",
+   "attributes": [
+    {
+     "key": "keyword_hair_cut",
+     "label": "haircut family (pixie, bob, lob, shag, layers, long cut…)"
+    },
+    {
+     "key": "keyword_hair_length",
+     "label": "hair length",
+     "values": [
+      "very short",
+      "short",
+      "chin length",
+      "shoulder length",
+      "medium",
+      "long",
+      "extra-long",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_hair_texture",
+     "label": "texture / curl pattern",
+     "values": [
+      "straight",
+      "wavy",
+      "curly",
+      "coily",
+      "fine",
+      "thick",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_hair_color",
+     "label": "hair colour"
+    },
+    {
+     "key": "keyword_hair_color_technique",
+     "label": "colouring technique",
+     "values": [
+      "balayage",
+      "highlights",
+      "ombre",
+      "babylights",
+      "money piece",
+      "root shadow",
+      "single process",
+      "foilyage",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_hair_styling",
+     "label": "styling (blowout, braids, updo, ponytail, curtain bangs…)"
+    },
+    {
+     "key": "keyword_face_shape",
+     "label": "face shape",
+     "values": [
+      "round",
+      "oval",
+      "square",
+      "heart",
+      "long",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_aesthetic",
+     "label": "aesthetic"
+    },
+    {
+     "key": "keyword_occasion",
+     "label": "occasion"
+    },
+    {
+     "key": "keyword_season",
+     "label": "season",
+     "values": [
+      "summer",
+      "fall",
+      "winter",
+      "spring",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_age",
+     "label": "age group",
+     "values": [
+      "teen",
+      "20s",
+      "30s",
+      "40s",
+      "50s",
+      "60s",
+      "mature",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_setting",
+     "label": "setting"
+    }
+   ],
+   "required_visuals": [
+    {
+     "label": "length",
+     "values": {
+      "long": [
+       "long",
+       "waist",
+       "extra long"
+      ],
+      "short": [
+       "short",
+       "bob",
+       "bixie"
+      ],
+      "medium": [
+       "lob",
+       "shoulder",
+       "medium",
+       "mid-length",
+       "midlength",
+       "collarbone"
+      ],
+      "very short": [
+       "pixie",
+       "buzz",
+       "crop",
+       "cropped",
+       "very short"
+      ]
+     }
+    },
+    {
+     "label": "texture",
+     "values": {
+      "wavy": [
+       "wavy",
+       "waves",
+       "beachy"
+      ],
+      "coily": [
+       "coily",
+       "afro",
+       "kinky",
+       "4c"
+      ],
+      "curly": [
+       "curly",
+       "curls",
+       "ringlet",
+       "perm"
+      ],
+      "straight": [
+       "straight",
+       "sleek",
+       "blunt"
+      ]
+     }
+    },
+    {
+     "label": "bangs",
+     "values": {
+      "none": [
+       "no bangs",
+       "without bangs"
+      ],
+      "side": [
+       "side swept",
+       "side-swept"
+      ],
+      "blunt": [
+       "blunt bangs",
+       "blunt fringe"
+      ],
+      "wispy": [
+       "wispy"
+      ],
+      "curtain": [
+       "curtain"
+      ]
+     }
+    },
+    {
+     "label": "technique",
+     "values": {
+      "ombre": [
+       "ombre"
+      ],
+      "solid": [
+       "single process",
+       "all over"
+      ],
+      "balayage": [
+       "balayage"
+      ],
+      "highlights": [
+       "highlights",
+       "babylights",
+       "foilyage"
+      ],
+      "money piece": [
+       "money piece"
+      ]
+     }
+    },
+    {
+     "label": "colour",
+     "values": {
+      "red": [
+       "red"
+      ],
+      "blue": [
+       "blue"
+      ],
+      "gold": [
+       "gold"
+      ],
+      "grey": [
+       "grey",
+       "gray"
+      ],
+      "navy": [
+       "navy"
+      ],
+      "nude": [
+       "nude"
+      ],
+      "pink": [
+       "pink"
+      ],
+      "beige": [
+       "beige"
+      ],
+      "black": [
+       "black"
+      ],
+      "brown": [
+       "brown"
+      ],
+      "green": [
+       "green"
+      ],
+      "white": [
+       "white"
+      ],
+      "orange": [
+       "orange"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender"
+      ],
+      "silver": [
+       "silver"
+      ],
+      "yellow": [
+       "yellow"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine"
+      ]
+     }
+    }
+   ],
+   "exclusive_terms": [
+    {
+     "scope": "hair|haircut|hairstyle|bob|pixie|braid|curls|bangs|balayage|blonde|brunette",
+     "variants": [
+      [
+       "short",
+       "bob",
+       "pixie",
+       "lob",
+       "crop",
+       "bixie"
+      ],
+      [
+       "long",
+       "waist-length",
+       "midlength",
+       "mid-length",
+       "shoulder"
+      ]
+     ]
+    },
+    {
+     "scope": "hair|haircut|hairstyle",
+     "variants": [
+      [
+       "nail",
+       "nails",
+       "manicure",
+       "pedicure"
+      ],
+      [
+       "hair",
+       "haircut",
+       "hairstyle",
+       "bangs",
+       "braid"
+      ]
+     ]
+    }
+   ],
+   "diversity_axes": [
+    {
+     "key": "color",
+     "values": {
+      "red": [
+       "red",
+       "cherry",
+       "scarlet"
+      ],
+      "blue": [
+       "blue",
+       "navy",
+       "cobalt",
+       "denim",
+       "teal"
+      ],
+      "gold": [
+       "gold",
+       "bronze",
+       "copper",
+       "champagne"
+      ],
+      "grey": [
+       "grey",
+       "gray",
+       "graphite",
+       "charcoal"
+      ],
+      "nude": [
+       "nude",
+       "beige",
+       "milky",
+       "sheer",
+       "taupe"
+      ],
+      "pink": [
+       "pink",
+       "fuchsia",
+       "magenta",
+       "rose"
+      ],
+      "black": [
+       "black",
+       "onyx"
+      ],
+      "brown": [
+       "brown",
+       "chocolate",
+       "mocha",
+       "espresso",
+       "caramel"
+      ],
+      "green": [
+       "green",
+       "emerald",
+       "sage",
+       "olive",
+       "mint"
+      ],
+      "white": [
+       "white",
+       "ivory"
+      ],
+      "auburn": [
+       "auburn",
+       "copper",
+       "ginger",
+       "red hair"
+      ],
+      "blonde": [
+       "blonde",
+       "blond",
+       "platinum",
+       "honey",
+       "vanilla",
+       "butter blonde"
+      ],
+      "orange": [
+       "orange",
+       "peach",
+       "coral",
+       "terracotta"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender",
+       "violet",
+       "plum"
+      ],
+      "silver": [
+       "silver",
+       "chrome",
+       "steel",
+       "pearlescent",
+       "pearl"
+      ],
+      "yellow": [
+       "yellow",
+       "butter",
+       "mustard"
+      ],
+      "balayage": [
+       "balayage",
+       "highlights",
+       "babylights"
+      ],
+      "brunette": [
+       "brunette",
+       "chestnut",
+       "chocolate brown",
+       "espresso"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine",
+       "maroon",
+       "oxblood",
+       "merlot",
+       "deep red"
+      ]
+     },
+     "weight": 2.6
+    },
+    {
+     "key": "length",
+     "values": {
+      "long": [
+       "long",
+       "waist"
+      ],
+      "short": [
+       "short",
+       "bob",
+       "bixie"
+      ],
+      "medium": [
+       "lob",
+       "shoulder",
+       "medium",
+       "collarbone"
+      ],
+      "very short": [
+       "pixie",
+       "buzz",
+       "cropped"
+      ]
+     },
+     "weight": 2.4
+    },
+    {
+     "key": "texture",
+     "values": {
+      "wavy": [
+       "wavy",
+       "waves",
+       "beachy"
+      ],
+      "coily": [
+       "coily",
+       "afro",
+       "kinky"
+      ],
+      "curly": [
+       "curly",
+       "curls",
+       "ringlets"
+      ],
+      "straight": [
+       "straight",
+       "sleek",
+       "blunt"
+      ]
+     },
+     "weight": 2.2
+    },
+    {
+     "key": "styling",
+     "values": {
+      "down": [
+       "blowout",
+       "loose",
+       "worn down",
+       "half up"
+      ],
+      "updo": [
+       "updo",
+       "bun",
+       "chignon",
+       "topknot"
+      ],
+      "braid": [
+       "braid",
+       "braids",
+       "plait",
+       "cornrow"
+      ],
+      "ponytail": [
+       "ponytail",
+       "pony"
+      ]
+     },
+     "weight": 1.6
+    },
+    {
+     "key": "bangs",
+     "values": {
+      "none": [
+       "no bangs"
+      ],
+      "side": [
+       "side swept bangs"
+      ],
+      "blunt": [
+       "blunt bangs",
+       "blunt fringe"
+      ],
+      "wispy": [
+       "wispy bangs"
+      ],
+      "curtain": [
+       "curtain bangs"
+      ]
+     },
+     "weight": 1.2
+    }
+   ],
+   "search_templates": {
+    "topup": [
+     "{keyword} hair",
+     "{keyword} hairstyle",
+     "{keyword} back view"
+    ],
+    "primary": [
+     "{keyword}"
+    ],
+    "negative": [
+     "wig for sale",
+     "hair extension bundles"
+    ]
+   },
+   "constraint_specs": {
+    "source": "cutSpecs"
+   },
+   "concept_fields": [
+    "cut",
+    "length",
+    "texture",
+    "colour",
+    "styling",
+    "who_it_suits",
+    "mood",
+    "occasion"
+   ],
+   "fact_block": {
+    "note": "стрижка и длина обязательны в тексте секции",
+    "fields": [
+     "cut",
+     "length",
+     "texture",
+     "colour",
+     "technique",
+     "styling"
+    ],
+    "photo_facts": {
+     "cut": "haircut family and shape (pixie, bob, lob, layers, shag…)",
+     "bangs": "bangs type or \"no bangs\"",
+     "colour": "base colour + any dimension (highlights, balayage, money piece, root shadow)",
+     "length": "where the hair ends (ear, chin, collarbone, shoulder, mid-back)",
+     "framing": "what the shot shows — front, side, back view, close crop",
+     "parting": "middle / side / zig-zag / slicked back",
+     "styling": "how it is styled — blowout, braids, updo, ponytail, wet look, air dried",
+     "texture": "straight / wavy / curly / coily, plus density (fine, thick)",
+     "standout": "the single detail a reader notices first",
+     "difficulty": "\"diy\" | \"salon\" | \"salon-leaning\" + why in a few words"
+    },
+    "subject_label": "the hair — cut, colour and styling"
+   },
+   "is_active": true,
+   "created_at": "2026-09-19 21:33:12.268756+00",
+   "updated_at": "2026-09-19 21:33:12.268756+00"
+  },
+  {
+   "niche_code": "outfits",
+   "label": "Одежда",
+   "attributes": [
+    {
+     "key": "keyword_outfit_type",
+     "label": "outfit type (dress, jeans look, suit, co-ord…)"
+    },
+    {
+     "key": "keyword_hero_piece",
+     "label": "hero garment"
+    },
+    {
+     "key": "keyword_silhouette",
+     "label": "silhouette",
+     "values": [
+      "oversized",
+      "fitted",
+      "a-line",
+      "straight",
+      "wide leg",
+      "bodycon",
+      "relaxed",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_palette",
+     "label": "colour palette"
+    },
+    {
+     "key": "keyword_style",
+     "label": "style / aesthetic"
+    },
+    {
+     "key": "keyword_occasion",
+     "label": "occasion"
+    },
+    {
+     "key": "keyword_season",
+     "label": "season",
+     "values": [
+      "summer",
+      "fall",
+      "winter",
+      "spring",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_age",
+     "label": "age group",
+     "values": [
+      "teen",
+      "20s",
+      "30s",
+      "40s",
+      "50s",
+      "60s",
+      "mature",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_body_type",
+     "label": "body type"
+    },
+    {
+     "key": "keyword_setting",
+     "label": "setting"
+    }
+   ],
+   "required_visuals": [
+    {
+     "label": "garment",
+     "values": {
+      "coat": [
+       "coat",
+       "trench"
+      ],
+      "suit": [
+       "suit",
+       "blazer set"
+      ],
+      "dress": [
+       "dress",
+       "gown"
+      ],
+      "jeans": [
+       "jeans",
+       "denim"
+      ],
+      "skirt": [
+       "skirt"
+      ],
+      "shorts": [
+       "shorts"
+      ],
+      "jumpsuit": [
+       "jumpsuit",
+       "romper"
+      ],
+      "trousers": [
+       "trousers",
+       "pants",
+       "slacks"
+      ]
+     }
+    },
+    {
+     "label": "silhouette",
+     "values": {
+      "fitted": [
+       "fitted",
+       "bodycon",
+       "tailored"
+      ],
+      "straight": [
+       "straight",
+       "relaxed"
+      ],
+      "wide leg": [
+       "wide leg",
+       "wide-leg",
+       "flare"
+      ],
+      "oversized": [
+       "oversized",
+       "baggy",
+       "slouchy"
+      ]
+     }
+    },
+    {
+     "label": "colour",
+     "values": {
+      "red": [
+       "red"
+      ],
+      "blue": [
+       "blue"
+      ],
+      "gold": [
+       "gold"
+      ],
+      "grey": [
+       "grey",
+       "gray"
+      ],
+      "navy": [
+       "navy"
+      ],
+      "nude": [
+       "nude"
+      ],
+      "pink": [
+       "pink"
+      ],
+      "beige": [
+       "beige"
+      ],
+      "black": [
+       "black"
+      ],
+      "brown": [
+       "brown"
+      ],
+      "green": [
+       "green"
+      ],
+      "white": [
+       "white"
+      ],
+      "orange": [
+       "orange"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender"
+      ],
+      "silver": [
+       "silver"
+      ],
+      "yellow": [
+       "yellow"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine"
+      ]
+     }
+    }
+   ],
+   "exclusive_terms": [
+    {
+     "scope": "outfit|dress|skirt|jeans|denim|shorts|suit|jumpsuit|wear|style|look",
+     "variants": [
+      [
+       "dress"
+      ],
+      [
+       "skirt"
+      ],
+      [
+       "jeans",
+       "denim"
+      ],
+      [
+       "shorts"
+      ],
+      [
+       "suit"
+      ],
+      [
+       "jumpsuit"
+      ]
+     ]
+    },
+    {
+     "scope": "outfit|look|wear",
+     "variants": [
+      [
+       "summer",
+       "beach"
+      ],
+      [
+       "winter",
+       "snow",
+       "puffer"
+      ]
+     ]
+    }
+   ],
+   "diversity_axes": [
+    {
+     "key": "color",
+     "values": {
+      "red": [
+       "red",
+       "cherry",
+       "scarlet"
+      ],
+      "blue": [
+       "blue",
+       "navy",
+       "cobalt",
+       "denim",
+       "teal"
+      ],
+      "gold": [
+       "gold",
+       "bronze",
+       "copper",
+       "champagne"
+      ],
+      "grey": [
+       "grey",
+       "gray",
+       "graphite",
+       "charcoal"
+      ],
+      "nude": [
+       "nude",
+       "beige",
+       "milky",
+       "sheer",
+       "taupe"
+      ],
+      "pink": [
+       "pink",
+       "fuchsia",
+       "magenta",
+       "rose"
+      ],
+      "black": [
+       "black",
+       "onyx"
+      ],
+      "brown": [
+       "brown",
+       "chocolate",
+       "mocha",
+       "espresso",
+       "caramel"
+      ],
+      "green": [
+       "green",
+       "emerald",
+       "sage",
+       "olive",
+       "mint"
+      ],
+      "white": [
+       "white",
+       "ivory"
+      ],
+      "orange": [
+       "orange",
+       "peach",
+       "coral",
+       "terracotta"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender",
+       "violet",
+       "plum"
+      ],
+      "silver": [
+       "silver",
+       "chrome",
+       "steel",
+       "pearlescent",
+       "pearl"
+      ],
+      "yellow": [
+       "yellow",
+       "butter",
+       "mustard"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine",
+       "maroon",
+       "oxblood",
+       "merlot",
+       "deep red"
+      ]
+     },
+     "weight": 2.8
+    },
+    {
+     "key": "garment",
+     "values": {
+      "knit": [
+       "sweater",
+       "knit",
+       "cardigan"
+      ],
+      "suit": [
+       "suit",
+       "blazer"
+      ],
+      "dress": [
+       "dress",
+       "gown"
+      ],
+      "jeans": [
+       "jeans",
+       "denim"
+      ],
+      "skirt": [
+       "skirt"
+      ],
+      "shorts": [
+       "shorts"
+      ],
+      "jumpsuit": [
+       "jumpsuit",
+       "romper"
+      ],
+      "trousers": [
+       "trousers",
+       "pants"
+      ]
+     },
+     "weight": 2.4
+    },
+    {
+     "key": "layer",
+     "values": {
+      "coat": [
+       "coat",
+       "trench",
+       "puffer",
+       "parka"
+      ],
+      "none": [
+       "no jacket",
+       "single layer"
+      ],
+      "vest": [
+       "vest",
+       "waistcoat"
+      ],
+      "blazer": [
+       "blazer",
+       "jacket"
+      ]
+     },
+     "weight": 1.8
+    },
+    {
+     "key": "silhouette",
+     "values": {
+      "wide": [
+       "wide leg",
+       "flare",
+       "a-line"
+      ],
+      "fitted": [
+       "fitted",
+       "bodycon",
+       "tailored"
+      ],
+      "straight": [
+       "straight",
+       "relaxed"
+      ],
+      "oversized": [
+       "oversized",
+       "baggy"
+      ]
+     },
+     "weight": 1.6
+    },
+    {
+     "key": "shoes",
+     "values": {
+      "boots": [
+       "boots",
+       "booties"
+      ],
+      "flats": [
+       "flats",
+       "loafers",
+       "ballet"
+      ],
+      "heels": [
+       "heels",
+       "pumps",
+       "stilettos"
+      ],
+      "sandals": [
+       "sandals",
+       "slides"
+      ],
+      "sneakers": [
+       "sneakers",
+       "trainers"
+      ]
+     },
+     "weight": 1
+    }
+   ],
+   "search_templates": {
+    "topup": [
+     "{keyword} outfit",
+     "{keyword} street style",
+     "{keyword} outfit ideas"
+    ],
+    "primary": [
+     "{keyword}"
+    ],
+    "negative": [
+     "product listing",
+     "shop now"
+    ]
+   },
+   "constraint_specs": {},
+   "concept_fields": [
+    "outfit_name",
+    "hero_piece",
+    "layers",
+    "palette",
+    "shoes",
+    "accessories",
+    "occasion",
+    "mood"
+   ],
+   "fact_block": {
+    "note": "ключевая вещь и обувь обязательны в тексте секции",
+    "fields": [
+     "hero_piece",
+     "layers",
+     "palette",
+     "shoes",
+     "silhouette"
+    ],
+    "photo_facts": {
+     "shoes": "shoe type and colour",
+     "layers": "every visible layer top to bottom",
+     "fabrics": "visible fabrics and textures",
+     "framing": "full body, three-quarter, detail crop",
+     "palette": "main colours and how they combine",
+     "occasion": "where the look reads as appropriate",
+     "standout": "the single detail a reader notices first",
+     "hero_piece": "the garment that defines the look",
+     "silhouette": "fit and shape (oversized, fitted, wide leg, a-line)",
+     "accessories": "bag, belt, jewellery, hat — only if visible"
+    },
+    "subject_label": "the outfit — garments, layers and shoes"
+   },
+   "is_active": true,
+   "created_at": "2026-09-19 21:33:12.268756+00",
+   "updated_at": "2026-09-19 21:33:12.268756+00"
+  },
+  {
+   "niche_code": "tattoo",
+   "label": "Татуировки",
+   "attributes": [
+    {
+     "key": "keyword_placement",
+     "label": "body placement",
+     "values": [
+      "forearm",
+      "upper arm",
+      "sleeve",
+      "shoulder",
+      "back",
+      "spine",
+      "chest",
+      "ribs",
+      "thigh",
+      "calf",
+      "ankle",
+      "wrist",
+      "hand",
+      "finger",
+      "neck",
+      "collarbone",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_tattoo_style",
+     "label": "tattoo style",
+     "values": [
+      "fine line",
+      "blackwork",
+      "realism",
+      "watercolour",
+      "geometric",
+      "tribal",
+      "minimalist",
+      "traditional",
+      "neo-traditional",
+      "illustrative",
+      "lettering",
+      "dotwork",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_tattoo_size",
+     "label": "size",
+     "values": [
+      "micro",
+      "small",
+      "medium",
+      "large",
+      "full sleeve",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_tattoo_subject",
+     "label": "subject / motif"
+    },
+    {
+     "key": "keyword_color_mode",
+     "label": "colour mode",
+     "values": [
+      "black and grey",
+      "colour",
+      "single needle black",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_aesthetic",
+     "label": "aesthetic"
+    },
+    {
+     "key": "keyword_age",
+     "label": "age group",
+     "values": [
+      "teen",
+      "20s",
+      "30s",
+      "40s",
+      "50s",
+      "mature",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_setting",
+     "label": "setting"
+    }
+   ],
+   "required_visuals": [
+    {
+     "label": "placement",
+     "values": {
+      "arm": [
+       "upper arm",
+       "bicep",
+       "sleeve"
+      ],
+      "back": [
+       "back",
+       "spine"
+      ],
+      "calf": [
+       "calf",
+       "leg"
+      ],
+      "hand": [
+       "hand",
+       "finger"
+      ],
+      "neck": [
+       "neck",
+       "collarbone"
+      ],
+      "ribs": [
+       "ribs",
+       "side"
+      ],
+      "ankle": [
+       "ankle"
+      ],
+      "chest": [
+       "chest",
+       "sternum"
+      ],
+      "thigh": [
+       "thigh"
+      ],
+      "wrist": [
+       "wrist"
+      ],
+      "forearm": [
+       "forearm"
+      ],
+      "shoulder": [
+       "shoulder"
+      ]
+     }
+    },
+    {
+     "label": "style",
+     "values": {
+      "dotwork": [
+       "dotwork",
+       "stippling"
+      ],
+      "realism": [
+       "realism",
+       "realistic",
+       "portrait"
+      ],
+      "blackwork": [
+       "blackwork",
+       "solid black"
+      ],
+      "fine line": [
+       "fine line",
+       "single needle"
+      ],
+      "geometric": [
+       "geometric"
+      ],
+      "lettering": [
+       "lettering",
+       "script",
+       "quote"
+      ],
+      "minimalist": [
+       "minimalist",
+       "minimal"
+      ],
+      "traditional": [
+       "traditional",
+       "americana"
+      ],
+      "watercolour": [
+       "watercolour",
+       "watercolor"
+      ]
+     }
+    },
+    {
+     "label": "colour mode",
+     "values": {
+      "colour": [
+       "colour",
+       "color",
+       "vibrant"
+      ],
+      "black and grey": [
+       "black and grey",
+       "black and gray",
+       "blackwork"
+      ]
+     }
+    }
+   ],
+   "exclusive_terms": [
+    {
+     "scope": "tattoo|ink|tatt",
+     "variants": [
+      [
+       "sketch",
+       "drawing",
+       "flash sheet",
+       "stencil",
+       "paper",
+       "design sheet"
+      ],
+      [
+       "tattoo",
+       "tattooed",
+       "inked",
+       "skin",
+       "healed"
+      ]
+     ]
+    },
+    {
+     "scope": "tattoo|ink",
+     "variants": [
+      [
+       "forearm",
+       "wrist",
+       "hand",
+       "arm",
+       "sleeve"
+      ],
+      [
+       "thigh",
+       "calf",
+       "ankle",
+       "leg"
+      ],
+      [
+       "back",
+       "spine"
+      ],
+      [
+       "chest",
+       "sternum",
+       "ribs"
+      ]
+     ]
+    }
+   ],
+   "diversity_axes": [
+    {
+     "key": "placement",
+     "values": {
+      "arm": [
+       "upper arm",
+       "bicep",
+       "sleeve"
+      ],
+      "leg": [
+       "thigh",
+       "calf",
+       "ankle"
+      ],
+      "back": [
+       "back",
+       "spine"
+      ],
+      "hand": [
+       "hand",
+       "wrist",
+       "finger"
+      ],
+      "neck": [
+       "neck",
+       "collarbone"
+      ],
+      "ribs": [
+       "ribs"
+      ],
+      "chest": [
+       "chest",
+       "sternum"
+      ],
+      "forearm": [
+       "forearm"
+      ],
+      "shoulder": [
+       "shoulder"
+      ]
+     },
+     "weight": 2.8
+    },
+    {
+     "key": "style",
+     "values": {
+      "dotwork": [
+       "dotwork"
+      ],
+      "realism": [
+       "realism",
+       "realistic"
+      ],
+      "blackwork": [
+       "blackwork"
+      ],
+      "fine line": [
+       "fine line",
+       "single needle"
+      ],
+      "geometric": [
+       "geometric"
+      ],
+      "lettering": [
+       "lettering",
+       "script"
+      ],
+      "traditional": [
+       "traditional"
+      ],
+      "watercolour": [
+       "watercolour",
+       "watercolor"
+      ]
+     },
+     "weight": 2.4
+    },
+    {
+     "key": "size",
+     "values": {
+      "large": [
+       "large",
+       "full sleeve",
+       "big"
+      ],
+      "micro": [
+       "micro",
+       "tiny"
+      ],
+      "small": [
+       "small"
+      ],
+      "medium": [
+       "medium"
+      ]
+     },
+     "weight": 1.8
+    },
+    {
+     "key": "subject",
+     "values": {
+      "animal": [
+       "snake",
+       "butterfly",
+       "bird",
+       "wolf",
+       "lion",
+       "moth"
+      ],
+      "floral": [
+       "flower",
+       "floral",
+       "rose",
+       "peony",
+       "botanical"
+      ],
+      "symbol": [
+       "symbol",
+       "rune",
+       "cross",
+       "heart"
+      ],
+      "abstract": [
+       "abstract",
+       "line art",
+       "shapes"
+      ],
+      "celestial": [
+       "moon",
+       "star",
+       "sun",
+       "celestial"
+      ]
+     },
+     "weight": 2
+    },
+    {
+     "key": "color",
+     "values": {
+      "black": [
+       "black and grey",
+       "black and gray",
+       "black ink"
+      ],
+      "colour": [
+       "colour",
+       "color",
+       "vibrant"
+      ]
+     },
+     "weight": 1.4
+    }
+   ],
+   "search_templates": {
+    "topup": [
+     "{keyword} tattoo",
+     "{keyword} tattoo ideas",
+     "{keyword} healed tattoo"
+    ],
+    "primary": [
+     "{keyword}"
+    ],
+    "negative": [
+     "tattoo stencil",
+     "flash sheet",
+     "temporary tattoo"
+    ]
+   },
+   "constraint_specs": {},
+   "concept_fields": [
+    "subject",
+    "style",
+    "placement",
+    "size",
+    "colour_mode",
+    "mood",
+    "meaning"
+   ],
+   "fact_block": {
+    "note": "стиль и место на теле обязательны в тексте секции",
+    "fields": [
+     "subject",
+     "style",
+     "placement",
+     "size",
+     "colour_mode"
+    ],
+    "photo_facts": {
+     "size": "micro / small / medium / large relative to the body part",
+     "style": "tattoo style (fine line, blackwork, realism, geometric…)",
+     "healed": "fresh or healed, if visible",
+     "framing": "close crop, full placement, body in frame",
+     "subject": "what the tattoo depicts",
+     "linework": "line weight, shading, dotwork, saturation",
+     "standout": "the single detail a reader notices first",
+     "placement": "exact body placement and orientation",
+     "colour_mode": "black and grey / colour, and which colours"
+    },
+    "subject_label": "the tattoo itself"
+   },
+   "is_active": true,
+   "created_at": "2026-09-19 21:33:12.268756+00",
+   "updated_at": "2026-09-19 21:33:12.268756+00"
+  },
+  {
+   "niche_code": "makeup",
+   "label": "Макияж",
+   "attributes": [
+    {
+     "key": "keyword_makeup_type",
+     "label": "makeup type (eye look, full face, lip look…)"
+    },
+    {
+     "key": "keyword_eye_technique",
+     "label": "eye technique",
+     "values": [
+      "smokey",
+      "cut crease",
+      "graphic liner",
+      "winged liner",
+      "halo",
+      "siren eyes",
+      "no liner",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_palette",
+     "label": "colour palette"
+    },
+    {
+     "key": "keyword_finish",
+     "label": "finish",
+     "values": [
+      "matte",
+      "glowy",
+      "dewy",
+      "satin",
+      "glitter",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_intensity",
+     "label": "intensity",
+     "values": [
+      "natural",
+      "soft",
+      "bold",
+      "dramatic",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_occasion",
+     "label": "occasion"
+    },
+    {
+     "key": "keyword_skin_tone",
+     "label": "skin tone",
+     "values": [
+      "dark",
+      "brown",
+      "light",
+      "fair",
+      "olive",
+      "tan",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_eye_shape",
+     "label": "eye shape",
+     "values": [
+      "hooded",
+      "almond",
+      "round",
+      "monolid",
+      "downturned",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_age",
+     "label": "age group",
+     "values": [
+      "teen",
+      "20s",
+      "30s",
+      "40s",
+      "50s",
+      "60s",
+      "mature",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_season",
+     "label": "season",
+     "values": [
+      "summer",
+      "fall",
+      "winter",
+      "spring",
+      "none"
+     ]
+    }
+   ],
+   "required_visuals": [
+    {
+     "label": "focus",
+     "values": {
+      "eyes": [
+       "eye look",
+       "eyeshadow",
+       "liner",
+       "lashes"
+      ],
+      "lips": [
+       "lip",
+       "lipstick",
+       "lip liner"
+      ],
+      "blush": [
+       "blush",
+       "cheeks",
+       "contour"
+      ],
+      "full face": [
+       "full face",
+       "full glam",
+       "base",
+       "foundation"
+      ]
+     }
+    },
+    {
+     "label": "technique",
+     "values": {
+      "halo": [
+       "halo"
+      ],
+      "smokey": [
+       "smokey",
+       "smoky"
+      ],
+      "winged": [
+       "winged",
+       "wing liner",
+       "cat eye"
+      ],
+      "graphic": [
+       "graphic liner",
+       "graphic"
+      ],
+      "cut crease": [
+       "cut crease"
+      ]
+     }
+    },
+    {
+     "label": "finish",
+     "values": {
+      "glowy": [
+       "glowy",
+       "dewy",
+       "glass skin"
+      ],
+      "matte": [
+       "matte"
+      ],
+      "glitter": [
+       "glitter",
+       "shimmer",
+       "metallic"
+      ]
+     }
+    },
+    {
+     "label": "colour",
+     "values": {
+      "red": [
+       "red"
+      ],
+      "blue": [
+       "blue"
+      ],
+      "gold": [
+       "gold"
+      ],
+      "grey": [
+       "grey",
+       "gray"
+      ],
+      "navy": [
+       "navy"
+      ],
+      "nude": [
+       "nude"
+      ],
+      "pink": [
+       "pink"
+      ],
+      "beige": [
+       "beige"
+      ],
+      "black": [
+       "black"
+      ],
+      "brown": [
+       "brown"
+      ],
+      "green": [
+       "green"
+      ],
+      "white": [
+       "white"
+      ],
+      "orange": [
+       "orange"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender"
+      ],
+      "silver": [
+       "silver"
+      ],
+      "yellow": [
+       "yellow"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine"
+      ]
+     }
+    }
+   ],
+   "exclusive_terms": [
+    {
+     "scope": "makeup|make-up|eyeshadow|lipstick|liner|glam",
+     "variants": [
+      [
+       "natural",
+       "no makeup",
+       "soft",
+       "minimal"
+      ],
+      [
+       "bold",
+       "dramatic",
+       "full glam",
+       "graphic"
+      ]
+     ]
+    },
+    {
+     "scope": "makeup|eyeshadow|liner",
+     "variants": [
+      [
+       "nail",
+       "nails",
+       "manicure"
+      ],
+      [
+       "makeup",
+       "eyeshadow",
+       "lipstick",
+       "liner",
+       "glam"
+      ]
+     ]
+    }
+   ],
+   "diversity_axes": [
+    {
+     "key": "color",
+     "values": {
+      "red": [
+       "red",
+       "cherry",
+       "scarlet"
+      ],
+      "blue": [
+       "blue",
+       "navy",
+       "cobalt",
+       "denim",
+       "teal"
+      ],
+      "gold": [
+       "gold",
+       "bronze",
+       "copper",
+       "champagne"
+      ],
+      "grey": [
+       "grey",
+       "gray",
+       "graphite",
+       "charcoal"
+      ],
+      "nude": [
+       "nude",
+       "beige",
+       "milky",
+       "sheer",
+       "taupe"
+      ],
+      "pink": [
+       "pink",
+       "fuchsia",
+       "magenta",
+       "rose"
+      ],
+      "black": [
+       "black",
+       "onyx"
+      ],
+      "brown": [
+       "brown",
+       "chocolate",
+       "mocha",
+       "espresso",
+       "caramel"
+      ],
+      "green": [
+       "green",
+       "emerald",
+       "sage",
+       "olive",
+       "mint"
+      ],
+      "white": [
+       "white",
+       "ivory"
+      ],
+      "orange": [
+       "orange",
+       "peach",
+       "coral",
+       "terracotta"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender",
+       "violet",
+       "plum"
+      ],
+      "silver": [
+       "silver",
+       "chrome",
+       "steel",
+       "pearlescent",
+       "pearl"
+      ],
+      "yellow": [
+       "yellow",
+       "butter",
+       "mustard"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine",
+       "maroon",
+       "oxblood",
+       "merlot",
+       "deep red"
+      ]
+     },
+     "weight": 2.8
+    },
+    {
+     "key": "focus",
+     "values": {
+      "eyes": [
+       "eye look",
+       "eyeshadow",
+       "liner",
+       "lashes"
+      ],
+      "lips": [
+       "lip",
+       "lipstick"
+      ],
+      "cheeks": [
+       "blush",
+       "cheeks",
+       "contour"
+      ],
+      "full face": [
+       "full face",
+       "full glam",
+       "base"
+      ]
+     },
+     "weight": 2.4
+    },
+    {
+     "key": "technique",
+     "values": {
+      "halo": [
+       "halo"
+      ],
+      "soft": [
+       "soft wash",
+       "diffused",
+       "blurred"
+      ],
+      "smokey": [
+       "smokey",
+       "smoky"
+      ],
+      "winged": [
+       "winged",
+       "cat eye"
+      ],
+      "graphic": [
+       "graphic liner"
+      ],
+      "cut crease": [
+       "cut crease"
+      ]
+     },
+     "weight": 2
+    },
+    {
+     "key": "finish",
+     "values": {
+      "glowy": [
+       "glowy",
+       "dewy",
+       "glass"
+      ],
+      "matte": [
+       "matte"
+      ],
+      "glitter": [
+       "glitter",
+       "shimmer",
+       "metallic"
+      ]
+     },
+     "weight": 1.6
+    },
+    {
+     "key": "intensity",
+     "values": {
+      "bold": [
+       "bold",
+       "dramatic",
+       "full glam"
+      ],
+      "natural": [
+       "natural",
+       "everyday",
+       "no makeup"
+      ]
+     },
+     "weight": 1.2
+    }
+   ],
+   "search_templates": {
+    "topup": [
+     "{keyword} makeup",
+     "{keyword} makeup look",
+     "{keyword} close up"
+    ],
+    "primary": [
+     "{keyword}"
+    ],
+    "negative": [
+     "product swatch on paper",
+     "palette only"
+    ]
+   },
+   "constraint_specs": {},
+   "concept_fields": [
+    "look_name",
+    "focus",
+    "technique",
+    "palette",
+    "finish",
+    "intensity",
+    "occasion",
+    "who_it_suits"
+   ],
+   "fact_block": {
+    "note": "техника и палитра обязательны в тексте секции",
+    "fields": [
+     "focus",
+     "technique",
+     "palette",
+     "finish",
+     "intensity"
+    ],
+    "photo_facts": {
+     "base": "skin finish and coverage, if visible",
+     "focus": "what the look is built around — eyes, lips, cheeks, full face",
+     "finish": "matte / glowy / dewy / glitter, on skin and on eyes",
+     "framing": "close eye crop, face front, three-quarter",
+     "palette": "shades used and where they sit",
+     "standout": "the single detail a reader notices first",
+     "intensity": "natural / soft / bold / dramatic",
+     "technique": "eye/lip technique used (smokey, cut crease, graphic liner, overlined lips)",
+     "lashes_brows": "lash and brow treatment, if visible"
+    },
+    "subject_label": "the makeup look"
+   },
+   "is_active": true,
+   "created_at": "2026-09-19 21:33:12.268756+00",
+   "updated_at": "2026-09-19 21:33:12.268756+00"
+  },
+  {
+   "niche_code": "blog",
+   "label": "Блоговая статья",
+   "attributes": [
+    {
+     "key": "keyword_topic",
+     "label": "main topic"
+    },
+    {
+     "key": "keyword_aesthetic",
+     "label": "aesthetic / mood"
+    },
+    {
+     "key": "keyword_season",
+     "label": "season",
+     "values": [
+      "summer",
+      "fall",
+      "winter",
+      "spring",
+      "none"
+     ]
+    },
+    {
+     "key": "keyword_setting",
+     "label": "setting"
+    }
+   ],
+   "required_visuals": [
+    {
+     "label": "colour",
+     "values": {
+      "red": [
+       "red"
+      ],
+      "blue": [
+       "blue"
+      ],
+      "gold": [
+       "gold"
+      ],
+      "grey": [
+       "grey",
+       "gray"
+      ],
+      "navy": [
+       "navy"
+      ],
+      "nude": [
+       "nude"
+      ],
+      "pink": [
+       "pink"
+      ],
+      "beige": [
+       "beige"
+      ],
+      "black": [
+       "black"
+      ],
+      "brown": [
+       "brown"
+      ],
+      "green": [
+       "green"
+      ],
+      "white": [
+       "white"
+      ],
+      "orange": [
+       "orange"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender"
+      ],
+      "silver": [
+       "silver"
+      ],
+      "yellow": [
+       "yellow"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine"
+      ]
+     }
+    }
+   ],
+   "exclusive_terms": [],
+   "diversity_axes": [
+    {
+     "key": "color",
+     "values": {
+      "red": [
+       "red",
+       "cherry",
+       "scarlet"
+      ],
+      "blue": [
+       "blue",
+       "navy",
+       "cobalt",
+       "denim",
+       "teal"
+      ],
+      "gold": [
+       "gold",
+       "bronze",
+       "copper",
+       "champagne"
+      ],
+      "grey": [
+       "grey",
+       "gray",
+       "graphite",
+       "charcoal"
+      ],
+      "nude": [
+       "nude",
+       "beige",
+       "milky",
+       "sheer",
+       "taupe"
+      ],
+      "pink": [
+       "pink",
+       "fuchsia",
+       "magenta",
+       "rose"
+      ],
+      "black": [
+       "black",
+       "onyx"
+      ],
+      "brown": [
+       "brown",
+       "chocolate",
+       "mocha",
+       "espresso",
+       "caramel"
+      ],
+      "green": [
+       "green",
+       "emerald",
+       "sage",
+       "olive",
+       "mint"
+      ],
+      "white": [
+       "white",
+       "ivory"
+      ],
+      "orange": [
+       "orange",
+       "peach",
+       "coral",
+       "terracotta"
+      ],
+      "purple": [
+       "purple",
+       "lilac",
+       "lavender",
+       "violet",
+       "plum"
+      ],
+      "silver": [
+       "silver",
+       "chrome",
+       "steel",
+       "pearlescent",
+       "pearl"
+      ],
+      "yellow": [
+       "yellow",
+       "butter",
+       "mustard"
+      ],
+      "burgundy": [
+       "burgundy",
+       "wine",
+       "maroon",
+       "oxblood",
+       "merlot",
+       "deep red"
+      ]
+     },
+     "weight": 2
+    }
+   ],
+   "search_templates": {
+    "topup": [
+     "{keyword} ideas",
+     "{keyword} photo"
+    ],
+    "primary": [
+     "{keyword}"
+    ]
+   },
+   "constraint_specs": {},
+   "concept_fields": [
+    "title",
+    "angle",
+    "mood",
+    "key_points"
+   ],
+   "fact_block": {
+    "fields": [],
+    "subject_label": "the subject of the topic"
+   },
+   "is_active": true,
+   "created_at": "2026-09-19 21:33:12.268756+00",
+   "updated_at": "2026-09-19 21:33:12.268756+00"
+  }
+ ],
+ "provider_models": [
+  {
+   "id": "e0d0fdd4-a393-498f-9f8a-48408b77b10c",
+   "user_id": null,
+   "service": "openrouter",
+   "model_id": "deepseek/deepseek-v4-pro",
+   "label": "DeepSeek V4 Pro",
+   "kind": "text",
+   "is_active": true,
+   "position": 1,
+   "created_at": "2026-09-14 07:38:09.19053+00",
+   "updated_at": "2026-09-14 07:38:09.19053+00"
+  },
+  {
+   "id": "29ea2ae7-bd35-4bd7-8a6f-b35ee0c91a61",
+   "user_id": null,
+   "service": "openrouter",
+   "model_id": "deepseek/deepseek-v4-pro-0813",
+   "label": "DeepSeek V4 Pro 0813",
+   "kind": "text",
+   "is_active": true,
+   "position": 2,
+   "created_at": "2026-09-14 07:38:09.19053+00",
+   "updated_at": "2026-09-14 07:38:09.19053+00"
+  },
+  {
+   "id": "b651dcc6-4072-4144-9de2-8e1817ce999c",
+   "user_id": null,
+   "service": "openrouter",
+   "model_id": "deepseek/deepseek-v4-flash",
+   "label": "DeepSeek V4 Flash",
+   "kind": "text",
+   "is_active": true,
+   "position": 3,
+   "created_at": "2026-09-14 07:38:09.19053+00",
+   "updated_at": "2026-09-14 07:38:09.19053+00"
+  },
+  {
+   "id": "93c9dc2b-eb12-408d-9590-a464cdbd758b",
+   "user_id": null,
+   "service": "openrouter",
+   "model_id": "anthropic/claude-haiku-4.5:batch",
+   "label": "Claude Haiku 4.5 (batch)",
+   "kind": "text",
+   "is_active": true,
+   "position": 4,
+   "created_at": "2026-09-14 07:38:09.19053+00",
+   "updated_at": "2026-09-14 07:38:09.19053+00"
+  },
+  {
+   "id": "dabeae73-5570-4f99-834d-eb00ce77d152",
+   "user_id": null,
+   "service": "openrouter",
+   "model_id": "anthropic/claude-haiku-4.5",
+   "label": "Claude Haiku 4.5",
+   "kind": "text",
+   "is_active": true,
+   "position": 5,
+   "created_at": "2026-09-14 07:38:09.19053+00",
+   "updated_at": "2026-09-14 07:38:09.19053+00"
+  },
+  {
+   "id": "7033f710-925c-43d7-b4a6-2d649a69cb42",
+   "user_id": null,
+   "service": "openrouter",
+   "model_id": "google/gemini-2.5-flash",
+   "label": "Gemini 2.5 Flash",
+   "kind": "text",
+   "is_active": true,
+   "position": 6,
+   "created_at": "2026-09-14 07:38:09.19053+00",
+   "updated_at": "2026-09-14 07:38:09.19053+00"
+  },
+  {
+   "id": "dee290a1-6752-4652-896d-b26242f6448e",
+   "user_id": null,
+   "service": "laozhang",
+   "model_id": "gemini-2.5-flash-thinking",
+   "label": "Gemini 2.5 Flash (thinking)",
+   "kind": "text",
+   "is_active": true,
+   "position": 1,
+   "created_at": "2026-09-14 07:38:09.19053+00",
+   "updated_at": "2026-09-14 07:38:09.19053+00"
+  },
+  {
+   "id": "08ea5fb7-b0c3-4169-9176-e56653d42746",
+   "user_id": null,
+   "service": "laozhang",
+   "model_id": "gemini-2.5-flash-lite",
+   "label": "Gemini 2.5 Flash Lite",
+   "kind": "text",
+   "is_active": true,
+   "position": 2,
+   "created_at": "2026-09-14 07:38:09.19053+00",
+   "updated_at": "2026-09-14 07:38:09.19053+00"
+  },
+  {
+   "id": "a765f4c4-525a-46d7-92b5-03190cd6e937",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "service": "openrouter",
+   "model_id": "deepseek/deepseek-v4.1-flash",
+   "label": "deepseek-v4.1-flash",
+   "kind": "text",
+   "is_active": true,
+   "position": 7,
+   "created_at": "2026-09-14 07:43:12.34449+00",
+   "updated_at": "2026-09-14 07:43:12.34449+00"
+  },
+  {
+   "id": "96c68032-7a66-4008-8129-044984fd77ac",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "service": "openrouter",
+   "model_id": "deepseek/deepseek-v4-flash",
+   "label": "DeepSeek V4 Flash (эконом)",
+   "kind": "text",
+   "is_active": true,
+   "position": 10,
+   "created_at": "2026-09-14 11:02:43.461704+00",
+   "updated_at": "2026-09-14 11:02:43.461704+00"
+  },
+  {
+   "id": "33884983-019f-4861-85fb-6e2d94b68448",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "service": "openrouter",
+   "model_id": "google/gemini-3.1-flash-lite",
+   "label": "Gemini 3.1 Flash Lite",
+   "kind": "text",
+   "is_active": true,
+   "position": 11,
+   "created_at": "2026-09-14 11:02:43.461704+00",
+   "updated_at": "2026-09-14 11:02:43.461704+00"
+  },
+  {
+   "id": "82612ba9-8917-4e08-a3c8-8e85eda8f404",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "service": "openrouter",
+   "model_id": "z-ai/glm-4.7-flash",
+   "label": "GLM 4.7 Flash (супердёшево)",
+   "kind": "text",
+   "is_active": true,
+   "position": 12,
+   "created_at": "2026-09-14 11:02:43.461704+00",
+   "updated_at": "2026-09-14 11:02:43.461704+00"
+  },
+  {
+   "id": "be07c092-e6fa-410f-b129-90f5f5dc6ccc",
+   "user_id": "dcc2d918-c659-48ff-842a-89cb0dd4882a",
+   "service": "openrouter",
+   "model_id": "moonshotai/kimi-k2.5",
+   "label": "Kimi K2.5 (сильный писатель)",
+   "kind": "text",
+   "is_active": true,
+   "position": 13,
+   "created_at": "2026-09-14 11:02:43.461704+00",
+   "updated_at": "2026-09-14 11:02:43.461704+00"
+  },
+  {
+   "id": "8645df41-5f7d-4173-9471-33ef1f80be1c",
+   "user_id": null,
+   "service": "openrouter",
+   "model_id": "google/gemini-2.5-flash-lite",
+   "label": "Gemini 2.5 Flash Lite (видит фото, дёшево)",
+   "kind": "text",
+   "is_active": true,
+   "position": 14,
+   "created_at": "2026-09-15 10:42:49.881398+00",
+   "updated_at": "2026-09-15 10:42:49.881398+00"
+  },
+  {
+   "id": "ca6f86d5-f833-4cd5-b2a0-d27a13000d5e",
+   "user_id": null,
+   "service": "laozhang",
+   "model_id": "deepseek-v4-flash",
+   "label": "DeepSeek V4 Flash (резерв)",
+   "kind": "text",
+   "is_active": true,
+   "position": 3,
+   "created_at": "2026-09-15 13:43:58.616319+00",
+   "updated_at": "2026-09-15 13:43:58.616319+00"
+  },
+  {
+   "id": "d4749d25-8106-4c94-b519-efb6420cf5a8",
+   "user_id": null,
+   "service": "laozhang",
+   "model_id": "deepseek-v4-pro",
+   "label": "DeepSeek V4 Pro (резерв)",
+   "kind": "text",
+   "is_active": true,
+   "position": 4,
+   "created_at": "2026-09-15 13:43:58.616319+00",
+   "updated_at": "2026-09-15 13:43:58.616319+00"
+  }
+ ],
+ "automation_settings": [
+  {
+   "id": "singleton",
+   "cron_enabled": true,
+   "every_minutes": 1,
+   "auto_disable_when_idle": true,
+   "idle_ticks": 0,
+   "updated_at": "2026-10-06 05:41:33.47588+00",
+   "lanes": 4,
+   "max_parallel_stages": 3,
+   "max_concurrent_per_site": 20,
+   "max_pregate_per_site": 20,
+   "max_concurrent_sites": 16,
+   "max_concurrent": 80,
+   "max_writing_per_site": 20,
+   "auto_enable_on_queue": false,
+   "ai_mod_auto_enabled": false,
+   "ai_mod_auto_batch": 20
+  }
+ ]
+}

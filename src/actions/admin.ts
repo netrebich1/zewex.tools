@@ -2,11 +2,17 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getCurrentUser, hashPassword, requireAdmin, requireUser } from "@/lib/auth";
-import { encryptSecret, decryptSecret, randomToken, secretHint } from "@/lib/crypto";
+import { LOGIN_RE, allowedRegistrationEmails, getCurrentUser, hashPassword, normalizeLogin, requireAdmin, requireUser } from "@/lib/auth";
+import { encryptSecret, decryptSecret, secretHint } from "@/lib/crypto";
 import { checkKey, fetchModels } from "@/lib/adapters";
+import { manualBalanceProvider } from "@/lib/balances";
+import { clearZeroBalanceAfterHeal, probeKey, zeroManualBalance } from "@/lib/keyHealth";
 import { parseNumber, slugify } from "@/lib/utils";
-import type { Capability, BindingScope } from "@prisma/client";
+import {
+  assignScope, canAssignGlobal, canAssignKey, canCreatePersonalKey, canCreateSharedKey, canCreateTeam, canDeleteBinding, canManageKey, canManageProviders,
+  canManageTeam, inScope, keyFitsRule, keyTeamScope, parsePermissions, permissionsFromForm, type Actor,
+} from "@/lib/permissions";
+import type { Capability, BindingScope, Prisma } from "@prisma/client";
 
 export type FormState = { error?: string; ok?: string };
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -154,16 +160,19 @@ export async function createBinding(_p: FormState, f: FormData): Promise<FormSta
   const capability = (str(f, "capability") || null) as Capability | null;
   let userId = str(f, "userId") || null;
 
-  if (me.role !== "ADMIN") {
-    const leadsTeam = (scope === "TEAM" || scope === "TEAM_PROJECT") && !!teamId && me.leadTeamIds.includes(teamId);
-    if (scope === "USER_PROJECT") userId = me.id;
-    else if (!leadsTeam) return { error: "Участник задаёт только личные правила, лидер команды — правила своей команды" };
-  }
+  // Кто какие правила задаёт: личные — каждый себе (за других — только «любые правила»),
+  // командные — в пределах области назначения, сервиса и глобальные — только «любые правила».
+  if (scope === "USER_PROJECT") {
+    if (!canAssignGlobal(me)) userId = me.id;
+  } else if (scope === "TEAM" || scope === "TEAM_PROJECT") {
+    if (!inScope(assignScope(me), teamId)) return { error: "Нет прав задавать правила этой команды" };
+  } else if (!canAssignGlobal(me)) return { error: "Правила сервиса и глобальные задаёт администратор или сотрудник с правом «любые правила»" };
   const key = await prisma.apiKey.findUnique({ where: { id: apiKeyId }, include: { provider: true } });
   if (!key) return { error: "Выберите ключ" };
   if (key.providerId !== providerId) return { error: "Ключ принадлежит другому провайдеру" };
-  // A personal key is usable only in its owner's personal rule; it never becomes a shared default by accident.
-  if (key.ownerId && (scope !== "USER_PROJECT" || userId !== key.ownerId)) return { error: "Личный ключ можно назначить только в личное правило его владельца" };
+  const ruleUserTeams = scope === "USER_PROJECT" && userId ? (await prisma.teamMember.findMany({ where: { userId }, select: { teamId: true } })).map((m) => m.teamId) : [];
+  const misfit = keyFitsRule(key, { scope, teamId, userId, userTeamIds: ruleUserTeams });
+  if (misfit) return { error: misfit };
   const targetCap: Capability | null = capability ?? (slotId ? (await prisma.slot.findUnique({ where: { id: slotId } }))?.capability ?? null : null);
   if (targetCap) {
     const needData = targetCap === "SERP" || targetCap === "SEO_DATA";
@@ -205,49 +214,205 @@ export async function deleteBinding(_p: FormState, f: FormData): Promise<FormSta
   const me = await requireUser();
   const b = await prisma.binding.findUnique({ where: { id: str(f, "id") } });
   if (!b) return { error: "Правило не найдено" };
-  const own = b.scope === "USER_PROJECT" && b.userId === me.id;
-  const leads = b.teamId != null && me.leadTeamIds.includes(b.teamId);
-  if (me.role !== "ADMIN" && !own && !leads) return { error: "Нет прав" };
+  if (!canDeleteBinding(me, b)) return { error: "Нет прав" };
   await prisma.binding.delete({ where: { id: b.id } });
   revalidatePath("/", "layout");
   return { ok: "Правило удалено" };
 }
 
+
+/* ---------- Подключение ключа к сервисам и командам ---------- */
+/**
+ * Правила «от ключа»: отметили сервисы и команды — правила TEAM_PROJECT (или PROJECT без команд,
+ * TEAM без сервисов) создаются сами, модель берётся из настроек провайдера по умолчанию.
+ * Личные правила (USER_PROJECT) и глобальные этим способом не трогаются.
+ */
+export async function syncKeyUsage(keyId: string, projectIds: string[], teamIds: string[], me: Actor): Promise<{ created: number; skipped: string[] }> {
+  const key = await prisma.apiKey.findUniqueOrThrow({ where: { id: keyId }, include: { provider: { include: { models: { where: { isEnabled: true } } } } } });
+  if (key.ownerId) throw new Error("Личный ключ подключается только личным правилом");
+  if (!canAssignKey(me, key)) throw new Error("Нет прав подключать этот ключ");
+  // Командный ключ работает только в своей команде.
+  if (key.teamId) teamIds = [key.teamId];
+  const scope = assignScope(me);
+  const manageable = scope === "all" ? null : new Set(scope);
+  if (manageable) {
+    if (!teamIds.length) throw new Error("Вы можете подключать ключ только к своим командам: отметьте хотя бы одну");
+    for (const t of teamIds) if (!manageable.has(t)) throw new Error("Нет прав на одну из выбранных команд");
+  }
+  const p = key.provider;
+  const modelFor = (cap: Capability): string | null | "none" => {
+    if (p.kind === "DATA") return null;
+    const wanted = cap === "IMAGE" ? p.defaultImageModel : cap === "CHAT" ? p.defaultChatModel : null;
+    if (!wanted) return "none";
+    const m = p.models.find((x) => x.modelId === wanted);
+    return m ? m.id : "none";
+  };
+  const capOk = (cap: Capability) => (cap === "SERP" ? p.adapter === "SERPAPI" : cap === "SEO_DATA" ? p.adapter === "DATAFORSEO" : p.kind === "LLM" && cap !== "EMBEDDING");
+
+  const projects = projectIds.length ? await prisma.project.findMany({ where: { id: { in: projectIds } }, include: { slots: true } }) : [];
+  const skipped: string[] = [];
+  const rows: Array<{ scope: BindingScope; slotId?: string; teamId?: string; capability?: Capability; modelId: string | null }> = [];
+  for (const proj of projects) {
+    for (const slot of proj.slots) {
+      if (!capOk(slot.capability)) continue;
+      const m = modelFor(slot.capability);
+      if (m === "none") { skipped.push(`${proj.name} · ${slot.name}: у провайдера не задана модель по умолчанию`); continue; }
+      if (teamIds.length) for (const teamId of teamIds) rows.push({ scope: "TEAM_PROJECT", slotId: slot.id, teamId, modelId: m });
+      else rows.push({ scope: "PROJECT", slotId: slot.id, modelId: m });
+    }
+  }
+  if (!projects.length && teamIds.length) {
+    for (const cap of ["CHAT", "IMAGE", "SERP", "SEO_DATA"] as Capability[]) {
+      if (!capOk(cap)) continue;
+      const m = modelFor(cap);
+      if (m === "none") continue;
+      for (const teamId of teamIds) rows.push({ scope: "TEAM", teamId, capability: cap, modelId: m });
+    }
+  }
+  await prisma.$transaction(async (tx) => {
+    // Пересобираем только те правила «от ключа», которыми пользователь вправе управлять.
+    const where = manageable
+      ? { apiKeyId: keyId, scope: { in: ["TEAM_PROJECT", "TEAM"] as BindingScope[] }, teamId: { in: [...manageable] } }
+      : { apiKeyId: keyId, scope: { in: ["TEAM_PROJECT", "PROJECT", "TEAM"] as BindingScope[] } };
+    await tx.binding.deleteMany({ where });
+    if (rows.length) await tx.binding.createMany({ data: rows.map((r) => ({ ...r, providerId: p.id, apiKeyId: keyId })) });
+  });
+  return { created: rows.length, skipped };
+}
+
+export async function assignKeyUsage(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  const id = str(f, "id");
+  const projectIds = f.getAll("projectIds").map(String);
+  const teamIds = f.getAll("teamIds").map(String);
+  try {
+    const r = await syncKeyUsage(id, projectIds, teamIds, me);
+    revalidatePath(`/keys/${id}`);
+    revalidatePath("/", "layout");
+    return { ok: `Подключено правил: ${r.created}${r.skipped.length ? ". Пропущено: " + r.skipped.join("; ") : ""}` };
+  } catch (e) { return fail(e); }
+}
+
 /* ---------- Keys ---------- */
+/**
+ * Секрет из формы ключа. У DataForSEO (BASIC) это два поля — логин и пароль API,
+ * храним их одной строкой «логин:пароль», как ждёт Basic-авторизация.
+ */
+function secretFromForm(f: FormData, authType: string): string {
+  if (authType === "BASIC") {
+    const login = str(f, "secretLogin");
+    const password = str(f, "secretPassword");
+    if (!login && !password) return str(f, "secret");
+    return login && password ? `${login}:${password}` : "";
+  }
+  return str(f, "secret");
+}
+
+/**
+ * Кому принадлежит ключ из поля `owner` формы: "personal" — личный, "shared" — общий, "team:<id>" — командный.
+ * Проверяет права на выбранный вариант.
+ */
+function keyOwnerFromForm(me: Actor, raw: string): { ownerId: string | null; teamId: string | null } | { error: string } {
+  if (raw === "shared") return canCreateSharedKey(me) ? { ownerId: null, teamId: null } : { error: "Общие ключи добавляет администратор или сотрудник с правом «любые ключи»" };
+  if (raw.startsWith("team:")) {
+    const teamId = raw.slice(5);
+    return inScope(keyTeamScope(me), teamId) ? { ownerId: null, teamId } : { error: "Нет прав добавлять ключи этой команде" };
+  }
+  return canCreatePersonalKey(me) ? { ownerId: me.id, teamId: null } : { error: "Вам не разрешено добавлять ключи" };
+}
+
 export async function createKey(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const providerId = str(f, "providerId");
   const label = str(f, "label");
-  const secret = str(f, "secret");
-  const personal = str(f, "personal") === "1" || me.role !== "ADMIN";
-  if (!providerId || !label || !secret) return { error: "Заполните провайдера, название и сам ключ" };
+  const owner = keyOwnerFromForm(me, str(f, "owner"));
+  if ("error" in owner) return owner;
   const provider = await prisma.provider.findUnique({ where: { id: providerId } });
   if (!provider) return { error: "Провайдер не найден" };
-  if (provider.authType === "BASIC" && !secret.includes(":")) return { error: "Для DataForSEO укажите «логин:пароль» одной строкой" };
+  const secret = secretFromForm(f, provider.authType);
+  if (!providerId || !label || !secret) return { error: provider.authType === "BASIC" ? "Заполните название, логин и пароль API" : "Заполните провайдера, название и сам ключ" };
+  const balance = parseNumber(f.get("balanceUsd"));
   const key = await prisma.apiKey.create({
     data: {
       providerId, label,
       secretEnc: encryptSecret(secret),
       secretHint: secretHint(secret),
-      ownerId: personal ? me.id : null,
+      ownerId: owner.ownerId,
+      teamId: owner.teamId,
       monthlyLimitUsd: parseNumber(f.get("monthlyLimitUsd")),
+      ...(balance != null && balance >= 0 && manualBalanceProvider(provider) ? { balanceUsd: balance, balanceAt: new Date() } : {}),
       notes: str(f, "notes") || null,
     },
   });
   const check = await checkKey(provider, secret, await probeModelFor(provider.id));
   await prisma.apiKey.update({ where: { id: key.id }, data: { lastCheckedAt: new Date(), lastCheckOk: check.ok, lastCheckNote: check.note } });
+  const projectIds = f.getAll("projectIds").map(String);
+  const teamIds = f.getAll("teamIds").map(String);
+  if (!owner.ownerId && canAssignKey(me, owner) && (projectIds.length || teamIds.length || owner.teamId)) {
+    try { await syncKeyUsage(key.id, projectIds, teamIds, me); } catch (e) { return { error: `Ключ сохранён, но не подключён: ${e instanceof Error ? e.message : String(e)}` }; }
+  }
   revalidatePath("/keys");
+  revalidatePath("/", "layout");
   redirect(`/keys/${key.id}`);
+}
+
+/**
+ * Остаток на счёте провайдера, который не отдаёт баланс по API (OpenAI и т. п.): админ вписывает сумму из кабинета,
+ * дальше портал вычитает расход через ключ. `mode=set` — вписать остаток заново (сверка; пустое поле убирает учёт),
+ * `mode=topup` — прибавить пополнение к текущему остатку.
+ */
+export async function setKeyBalance(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  const id = str(f, "id");
+  const key = await prisma.apiKey.findUnique({ where: { id }, include: { provider: { select: { slug: true, kind: true, name: true } } } });
+  if (!key) return { error: "Ключ не найден" };
+  if (!canManageKey(me, key)) return { error: "Нет прав" };
+  if (!manualBalanceProvider(key.provider)) return { error: `${key.provider.name} сам сообщает остаток: вписывать его не нужно` };
+  const amount = parseNumber(f.get("amount"));
+  const topup = str(f, "mode") === "topup";
+  if (str(f, "amount") && amount == null) return { error: "Сумма должна быть числом, например 50 или 49.5" };
+  let ok: string;
+  if (topup) {
+    if (amount == null || amount <= 0) return { error: "Укажите сумму пополнения больше нуля" };
+    if (key.balanceUsd == null || !key.balanceAt) return { error: "Сначала впишите текущий остаток, потом добавляйте пополнения" };
+    await prisma.apiKey.update({ where: { id }, data: { balanceUsd: { increment: amount } } });
+    ok = `Пополнение $${amount} добавлено к остатку`;
+  } else if (amount == null) {
+    await prisma.apiKey.update({ where: { id }, data: { balanceUsd: null, balanceAt: null } });
+    ok = "Учёт остатка на этом ключе выключен";
+  } else {
+    if (amount < 0) return { error: "Остаток не может быть меньше нуля" };
+    await prisma.apiKey.update({ where: { id }, data: { balanceUsd: amount, balanceAt: new Date() } });
+    ok = `Остаток $${amount} записан: с этого момента портал вычитает из него расход`;
+  }
+  revalidatePath(`/keys/${id}`);
+  revalidatePath("/keys");
+  return { ok };
 }
 
 export async function updateKey(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const id = str(f, "id");
-  const key = await prisma.apiKey.findUnique({ where: { id } });
+  const key = await prisma.apiKey.findUnique({ where: { id }, include: { provider: { select: { authType: true } }, _count: { select: { bindings: true } } } });
   if (!key) return { error: "Ключ не найден" };
-  if (me.role !== "ADMIN" && key.ownerId !== me.id) return { error: "Нет прав" };
-  const secret = str(f, "secret");
-  await prisma.apiKey.update({
+  if (!canManageKey(me, key)) return { error: "Нет прав" };
+  const secret = secretFromForm(f, key.provider.authType);
+  if (key.provider.authType === "BASIC" && (str(f, "secretLogin") || str(f, "secretPassword")) && !secret) return { error: "Чтобы заменить доступ DataForSEO, заполните и логин, и пароль API" };
+  // Смена владельца: нужны права на новый вариант; правила ключа переписываются под нового владельца (moveKeyRules).
+  let newOwner: { ownerId: string | null; teamId: string | null } | null = null;
+  const ownerRaw = str(f, "owner");
+  const currentOwner = key.ownerId ? "personal" : key.teamId ? `team:${key.teamId}` : "shared";
+  if (ownerRaw && ownerRaw !== currentOwner) {
+    const o = keyOwnerFromForm(me, ownerRaw);
+    if ("error" in o) return o;
+    newOwner = o.ownerId ? { ownerId: key.ownerId ?? me.id, teamId: null } : o;
+    if (key._count.bindings && newOwner.teamId && !inScope(assignScope(me), newOwner.teamId)) return { error: "Ключ используется в правилах, а назначать правила этой команде вам нельзя" };
+  }
+  const ownerPatch = newOwner ?? {};
+  let moved: { kept: number; dropped: number } | null = null;
+  await prisma.$transaction(async (tx) => {
+    if (newOwner && key._count.bindings) moved = await moveKeyRules(tx, id, newOwner);
+    await tx.apiKey.update({
     where: { id },
     data: {
       label: str(f, "label") || key.label,
@@ -255,12 +420,58 @@ export async function updateKey(_p: FormState, f: FormData): Promise<FormState> 
       monthlyLimitUsd: parseNumber(f.get("monthlyLimitUsd")),
       status: str(f, "status") === "DISABLED" ? "DISABLED" : "ACTIVE",
       ...(secret ? { secretEnc: encryptSecret(secret), secretHint: secretHint(secret), lastCheckOk: null, lastCheckNote: null } : {}),
-      ...(me.role === "ADMIN" ? { ownerId: str(f, "personal") === "1" ? (key.ownerId ?? me.id) : null } : {}),
+      ...ownerPatch,
     },
+    });
   });
   revalidatePath(`/keys/${id}`);
   revalidatePath("/keys");
-  return { ok: "Сохранено" };
+  revalidatePath("/", "layout");
+  const rules = moved as { kept: number; dropped: number } | null;
+  return { ok: rules ? `Сохранено. Правила переписаны под нового владельца: ${rules.kept}${rules.dropped ? `, убрано неподходящих: ${rules.dropped}` : ""}` : "Сохранено" };
+}
+
+/**
+ * Переписывает правила ключа под нового владельца, сохраняя сервисы и модели:
+ *  - командный ключ: все правила уходят в его команду (правила сервиса и других команд становятся правилами этой команды),
+ *    личные правила остаются только у участников команды;
+ *  - личный ключ: правила слотов становятся личными правилами владельца, правила «по типу слота» убираются;
+ *  - общий ключ: правила не меняются.
+ */
+async function moveKeyRules(tx: Prisma.TransactionClient, keyId: string, target: { ownerId: string | null; teamId: string | null }): Promise<{ kept: number; dropped: number }> {
+  const bindings = await tx.binding.findMany({ where: { apiKeyId: keyId }, orderBy: { createdAt: "asc" } });
+  if (!target.ownerId && !target.teamId) return { kept: bindings.length, dropped: 0 };
+  const members = target.teamId ? new Set((await tx.teamMember.findMany({ where: { teamId: target.teamId }, select: { userId: true } })).map((m) => m.userId)) : null;
+  const next = new Map<string, Prisma.BindingCreateManyInput>();
+  let dropped = 0;
+  for (const b of bindings) {
+    let row: { scope: BindingScope; slotId?: string; teamId?: string; userId?: string; capability?: Capability } | null = null;
+    if (target.teamId) {
+      if (b.scope === "USER_PROJECT") row = b.userId && b.slotId && members!.has(b.userId) ? { scope: "USER_PROJECT", slotId: b.slotId, userId: b.userId } : null;
+      else if (b.slotId) row = { scope: "TEAM_PROJECT", slotId: b.slotId, teamId: target.teamId };
+      else if (b.capability) row = { scope: "TEAM", capability: b.capability, teamId: target.teamId };
+    } else if (b.slotId && target.ownerId) row = { scope: "USER_PROJECT", slotId: b.slotId, userId: target.ownerId };
+    if (!row) { dropped++; continue; }
+    const id = [row.scope, row.slotId ?? "", row.capability ?? "", row.teamId ?? "", row.userId ?? ""].join("|");
+    if (!next.has(id)) next.set(id, { ...row, providerId: b.providerId, modelId: b.modelId, apiKeyId: keyId });
+  }
+  await tx.binding.deleteMany({ where: { apiKeyId: keyId } });
+  if (next.size) await tx.binding.createMany({ data: [...next.values()] });
+  return { kept: next.size, dropped };
+}
+
+/** Включить выключенный ключ одной кнопкой из карточки «Состояние» (те же права, что у настроек ключа). */
+export async function enableKey(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  const id = str(f, "id");
+  const key = await prisma.apiKey.findUnique({ where: { id } });
+  if (!key) return { error: "Ключ не найден" };
+  if (!canManageKey(me, key)) return { error: "Нет прав" };
+  await prisma.apiKey.update({ where: { id }, data: { status: "ACTIVE" } });
+  console.log(`[keys] ${key.label} enabled by ${me.email}`);
+  revalidatePath(`/keys/${id}`);
+  revalidatePath("/keys");
+  return { ok: "Ключ включён" };
 }
 
 export async function testKey(_p: FormState, f: FormData): Promise<FormState> {
@@ -268,44 +479,79 @@ export async function testKey(_p: FormState, f: FormData): Promise<FormState> {
   const id = str(f, "id");
   const key = await prisma.apiKey.findUnique({ where: { id }, include: { provider: true } });
   if (!key) return { error: "Ключ не найден" };
-  if (me.role !== "ADMIN" && key.ownerId !== me.id) return { error: "Нет прав" };
-  const check = await checkKey(key.provider, decryptSecret(key.secretEnc), await probeModelFor(key.providerId));
-  await prisma.apiKey.update({ where: { id }, data: { lastCheckedAt: new Date(), lastCheckOk: check.ok, lastCheckNote: check.note } });
+  if (!canManageKey(me, key)) return { error: "Нет прав" };
+  // Чатовые провайдеры отдают список моделей и при нулевом балансе: проверяем настоящим запросом (как автопроверка),
+  // иначе пустой ключ показывается «работает» и включается обратно (ключ alexandrzewex 2026-10-23).
+  const check = key.provider.adapter === "OPENAI_COMPAT"
+    ? await probeKey(key.id)
+    : await checkKey(key.provider, decryptSecret(key.secretEnc), await probeModelFor(key.providerId));
+  // Ключ, который портал выключил сам (нет баланса / отклонён провайдером — `disableKey`), после успешной проверки снова включается.
+  // Выключенный вручную остаётся выключенным.
+  const reenable = check.ok && key.status === "DISABLED" && /^Автоотключён/.test(key.lastCheckNote ?? "");
+  await prisma.apiKey.update({ where: { id }, data: { lastCheckedAt: new Date(), lastCheckOk: check.ok, lastCheckNote: check.note, ...(reenable ? { status: "ACTIVE" } : {}) } });
+  if (reenable) {
+    console.log(`[keys] ${key.label} re-enabled after a successful check by ${me.email}`);
+    await clearZeroBalanceAfterHeal(key.id);
+  }
+  if (!check.ok && /no credits|insufficient_quota|exceeded your current quota|配额不足|insufficient credits/i.test(check.note)) await zeroManualBalance(key.id);
   revalidatePath(`/keys/${id}`);
-  return check.ok ? { ok: check.note } : { error: check.note };
+  return check.ok ? { ok: reenable ? `${check.note}. Ключ снова включён (его выключал портал автоматически).` : check.note } : { error: check.note };
 }
 
 export async function deleteKey(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
   const id = str(f, "id");
-  const key = await prisma.apiKey.findUnique({ where: { id }, include: { _count: { select: { bindings: true } } } });
+  const key = await prisma.apiKey.findUnique({ where: { id }, select: { ownerId: true, teamId: true } });
   if (!key) return { error: "Ключ не найден" };
-  if (me.role !== "ADMIN" && key.ownerId !== me.id) return { error: "Нет прав" };
-  if (key._count.bindings) return { error: `Ключ используется в ${key._count.bindings} правил(ах). Сначала уберите его оттуда.` };
-  await prisma.apiKey.delete({ where: { id } });
+  if (!canManageKey(me, key)) return { error: "Нет прав" };
+  // Правила с этим ключом уходят вместе с ним: слоты дальше обслуживают оставшиеся правила (другие ключи того же или более общего уровня).
+  await prisma.$transaction([prisma.binding.deleteMany({ where: { apiKeyId: id } }), prisma.apiKey.delete({ where: { id } })]);
   revalidatePath("/keys");
+  revalidatePath("/", "layout");
   redirect("/keys");
 }
 
 /* ---------- Providers & models ---------- */
+async function requireProviderManager() {
+  const me = await requireUser();
+  if (!canManageProviders(me)) throw new Error("Провайдеров и модели меняет администратор или сотрудник с правом «менять настройки и модели»");
+  return me;
+}
+
 export async function updateProvider(_p: FormState, f: FormData): Promise<FormState> {
-  await requireAdmin();
+  await requireProviderManager();
   const id = str(f, "id");
   const baseUrl = str(f, "baseUrl");
   const bad = validateBaseUrl(baseUrl);
   if (bad) return { error: bad };
+  const balanceToken = str(f, "balanceToken");
   try {
     await prisma.provider.update({
       where: { id },
-      data: { name: str(f, "name"), baseUrl, modelsEndpoint: str(f, "modelsEndpoint") || null, docsUrl: str(f, "docsUrl") || null, isActive: str(f, "isActive") === "1" },
+      data: {
+        name: str(f, "name"), baseUrl, modelsEndpoint: str(f, "modelsEndpoint") || null, docsUrl: str(f, "docsUrl") || null, isActive: str(f, "isActive") === "1",
+        defaultChatModel: str(f, "defaultChatModel") || null, defaultImageModel: str(f, "defaultImageModel") || null,
+        ...(balanceToken ? { balanceTokenEnc: encryptSecret(balanceToken), balanceTokenHint: secretHint(balanceToken) } : {}),
+      },
     });
   } catch (e) { return fail(e); }
   revalidatePath("/providers");
+  revalidatePath("/", "layout");
   return { ok: "Сохранено" };
 }
 
+/** Убрать токен баланса провайдера (остаток в шапке перестанет запрашиваться). */
+export async function clearBalanceToken(_p: FormState, f: FormData): Promise<FormState> {
+  await requireProviderManager();
+  const id = str(f, "id");
+  await prisma.provider.update({ where: { id }, data: { balanceTokenEnc: null, balanceTokenHint: null } });
+  revalidatePath("/providers");
+  revalidatePath("/", "layout");
+  return { ok: "Токен удалён" };
+}
+
 export async function createProvider(_p: FormState, f: FormData): Promise<FormState> {
-  await requireAdmin();
+  await requireProviderManager();
   const name = str(f, "name");
   const baseUrl = str(f, "baseUrl");
   if (!name || !baseUrl) return { error: "Укажите название и базовый адрес" };
@@ -327,7 +573,7 @@ export async function createProvider(_p: FormState, f: FormData): Promise<FormSt
 }
 
 export async function syncModels(_p: FormState, f: FormData): Promise<FormState> {
-  await requireAdmin();
+  await requireProviderManager();
   const providerId = str(f, "providerId");
   const provider = await prisma.provider.findUnique({ where: { id: providerId } });
   if (!provider) return { error: "Провайдер не найден" };
@@ -352,7 +598,7 @@ export async function syncModels(_p: FormState, f: FormData): Promise<FormState>
 }
 
 export async function addModel(_p: FormState, f: FormData): Promise<FormState> {
-  await requireAdmin();
+  await requireProviderManager();
   const providerId = str(f, "providerId");
   const modelId = str(f, "modelId");
   if (!modelId) return { error: "Укажите идентификатор модели как в API" };
@@ -372,7 +618,7 @@ export async function addModel(_p: FormState, f: FormData): Promise<FormState> {
 }
 
 export async function toggleModel(_p: FormState, f: FormData): Promise<FormState> {
-  await requireAdmin();
+  await requireProviderManager();
   const id = str(f, "id");
   const m = await prisma.model.findUnique({ where: { id } });
   if (!m) return { error: "Модель не найдена" };
@@ -382,7 +628,7 @@ export async function toggleModel(_p: FormState, f: FormData): Promise<FormState
 }
 
 export async function updateModel(_p: FormState, f: FormData): Promise<FormState> {
-  await requireAdmin();
+  await requireProviderManager();
   const id = str(f, "id");
   const caps = CAPS.filter((c) => f.getAll("caps").includes(c));
   await prisma.model.update({
@@ -394,7 +640,7 @@ export async function updateModel(_p: FormState, f: FormData): Promise<FormState
 }
 
 export async function deleteModel(_p: FormState, f: FormData): Promise<FormState> {
-  await requireAdmin();
+  await requireProviderManager();
   const id = str(f, "id");
   const n = await prisma.binding.count({ where: { modelId: id } });
   if (n) return { error: `Модель используется в ${n} правил(ах)` };
@@ -405,7 +651,8 @@ export async function deleteModel(_p: FormState, f: FormData): Promise<FormState
 
 /* ---------- Teams ---------- */
 export async function createTeam(_p: FormState, f: FormData): Promise<FormState> {
-  await requireAdmin();
+  const me = await requireUser();
+  if (!canCreateTeam(me)) return { error: "Нет прав создавать команды" };
   const name = str(f, "name");
   if (!name) return { error: "Укажите название" };
   let slug = "";
@@ -418,53 +665,72 @@ export async function createTeam(_p: FormState, f: FormData): Promise<FormState>
 }
 
 export async function updateTeam(_p: FormState, f: FormData): Promise<FormState> {
-  await requireAdmin();
+  const me = await requireUser();
+  if (!canManageTeam(me, str(f, "id"))) return { error: "Нет прав" };
   await prisma.team.update({ where: { id: str(f, "id") }, data: { name: str(f, "name"), description: str(f, "description") || null } });
   revalidatePath("/teams");
   return { ok: "Сохранено" };
 }
 
 export async function deleteTeam(_p: FormState, f: FormData): Promise<FormState> {
-  await requireAdmin();
+  const me = await requireUser();
+  if (!canCreateTeam(me)) return { error: "Удалять команды может администратор или сотрудник с правом «все команды»" };
+  const keys = await prisma.apiKey.count({ where: { teamId: str(f, "id") } });
+  if (keys) return { error: `У команды ${keys} ключ(ей). Сначала удалите их или передайте другой команде.` };
   await prisma.team.delete({ where: { id: str(f, "id") } });
   revalidatePath("/teams");
   redirect("/teams");
 }
 
 export async function addTeamMember(_p: FormState, f: FormData): Promise<FormState> {
-  await requireAdmin();
+  const me = await requireUser();
   const teamId = str(f, "teamId");
   const userId = str(f, "userId");
+  if (!canManageTeam(me, teamId)) return { error: "Нет прав менять состав этой команды" };
   if (!userId) return { error: "Выберите пользователя" };
+  const role = str(f, "role") === "LEAD" ? "LEAD" : "MEMBER";
   try {
-    await prisma.teamMember.create({ data: { teamId, userId, role: str(f, "role") === "LEAD" ? "LEAD" : "MEMBER" } });
+    await prisma.teamMember.upsert({ where: { teamId_userId: { teamId, userId } }, create: { teamId, userId, role }, update: { role } });
   } catch (e) { return fail(e); }
   revalidatePath(`/teams/${str(f, "slug")}`);
+  revalidatePath(`/users/${userId}`);
   return { ok: "Участник добавлен" };
 }
 
 export async function removeTeamMember(_p: FormState, f: FormData): Promise<FormState> {
-  await requireAdmin();
-  await prisma.teamMember.delete({ where: { teamId_userId: { teamId: str(f, "teamId"), userId: str(f, "userId") } } });
+  const me = await requireUser();
+  const teamId = str(f, "teamId");
+  const userId = str(f, "userId");
+  if (!canManageTeam(me, teamId)) return { error: "Нет прав менять состав этой команды" };
+  await prisma.teamMember.delete({ where: { teamId_userId: { teamId, userId } } });
   revalidatePath(`/teams/${str(f, "slug")}`);
+  revalidatePath(`/users/${userId}`);
   return { ok: "Участник убран" };
 }
 
 /* ---------- Users ---------- */
-export async function inviteUser(_p: FormState, f: FormData): Promise<FormState> {
+/** Админ сам заводит сотрудника: логин и пароль задаются сразу, писем и ссылок-приглашений нет. */
+export async function createUser(_p: FormState, f: FormData): Promise<FormState & { login?: string }> {
   await requireAdmin();
-  const email = str(f, "email").toLowerCase();
-  const name = str(f, "name") || email.split("@")[0];
+  const login = normalizeLogin(str(f, "login"));
+  const password = String(f.get("password") ?? "");
+  const name = str(f, "name") || login.split("@")[0];
   const role = str(f, "role") === "ADMIN" ? "ADMIN" : "MEMBER";
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Некорректная почта" };
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing?.passwordHash) return { error: "Пользователь уже зарегистрирован" };
-  const inviteToken = randomToken(24);
-  const inviteExpires = new Date(Date.now() + 7 * 86400 * 1000);
-  if (existing) await prisma.user.update({ where: { id: existing.id }, data: { inviteToken, inviteExpires, role, name } });
-  else await prisma.user.create({ data: { email, name, role, inviteToken, inviteExpires } });
+  if (!LOGIN_RE.test(login)) return { error: "Логин: от 3 до 64 символов, латинские буквы, цифры и знаки . _ - @ (можно почту)" };
+  const badPassword = passwordProblem(password);
+  if (badPassword) return { error: badPassword };
+  if (await prisma.user.findUnique({ where: { email: login }, select: { id: true } })) return { error: "Такой логин уже занят" };
+  const teamIds = f.getAll("teamIds").map(String).filter(Boolean);
+  const user = await prisma.user.create({ data: { email: login, name, role, passwordHash: await hashPassword(password), permissions: permissionsFromForm(f) } });
+  if (teamIds.length) await prisma.teamMember.createMany({ data: teamIds.map((teamId) => ({ teamId, userId: user.id })), skipDuplicates: true });
   revalidatePath("/users");
-  return { ok: `Приглашение создано, ссылка действует 7 дней: ${process.env.APP_URL ?? ""}/invite/${inviteToken}` };
+  return { ok: "Сотрудник добавлен", login };
+}
+
+function passwordProblem(password: string): string | null {
+  if (password.length < 8) return "Пароль не короче 8 символов";
+  if (password !== password.trim()) return "Пароль не должен начинаться или заканчиваться пробелом";
+  return null;
 }
 
 export async function updateUser(_p: FormState, f: FormData): Promise<FormState> {
@@ -473,19 +739,42 @@ export async function updateUser(_p: FormState, f: FormData): Promise<FormState>
   const role = str(f, "role") === "ADMIN" ? "ADMIN" : "MEMBER";
   const isActive = str(f, "isActive") === "1";
   if (id === me.id && (role !== "ADMIN" || !isActive)) return { error: "Нельзя понизить или отключить самого себя" };
-  await prisma.user.update({ where: { id }, data: { role, isActive, name: str(f, "name") || undefined } });
+  const user = await prisma.user.findUnique({ where: { id }, select: { email: true } });
+  if (!user) return { error: "Пользователь не найден" };
+  // Логин меняется только у сотрудников: смена почты владельца заново открыла бы первую регистрацию.
+  const login = f.has("login") ? normalizeLogin(str(f, "login")) : user.email;
+  if (login !== user.email) {
+    if (id === me.id || allowedRegistrationEmails().includes(user.email)) return { error: "Логин владельца портала менять нельзя" };
+    if (!LOGIN_RE.test(login)) return { error: "Логин: от 3 до 64 символов, латинские буквы, цифры и знаки . _ - @ (можно почту)" };
+    if (await prisma.user.findUnique({ where: { email: login }, select: { id: true } })) return { error: "Такой логин уже занят" };
+  }
+  await prisma.user.update({ where: { id }, data: { role, isActive, email: login, name: str(f, "name") || undefined } });
   if (!isActive) await prisma.session.deleteMany({ where: { userId: id } });
   revalidatePath("/users");
+  revalidatePath(`/users/${id}`);
   return { ok: "Сохранено" };
+}
+
+/** Права участника (для админа поле игнорируется: у него всё разрешено). Вступают в силу при следующем запросе пользователя. */
+export async function updateUserPermissions(_p: FormState, f: FormData): Promise<FormState> {
+  await requireAdmin();
+  const id = str(f, "id");
+  const user = await prisma.user.findUnique({ where: { id }, select: { role: true, permissions: true } });
+  if (!user) return { error: "Пользователь не найден" };
+  await prisma.user.update({ where: { id }, data: { permissions: permissionsFromForm(f, parsePermissions(user.permissions).tools) } });
+  revalidatePath("/users");
+  revalidatePath(`/users/${id}`);
+  return { ok: user.role === "ADMIN" ? "Сохранено. Пока пользователь админ, права не ограничивают его." : "Права сохранены" };
 }
 
 export async function resetUserPassword(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireAdmin();
   const id = str(f, "id");
-  const password = str(f, "password");
-  if (password.length < 8) return { error: "Пароль не короче 8 символов" };
+  const password = String(f.get("password") ?? "");
+  const badPassword = passwordProblem(password);
+  if (badPassword) return { error: badPassword };
   if (id === me.id) return { error: "Свой пароль меняйте в разделе «Аккаунт»" };
-  await prisma.user.update({ where: { id }, data: { passwordHash: await hashPassword(password) } });
+  await prisma.user.update({ where: { id }, data: { passwordHash: await hashPassword(password), inviteToken: null, inviteExpires: null } });
   await prisma.session.deleteMany({ where: { userId: id } });
   return { ok: "Пароль задан, сессии пользователя сброшены" };
 }
@@ -498,7 +787,7 @@ export async function deleteUser(_p: FormState, f: FormData): Promise<FormState>
   if (keys) return { error: `У пользователя ${keys} личных ключ(ей). Сначала удалите их или передайте.` };
   await prisma.user.delete({ where: { id } });
   revalidatePath("/users");
-  return { ok: "Пользователь удалён" };
+  redirect("/users");
 }
 
 export async function whoami() {

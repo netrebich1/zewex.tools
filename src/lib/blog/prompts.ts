@@ -1,0 +1,47 @@
+/**
+ * Промты и модели этапов из снимка сценария + подстановка переменных (fillVars статей: `{{var}}` и `{var}`).
+ * Промты лежат в сценарии (BlogRecipe.prompts[stageKey] = {system, text}); отсутствие промта — явная ошибка этапа.
+ */
+import { fillVars } from "@/lib/articles/prompts";
+import type { BlogPrompt, BlogRecipeSnapshot } from "./types";
+
+export class PromptMissing extends Error {
+  constructor(public readonly stageKey: string) {
+    super(`Нет промта для шага «${stageKey}»: откройте сценарий и заполните его`);
+    this.name = "PromptMissing";
+  }
+}
+
+/** Промт задан, если заполнено хотя бы одно из полей (у «постоянного блока» автора есть только system). */
+export function hasPrompt(p: Partial<BlogPrompt> | null | undefined): boolean {
+  return !!p && !!`${p.system ?? ""}${p.text ?? ""}`.trim();
+}
+
+export function resolvePrompt(recipe: BlogRecipeSnapshot, stageKey: string): BlogPrompt {
+  const p = recipe.prompts?.[stageKey];
+  if (!p || !hasPrompt(p)) throw new PromptMissing(stageKey);
+  return { system: String(p.system ?? ""), text: String(p.text ?? "") };
+}
+
+export function resolvePromptOptional(recipe: BlogRecipeSnapshot, stageKey: string): BlogPrompt | null {
+  const p = recipe.prompts?.[stageKey];
+  if (!p || !hasPrompt(p)) return null;
+  return { system: String(p.system ?? ""), text: String(p.text ?? "") };
+}
+
+/** Модель этапа из сценария (`provider:model`), иначе undefined — возьмётся модель правила слота. */
+export function stageModel(recipe: BlogRecipeSnapshot, stageKey: string): string | undefined {
+  const m = recipe.models?.[stageKey];
+  return m && m.trim() ? m.trim() : undefined;
+}
+
+/** Подставить переменные в system и text; бросает, если остались неизвестные (кроме allowMissing). */
+export function fillPrompt(p: BlogPrompt, vars: Record<string, unknown>, opts: { allowMissing?: boolean; name?: string } = {}): { system: string; user: string; missing: string[] } {
+  const s = fillVars(p.system, vars);
+  const u = fillVars(p.text, vars);
+  const missing = [...new Set([...s.missing, ...u.missing])];
+  if (missing.length && !opts.allowMissing) {
+    throw new Error(`В промте «${opts.name ?? "шага"}» не подставлены переменные: ${missing.map((m) => `{{${m}}}`).join(", ")}`);
+  }
+  return { system: s.text, user: u.text, missing };
+}

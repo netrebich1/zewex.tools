@@ -5,21 +5,25 @@ import { requireUser } from "@/lib/auth";
 import { Badge, Card, Field, PageHeader } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { addModel, deleteModel, syncModels, toggleModel, updateProvider } from "@/actions/admin";
+import { addModel, clearBalanceToken, deleteModel, syncModels, toggleModel, updateProvider } from "@/actions/admin";
 import { CAPABILITY_LABELS, fmtMoney } from "@/lib/utils";
+import { redirect } from "next/navigation";
+import { canManageProviders, canViewKey, canViewProviders } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProviderPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ all?: string; q?: string }> }) {
   const me = await requireUser();
+  if (!canViewProviders(me)) redirect("/?denied=1");
   const { slug } = await params;
   const { all, q } = await searchParams;
   const provider = await prisma.provider.findUnique({
     where: { slug },
-    include: { models: { orderBy: [{ isEnabled: "desc" }, { name: "asc" }] }, apiKeys: { select: { id: true, label: true, secretHint: true, status: true, ownerId: true }, orderBy: { label: "asc" } } },
+    include: { models: { orderBy: [{ isEnabled: "desc" }, { name: "asc" }] }, apiKeys: { select: { id: true, label: true, secretHint: true, status: true, ownerId: true, teamId: true }, orderBy: { label: "asc" } } },
   });
   if (!provider) notFound();
-  const isAdmin = me.role === "ADMIN";
+  // Здесь isAdmin означает «может менять провайдера и модели» (право providers = manage).
+  const isAdmin = canManageProviders(me);
   const query = (q ?? "").toLowerCase();
   const visibleModels = provider.models.filter((m) => (all === "1" || m.isEnabled || query) && (!query || m.modelId.toLowerCase().includes(query) || m.name.toLowerCase().includes(query)));
   const caps = ["CHAT", "IMAGE", "EMBEDDING"];
@@ -32,8 +36,8 @@ export default async function ProviderPage({ params, searchParams }: { params: P
         <Card title="Ключи этого провайдера" actions={<Link href="/keys/new" className="btn-ghost btn-sm">+ Добавить ключ</Link>}>
           {provider.apiKeys.length === 0 ? <p className="help">Ключей нет.</p> : (
             <ul className="flex flex-wrap gap-2">
-              {provider.apiKeys.filter((k) => isAdmin || !k.ownerId || k.ownerId === me.id).map((k) => (
-                <li key={k.id}><Link href={`/keys/${k.id}`} className={`badge border ${k.status === "ACTIVE" ? "border-line bg-surface hover:border-ink/40" : "border-danger/30 bg-danger-soft text-danger"}`}>{k.label} · {k.secretHint}</Link></li>
+              {provider.apiKeys.filter((k) => canViewKey(me, k)).map((k) => (
+                <li key={k.id} className="min-w-0 max-w-full"><Link href={`/keys/${k.id}`} className={`badge border !whitespace-normal [overflow-wrap:anywhere] text-left ${k.status === "ACTIVE" ? "border-line bg-surface hover:border-ink/40" : "border-danger/30 bg-danger-soft text-danger"}`}>{k.label} · {k.secretHint}</Link></li>
               ))}
             </ul>
           )}
@@ -60,16 +64,16 @@ export default async function ProviderPage({ params, searchParams }: { params: P
             ) : (
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>Модель</th><th>ID в API</th><th>Тип</th><th>Вход</th><th>Выход</th><th>Контекст</th><th></th></tr></thead>
+                  <thead><tr><th>Модель</th><th className="col-md">ID в API</th><th className="col-sm">Тип</th><th>Вход</th><th>Выход</th><th className="col-sm">Контекст</th><th></th></tr></thead>
                   <tbody>
                     {visibleModels.slice(0, 300).map((m) => (
                       <tr key={m.id} className={m.isEnabled ? "" : "opacity-60"}>
-                        <td className="font-medium">{m.name}</td>
-                        <td className="font-mono text-[12px]">{m.modelId}</td>
-                        <td className="text-[12px]">{m.capabilities.split(",").map((c) => CAPABILITY_LABELS[c] ?? c).join(", ")}</td>
+                        <td className="font-medium">{m.name}<div className="font-mono text-[11.5px] font-normal text-muted break-all md:hidden">{m.modelId}</div></td>
+                        <td className="col-md font-mono text-[12px]">{m.modelId}</td>
+                        <td className="col-sm text-[12px]">{m.capabilities.split(",").map((c) => CAPABILITY_LABELS[c] ?? c).join(", ")}</td>
                         <td>{fmtMoney(m.inputPrice)}</td>
                         <td>{fmtMoney(m.outputPrice)}</td>
-                        <td className="text-muted">{m.contextLength ? `${Math.round(m.contextLength / 1000)}k` : "—"}</td>
+                        <td className="col-sm text-muted">{m.contextLength ? `${Math.round(m.contextLength / 1000)}k` : "—"}</td>
                         <td className="text-right whitespace-nowrap">
                           {isAdmin && (
                             <span className="inline-flex gap-1">
@@ -118,6 +122,22 @@ export default async function ProviderPage({ params, searchParams }: { params: P
                 <Field label="Название"><input name="name" className="input" defaultValue={provider.name} /></Field>
                 <Field label="Базовый адрес API"><input name="baseUrl" className="input" defaultValue={provider.baseUrl} /></Field>
                 <Field label="Эндпоинт списка моделей" hint="Пусто — у провайдера нет такого списка."><input name="modelsEndpoint" className="input" defaultValue={provider.modelsEndpoint ?? ""} /></Field>
+                {provider.kind === "LLM" && (
+                  <>
+                    <Field label="Модель по умолчанию для текста" hint="С ней ключ подключается к сервису одной галочкой.">
+                      <select name="defaultChatModel" className="input" defaultValue={provider.defaultChatModel ?? ""}>
+                        <option value="">— не задана —</option>
+                        {provider.models.filter((m) => m.isEnabled && m.capabilities.includes("CHAT")).map((m) => <option key={m.id} value={m.modelId}>{m.name} · {m.modelId}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Модель по умолчанию для картинок">
+                      <select name="defaultImageModel" className="input" defaultValue={provider.defaultImageModel ?? ""}>
+                        <option value="">— не задана —</option>
+                        {provider.models.filter((m) => m.isEnabled && m.capabilities.includes("IMAGE")).map((m) => <option key={m.id} value={m.modelId}>{m.name} · {m.modelId}</option>)}
+                      </select>
+                    </Field>
+                  </>
+                )}
                 <Field label="Документация"><input name="docsUrl" className="input" defaultValue={provider.docsUrl ?? ""} /></Field>
                 <Field label="Состояние">
                   <select name="isActive" className="input" defaultValue={provider.isActive ? "1" : "0"}>
@@ -126,9 +146,24 @@ export default async function ProviderPage({ params, searchParams }: { params: P
                   </select>
                 </Field>
               </div>
+              {provider.slug === "laozhang" && (
+                <div className="mt-3 rounded-xl border border-line p-3 sm:p-4">
+                  <Field
+                    label={`Токен для баланса в шапке${provider.balanceTokenHint ? ` · сейчас ${provider.balanceTokenHint}` : ""}`}
+                    hint="laozhang не отдаёт остаток по API-ключу. В кабинете laozhang: Настройки → «System Token» (нужен пароль аккаунта). Пусто — оставить как есть."
+                  >
+                    <input name="balanceToken" className="input font-mono" autoComplete="off" placeholder={provider.balanceTokenHint ? "новый системный токен" : "вставьте System Token"} />
+                  </Field>
+                </div>
+              )}
               <p className="help">Адаптер: {provider.adapter} · авторизация: {provider.authType}</p>
               <SubmitButton pendingText="…">Сохранить</SubmitButton>
             </ActionForm>
+            {provider.slug === "laozhang" && provider.balanceTokenHint && (
+              <ActionForm action={clearBalanceToken} className="mt-2" hidden={{ id: provider.id }}>
+                <SubmitButton className="btn-ghost btn-sm" confirm="Удалить токен баланса? Остаток laozhang в шапке пропадёт." pendingText="…">Удалить токен баланса</SubmitButton>
+              </ActionForm>
+            )}
           </Card>
         )}
       </div>
