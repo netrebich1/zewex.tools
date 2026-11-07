@@ -28,7 +28,7 @@ export default async function CopyBatchPage({ params }: { params: Promise<{ id: 
     <>
       <PageHeader
         title={b.name}
-        subtitle={`${d.author} · ${fmtDate(b.createdAt)} · сайтов ${d.sites.length} · фото в статье ${b.photos}${b.word ? ` · темы со словом «${b.word}»` : ""}${b.review ? " · с проверкой перед публикацией" : ""}`}
+        subtitle={`${d.author} · ${fmtDate(b.createdAt)} · сайтов ${d.sites.length} · фото в статье ${b.photos}${b.word ? ` · темы со словом «${b.word}»` : ""}${b.review ? " · с проверкой перед публикацией" : ""}${b.noSeason ? " · без сезонных" : ""}${b.year ? ` · год ${b.year}` : ""}`}
         back={{ href: "/pinterest/copy/batches", label: "Партии" }}
         actions={admin && b.status !== "done" ? (
           <ActionForm action={setCopyBatchStatus} className="flex items-center gap-2" hidden={{ id: b.id, op: b.status === "running" ? "pause" : "resume" }}>

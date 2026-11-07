@@ -67,7 +67,7 @@ export async function siteNiches(siteId: string): Promise<Map<string, number>> {
 }
 
 /** Собрать одну статью по ядру для сайта. dry — без скачивания и записи (проверка подбора). */
-export type BuildOpts = { dry?: boolean; review?: boolean; /** Фото в статье вместо правила по умолчанию. */ photos?: number; /** Партия, в которой собирается статья, и имя её запуска в «Статьях». */ batchId?: string; runName?: string };
+export type BuildOpts = { dry?: boolean; review?: boolean; /** Фото в статье вместо правила по умолчанию. */ photos?: number; /** Партия, в которой собирается статья, и имя её запуска в «Статьях». */ batchId?: string; runName?: string; /** Год в ключе вместо года статьи-донора. */ year?: number };
 
 export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { niche: string; core: string; formulations: unknown }, opts: BuildOpts = {}): Promise<CopyPlanResult> {
   const { niche, core } = coreRow;
@@ -92,6 +92,7 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
     modifier = pickModifier(used);
     if (modifier === null) return fail("свободных формулировок не осталось");
     keyword = swapModifier(donors[0].keyword, modifier);
+    if (opts.year) keyword = /20\d\d/.test(keyword) ? keyword.replace(/20\d\d(-20\d\d)?/, String(opts.year)) : `${keyword} ${opts.year}`;
     if (!haveKeywords.has(keyword.toLowerCase()) && splitKeyword(keyword).core === core) break;
     used.add(modifier);
   }

@@ -30,7 +30,8 @@ export async function createCopyBatch(_p: FormState, f: FormData): Promise<FormS
   const photos = Math.max(5, Math.min(100, Math.floor(Number(String(f.get("photos") ?? "").trim() || 0)) || 25));
   let id = "";
   try {
-    const r = await planBatch({ name: String(f.get("name") ?? ""), siteIds, quotas, word: String(f.get("word") ?? ""), photos, review: f.get("review") === "on", createdById: me.id });
+    const y = Math.floor(Number(String(f.get("year") ?? "").trim()));
+    const r = await planBatch({ name: String(f.get("name") ?? ""), siteIds, quotas, word: String(f.get("word") ?? ""), photos, review: f.get("review") === "on", noSeason: f.get("noSeason") === "on", year: y >= 2024 && y <= 2035 ? y : null, createdById: me.id });
     id = r.id;
   } catch (e) { return fail(e); }
   revalidatePath(`${COPY}/batches`);

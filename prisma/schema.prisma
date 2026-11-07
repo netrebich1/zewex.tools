@@ -3696,6 +3696,10 @@ model CopyBatch {
   word        String          @default("") @db.VarChar(191)
   photos      Int
   review      Boolean         @default(false)
+  /// Не брать сезонные темы (christmas, halloween, summer…)
+  noSeason    Boolean         @default(true)
+  /// Год в ключе статьи; null — как у статьи-донора
+  year        Int?
   planned     Int             @default(0)
   built       Int             @default(0)
   failed      Int             @default(0)

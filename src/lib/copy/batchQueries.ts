@@ -12,8 +12,8 @@ import { siteNiches } from "./auto";
 export const NICHE_ORDER = ["nails", "hair", "outfits", "interior"];
 
 /** Данные формы новой партии: привязанные сайты с нишами и сколько тем есть в каждой клетке. */
-export async function newBatchData(me: CurrentUser, word = "") {
-  const [settings, bound, avail] = await Promise.all([copySettings(), prisma.copySite.findMany({ where: { publish: true }, select: { artSiteId: true } }), availability(word)]);
+export async function newBatchData(me: CurrentUser, word = "", noSeason = true) {
+  const [settings, bound, avail] = await Promise.all([copySettings(), prisma.copySite.findMany({ where: { publish: true }, select: { artSiteId: true } }), availability(word, noSeason)]);
   const sites = await prisma.artSite.findMany({
     where: { ...(await artSiteWhere(me)), id: { in: bound.map((b) => b.artSiteId) }, isActive: true },
     select: { id: true, name: true, nicheCode: true, team: { select: { name: true } }, _count: { select: { articles: true } } },

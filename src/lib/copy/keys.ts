@@ -41,6 +41,10 @@ export const VOL_LABEL: Record<string, string> = { hi: "ВЧ", mid: "СЧ", low:
 export const volClassOf = (v: number | null | undefined): string | null => (v == null ? null : v >= 30000 ? "hi" : v >= 10000 ? "mid" : v >= 3000 ? "low" : "small");
 export const fmtVolume = (v: number | null | undefined) => (v == null ? "—" : v >= 1000 ? `${Math.round(v / 1000)}k` : String(v));
 
+/** Сезонные темы — не для вечнозелёных партий «на 2027». */
+const SEASONAL = /\b(christmas|xmas|holiday|halloween|thanksgiving|easter|valentine|valentines|new year|nye|winter|summer|spring|fall|autumn|july 4th|4th of july|fourth of july|st patrick|back to school|prom|graduation|festival|coachella|snow)\b/i;
+export const isSeasonal = (core: string) => SEASONAL.test(core);
+
 export type KeyParts = { core: string; modifier: string };
 
 export function splitKeyword(keyword: string): KeyParts {
