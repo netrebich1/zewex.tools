@@ -135,7 +135,8 @@ export function missingSlotsFor(recipe: BlogRecipeShape, have: Record<SlotKey, b
   const out: string[] = [];
   need.delete(SLOTS.photoDfs); need.delete(SLOTS.photoSerp);
   if (!have.photo_dfs && !have.photo_serp) out.push("Поиск фото (DataForSEO или SerpAPI)");
-  if (!recipe.params.research.serp) need.delete(SLOTS.serpOrganic);
+  // Выдача для исследования: DataForSEO (ключ поиска фото) или SerpAPI — хватит одного.
+  if (!recipe.params.research.serp || have.photo_dfs) need.delete(SLOTS.serpOrganic);
   if (recipe.params.aiImages?.mode !== "steps") need.delete(SLOTS.image);
   for (const s of need) if (!have[s as SlotKey]) out.push(SLOT_LABELS[s as SlotKey] ?? s);
   return out;

@@ -373,7 +373,7 @@ type DfsBody = { tasks?: Array<{ status_code?: number; status_message?: string; 
 export async function searchDataForSeo(ctx: AiCtx, query: string, cfg: SearchCfg, limit: number): Promise<SearchResult> {
   // 40101 «Internal SE Server Error» у DataForSEO случаен (проверка 07.11.2026: тот же запрос то проходит, то нет,
   // ~1 из 8; с 04.11 — у каждой пятой статьи). Неудачная задача не списывается, поэтому повторяем здесь же
-  // (до 2 раз, паузы 3 и 10 с), а не сразу на дорогой SerpApi и не через 90 с повтором всего этапа.
+  // (до 3 раз, паузы 3, 10 и 30 с), а не через 90 с повтором всего этапа. SerpApi с 07.11 нет — запасного провайдера нет.
   let r = await searchDataForSeoOnce(ctx, query, cfg, limit);
   for (const pause of DFS_RETRY_PAUSES_MS) {
     if (!r.transient || r.items.length || r.keyProblem || ctx.signal?.aborted) break;
@@ -383,7 +383,7 @@ export async function searchDataForSeo(ctx: AiCtx, query: string, cfg: SearchCfg
   }
   return r;
 }
-export const DFS_RETRY_PAUSES_MS = [3_000, 10_000];
+export const DFS_RETRY_PAUSES_MS = [3_000, 10_000, 30_000];
 
 async function searchDataForSeoOnce(ctx: AiCtx, query: string, cfg: SearchCfg, limit: number): Promise<SearchResult> {
   const tbs = buildTbs(cfg);
@@ -468,10 +468,9 @@ export async function searchImagesWithFallback(ctx: AiCtx, query: string, cfg: S
   keyProblem ||= d.keyProblem;
   if (d.error) errors.push(d.error);
 
-  // Запасной SerpApi (заметно дороже DataForSEO, владелец 2026-10-16): только при сбое DataForSEO (временная ошибка,
-  // нет ключа/денег), а не когда по запросу просто нет картинок; одна страница (≤100) вместо трёх.
-  const dfsFailed = !!d.transient || !!d.notConfigured || !!d.keyProblem;
-  if (cfg.source === "dataforseo" && dfsFailed) {
+  // Запасной SerpApi — только если DataForSEO не подключён вовсе. С 07.11.2026 SerpApi у команды нет (владелец: «всё
+  // через DataForSEO»): при сбое DataForSEO повтор идёт внутри searchDataForSeo и повтором этапа, а не на SerpApi.
+  if (cfg.source === "dataforseo" && d.notConfigured) {
     const r = await searchSerpApi(ctx, query, cfg, Math.min(limit, 100));
     requests += r.requests;
     if (r.items.length) return { items: r.items, error: `фолбэк SerpApi (${errors.join("; ")})`, requests, engine: "serpapi" };

@@ -98,7 +98,7 @@ type DfsItem = { type?: string; url?: string; source_url?: string; image_url?: s
 type DfsBody = { tasks?: Array<{ status_code?: number; status_message?: string; result?: Array<{ items?: DfsItem[] }> }> };
 
 export async function searchDataForSeo(ctx: AiCtx, query: string, cfg: SearchCfg, limit: number): Promise<SearchResult> {
-  // Случайный 40101 DataForSEO (07.11.2026): повтор на месте, до 2 раз — как в src/lib/articles/photo/search.ts.
+  // Случайный 40101 DataForSEO (07.11.2026): повтор на месте, до 3 раз — как в src/lib/articles/photo/search.ts.
   let r = await searchDataForSeoOnce(ctx, query, cfg, limit);
   for (const pause of DFS_RETRY_PAUSES_MS) {
     if (!r.transient || r.items.length || r.keyProblem || ctx.signal?.aborted) break;
@@ -168,8 +168,8 @@ export async function searchImagesWithFallback(ctx: AiCtx, query: string, cfg: S
   transient ||= !!d.transient;
   keyProblem ||= d.keyProblem;
   if (d.error) errors.push(d.error);
-  const dfsFailed = !!d.transient || !!d.notConfigured || !!d.keyProblem;
-  if (cfg.source === "dataforseo" && dfsFailed) {
+  // SerpApi — только если DataForSEO не подключён (с 07.11.2026 SerpApi нет, см. src/lib/articles/photo/search.ts).
+  if (cfg.source === "dataforseo" && d.notConfigured) {
     const r = await searchSerpApi(ctx, query, cfg, Math.min(limit, 100));
     requests += r.requests;
     if (r.items.length) return { items: r.items, error: `фолбэк SerpApi (${errors.join("; ")})`, requests, engine: "serpapi" };
