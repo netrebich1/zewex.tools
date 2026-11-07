@@ -371,6 +371,21 @@ type DfsBody = { tasks?: Array<{ status_code?: number; status_message?: string; 
  * Стоимость запроса учитывает портал (UsageLog через runSlot).
  */
 export async function searchDataForSeo(ctx: AiCtx, query: string, cfg: SearchCfg, limit: number): Promise<SearchResult> {
+  // 40101 «Internal SE Server Error» у DataForSEO случаен (проверка 07.11.2026: тот же запрос то проходит, то нет,
+  // ~1 из 8; с 04.11 — у каждой пятой статьи). Неудачная задача не списывается, поэтому повторяем здесь же
+  // (до 2 раз, паузы 3 и 10 с), а не сразу на дорогой SerpApi и не через 90 с повтором всего этапа.
+  let r = await searchDataForSeoOnce(ctx, query, cfg, limit);
+  for (const pause of DFS_RETRY_PAUSES_MS) {
+    if (!r.transient || r.items.length || r.keyProblem || ctx.signal?.aborted) break;
+    await new Promise((ok) => setTimeout(ok, pause));
+    const next = await searchDataForSeoOnce(ctx, query, cfg, limit);
+    r = { ...next, requests: r.requests + next.requests };
+  }
+  return r;
+}
+export const DFS_RETRY_PAUSES_MS = [3_000, 10_000];
+
+async function searchDataForSeoOnce(ctx: AiCtx, query: string, cfg: SearchCfg, limit: number): Promise<SearchResult> {
   const tbs = buildTbs(cfg);
   const body = [{
     keyword: query,

@@ -6,7 +6,7 @@
 import { dfsRequest, serpRequest, type AiCtx } from "@/lib/blog/ai";
 import { acquire } from "@/lib/pins/ai/limiter";
 import {
-  buildTbs, dfsTaskVerdict, hostOf, IMAGE_SEARCH_CONCURRENCY, normalizeSearchConfig, sizeFilterAspect,
+  buildTbs, DFS_RETRY_PAUSES_MS, dfsTaskVerdict, hostOf, IMAGE_SEARCH_CONCURRENCY, normalizeSearchConfig, sizeFilterAspect,
   type PhotoCandidateInput, type SearchCfg, type SearchResult,
 } from "@/lib/articles/photo/search";
 import type { BlogPhotoSearch } from "@/lib/blog/types";
@@ -98,6 +98,18 @@ type DfsItem = { type?: string; url?: string; source_url?: string; image_url?: s
 type DfsBody = { tasks?: Array<{ status_code?: number; status_message?: string; result?: Array<{ items?: DfsItem[] }> }> };
 
 export async function searchDataForSeo(ctx: AiCtx, query: string, cfg: SearchCfg, limit: number): Promise<SearchResult> {
+  // Случайный 40101 DataForSEO (07.11.2026): повтор на месте, до 2 раз — как в src/lib/articles/photo/search.ts.
+  let r = await searchDataForSeoOnce(ctx, query, cfg, limit);
+  for (const pause of DFS_RETRY_PAUSES_MS) {
+    if (!r.transient || r.items.length || r.keyProblem || ctx.signal?.aborted) break;
+    await new Promise((ok) => setTimeout(ok, pause));
+    const next = await searchDataForSeoOnce(ctx, query, cfg, limit);
+    r = { ...next, requests: r.requests + next.requests };
+  }
+  return r;
+}
+
+async function searchDataForSeoOnce(ctx: AiCtx, query: string, cfg: SearchCfg, limit: number): Promise<SearchResult> {
   const tbs = buildTbs(cfg);
   const body = [{ keyword: query, location_code: DFS_LOCATIONS[cfg.country] || 2840, language_code: cfg.language.slice(0, 2), depth: Math.min(200, Math.max(100, limit)), ...(tbs ? { search_param: `tbs=${tbs}` } : {}) }];
   const release = await acquire("dfs", IMAGE_SEARCH_CONCURRENCY);
