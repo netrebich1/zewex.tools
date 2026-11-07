@@ -9,6 +9,8 @@ export const NICHES = [
   { key: "nails", label: "Ногти", scenario: "2" },
   { key: "hair", label: "Волосы", scenario: "5" },
   { key: "outfits", label: "Одежда", scenario: "7" },
+  /** Декор-ключи из «Темы 2027»/Decor, загружены 07.11.2026 только с частотностью (scripts/keywords/import-decor.ts). */
+  { key: "interior", label: "Интерьер", scenario: "" },
 ] as const;
 export type Niche = (typeof NICHES)[number]["key"];
 export const nicheLabel = (k: string) => NICHES.find((n) => n.key === k)?.label ?? "—";
