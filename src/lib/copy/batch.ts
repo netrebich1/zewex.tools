@@ -13,7 +13,7 @@ let running = false;
 
 export type QuotaClass = (typeof VOL_CLASSES)[number] | "any";
 export type Quotas = Record<string, Partial<Record<QuotaClass, number>>>;
-export type BatchInput = { name: string; siteIds: string[]; quotas: Quotas; word: string; /** Только эти ядра (точное совпадение), в этом порядке — для ручных и тестовых партий. */ cores?: string[]; photos: number; photosMax?: number | null; maxPerWord?: number; review: boolean; noSeason: boolean; year: number | null; createdById: string };
+export type BatchInput = { name: string; siteIds: string[]; quotas: Quotas; word: string; /** Только эти ядра (точное совпадение), в этом порядке — для ручных и тестовых партий. */ cores?: string[]; /** volume — сначала самые частотные темы (дописывание на растущий сайт); по умолчанию — с самым большим резервом. */ order?: "reserve" | "volume"; photos: number; photosMax?: number | null; maxPerWord?: number; review: boolean; noSeason: boolean; year: number | null; createdById: string };
 export const QUOTA_CLASSES: QuotaClass[] = [...VOL_CLASSES, "any"];
 
 type CoreRow = { id: string; niche: string; core: string; volClass: string | null; volume: number | null; byPhotos: number; siteIds: unknown };
@@ -55,7 +55,7 @@ export async function planBatch(input: BatchInput): Promise<{ id: string; planne
   const only = input.cores?.map((c) => c.trim().toLowerCase()).filter(Boolean);
   let cores: CoreRow[] = await prisma.copyCore.findMany({
     where: { teamId: st.sharedBank ? SHARED_TEAM : { in: teamIds }, byPhotos: { gt: 0 }, ...(only?.length ? { core: { in: only } } : { core: { contains: word || " " } }) },
-    orderBy: [{ photosReserve: "desc" }, { photosPublished: "desc" }],
+    orderBy: input.order === "volume" ? [{ volume: "desc" }, { photosReserve: "desc" }] : [{ photosReserve: "desc" }, { photosPublished: "desc" }],
     select: { id: true, niche: true, core: true, volClass: true, volume: true, byPhotos: true, siteIds: true },
   });
   if (only?.length) cores = only.map((c) => cores.find((r) => r.core === c)).filter((r): r is CoreRow => !!r);

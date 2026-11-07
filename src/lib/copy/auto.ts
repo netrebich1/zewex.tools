@@ -167,7 +167,10 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
   const perArticle = new Map<string, number>();
   const taken = new Set<string>();
   const phashes = new Set<string>();
-  const canTake = (c: Cand) => !taken.has(c.sha) && !(c.phash && phashes.has(c.phash)) && (onSite.get(c.sha) ?? 0) < st.maxPerSite && c.used < st.maxUsesTotal && [...(articlesOf.get(c.sha) ?? [])].every((a) => (perArticle.get(a) ?? 0) < cap);
+  // Лимит на тему: сколько статей этого ядра уже содержат кадр (исходная считается).
+  const coreIds = new Set(all.map((a) => a.id));
+  const usedInCore = (c: Cand) => { let n = 0; for (const a of articlesOf.get(c.sha) ?? []) if (coreIds.has(a)) n++; return n; };
+  const canTake = (c: Cand) => !taken.has(c.sha) && !(c.phash && phashes.has(c.phash)) && (onSite.get(c.sha) ?? 0) < st.maxPerSite && c.used < st.maxUsesTotal && usedInCore(c) < st.maxUsesPerCore && [...(articlesOf.get(c.sha) ?? [])].every((a) => (perArticle.get(a) ?? 0) < cap);
   const mark = (c: Cand, d: 1 | -1) => {
     if (d > 0) { taken.add(c.sha); if (c.phash) phashes.add(c.phash); } else { if (c.phash) phashes.delete(c.phash); }
     for (const a of articlesOf.get(c.sha) ?? []) perArticle.set(a, (perArticle.get(a) ?? 0) + d);

@@ -33,6 +33,7 @@ export async function saveCopyRules(_p: FormState, f: FormData): Promise<FormSta
         maxOverlapPct: Math.round(num(f, "maxOverlapPct", cur.maxOverlapPct, 0, 100)),
         maxPerSite: Math.round(num(f, "maxPerSite", cur.maxPerSite, 1, 10)),
         maxUsesTotal: Math.round(num(f, "maxUsesTotal", cur.maxUsesTotal, 1, 20)),
+        maxUsesPerCore: Math.round(num(f, "maxUsesPerCore", cur.maxUsesPerCore, 1, 20)),
         sheetUrl: String(f.get("sheetUrl") ?? "").trim() || null,
         minReserveScore: num(f, "minReserveScore", cur.minReserveScore, 0, 10),
         minPhotos: Math.round(num(f, "minPhotos", cur.minPhotos, 5, 100)),

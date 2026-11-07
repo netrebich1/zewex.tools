@@ -3585,7 +3585,9 @@ model CopySettings {
   /// Сколько раз одно фото может стоять на одном сайте
   maxPerSite          Int       @default(3)
   /// Сколько раз одно фото может стоять во всех статьях вообще (статья-источник тоже считается)
-  maxUsesTotal        Int       @default(3)
+  maxUsesTotal        Int       @default(6)
+  /// Сколько раз одно фото может стоять в статьях одной темы (ядра), включая исходную
+  maxUsesPerCore      Int       @default(3)
   /// Google-таблица, куда дописываются опубликованные мешап-статьи (вкладка = домен сайта)
   sheetUrl            String?   @db.VarChar(500)
   /// Сводка по кадрам с последнего пересчёта: {niches: {niche: {published, reserve, uses1, uses2, uses3, usesLeft}}}
