@@ -3720,6 +3720,8 @@ model CopyBatch {
   year        Int?
   /// Модель писателя (секции, вступление/заключение) вместо модели сценария — для A/B тестов; null — как в сценарии
   writerModel String?         @db.VarChar(191)
+  /// Модель плана по фото и плана секций вместо модели сценария; null — как в сценарии
+  planModel   String?         @db.VarChar(191)
   planned     Int             @default(0)
   built       Int             @default(0)
   failed      Int             @default(0)

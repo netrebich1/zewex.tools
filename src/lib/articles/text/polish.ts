@@ -184,7 +184,7 @@ export type PolishOpts = { usSpelling?: boolean; /** Не дотягивать �
  * «This style works best…»). Замена кодом, регистр сохраняется. Литеральное «nail polish» не трогаем.
  */
 const COPY_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/(?<!nail |gel |the |a |fresh |clear )\bpolished\b/gi, "neat"],
+  [/(?<!nail |gel |fresh |clear |top |base )\bpolished\b/gi, "neat"],
   [/\bsophisticated\b/gi, "grown-up"],
   [/\breads as\b/gi, "looks"],
   [/\bread as\b/gi, "look"],
@@ -267,7 +267,24 @@ export function polishHtml(html: unknown, opts: PolishOpts = {}): string {
 export function polishHeading(heading: unknown, opts: PolishOpts = {}): string {
   let s = fixDashesHeading(String(heading ?? ""));
   if (opts.usSpelling) s = toUsSpellingText(s);
+  if (opts.copy) s = sentenceCaseHeading(replaceCopyCliches(s));
   return opts.keepHeadingCase ? s : titleCaseHeading(s);
+}
+
+/** Имена собственные и термины, которые в заголовке остаются с заглавной при переводе в sentence case. */
+const PROPER = new Set(["french", "american", "parisian", "hollywood", "barbie", "y2k", "pinterest", "instagram", "tiktok", "chanel", "dior", "gucci", "prada", "nike", "adidas", "converse", "levi's", "levis", "zara", "christmas", "halloween", "thanksgiving", "easter", "valentine's", "valentine", "nye", "coachella", "scandi", "scandinavian", "japanese", "korean", "italian", "greek", "brazilian", "hawaiian", "mediterranean", "nordic", "victorian", "art", "deco", "god", "jesus", "disney", "marvel", "hello", "kitty", "pantone", "swarovski", "opi", "essie", "dyson", "gel-x", "aprés", "uv", "led", "diy", "ok", "nyc", "la", "usa", "us", "uk", "ombre", "ombré"]);
+/** Заголовок в sentence case: первое слово с заглавной, остальные строчными, кроме имён собственных и аббревиатур. */
+export function sentenceCaseHeading(s: string): string {
+  const words = s.trim().split(/\s+/);
+  return words.map((w, i) => {
+    const core = w.replace(/^[("'“‘]+|[)"'”’:,.!?]+$/g, "");
+    if (!core) return w;
+    if (/^[A-Z0-9&-]{2,}$/.test(core) && /[A-Z]/.test(core)) return w; // аббревиатуры: UV, LED, 3D, Y2K
+    const low = core.toLowerCase();
+    if (PROPER.has(low) || /^\d/.test(core)) return i === 0 ? w[0].toUpperCase() + w.slice(1) : w.replace(core, core[0].toUpperCase() + core.slice(1).toLowerCase());
+    const out = i === 0 ? low[0].toUpperCase() + low.slice(1) : low;
+    return w.replace(core, out);
+  }).join(" ");
 }
 
 const SMALL_WORDS = new Set(["a", "an", "the", "and", "or", "nor", "but", "for", "of", "in", "on", "at", "to", "by", "from", "with", "vs", "via", "as", "into", "per"]);

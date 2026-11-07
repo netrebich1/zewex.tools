@@ -67,9 +67,11 @@ export async function siteNiches(siteId: string): Promise<Map<string, number>> {
 }
 
 /** Собрать одну статью по ядру для сайта. dry — без скачивания и записи (проверка подбора). */
-export type BuildOpts = { dry?: boolean; review?: boolean; /** Фото в статье вместо правила по умолчанию. */ photos?: number; /** Партия, в которой собирается статья, и имя её запуска в «Статьях». */ batchId?: string; runName?: string; /** Год в ключе вместо года статьи-донора. */ year?: number; /** Модель писателя (секции, вступление/заключение) вместо модели сценария — A/B тесты. */ writerModel?: string };
+export type BuildOpts = { dry?: boolean; review?: boolean; /** Фото в статье вместо правила по умолчанию. */ photos?: number; /** Партия, в которой собирается статья, и имя её запуска в «Статьях». */ batchId?: string; runName?: string; /** Год в ключе вместо года статьи-донора. */ year?: number; /** Модель писателя (секции, вступление/заключение) вместо модели сценария — A/B тесты. */ writerModel?: string; /** Модель плана по фото и плана секций вместо модели сценария. */ planModel?: string };
 /** Этапы, которые пишет «писатель»: их модель подменяет BuildOpts.writerModel. */
 const WRITER_STAGES = ["stage_7_writer_system", "stage_7_writer_user", "stage_7_intro_outro"];
+/** Этапы плана: их модель подменяет BuildOpts.planModel. */
+const PLAN_STAGES = ["rp_photo_plan", "rp_section_plan"];
 /** Слова темы для фильтра кадров: всё, кроме служебных слов ниши; «s» на конце и дефис не мешают совпадению. */
 const topicRe = (core: string): RegExp | null => {
   const words = clusterWords(core).map((w) => w.replace(/s$/, "")).filter((w) => w.length > 2);
@@ -250,6 +252,7 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
   const runSettings: ArtRunSettings = { recipeId: shape.id, photoCount: { mode: "exact", min: picked.length, max: picked.length }, photoReview: false, publishMode: "auto", search: { country: "", language: "", freshness: "" }, yearInUrlPercent: null, testLabel: "" };
   const snapshot = buildSnapshot(shape, runSettings);
   if (opts.writerModel) snapshot.stageModels = { ...snapshot.stageModels, ...Object.fromEntries(WRITER_STAGES.map((k) => [k, opts.writerModel!])) };
+  if (opts.planModel) snapshot.stageModels = { ...snapshot.stageModels, ...Object.fromEntries(PLAN_STAGES.map((k) => [k, opts.planModel!])) };
   const profile = specializeProfile(await getNicheProfile(shape.nicheCode, shape.subnicheCode), keyword);
   const attrs = parseKeywordAttributes(keyword, profile) as Record<string, unknown>;
   const donorFacts = ((await prisma.article.findUnique({ where: { id: donors[0].id }, select: { facts: true } }))?.facts ?? {}) as Record<string, unknown>;

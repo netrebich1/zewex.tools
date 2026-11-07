@@ -188,7 +188,7 @@ export const plan: ArtStageHandler = async (ctx) => {
   // Мешап: коллажи и кадры, которые так и не описались, в статью не идут (их заголовки получались общими и неверными),
   // если после этого остаётся не меньше 15 фото.
   if (isCopy) {
-    const COLLAGE = /^collage:|\b(collage|grid of|multiple (women|people|models|hands)|two women|three women|several women|side-by-side)\b/i;
+    const COLLAGE = /^collage:|\b(collage|grid of|montage|split[- ]image|split[- ]screen|before[- ]and[- ]after|multiple (women|people|models|hands|looks|photos|images|angles)|(two|three|four|several|both) (women|girls|ladies|models|people|hands|sets|looks|outfits|hairstyles|photos|images|views|angles|versions)|side[- ]by[- ]side|different (hairstyles|looks|outfits|women) (are |is )?(shown|pictured)|(left|right) (photo|image|side) shows|on the left\b.*\bon the right)\b/i;
     const drop = photos.filter((p) => COLLAGE.test(p.description ?? "") || !String(p.description ?? "").trim());
     if (drop.length && photos.length - drop.length >= 15) {
       await prisma.artPhoto.updateMany({ where: { id: { in: drop.map((p) => p.id) } }, data: { excluded: true } });
