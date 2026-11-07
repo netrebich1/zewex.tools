@@ -2,7 +2,7 @@
  * Наборы промптов и сценарии «Article Copy» (мешап): клонируют боевые наборы реальных фото по нишам и подменяют
  * текстовые шаги файлами из prompts/copy/<ниша>-<stageKey>.txt. Идемпотентно: повторный запуск обновляет тексты.
  *   sudo -u zewex_tools_usr -H npx tsx scripts/copy/apply-prompts.ts [--dry]
- * Сценарий мешапа: ArtRecipe.forCopy = true, модель планирования — gemini-2.5-flash (не lite: меньше путает photo_n).
+ * Сценарий мешапа: ArtRecipe.forCopy = true, модель планирования — gemini-2.5-flash-lite (дёшево; сдвиг photo_n чинит repairPhotoMapping; владелец 07.11: цель 1–2 цента за статью).
  */
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -18,7 +18,7 @@ const SOURCE: Array<{ niche: string; recipeNumber: number }> = [
   { niche: "hair", recipeNumber: 5 },
   { niche: "outfits", recipeNumber: 7 },
 ];
-const PLAN_MODEL = "openrouter:google/gemini-2.5-flash";
+const PLAN_MODEL = "openrouter:google/gemini-2.5-flash-lite";
 
 function fromFile(niche: string, stageKey: string): { system: string | null; text: string } | null {
   const f = join(DIR, `${niche}-${stageKey}.txt`);
