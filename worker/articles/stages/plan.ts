@@ -379,7 +379,8 @@ const jaccard = (a: Set<string>, b: Set<string>) => {
  * Меняет фото местами у пар секций, когда обе секции заметно ближе к описанию фото друг друга, чем к своему.
  * Возвращает число затронутых секций. Консервативно: порог 0.2 суммарного выигрыша, не больше N проходов.
  */
-const HEADING_PATTERNS = ["detail_first", "situation", "effect", "reader", "quieter_or_bolder", "number", "time", "verb_first"];
+// Тест v3 (07.11): шаблоны number/time/verb_first давали странные заголовки («Shagging ash blonde hair…», «…for summer fun») — оставлены четыре спокойных.
+const HEADING_PATTERNS = ["detail_first", "situation", "effect", "reader"];
 const firstWord = (h: string) => (h.trim().split(/\s+/)[0] ?? "").toLowerCase().replace(/[^a-z0-9'-]/g, "");
 
 /** Какие заголовки нарушают квоты разнообразия: повтор первого слова, «with» больше трети, слово темы в начале больше трёх раз, одинаковые два последних слова. */
@@ -395,9 +396,9 @@ export function headingViolations(h2s: string[], lockWords: string[]): Set<numbe
     const f = firstWord(h);
     if (!words.length) return;
     if (seenFirst.has(f)) bad.add(i); else seenFirst.set(f, i);
-    const tail = words.slice(-2).join(" ");
-    if (words.length >= 4 && seenTail.has(tail)) bad.add(i); else seenTail.set(tail, i);
-    if (words.includes("with")) { withCount++; if (withCount > withMax) bad.add(i); }
+    // Тест v3: правила «with» и одинаковых концовок переписывали 11–15 заголовков из 25, и судья оценил H2 хуже (3–5 против 5–6).
+    // Остались только повтор первого слова и слово темы в начале чаще трёх раз.
+    void seenTail; void withCount; void withMax;
     if (lockWords.some((w) => w && words.slice(0, 2).includes(w))) { lockStarts++; if (lockStarts > lockMax) bad.add(i); }
   });
   return bad;
@@ -411,7 +412,7 @@ export async function enforceHeadingVariety(ctx: ArtStageCtx, items: Array<{ pla
   if (!bad.size) return 0;
   const usedFirst = new Set(h2s.filter((_, i) => !bad.has(i)).map(firstWord));
   const list = items.map((it, i) => ({ n: i + 1, h2: h2s[i], rewrite: bad.has(i), pattern: bad.has(i) ? HEADING_PATTERNS[i % HEADING_PATTERNS.length] : String(it.plan.h2_pattern || ""), facts: String(it.description || "").slice(0, 320) }));
-  const system = `You fix the headings of a photo-led article so that no two sections look alike. Rewrite ONLY the entries marked rewrite:true, keep the others untouched. Each rewritten heading: 5-9 words, sentence case (first word and proper nouns capitalized), no colon, dash or year, written in the given pattern (detail_first: the detail a reader notices first, then the base; situation: the idea for a reader situation; effect: what the idea does; reader: "When you want X without Y"; quieter_or_bolder: a take relative to the topic; number: a count leads; time: how it lives through the week; verb_first: a gerund opens). Every content word must come from that section's facts or from the topic "${focusKeyword}". The first word of a rewritten heading must differ from every other heading's first word and must not be one of: ${[...usedFirst].join(", ")}. Avoid the word "with" and do not start with the topic noun. No praise words. Return JSON only: {"headings":[{"n":1,"h2":"..."}]} for the rewritten entries.`;
+  const system = `You fix the headings of a photo-led article so that no two sections look alike. Rewrite ONLY the entries marked rewrite:true, keep the others untouched. Each rewritten heading: 5-9 words, sentence case (first word and proper nouns capitalized), no colon, dash or year, written in the given pattern (detail_first: the detail a reader notices first, then the base, e.g. "Caramel ribbons on a dark brown base"; situation: the idea for a reader situation, e.g. "Blunt lob for fine hair that falls flat"; effect: what the idea does, e.g. "Soft waves that hide a grow-out line"; reader: "When you want X without Y"). Plain and factual, like a caption an editor would write; never a gerund opening, never "for summer fun"-style tails, never a season or occasion unless the facts name one. Every content word must come from that section's facts or from the topic "${focusKeyword}". The first word of a rewritten heading must differ from every other heading's first word and must not be one of: ${[...usedFirst].join(", ")}. Avoid the word "with" and do not start with the topic noun. No praise words. Return JSON only: {"headings":[{"n":1,"h2":"..."}]} for the rewritten entries.`;
   try {
     const r = await aiChat(ctx.ai, { slot: SLOTS.textFast, model: stageModel(ctx.recipe, STAGE_KEY), system, user: JSON.stringify({ topic: focusKeyword, sections: list }), json: true, temperature: 0.7, maxTokens: 3000, timeoutMs: 120_000 });
     const out = (r.json && typeof r.json === "object" ? r.json : parseModelJsonSafe(r.text)) as JsonRecord | null;
