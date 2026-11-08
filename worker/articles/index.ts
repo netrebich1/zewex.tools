@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { claimArticle, requeueOrphanArticles, requeueStaleArticles } from "./queue";
 import { processArticle } from "./runner";
 import { log } from "../log";
+import { limiterStats } from "@/lib/pins/ai/limiter";
+import { brakeStats } from "@/lib/articles/ai";
 
 const CONCURRENCY = Number(process.env.ARTICLES_WORKER_CONCURRENCY || 3);
 const IDLE_MS = 3_000;
@@ -16,7 +18,16 @@ export function articlesInflight(): Set<Promise<void>> {
   return inflight;
 }
 
+/** Раз в минуту — семафоры ключей и автотормоз в журнал: видно, где статьи ждут ИИ (08.11: 45 статей в работе, к ключу 2 вызова). */
+function logLimiters(): void {
+  const busy = Object.entries(limiterStats()).filter(([, v]) => v.active || v.waiting || v.pausedMs);
+  const brakes = brakeStats();
+  if (busy.length || Object.keys(brakes).length) log.info(`limiters ${JSON.stringify(Object.fromEntries(busy))} brakes ${JSON.stringify(brakes)} articles ${inflight.size}`);
+}
+
 export async function articlesLoop(workerId: string, shouldStop: () => boolean): Promise<void> {
+  const timer = setInterval(logLimiters, 60_000);
+  timer.unref?.();
   while (!shouldStop()) {
     if (inflight.size >= CONCURRENCY) {
       await Promise.race(inflight);
