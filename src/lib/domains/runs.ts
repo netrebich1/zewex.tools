@@ -252,6 +252,18 @@ export async function restartDomainRun(me: CurrentUser, id: string): Promise<voi
   ]);
 }
 
+/** Поставить в очередь допроверку доменов «не проверен» завершённого подбора; свободные, занятые и выбор не меняются. */
+export async function recheckUnknownDomains(me: CurrentUser, id: string): Promise<number> {
+  const run = await requireRun(me, id);
+  if (run.status !== "DONE") throw new Error("Допроверить можно только завершённый подбор");
+  const unknown = await prisma.domainCandidate.count({ where: { runId: id, status: "unknown" } });
+  if (!unknown) throw new Error("Непроверенных доменов нет");
+  const progress: DomainRunProgress = { brand: "", brandIndex: 0, brandsTotal: parseSettings(run.settings).items.length, checked: run.totalChecked, available: run.totalAvailable, updatedAt: new Date().toISOString(), recheck: true };
+  const n = await prisma.domainRun.updateMany({ where: { id, status: "DONE" }, data: { status: "QUEUED", stopRequested: false, progress: progress as unknown as Prisma.InputJsonValue, error: null, workerId: null, leaseUntil: null, finishedAt: null } });
+  if (n.count !== 1) throw new Error("Подбор уже запущен");
+  return unknown;
+}
+
 /* ---------- Выполнение (воркер) ---------- */
 
 /** Атомарно берёт один подбор из очереди. */
@@ -270,6 +282,11 @@ export async function requeueStaleDomainRuns(hostPrefix?: string): Promise<numbe
   return n;
 }
 
+const RECHECK_BATCH = 60;
+/** Паузы перед раундами допроверки бренда, мс. */
+const RECHECK_PAUSES_MS = [0, 5_000, 20_000];
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 type Row = Omit<DomainCandidate, "id" | "createdAt" | "aiScore" | "aiReason" | "selected">;
 
 /**
@@ -283,8 +300,9 @@ export async function processDomainRun(run: DomainRun, workerId: string, shouldS
   const target = settings.perBrand + settings.extraPerBrand;
   const prev = (run.progress ?? null) as DomainRunProgress | null;
   const startAt = prev && prev.brandIndex > 0 && prev.brandIndex <= items.length ? prev.brandIndex : 0;
+  const recheckMode = prev?.recheck === true;
   // Бренд, на котором прервались: его частичные результаты стираем и проверяем заново.
-  if (startAt < items.length) await prisma.domainCandidate.deleteMany({ where: { runId: run.id, brand: items[startAt]!.brand, country: items[startAt]!.country } });
+  if (!recheckMode && startAt < items.length) await prisma.domainCandidate.deleteMany({ where: { runId: run.id, brand: items[startAt]!.brand, country: items[startAt]!.country } });
   const agg = await prisma.domainCandidate.groupBy({ by: ["status"], where: { runId: run.id }, _count: { _all: true } });
   let totalChecked = agg.reduce((a, g) => a + g._count._all, 0);
   let totalAvailable = agg.find((g) => g.status === "available")?._count._all ?? 0;
@@ -301,13 +319,85 @@ export async function processDomainRun(run: DomainRun, workerId: string, shouldS
     const rows = await prisma.$queryRaw<Array<{ stopRequested: number | boolean; workerId: string | null }>>`SELECT stopRequested, workerId FROM DomainRun WHERE id = ${run.id}`;
     const r = rows[0];
     if (!r || r.workerId !== workerId) return "lost";
-    const progress: DomainRunProgress = { brand, brandIndex, brandsTotal: items.length, checked: totalChecked, available: totalAvailable, updatedAt: new Date().toISOString() };
+    const progress: DomainRunProgress = { brand, brandIndex, brandsTotal: items.length, checked: totalChecked, available: totalAvailable, updatedAt: new Date().toISOString(), ...(recheckMode ? { recheck: true } : {}) };
     await prisma.$executeRaw`UPDATE DomainRun SET leaseUntil = DATE_ADD(NOW(3), INTERVAL ${RUN_LEASE_SECONDS} SECOND), progress = ${JSON.stringify(progress)}, totalChecked = ${totalChecked}, totalAvailable = ${totalAvailable} WHERE id = ${run.id}`;
     lastLease = Date.now();
     if (Boolean(r.stopRequested)) return "stop";
     if (shouldStop()) return "release";
     return "go";
   };
+
+  /** Перепроверяет строки «не проверен»; результат — сколько стало свободными и что делать дальше. */
+  const recheckRows = async (rows: Array<{ id: string; domain: string }>, label: string, bi: number): Promise<{ available: number; state: "go" | "stop" | "release" | "lost" }> => {
+    let available = 0;
+    for (let i = 0; i < rows.length; i += RECHECK_BATCH) {
+      const batch = rows.slice(i, i + RECHECK_BATCH);
+      let renewing: Promise<unknown> | null = null;
+      const results = await checkDomains(batch.map((r) => r.domain), {
+        onResult: () => {
+          if (Date.now() - lastLease < 20_000 || renewing) return;
+          lastLease = Date.now();
+          renewing = prisma.$executeRaw`UPDATE DomainRun SET leaseUntil = DATE_ADD(NOW(3), INTERVAL ${RUN_LEASE_SECONDS} SECOND) WHERE id = ${run.id} AND workerId = ${workerId}`.catch(() => {}).finally(() => { renewing = null; });
+        },
+      });
+      if (renewing) await renewing;
+      const byDomain = new Map(results.map((r) => [r.domain, r]));
+      const groups = new Map<string, { status: string; source: string; ids: string[] }>();
+      for (const row of batch) {
+        const r = byDomain.get(row.domain);
+        if (!r || r.status === "unknown") continue;
+        const key = `${r.status}|${r.source}`;
+        const g = groups.get(key) ?? { status: r.status, source: r.source, ids: [] };
+        g.ids.push(row.id);
+        groups.set(key, g);
+        if (r.status === "available") available++;
+      }
+      const now = new Date();
+      for (const g of groups.values()) await prisma.domainCandidate.updateMany({ where: { id: { in: g.ids } }, data: { status: g.status, source: g.source, checkedAt: now } });
+      if (Date.now() - lastLease > 20_000 || shouldStop()) {
+        const state = await touch(label, bi);
+        if (state !== "go") return { available, state };
+      }
+    }
+    return { available, state: "go" };
+  };
+
+  /** Раунды допроверки одного бренда с паузами: временный сбой реестра не должен оставлять домены непроверенными. */
+  const recheckBrand = async (item: BrandItem, label: string, bi: number, pauses: number[]): Promise<{ available: number; state: "go" | "stop" | "release" | "lost" }> => {
+    let available = 0;
+    for (const pause of pauses) {
+      const rows = await prisma.domainCandidate.findMany({ where: { runId: run.id, brand: item.brand, country: item.country, status: "unknown" }, select: { id: true, domain: true }, orderBy: { sortOrder: "asc" } });
+      if (!rows.length) break;
+      if (pause) await sleep(pause);
+      const r = await recheckRows(rows, label, bi);
+      available += r.available;
+      totalAvailable += r.available;
+      if (r.state !== "go") return { available, state: r.state };
+    }
+    return { available, state: "go" };
+  };
+
+  if (recheckMode) {
+    for (let bi = startAt; bi < items.length; bi++) {
+      const item = items[bi]!;
+      const label = itemLabel(item);
+      const state = await touch(label, bi);
+      if (state === "lost") return;
+      if (state === "stop") { await stopped(); return; }
+      if (state === "release") { await released(); return; }
+      const r = await recheckBrand(item, label, bi, RECHECK_PAUSES_MS);
+      if (r.state === "lost") return;
+      if (r.state === "stop") { await stopped(); return; }
+      if (r.state === "release") { await released(); return; }
+      const free = await prisma.domainCandidate.count({ where: { runId: run.id, brand: item.brand, country: item.country, status: "available" } });
+      const at = incomplete.indexOf(label);
+      if (free >= settings.perBrand && at >= 0) incomplete.splice(at, 1);
+      if (free < settings.perBrand && at < 0) incomplete.push(label);
+    }
+    const progress: DomainRunProgress = { brand: "", brandIndex: items.length, brandsTotal: items.length, checked: totalChecked, available: totalAvailable, updatedAt: new Date().toISOString() };
+    await prisma.domainRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), workerId: null, leaseUntil: null, stopRequested: false, progress: progress as unknown as Prisma.InputJsonValue, totalChecked, totalAvailable, incompleteBrands: incomplete } });
+    return;
+  }
 
   if (settings.autoResearch) {
     const r = await researchStage(run, settings, touch);
@@ -363,6 +453,11 @@ export async function processDomainRun(run: DomainRun, workerId: string, shouldS
         if (st === "release") { await released(); return; }
       }
     }
+    const retried = await recheckBrand(item, label, bi, RECHECK_PAUSES_MS);
+    found += retried.available;
+    if (retried.state === "lost") return;
+    if (retried.state === "stop") { await stopped(); return; }
+    if (retried.state === "release") { await released(); return; }
     if (found < settings.perBrand && !incomplete.includes(label)) incomplete.push(label);
     await prisma.domainRun.update({ where: { id: run.id }, data: { incompleteBrands: incomplete, totalGenerated: { increment: candidates.length } } });
   }

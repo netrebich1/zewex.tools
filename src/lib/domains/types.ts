@@ -163,6 +163,8 @@ export type DomainRunProgress = {
   checked: number;
   available: number;
   updatedAt: string;
+  /** Допроверка: воркер перепроверяет только домены «не проверен», ничего не стирая */
+  recheck?: boolean;
 };
 
 export const DEFAULT_SETTINGS: DomainRunSettings = {

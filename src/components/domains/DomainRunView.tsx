@@ -2,6 +2,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pollWhileVisible } from "@/lib/poll";
 import { Alert, Badge, Card } from "@/components/ui";
+import { ActionForm } from "@/components/ActionForm";
+import { SubmitButton } from "@/components/ui/SubmitButton";
+import { recheckUnknownDomainsAction } from "@/actions/domains";
 import { STATUS_TONE } from "./DomainsNav";
 import { computeStats, formatCounts, itemsByGeo, rowsByGeo } from "@/lib/domains/selection";
 import { itemKey, RUN_STATUS_LABELS, type DomainRunProgress, type DomainRunSettings } from "@/lib/domains/types";
@@ -187,7 +190,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Проверено доменов", value: run.totalChecked },
+          { label: "Проверено доменов", value: Math.max(0, run.totalChecked - overall.counts.unknown) },
           { label: "Свободно", value: run.totalAvailable },
           { label: "Выбрано", value: overall.counts.selected },
           { label: "Брендов", value: items.length },
@@ -208,8 +211,18 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
       )}
       {run.status === "FAILED" && run.error && <Alert tone="danger">Подбор прерван ошибкой: {run.error}</Alert>}
       {run.status === "STOPPED" && <Alert tone="warn">Подбор остановлен. Проверенные домены сохранены; «Запустить заново» начнёт с чистого листа.</Alert>}
+      {overall.counts.unknown > 0 && !live && (
+        <Alert tone="danger">
+          Не удалось проверить {overall.counts.unknown} доменов: реестры не ответили. Они не считаются ни свободными, ни занятыми, поэтому цифры по брендам занижены.
+          {run.status === "DONE" && (
+            <ActionForm action={recheckUnknownDomainsAction} className="mt-2" hidden={{ id: run.id }}>
+              <SubmitButton className="btn-primary btn-sm" pendingText="…">Допроверить непроверенные</SubmitButton>
+            </ActionForm>
+          )}
+        </Alert>
+      )}
       {run.incompleteBrands.length > 0 && !live && (
-        <Alert tone="warn">Не хватило свободных доменов ({run.settings.perBrand} на бренд) для: {run.incompleteBrands.join(", ")}. Добавьте приставки или зоны и повторите подбор.</Alert>
+        <Alert tone="warn">Не хватило свободных доменов ({run.settings.perBrand} на бренд) для: {run.incompleteBrands.join(", ")}. {overall.counts.unknown > 0 ? "Сначала допроверьте непроверенные домены." : "Добавьте приставки или зоны и повторите подбор."}</Alert>
       )}
       {saveError && <Alert tone="danger">{saveError}</Alert>}
 
@@ -332,6 +345,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
                 </button>
                 {inProgress && <Badge tone="brand">идёт</Badge>}
                 {incomplete && <Badge tone="warn">мало</Badge>}
+                {stats.counts.unknown > 0 && !inProgress && <Badge tone="danger">не проверено {stats.counts.unknown}</Badge>}
                 <span className="shrink-0 text-[12.5px] tabular-nums whitespace-nowrap" title="выбрано / свободно / занято">
                   <b className={stats.counts.selected ? "text-brand" : ""}>{stats.counts.selected}</b>
                   <span className="text-muted"> / </span><b className="text-ok">{stats.counts.available}</b>

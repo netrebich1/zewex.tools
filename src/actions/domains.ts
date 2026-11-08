@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import { createDomainRun, deleteDomainRun, renameDomainRun, requestStopRun, restartDomainRun, settingsFromInput } from "@/lib/domains/runs";
+import { createDomainRun, deleteDomainRun, recheckUnknownDomains, renameDomainRun, requestStopRun, restartDomainRun, settingsFromInput } from "@/lib/domains/runs";
 import type { MinedSuffix, SerpSnapshot } from "@/lib/domains/types";
 
 export type FormState = { error?: string; ok?: string };
@@ -85,6 +85,17 @@ export async function restartDomainRunAction(_p: FormState, f: FormData): Promis
   }
   revalidatePath(`/gambling/domains/runs/${str(f, "id")}`);
   return { ok: "Подбор снова в очереди: прежние результаты стёрты." };
+}
+
+export async function recheckUnknownDomainsAction(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  try {
+    const n = await recheckUnknownDomains(me, str(f, "id"));
+    revalidatePath(`/gambling/domains/runs/${str(f, "id")}`);
+    return { ok: `Допроверка запущена: ${n} доменов. Свободные, занятые и выбор не меняются.` };
+  } catch (e) {
+    return fail(e);
+  }
 }
 
 export async function renameDomainRunAction(_p: FormState, f: FormData): Promise<FormState> {

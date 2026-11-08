@@ -11,6 +11,9 @@
  * Хост, который не резолвится или не принимает соединения (rdap.nic.co), выключается на 10 минут, чтобы не тратить время.
  * Зона, чей RDAP стабильно отвечает дольше SLOW_RDAP_MS (rdap.nic.fr ~5 с на запрос), тоже переходит на DNS — иначе бренд
  * с такой зоной проверяется в десятки раз дольше остальных.
+ *
+ * Один обрыв соединения хост не выключает: нужно несколько быстрых отказов подряд, и пауза короткая. rdap.org не выключается
+ * вообще — он только перенаправляет в реестр, и отказ реестра нельзя приписывать ему.
  */
 import type { AvailabilityStatus } from "./types";
 
@@ -43,6 +46,7 @@ const HOST_INTERVALS: Record<string, number> = {
   "rdap.sidn.nl": 1100,
   "rdap.denic.de": 300,
   "rdap.org": 250,
+  "rdap.registro.br": 700,
 };
 
 /* ---------- Справочник IANA ---------- */
@@ -86,7 +90,19 @@ async function endpointsFor(domain: string): Promise<string[]> {
 /* ---------- Зоны без RDAP и мёртвые хосты ---------- */
 
 /** Зоны, для которых rdap.org ответил «No RDAP service» или RDAP слишком медленный: проверяем только по DNS. */
-const noRdapTlds = new Set<string>();
+const noRdapTlds = new Map<string, number>();
+const SLOW_TLD_MS = 15 * 60_000;
+
+function isNoRdap(tld: string): boolean {
+  const until = noRdapTlds.get(tld);
+  if (until === undefined) return false;
+  if (Date.now() > until) {
+    noRdapTlds.delete(tld);
+    rdapTimes.delete(tld);
+    return false;
+  }
+  return true;
+}
 const SLOW_RDAP_MS = 3000;
 const SLOW_RDAP_SAMPLES = 4;
 /** Время ответа RDAP по зоне (последние ответы), мс. */
@@ -95,10 +111,24 @@ const rdapTimes = new Map<string, number[]>();
 function noteRdapTime(tld: string, ms: number) {
   const list = [...(rdapTimes.get(tld) ?? []), ms].slice(-SLOW_RDAP_SAMPLES);
   rdapTimes.set(tld, list);
-  if (list.length >= SLOW_RDAP_SAMPLES && list.every((t) => t > SLOW_RDAP_MS)) noRdapTlds.add(tld);
+  if (list.length >= SLOW_RDAP_SAMPLES && list.every((t) => t > SLOW_RDAP_MS)) noRdapTlds.set(tld, Date.now() + SLOW_TLD_MS);
 }
-const DEAD_HOST_MS = 10 * 60_000;
+const DEAD_HOST_MS = 60_000;
+const DEAD_HOST_FAILURES = 5;
 const deadHosts = new Map<string, number>();
+/** Быстрые отказы хоста подряд; любой ответ хоста обнуляет счёт. */
+const hostFailures = new Map<string, number>();
+
+function noteHostFailure(host: string) {
+  if (host === "rdap.org") return;
+  const n = (hostFailures.get(host) ?? 0) + 1;
+  if (n < DEAD_HOST_FAILURES) {
+    hostFailures.set(host, n);
+    return;
+  }
+  hostFailures.delete(host);
+  deadHosts.set(host, Date.now() + DEAD_HOST_MS);
+}
 
 function isHostDead(host: string): boolean {
   const until = deadHosts.get(host);
@@ -167,7 +197,7 @@ async function rdapFetch(url: string, tld: string): Promise<Response | null> {
   const host = new URL(url).hostname;
   for (let attempt = 0; attempt <= MAX_429_RETRIES; attempt++) {
     await acquireHost(host);
-    if (noRdapTlds.has(tld)) return null;
+    if (isNoRdap(tld)) return null;
     let res: Response | null = null;
     const started = Date.now();
     try {
@@ -177,10 +207,13 @@ async function rdapFetch(url: string, tld: string): Promise<Response | null> {
         redirect: "follow",
       });
     } catch {
-      // Быстрый отказ (имя не резолвится, соединение отклонено) — хост мёртв, не ходим к нему 10 минут
-      if (Date.now() - started < 3000) deadHosts.set(host, Date.now() + DEAD_HOST_MS);
+      // Быстрый отказ (обрыв, имя не резолвится) считаем по хосту; таймаут — как очень медленный ответ зоны
+      const elapsed = Date.now() - started;
+      if (elapsed < SLOW_RDAP_MS) noteHostFailure(host);
+      else noteRdapTime(tld, elapsed);
       return null;
     }
+    hostFailures.delete(host);
     if (res.status === 429) {
       const ra = Number(res.headers.get("retry-after"));
       const wait = note429(host, Number.isFinite(ra) && ra > 0 ? ra : null);
@@ -230,17 +263,17 @@ export async function checkDomain(domain: string): Promise<AvailabilityResult> {
   const pre = await hasDnsRecords(domain);
   if (pre === true) return { domain, status: "taken", source: "dns" };
   const tld = domain.split(".").pop() ?? "";
-  if (noRdapTlds.has(tld)) return byDnsOnly(domain, pre);
+  if (isNoRdap(tld)) return byDnsOnly(domain, pre);
   for (const url of await endpointsFor(domain)) {
     const res = await rdapFetch(url, tld);
     // Пока ждали очереди, другой запрос выяснил, что у зоны нет RDAP
-    if (noRdapTlds.has(tld)) return byDnsOnly(domain, pre);
+    if (isNoRdap(tld)) return byDnsOnly(domain, pre);
     if (!res) continue;
     if (res.status === 404 && new URL(url).hostname === "rdap.org") {
       // rdap.org отвечает 404 и на «нет такого домена», и на «у зоны нет RDAP» — второе не значит «свободен»
       const body = await res.text().catch(() => "");
       if (/No RDAP service/i.test(body)) {
-        noRdapTlds.add(tld);
+        noRdapTlds.set(tld, Number.POSITIVE_INFINITY);
         return byDnsOnly(domain, pre);
       }
     }
@@ -255,6 +288,8 @@ export async function checkDomain(domain: string): Promise<AvailabilityResult> {
   }
   const dns = pre === null ? await hasDnsRecords(domain) : pre;
   if (dns === true) return { domain, status: "taken", source: "dns" };
+  // Своего RDAP у зоны нет (по справочнику IANA), а rdap.org не ответил: как и для других таких зон, решает DNS
+  if (dns === false && bootstrap && !(await rdapBase(tld))) return { domain, status: "available", source: "dns" };
   return { domain, status: "unknown", source: "none" };
 }
 
