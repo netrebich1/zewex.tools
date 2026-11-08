@@ -27,7 +27,7 @@ const RETRY_PAUSE_MS = 1200;
 /** Лимит размера файла — в оригинале arrayBuffer() без ограничения (аудит 02, п.7.16). */
 export const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 /** Одновременных скачиваний в процессе (семафор по ключу "download"). */
-export const DOWNLOAD_CONCURRENCY = 6;
+export const DOWNLOAD_CONCURRENCY = 12; // 08.11: было 6 — при 45 статьях (декор 25–35 фото) в очереди скачивания ждали 60
 
 export type DownloadOk = { ok: true; bytes: Buffer; url: string; usedThumbnail: boolean; contentType: string; status: number };
 export type DownloadFail = { ok: false; reason: string; status: number; contentType: string };

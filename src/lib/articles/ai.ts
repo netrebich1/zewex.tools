@@ -68,7 +68,15 @@ export class ArticleAiError extends AiError {
  * падает вдвое (не ниже BRAKE_MIN) на BRAKE_COOL_MS; после паузы каждый успешный вызов возвращает +1 до обычной.
  * Плюс короткие повторы на месте (429 бесплатен): статья не уходит в долгий повтор этапа из-за секундной волны.
  */
-const BRAKE_MIN = 4;
+const BRAKE_MIN = 8;
+/**
+ * Тормоз — только на серию (2026-11-08): одиночный 429 / пустой ответ примерно раз в минуту на сотню успешных
+ * держал ключ на BRAKE_MIN всю ночь (к ключу 2–4 вызова при 45 статьях в работе). Теперь нужно BRAKE_HITS
+ * отказов за BRAKE_WINDOW_MS; одиночные отказы гасят повторы на месте.
+ */
+const BRAKE_HITS = 3;
+const BRAKE_WINDOW_MS = 60_000;
+const brakeHits = new Map<string, number[]>();
 /**
  * Параллельность ключа в процессе воркера статей (2026-10-22): общий лимит портала CHAT=6 при 30 статьях и ИИ-модерации
  * на одном ключе держал проверки ИИ в очереди 5–10 мин — сторож снимал их как зависшие. OpenRouter держит больше.
@@ -83,6 +91,12 @@ function keyLimit(keyId: string): number {
 }
 
 function brakeOn(keyId: string): void {
+  const now = Date.now();
+  const hits = (brakeHits.get(keyId) ?? []).filter((t) => now - t < BRAKE_WINDOW_MS);
+  hits.push(now);
+  brakeHits.set(keyId, hits);
+  if (hits.length < BRAKE_HITS) return;
+  brakeHits.set(keyId, []);
   const cur = keyLimit(keyId);
   const limit = Math.max(BRAKE_MIN, Math.floor(cur / 2));
   brakes.set(keyId, { limit, coolUntil: Date.now() + BRAKE_COOL_MS });
