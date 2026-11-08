@@ -81,7 +81,7 @@ const brakeHits = new Map<string, number[]>();
  * Параллельность ключа в процессе воркера статей (2026-10-22): общий лимит портала CHAT=6 при 30 статьях и ИИ-модерации
  * на одном ключе держал проверки ИИ в очереди 5–10 мин — сторож снимал их как зависшие. OpenRouter держит больше.
  */
-const ARTICLE_CHAT_LIMIT = 16;
+const ARTICLE_CHAT_LIMIT = 28; // 08.11: 16 занято постоянно, в очереди к ключу до 30 вызовов
 const BRAKE_COOL_MS = 3 * 60_000;
 const INPLACE_RETRY_MS = [3_000, 10_000];
 const brakes = new Map<string, { limit: number; coolUntil: number }>();
