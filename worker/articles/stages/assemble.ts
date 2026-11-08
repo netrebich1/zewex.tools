@@ -23,6 +23,7 @@ import { focusKeywordOf } from "@/lib/articles/text/vars";
 import { applyQualityPatch, checkArticleQuality, isIntroOutroProblem } from "@/lib/articles/wp/qualityCheck";
 import { introOutro } from "./introOutro";
 import { fixSectionsForQuality } from "./sections";
+import { dedupeCopySections, type CopyDedupeState } from "./copyDedupe";
 import type { ArtStageHandler } from "./index";
 import { INTRO_POS, isWritten, loadActivePhotos, loadPhotoSections, OUTRO_POS } from "./plan";
 
@@ -51,6 +52,17 @@ export const assemble: ArtStageHandler = async (ctx) => {
 
   const count = active.length;
   const keyword = focusKeywordOf(ctx);
+  // Мешап: один проход модели плана по всем секциям сразу против повторов между секциями (v5). Один раз на статью:
+  // итог в cursor.copyDedupe, переписанный текст в ArtSection, повторные сборки бесплатны.
+  const cur = ctx.cursor as Record<string, unknown>;
+  if (cur.copy && !cur.copyDedupe) {
+    await ctx.tick("Проход против повторов");
+    const secs = active.map((s) => ({ id: s.id, position: s.position, heading: s.heading || "", html: s.html || "" }));
+    const state: CopyDedupeState = await dedupeCopySections(ctx, secs, keyword);
+    active.forEach((s, i) => { s.html = secs[i].html; });
+    ctx.cursor = { ...ctx.cursor, copyDedupe: state } as typeof ctx.cursor;
+    await ctx.save({ cursor: ctx.cursor });
+  }
   const caption = captionCfgFrom(recipe.photoSearch?.captionMode, recipe.photoSearch?.captionTemplate);
   // Детерминированная чистка (тире, американское написание, парность <p>) — и для статей, написанных до неё.
   const isCopy = !!(ctx.cursor as Record<string, unknown>).copy;
