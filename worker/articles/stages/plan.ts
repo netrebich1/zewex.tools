@@ -15,6 +15,7 @@ import { resolvePrompt, fillPrompt, stageModel } from "@/lib/articles/prompts";
 import { sanitizeTopic, stripInternalLabels, uniqueHeading } from "@/lib/articles/text/textGuards";
 import { ensureCountToken } from "@/lib/articles/text/countToken";
 import { parseModelJsonSafe } from "@/lib/articles/text/jsonRepair";
+import { diversifyDescriptions } from "@/lib/copy/diversify";
 import { slugify } from "@/lib/articles/text/slug";
 import { OUTRO_HEADING } from "@/lib/articles/text/html";
 import { buildPromptVars, contractsFor, focusKeywordOf, isOutfitsNiche, loadProfile, topicOf, type JsonRecord } from "@/lib/articles/text/vars";
@@ -184,6 +185,23 @@ export const plan: ArtStageHandler = async (ctx) => {
   if (late.described) {
     photos = await loadActivePhotos(article.id);
     ctx.log(`позднее описание: ${late.described} из ${late.needed} фото, ${late.calls} вызовов, $${late.costUsd.toFixed(4)}`);
+  }
+  // Мешап: одинаковые фразы описателя («fine, wavy texture» у десяти кадров) размножаются кодом, иначе план и писатель
+  // повторяют их в каждой секции (тест v3, 07.11.2026). Слова темы не трогаются.
+  if (isCopy) {
+    const lock = (focusKeywordOf(ctx) || article.keyword).toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    const withDesc = photos.filter((p) => String(p.description ?? "").trim());
+    const dv = diversifyDescriptions(withDesc.map((p) => String(p.description)), lock);
+    let n = 0;
+    for (let i = 0; i < withDesc.length; i++) {
+      if (dv.out[i] === withDesc[i].description) continue;
+      await prisma.artPhoto.update({ where: { id: withDesc[i].id }, data: { description: dv.out[i] } });
+      n++;
+    }
+    if (n) {
+      ctx.log(`мешап: описания разнообразены в ${n} кадрах; фразы: ${dv.phrases.slice(0, 6).map((x) => `«${x.phrase}» ×${x.count}`).join(", ")}`);
+      photos = await loadActivePhotos(article.id);
+    }
   }
   // Мешап: коллажи и кадры, которые так и не описались, в статью не идут (их заголовки получались общими и неверными),
   // если после этого остаётся не меньше 15 фото.
