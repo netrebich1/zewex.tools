@@ -12,6 +12,7 @@ import type { RunDomainRow } from "@/lib/domains/runs";
 import { brandTierEntries, brandTldEntries, modifierPool } from "@/lib/domains/generator";
 import { RunAnalysis } from "./RunAnalysis";
 import { BrandDomains, DEFAULT_FILTER, filterRows, kindOf, MODE_OPTIONS, SRC_OPTIONS, TIER_OPTIONS, type DomainFilter } from "./BrandDomains";
+import { SelectedDomains } from "./SelectedDomains";
 import { recommendDomains } from "@/lib/domains/recommend";
 
 export type RunPayload = {
@@ -295,13 +296,16 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
               <button key={v} type="button" className={`tab ${view === v ? "active" : ""}`} onClick={() => setView(v)}>{label}</button>
             ))}
           </div>
-          <div className="ml-auto flex gap-2">
-            <button type="button" className="btn-ghost btn-sm" onClick={() => setExpanded(new Set(allKeys(run.settings)))}>Развернуть все</button>
-            <button type="button" className="btn-ghost btn-sm" onClick={() => setExpanded(new Set())}>Свернуть все</button>
-          </div>
+          {view !== "selected" && (
+            <div className="ml-auto flex gap-2">
+              <button type="button" className="btn-ghost btn-sm" onClick={() => setExpanded(new Set(allKeys(run.settings)))}>Развернуть все</button>
+              <button type="button" className="btn-ghost btn-sm" onClick={() => setExpanded(new Set())}>Свернуть все</button>
+            </div>
+          )}
         </div>
       )}
-      {domains.length > 0 && (
+      {domains.length > 0 && view === "selected" && <SelectedDomains items={items} byBrand={byBrand} labelOf={labelOf} query={q} onToggle={toggle} />}
+      {domains.length > 0 && view !== "selected" && (
         <div className="card flex flex-wrap items-center gap-2 px-3 py-2 text-[13px]">
           <span className="font-semibold">Для всех брендов:</span>
           <select className="input !w-auto !py-1 text-[13px]" value={globalFilter.src} onChange={(e) => setAllFilters({ ...globalFilter, src: e.target.value as DomainFilter["src"] })}>
@@ -326,7 +330,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
         </div>
       )}
 
-      <div className={`grid gap-3 ${cols === 1 ? "" : cols === 2 ? "md:grid-cols-2" : "md:grid-cols-2 xl:grid-cols-3"}`}>
+      {view !== "selected" && <div className={`grid gap-3 ${cols === 1 ? "" : cols === 2 ? "md:grid-cols-2" : "md:grid-cols-2 xl:grid-cols-3"}`}>
         {items.map((item) => {
           const brand = item.brand;
           const key = itemKey(item.brand, item.country);
@@ -334,9 +338,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
           const rows = byBrand.get(key) ?? [];
           if (q && !brand.toLowerCase().includes(q) && !rows.some((d) => d.domain.includes(q))) return null;
           const stats = computeStats(rows);
-          const visible = rows.filter((d) => (view === "all" || (view === "selected" ? d.selected : view === "available" ? d.status === "available" : d.status === "taken")) && (!q || d.domain.includes(q) || brand.toLowerCase().includes(q)));
-          // Во вкладке «Выбранные» бренды без выбора не показываем
-          if (view === "selected" && !rows.some((d) => d.selected)) return null;
+          const visible = rows.filter((d) => (view === "all" || (view === "available" ? d.status === "available" : d.status === "taken")) && (!q || d.domain.includes(q) || brand.toLowerCase().includes(q)));
           const open = expanded.has(key);
           const filter = brandFilters[key] ?? globalFilter;
           const rec = recFor(key, visible, filter);
@@ -397,7 +399,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
             </section>
           );
         })}
-      </div>
+      </div>}
     </div>
   );
 }
