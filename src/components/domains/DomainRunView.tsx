@@ -12,7 +12,7 @@ import type { RunDomainRow } from "@/lib/domains/runs";
 import { brandTierEntries, brandTldEntries, modifierPool } from "@/lib/domains/generator";
 import { RunAnalysis } from "./RunAnalysis";
 import { BrandDomains, DEFAULT_FILTER, filterRows, kindOf, MODE_OPTIONS, SRC_OPTIONS, TIER_OPTIONS, type DomainFilter } from "./BrandDomains";
-import { SelectedDomains } from "./SelectedDomains";
+import { BrandSelected, SelectedDomains } from "./SelectedDomains";
 import { recommendDomains } from "@/lib/domains/recommend";
 
 export type RunPayload = {
@@ -56,6 +56,8 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
   const [globalFilter, setGlobalFilter] = useState<DomainFilter>(DEFAULT_FILTER);
   const [brandFilters, setBrandFilters] = useState<Record<string, DomainFilter>>({});
   const [cols, setCols] = useState<1 | 2 | 3>(3);
+  // Карточки брендов, переключённые на список выбранных доменов
+  const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
   const pending = useRef(new Map<string, boolean>());
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -340,6 +342,8 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
           const stats = computeStats(rows);
           const visible = rows.filter((d) => (view === "all" || (view === "available" ? d.status === "available" : d.status === "taken")) && (!q || d.domain.includes(q) || brand.toLowerCase().includes(q)));
           const open = expanded.has(key);
+          const showSelected = selectedCards.has(key);
+          const toggleShowSelected = () => setSelectedCards((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
           const filter = brandFilters[key] ?? globalFilter;
           const rec = recFor(key, visible, filter);
           const fullLabel = `${item.brand} · ${item.country.toUpperCase()}`;
@@ -369,7 +373,7 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
                     <p className="help px-3 py-3">Ещё не проверялся</p>
                   ) : (
                     <>
-                      <BrandDomains
+                      {showSelected ? <BrandSelected rows={rows} onToggle={toggle} /> : <BrandDomains
                         rows={visible}
                         sources={sources.get(key)}
                         zoneSources={zoneSources.get(key)}
@@ -380,15 +384,20 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
                         brand={item.brand}
                         top10={item.research?.top10}
                         top={item.research?.competitorDomains}
-                      />
+                      />}
                       <div className="help px-3 py-1.5 border-t border-line truncate" title={`Зоны: выбрано ${formatCounts(stats.zones.selected)} · свободно ${formatCounts(stats.zones.available)}\nПриставки: выбрано ${formatCounts(stats.suffixes.selected)} · свободно ${formatCounts(stats.suffixes.available)}`}>
                         {stats.counts.selected ? <>зоны {formatCounts(stats.zones.selected)} · приставки {formatCounts(stats.suffixes.selected)}</> : <>свободно: {formatCounts(stats.zones.available)}</>}
                       </div>
                       {!live && (
                         <div className="flex flex-wrap gap-1.5 px-3 py-2 border-t border-line">
-                          <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(visible.filter((d) => rec.has(d.id)), true)} title="Отметить рекомендованные под текущий фильтр"><span className="sm:hidden">★ Реком.</span><span className="hidden sm:inline">★ Выбрать рекомендованные</span></button>
-                          <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(filterRows(visible, sources.get(key), filter), true)} title="Выбрать свободные домены под текущий фильтр">Видимые</button>
-                          <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(filterRows(visible, sources.get(key), filter), false)}>Снять</button>
+                          {!showSelected && (
+                            <>
+                              <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(visible.filter((d) => rec.has(d.id)), true)} title="Отметить рекомендованные под текущий фильтр"><span className="sm:hidden">★ Реком.</span><span className="hidden sm:inline">★ Выбрать рекомендованные</span></button>
+                              <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(filterRows(visible, sources.get(key), filter), true)} title="Выбрать свободные домены под текущий фильтр">Видимые</button>
+                              <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => toggleRows(filterRows(visible, sources.get(key), filter), false)}>Снять</button>
+                            </>
+                          )}
+                          <button type="button" className={`${showSelected ? "btn-primary" : "btn-ghost"} btn-sm !px-2.5 !py-1 text-[12.5px]`} onClick={toggleShowSelected} title={showSelected ? "Вернуться к списку доменов бренда" : "Показать только выбранные домены бренда"}>{showSelected ? "← Все домены" : `✓ Выбранные · ${stats.counts.selected}`}</button>
                           <button type="button" className="btn-primary btn-sm !px-2.5 !py-1 text-[12.5px] ml-auto" disabled={!!aiBusy || stats.counts.available === 0} onClick={() => runAi([key], key)}>{aiBusy === key ? "ИИ…" : "ИИ-отбор"}</button>
                         </div>
                       )}
