@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "plugins": [], "incremental": false },
+  "include": ["worker/**/*.ts", "src/lib/**/*.ts"],
+  "exclude": ["node_modules", ".next"]
+}

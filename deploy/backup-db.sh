@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
-# Dump the zewex_tools database to /var/backups/zewex-tools and keep 14 days.
+# Dump the zewex_tools database to /var/backups/zewex-tools: daily dumps kept 7 days, predeploy dumps 48 hours.
 # Installed on the server by deploy/deploy.sh; also run before every schema push.
 # Runs as root: uses MariaDB unix-socket auth, falls back to the app credentials from .env.
 # Usage: backup-db.sh [label]
 set -euo pipefail
 APP=/var/www/zewex_tools_usr/data/app
 DEST=/var/backups/zewex-tools
-KEEP_DAYS=14
+KEEP_DAYS=7
+PREDEPLOY_HOURS=48
+PREDEPLOY_MIN=3
+PREDEPLOY_GAP_MIN=20
 LABEL=${1:-daily}
+
+# Several deploys in a row: one fresh predeploy dump covers them all.
+if [ "$LABEL" = predeploy ] && [ -n "$(find "$DEST" -name '*-predeploy.sql.gz' -mmin -"$PREDEPLOY_GAP_MIN" 2>/dev/null | head -1)" ]; then
+  echo "backup: predeploy dump younger than ${PREDEPLOY_GAP_MIN} min exists, skipping"
+  exit 0
+fi
 
 # Parse DATABASE_URL with node (handles URL-encoded passwords), never with shell string ops.
 { read -r DB_USER; read -r DB_PASS; read -r DB_HOST; read -r DB_PORT; read -r DB_NAME; } < <(node "$APP/deploy/db-url.mjs" "$APP/.env")
@@ -29,5 +38,9 @@ fi
 chmod 600 "$OUT"
 # A dump of a real database is never tiny; refuse to count an empty file as a backup.
 [ "$(stat -c %s "$OUT")" -gt 200 ] || { echo "backup looks empty: $OUT" >&2; exit 1; }
-find "$DEST" -name "${DB_NAME}-*.sql.gz" -mtime +"$KEEP_DAYS" -delete
+# Retention: daily dumps for KEEP_DAYS days; predeploy dumps for PREDEPLOY_HOURS, but never fewer than the newest PREDEPLOY_MIN.
+find "$DEST" -name "${DB_NAME}-*-daily.sql.gz" -mtime +$((KEEP_DAYS - 1)) -delete
+ls -1t "$DEST"/"${DB_NAME}"-*-predeploy.sql.gz 2>/dev/null | tail -n +$((PREDEPLOY_MIN + 1)) | while read -r f; do
+  if [ -n "$(find "$f" -mmin +$((PREDEPLOY_HOURS * 60)))" ]; then rm -f "$f"; fi
+done
 echo "backup: $OUT ($(du -h "$OUT" | cut -f1))"
