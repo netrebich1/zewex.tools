@@ -11,7 +11,7 @@ import { checkDomains } from "./availability";
 import { DEFAULT_SETTINGS, getCountry, itemKey, LIMITS, type BrandItem, type BrandModifier, type BrandResearchSummary, RESEARCH_SOURCE_LABELS, type ResearchSourceKind, type CountryPreset, type DomainRunProgress, type DomainRunSettings, type LetterMode, type MinedSuffix, type SerpSnapshot } from "./types";
 import { rankDomainsWithAi, type AiPick } from "./ai";
 import { balancePicks } from "./selection";
-import { researchBrand, type BrandResearch } from "./research";
+import { brandTop10, researchBrand, type BrandResearch } from "./research";
 import { keptModifiers, researchSummary } from "./researchSummary";
 import { domainsKeyTeamId } from "./keyTeam";
 import { domainsOfBrand } from "./mining";
@@ -61,6 +61,7 @@ function normalizeResearch(raw: unknown): BrandResearchSummary | undefined {
     queries: Math.max(0, Number(r.queries) || 0),
     competitorDomains: arr<unknown>(r.competitorDomains, 20).map(String),
     competitorTlds: arr<{ value?: unknown; count?: unknown }>(r.competitorTlds, 10).map((t) => ({ value: String(t?.value ?? ""), count: Number(t?.count) || 0 })).filter((t) => t.value),
+    ...(Array.isArray(r.top10) ? { top10: arr<{ pos?: unknown; domain?: unknown; title?: unknown; brand?: unknown }>(r.top10, 10).map((t) => ({ pos: Number(t?.pos) || 0, domain: String(t?.domain ?? ""), title: String(t?.title ?? "").slice(0, 120), brand: t?.brand === true })).filter((t) => t.domain) } : {}),
     rejected: arr<{ suffix?: unknown; word?: unknown; volume?: unknown; reason?: unknown }>(r.rejected, 40).map((x) => ({ suffix: String(x?.suffix ?? ""), word: String(x?.word ?? x?.suffix ?? ""), volume: Number(x?.volume) || 0, reason: String(x?.reason ?? "").slice(0, 120) })).filter((x) => x.suffix),
     errors: arr<unknown>(r.errors, 5).map((e) => String(e).slice(0, 300)),
     costUsd: Number(r.costUsd) || 0,
@@ -262,6 +263,32 @@ export async function recheckUnknownDomains(me: CurrentUser, id: string): Promis
   const n = await prisma.domainRun.updateMany({ where: { id, status: "DONE" }, data: { status: "QUEUED", stopRequested: false, progress: progress as unknown as Prisma.InputJsonValue, error: null, workerId: null, leaseUntil: null, finishedAt: null } });
   if (n.count !== 1) throw new Error("Подбор уже запущен");
   return unknown;
+}
+
+const TOP10_REFRESH_MAX = 40;
+const TOP10_PARALLEL = 6;
+
+/** Снять TOP-10 для брендов подбора, у которых его нет (около $0.002–0.004 на бренд). Домены и выбор не меняются. */
+export async function refreshRunTop10(me: CurrentUser, id: string): Promise<{ done: number; failed: string[]; left: number }> {
+  const run = await requireRun(me, id);
+  if (run.status === "QUEUED" || run.status === "RUNNING") throw new Error("Дождитесь окончания подбора");
+  const settings = parseSettings(run.settings);
+  const missing = settings.items.filter((it) => !it.research?.top10?.length);
+  if (!missing.length) throw new Error("TOP-10 уже есть у всех брендов");
+  const todo = missing.slice(0, TOP10_REFRESH_MAX);
+  const ctx = { userId: run.createdById, teamId: await domainsKeyTeamId() };
+  const failed: string[] = [];
+  let done = 0;
+  for (let i = 0; i < todo.length; i += TOP10_PARALLEL) {
+    await Promise.all(todo.slice(i, i + TOP10_PARALLEL).map(async (item) => {
+      const r = await brandTop10(ctx, item.brand, item.country);
+      if (!r.ok || !r.top10.length) { failed.push(itemLabel(item)); return; }
+      item.research = { ...(item.research ?? { origin: "auto" as const, at: new Date().toISOString(), queries: 0, rejected: [], errors: [], costUsd: 0 }), top10: r.top10, competitorDomains: r.competitorDomains.slice(0, 20), competitorTlds: r.tlds.slice(0, 10) };
+      done++;
+    }));
+  }
+  await prisma.domainRun.update({ where: { id }, data: { settings: settings as unknown as Prisma.InputJsonValue } });
+  return { done, failed, left: missing.length - todo.length };
 }
 
 /* ---------- Выполнение (воркер) ---------- */

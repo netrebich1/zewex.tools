@@ -67,6 +67,8 @@ export const RESEARCH_SOURCE_LABELS: Record<ResearchSourceKind, string> = {
 };
 
 /** Итог сбора ключей и выдачи по бренду: что нашли, что взяли, что отбросили. */
+export type Top10Entry = { pos: number; domain: string; title: string; brand: boolean };
+
 export type BrandResearchSummary = {
   /** auto — собрал подбор перед проверкой; form — собрали вручную в форме */
   origin: "auto" | "form";
@@ -76,6 +78,8 @@ export type BrandResearchSummary = {
   /** Домены TOP-10 Google с брендом в адресе */
   competitorDomains: string[];
   competitorTlds: Array<{ value: string; count: number }>;
+  /** Вся выдача TOP-10 по бренду в стране, по порядку; brand — бренд есть в адресе */
+  top10?: Top10Entry[];
   /** Слова, которые ИИ (или вы) отбросили, с причиной */
   rejected: Array<{ suffix: string; word: string; volume: number; reason: string }>;
   errors: string[];

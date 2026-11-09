@@ -4,7 +4,7 @@ import { pollWhileVisible } from "@/lib/poll";
 import { Alert, Badge, Card } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { recheckUnknownDomainsAction } from "@/actions/domains";
+import { recheckUnknownDomainsAction, refreshRunTop10Action } from "@/actions/domains";
 import { STATUS_TONE } from "./DomainsNav";
 import { computeStats, formatCounts, itemsByGeo, rowsByGeo } from "@/lib/domains/selection";
 import { itemKey, RUN_STATUS_LABELS, type DomainRunProgress, type DomainRunSettings } from "@/lib/domains/types";
@@ -221,6 +221,14 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
           )}
         </Alert>
       )}
+      {!live && items.some((it) => !it.research?.top10?.length) && (
+        <Alert tone="warn">
+          У {items.filter((it) => !it.research?.top10?.length).length} брендов нет снимка TOP-10 Google: домены, зоны и приписки выдачи не показаны. Снять выдачу — около $0.004 на бренд, домены и выбор не меняются.
+          <ActionForm action={refreshRunTop10Action} className="mt-2" hidden={{ id: run.id }}>
+            <SubmitButton className="btn-primary btn-sm" pendingText="Снимаю…">Снять TOP-10</SubmitButton>
+          </ActionForm>
+        </Alert>
+      )}
       {run.incompleteBrands.length > 0 && !live && (
         <Alert tone="warn">Не хватило свободных доменов ({run.settings.perBrand} на бренд) для: {run.incompleteBrands.join(", ")}. {overall.counts.unknown > 0 ? "Сначала допроверьте непроверенные домены." : "Добавьте приставки или зоны и повторите подбор."}</Alert>
       )}
@@ -367,6 +375,8 @@ export function DomainRunView({ initial }: { initial: RunPayload }) {
                         setFilter={(f) => setBrandFilters((prev) => ({ ...prev, [key]: f }))}
                         onToggle={toggle}
                         rec={rec}
+                        brand={item.brand}
+                        top10={item.research?.top10}
                         top={item.research?.competitorDomains}
                       />
                       <div className="help px-3 py-1.5 border-t border-line truncate" title={`Зоны: выбрано ${formatCounts(stats.zones.selected)} · свободно ${formatCounts(stats.zones.available)}\nПриставки: выбрано ${formatCounts(stats.suffixes.selected)} · свободно ${formatCounts(stats.suffixes.available)}`}>

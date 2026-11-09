@@ -50,6 +50,18 @@ export function brandForms(brands: string[]): string[] {
 }
 
 /** Домен идёт в анализ, только если в его метке есть бренд (слитно или через дефис). trustpilot, x.com — отбрасываются. */
+/**
+ * Настоящий домен результата выдачи. DataForSEO с ноября 2026 отдаёт для части выдач domain = google.com и url = google.com/goto?url=…,
+ * а реальный адрес остаётся только в breadcrumb («https://melbet-cl.com › ...»).
+ */
+export function organicDomain(it: { domain?: string; url?: string; breadcrumb?: string | null }): string {
+  const clean = (d: string) => d.toLowerCase().replace(/^www\./, "");
+  const domain = clean(it.domain ?? "");
+  if (domain && !/\/goto\?/.test(it.url ?? "")) return domain;
+  const m = /^(?:https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})/i.exec((it.breadcrumb ?? "").trim());
+  return m ? clean(m[1]!) : "";
+}
+
 export function domainHasBrand(domain: string, brands: string[]): boolean {
   const parts = domain.toLowerCase().split(".").slice(0, -1);
   const label = parts.join("-").replace(/[^a-z0-9-]/g, "");
@@ -110,9 +122,18 @@ export function domainsOfBrand(domains: string[], brand: string): string[] {
 }
 
 /** Зона домена: всё после первой точки (co.uk, com). */
+/** Зона домена: последняя метка или двухуровневая вида com.br, co.uk; поддомены в зону не входят. */
 export function tldOf(domain: string): string {
-  const i = domain.indexOf(".");
-  return i === -1 ? "—" : domain.slice(i + 1).toLowerCase();
+  const p = domain.toLowerCase().split(".");
+  if (p.length >= 3 && p[p.length - 1]!.length === 2 && /^(com|co|net|org|gov|gob|edu|ac)$/.test(p[p.length - 2]!)) return p.slice(-2).join(".");
+  return p[p.length - 1] ?? "";
+}
+
+/** Основной домен без поддоменов: ar.melbet.com → melbet.com, melbet.uptodown.com → uptodown.com. */
+export function registrableDomain(domain: string): string {
+  const zone = tldOf(domain);
+  const labels = domain.toLowerCase().slice(0, -zone.length - 1).split(".");
+  return `${labels[labels.length - 1]}.${zone}`;
 }
 
 /** Приставки домена: остаток метки после вырезания бренда, разбитый по дефисам. */

@@ -23,6 +23,7 @@ export function researchSummary(r: BrandResearch, kept: Set<string>, origin: Bra
     queries: r.queries,
     competitorDomains: r.competitorDomains.slice(0, 20),
     competitorTlds: r.tlds.slice(0, 10),
+    ...(r.top10 ? { top10: r.top10.slice(0, 10) } : {}),
     rejected: r.modifiers.filter((m) => !kept.has(m.suffix)).slice(0, 40).map((m) => ({ suffix: m.suffix, word: m.word, volume: m.volume, reason: (m.reason || "не взято").slice(0, 120) })),
     errors: r.errors.slice(0, 5),
     costUsd: Math.round(r.costUsd * 10000) / 10000,

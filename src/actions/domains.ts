@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import { createDomainRun, deleteDomainRun, recheckUnknownDomains, renameDomainRun, requestStopRun, restartDomainRun, settingsFromInput } from "@/lib/domains/runs";
+import { createDomainRun, deleteDomainRun, recheckUnknownDomains, refreshRunTop10, renameDomainRun, requestStopRun, restartDomainRun, settingsFromInput } from "@/lib/domains/runs";
 import type { MinedSuffix, SerpSnapshot } from "@/lib/domains/types";
 
 export type FormState = { error?: string; ok?: string };
@@ -93,6 +93,18 @@ export async function recheckUnknownDomainsAction(_p: FormState, f: FormData): P
     const n = await recheckUnknownDomains(me, str(f, "id"));
     revalidatePath(`/gambling/domains/runs/${str(f, "id")}`);
     return { ok: `Допроверка запущена: ${n} доменов. Свободные, занятые и выбор не меняются.` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function refreshRunTop10Action(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  try {
+    const r = await refreshRunTop10(me, str(f, "id"));
+    revalidatePath(`/gambling/domains/runs/${str(f, "id")}`);
+    const tail = [r.failed.length ? `без данных: ${r.failed.join(", ")}` : "", r.left ? `осталось ${r.left} — нажмите ещё раз` : ""].filter(Boolean).join("; ");
+    return { ok: `TOP-10 снят для ${r.done} брендов${tail ? `; ${tail}` : ""}.` };
   } catch (e) {
     return fail(e);
   }

@@ -9,7 +9,8 @@ import { runSlot, type ResolvedSlot } from "@/lib/run";
 import { resolveDomainsSlot } from "./keyTeam";
 import { parseJsonLenient } from "@/lib/pins/ai/json";
 import { brandWords, cleanSuffix, isThemeWord, sanitizeLabel } from "./generator";
-import { domainHasBrand, mineSuffixes, tldOf } from "./mining";
+import type { Top10Entry } from "./types";
+import { domainHasBrand, mineSuffixes, organicDomain, registrableDomain, tldOf } from "./mining";
 import { getCountry, isGeoSuffix, LIMITS, PROJECT_SLUG, SLOT_AI, SLOT_SERP_DFS, type ResearchSourceKind } from "./types";
 
 /** Самая дешёвая модель, которой хватает на классификацию слов. */
@@ -39,6 +40,8 @@ export type BrandResearch = {
   /** Домены TOP-10 с брендом и их зоны — подсказка, какие зоны добавить */
   competitorDomains: string[];
   tlds: Array<{ value: string; count: number }>;
+  /** Вся выдача TOP-10, по порядку */
+  top10?: Top10Entry[];
   errors: string[];
   costUsd: number;
 };
@@ -83,15 +86,30 @@ async function autocomplete(ctx: Ctx, pre: ResolvedSlot, brand: string, loc: num
 
 /** TOP-10: домены конкурентов с брендом и «похожие запросы». */
 async function serp(ctx: Ctx, pre: ResolvedSlot, brand: string, loc: number, lang: string) {
-  const r = await dfs(ctx, pre, "serp/google/organic/live/advanced", [{ keyword: brand, location_code: loc, language_code: lang, depth: 10 }]);
-  type Item = { type?: string; domain?: string; items?: Array<string | { title?: string }> };
-  const items = r.ok ? ((r.data as Task<{ items?: Item[] }>).result?.[0]?.items ?? []) : [];
+  type Item = { type?: string; domain?: string; url?: string; breadcrumb?: string | null; title?: string; items?: Array<string | { title?: string }> };
+  const request = (device: "desktop" | "mobile") => dfs(ctx, pre, "serp/google/organic/live/advanced", [{ keyword: brand, location_code: loc, language_code: lang, depth: 10, device }]);
+  const itemsOf = (x: { ok: boolean; data: unknown }) => (x.ok ? ((x.data as Task<{ items?: Item[] }>).result?.[0]?.items ?? []) : []);
+  const r = await request("desktop");
+  let items = itemsOf(r);
+  let cost = r.cost;
+  const distinct = (list: Item[]) => new Set(list.filter((it) => it.type === "organic").map((it) => organicDomain(it)).filter(Boolean)).size;
+  // Google часто отдаёт по брендовому запросу 2–8 результатов, и от запроса к запросу по-разному: добираем до десятка
+  for (const device of ["mobile", "desktop"] as const) {
+    if (!r.ok || distinct(items) >= 8) break;
+    const more = await request(device);
+    cost += more.cost;
+    items = [...items, ...itemsOf(more)];
+  }
   const domains: string[] = [];
+  const titles = new Map<string, string>();
   const related: Query[] = [];
   for (const it of items) {
-    if (it.type === "organic" && it.domain) {
-      const d = it.domain.toLowerCase().replace(/^www\./, "");
-      if (!domains.includes(d)) domains.push(d);
+    if (it.type === "organic") {
+      const d = organicDomain(it);
+      if (d && !domains.includes(d) && domains.length < 10) {
+        domains.push(d);
+        titles.set(d, String(it.title ?? "").slice(0, 120));
+      }
     }
     if (it.type === "related_searches" || it.type === "people_also_search") {
       for (const x of it.items ?? []) {
@@ -100,7 +118,27 @@ async function serp(ctx: Ctx, pre: ResolvedSlot, brand: string, loc: number, lan
       }
     }
   }
-  return { ...r, domains, queries: related };
+  const top10: Top10Entry[] = domains.map((domain, i) => ({ pos: i + 1, domain, title: titles.get(domain) ?? "", brand: domainHasBrand(registrableDomain(domain), [brand]) }));
+  return { ...r, cost, domains, top10, queries: related };
+}
+
+/** Только снимок TOP-10 по бренду в его стране (для подборов, у которых выдача не сохранилась). */
+export async function brandTop10(ctx: Ctx, brand: string, country: string): Promise<{ ok: boolean; error?: string; top10: Top10Entry[]; competitorDomains: string[]; tlds: Array<{ value: string; count: number }> }> {
+  const empty = { top10: [], competitorDomains: [], tlds: [] };
+  const c = getCountry(country);
+  if (!c) return { ok: false, error: `Страна «${country}» не найдена`, ...empty };
+  const pre = await resolveDomainsSlot(ctx.userId, SLOT_SERP_DFS);
+  if (!pre.ok) return { ok: false, error: "DataForSEO не подключён к «Подбору доменов»", ...empty };
+  const sp = await serp(ctx, pre.value, brand, c.locationCode, c.languageCode);
+  if (!sp.ok) return { ok: false, error: sp.error, ...empty };
+  const competitorDomains = sp.top10.filter((t) => t.brand).map((t) => t.domain);
+  return { ok: true, top10: sp.top10, competitorDomains, tlds: countTlds(competitorDomains) };
+}
+
+function countTlds(domains: string[]): Array<{ value: string; count: number }> {
+  const tl = new Map<string, number>();
+  for (const d of domains) tl.set(tldOf(d), (tl.get(tldOf(d)) ?? 0) + 1);
+  return Array.from(tl.entries()).map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
 }
 
 /** Остаток запроса после бренда → слова-кандидаты (по одному и склейкой из двух: free spins → freespins). */
@@ -231,10 +269,9 @@ export async function researchBrand(ctx: Ctx, brand: string, country: string, op
   out.queries = queries.length;
   const mods = extractModifiers(brand, queries);
 
-  out.competitorDomains = sp.domains.filter((d) => domainHasBrand(d, [brand]));
-  const tl = new Map<string, number>();
-  for (const d of out.competitorDomains) tl.set(tldOf(d), (tl.get(tldOf(d)) ?? 0) + 1);
-  out.tlds = Array.from(tl.entries()).map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
+  out.competitorDomains = sp.top10.filter((t) => t.brand).map((t) => t.domain);
+  out.tlds = countTlds(out.competitorDomains);
+  out.top10 = sp.top10;
   for (const m of mineSuffixes(out.competitorDomains, [brand])) {
     const e = mods.get(m.suffix) ?? { suffix: m.suffix, word: m.suffix, volume: 0, count: 0, query: m.examples[0] ?? "", sources: [] as ResearchSource[] };
     e.count += m.count;

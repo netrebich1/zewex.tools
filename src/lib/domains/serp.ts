@@ -7,7 +7,7 @@
 import { runSlot, type ResolvedSlot } from "@/lib/run";
 import { resolveDomainsSlot } from "./keyTeam";
 import { getCountry, LIMITS, PROJECT_SLUG, SLOT_SERP_API, SLOT_SERP_DFS, type SerpSnapshot } from "./types";
-import { domainHasBrand, mineSuffixes } from "./mining";
+import { domainHasBrand, mineSuffixes, organicDomain } from "./mining";
 
 export type SerpCtx = { userId: string; teamId?: string | null; refId?: string };
 
@@ -34,14 +34,14 @@ async function viaDataForSeo(ctx: SerpCtx, pre: ResolvedSlot, keyword: string, c
     pre,
   });
   if (!res.ok) return { ok: false, error: res.error ?? `DataForSEO: HTTP ${res.status}` };
-  const data = res.data as { tasks?: Array<{ status_code?: number; status_message?: string; result?: Array<{ items?: Array<{ type?: string; domain?: string; url?: string; rank_group?: number }> }> }> };
+  const data = res.data as { tasks?: Array<{ status_code?: number; status_message?: string; result?: Array<{ items?: Array<{ type?: string; domain?: string; url?: string; breadcrumb?: string | null; rank_group?: number }> }> }> };
   const task = data.tasks?.[0];
   if (!task || (task.status_code && task.status_code !== 20000)) return { ok: false, error: task?.status_message ?? "DataForSEO: пустой ответ" };
   const items = task.result?.[0]?.items ?? [];
   const domains: string[] = [];
   for (const it of items) {
     if (it.type !== "organic") continue;
-    const host = (it.domain ?? hostOf(it.url ?? "")).toLowerCase().replace(/^www\./, "");
+    const host = organicDomain(it) || hostOf(it.url ?? "").toLowerCase().replace(/^www\./, "");
     if (host && !domains.includes(host)) domains.push(host);
     if (domains.length >= 10) break;
   }

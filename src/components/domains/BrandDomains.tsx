@@ -1,4 +1,6 @@
 "use client";
+import { mineSuffixes, tldOf } from "@/lib/domains/mining";
+import type { Top10Entry } from "@/lib/domains/types";
 import { useMemo } from "react";
 import type { RunDomainRow } from "@/lib/domains/runs";
 import { PATTERN_LABELS, SUFFIX_SOURCE_TAGS, TLD_SOURCE_TAGS, type CandidatePattern, type SuffixSource, type SuffixSourceKind, type TldSource } from "@/lib/domains/types";
@@ -25,15 +27,64 @@ type Props = {
   onToggle: (id: string, selected: boolean) => void;
   /** Рекомендованные к покупке под текущий фильтр: id → почему */
   rec: Map<string, string>;
-  /** Домены с брендом в TOP-10 Google по бренду (из сбора ключей) */
+  /** Бренд карточки: по нему из доменов TOP-10 выделяются приписки */
+  brand: string;
+  /** Выдача TOP-10 по бренду */
+  top10?: Top10Entry[];
+  /** Старые подборы: только домены с брендом, без позиций */
   top?: string[];
 };
+
+/** TOP-10 Google по бренду: домены по порядку, их зоны и приписки. */
+function Top10Block({ brand, entries }: { brand: string; entries: Top10Entry[] }) {
+  const branded = entries.filter((e) => e.brand);
+  const suffixesOf = (domain: string) => mineSuffixes([domain], [brand]).map((s) => s.suffix);
+  const zones = new Map<string, { all: number; brand: number }>();
+  for (const e of entries) {
+    const t = tldOf(e.domain);
+    const z = zones.get(t) ?? { all: 0, brand: 0 };
+    z.all++;
+    if (e.brand) z.brand++;
+    zones.set(t, z);
+  }
+  const zoneList = Array.from(zones.entries()).sort((a, b) => b[1].brand - a[1].brand || b[1].all - a[1].all);
+  const mined = mineSuffixes(branded.map((e) => e.domain), [brand]);
+  const pure = branded.filter((e) => suffixesOf(e.domain).length === 0).length;
+  return (
+    <div className="border-b border-line px-3 py-2 space-y-2">
+      <div className="text-[12.5px] font-semibold">TOP-10 Google <span className="help font-normal">· доменов {entries.length} · с брендом {branded.length}</span></div>
+      <ol className="max-h-44 overflow-auto rounded-lg border border-line divide-y divide-line">
+        {entries.map((e, i) => (
+          <li key={e.domain} className={`flex items-center gap-2 px-2 py-1 text-[12.5px] ${e.brand ? "" : "opacity-60"}`} title={e.title}>
+            <span className="w-4 shrink-0 text-right tabular-nums text-muted">{e.pos || i + 1}</span>
+            <a href={`https://${e.domain}`} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate font-mono hover:underline">{e.domain}</a>
+            {e.brand && suffixesOf(e.domain).map((s) => <span key={s} className="shrink-0 rounded-md bg-info-soft px-1.5 text-[11px] text-info">{s}</span>)}
+            {!e.brand && <span className="shrink-0 text-[11px] text-muted">без бренда</span>}
+          </li>
+        ))}
+      </ol>
+      <div className="flex flex-wrap items-center gap-1 text-[11.5px]">
+        <span className="help mr-0.5">Зоны:</span>
+        {zoneList.map(([t, z]) => (
+          <span key={t} className={`rounded-md px-1.5 py-0.5 ${z.brand ? "bg-ok-soft text-ok font-semibold" : "bg-ink/5 text-muted"}`} title={`всего в TOP-10: ${z.all}, с брендом: ${z.brand}`}>.{t} · {z.all}</span>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-1 text-[11.5px]">
+        <span className="help mr-0.5">Приписки:</span>
+        {mined.map((m) => <span key={m.suffix} className="rounded-md bg-info-soft px-1.5 py-0.5 text-info" title={m.examples.join(", ")}>{m.suffix} · {m.count}</span>)}
+        {pure > 0 && <span className="rounded-md bg-ink/5 px-1.5 py-0.5 text-muted">только бренд · {pure}</span>}
+        {!mined.length && !pure && <span className="help">нет доменов с брендом</span>}
+      </div>
+    </div>
+  );
+}
 
 export const kindOf = (d: RunDomainRow, sources: Props["sources"]): DomainFilter["src"] => (d.suffix ? sources?.get(d.suffix)?.kind ?? "common" : "none");
 const tierOf = (d: RunDomainRow): DomainFilter["tier"] => (d.tier >= 4 ? "4" : (String(d.tier) as DomainFilter["tier"]));
 
 /** Домены одного бренда с вкладками: источник, уровень, зона и вид. */
-export function BrandDomains({ rows, sources, zoneSources, filter, setFilter, onToggle, rec, top = [] }: Props) {
+export function BrandDomains({ rows, sources, zoneSources, filter, setFilter, onToggle, rec, brand, top10, top = [] }: Props) {
+  const topEntries: Top10Entry[] = top10?.length ? top10 : top.map((domain) => ({ pos: 0, domain, title: "", brand: true }));
   const zones = useMemo(() => Array.from(new Set(rows.map((d) => d.tld))), [rows]);
   const pass = (d: RunDomainRow, skip?: "src" | "tier" | "zone") =>
     (skip === "src" || filter.src === "all" || kindOf(d, sources) === filter.src) &&
@@ -72,16 +123,7 @@ export function BrandDomains({ rows, sources, zoneSources, filter, setFilter, on
 
   return (
     <div className="flex flex-col min-h-0">
-      {top.length > 0 && (
-        <div className="border-b border-line px-3 py-2">
-          <div className="help mb-1">В TOP-10 Google по бренду · {top.length}</div>
-          <div className="flex flex-wrap gap-1">
-            {top.map((d) => (
-              <a key={d} href={`https://${d}`} target="_blank" rel="noreferrer" className="rounded-md bg-info-soft px-1.5 py-0.5 font-mono text-[11.5px] text-info hover:underline">{d}</a>
-            ))}
-          </div>
-        </div>
-      )}
+      {topEntries.length > 0 && <Top10Block brand={brand} entries={topEntries} />}
       <div className="space-y-1.5 border-b border-line px-3 py-2">
         <div className="flex flex-wrap gap-1">
           {SRC_OPTIONS.map(([v, label]) => <Chip key={v} active={filter.src === v} label={label} n={v === "all" ? count("src", () => true) : count("src", (d) => kindOf(d, sources) === v)} onClick={() => set({ src: v })} />)}
