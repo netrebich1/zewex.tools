@@ -3755,3 +3755,66 @@ model CopyBatchItem {
   @@index([batchId, status, position])
   @@index([siteId])
 }
+
+// ───────────────────────────── Соцсети (раздел Discovery, проект `social`) ─────────────────────────────
+
+/// Прогон: статьи → посты под соцсети → файлы импорта Metricool. Расход — с ключей команды WexOra.
+model SocialRun {
+  id          String       @id @default(uuid()) @db.Char(36)
+  teamId      String?
+  createdById String
+  name        String       @default("")
+  /// QUEUED | RUNNING | DONE | FAILED
+  status      String       @default("QUEUED") @db.VarChar(12)
+  /// SocialSettings (src/lib/social/types.ts)
+  settings    Json
+  total       Int          @default(0)
+  costUsd     Float        @default(0)
+  error       String?      @db.Text
+  /// Фото прогона убраны с диска (через 14 дней после последней публикации)
+  filesPurgedAt DateTime?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  items       SocialItem[]
+
+  @@index([createdById, createdAt])
+  @@index([teamId, createdAt])
+  @@index([status])
+}
+
+/// Статья прогона и её посты по сетям
+model SocialItem {
+  id         String    @id @default(uuid()) @db.Char(36)
+  runId      String    @db.Char(36)
+  position   Int
+  url        String    @db.Text
+  title      String    @default("") @db.Text
+  /// pending | processing | done | error
+  status     String    @default("pending") @db.VarChar(12)
+  /// SocialPosts: { instagram: { text, images, alts, … }, … }
+  posts      Json?
+  /// Сколько фото найдено в статье
+  imageCount Int       @default(0)
+  error      String?   @db.Text
+  workerId   String?
+  leaseUntil DateTime?
+  attempts   Int       @default(0)
+  costUsd    Float     @default(0)
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  run        SocialRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, position])
+  @@index([status, createdAt])
+}
+
+/// Строка заголовков шаблона импорта Metricool (одна запись id = "metricool")
+model SocialTemplate {
+  id          String   @id @db.VarChar(32)
+  header      Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}

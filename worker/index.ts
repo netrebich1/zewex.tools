@@ -16,6 +16,7 @@ import { analyticsInflight, analyticsLoop, analyticsRequeueStale } from "./analy
 import { blogInflight, blogLoop, blogStartup } from "./blog";
 import { newsInflight, newsLoop, newsStartup } from "./news";
 import { tasksPollLoop } from "./tasks";
+import { socialInflight, socialLoop, socialRequeueStale } from "./social";
 import sharp from "sharp";
 
 /**
@@ -93,6 +94,7 @@ async function main() {
   await deeplRequeueStale(hostname()).catch((e) => log.warn("deepl requeue failed", e));
   await analyticsRequeueStale(hostname()).catch((e) => log.warn("analytics requeue failed", e));
   await newsStartup(hostname()).catch((e) => log.warn("news startup failed", e));
+  await socialRequeueStale(hostname()).catch((e) => log.warn("social requeue failed", e));
   const stopCron = startCron();
   const shutdown = async (sig: string) => {
     if (shuttingDown) return;
@@ -103,7 +105,7 @@ async function main() {
       log.warn("forced exit");
       process.exit(1);
     }, 60_000);
-    await Promise.allSettled([...inflight, ...domainsInflight(), ...articlesInflight(), ...blogInflight(), ...aiModerationInflight(), ...deeplInflight(), ...analyticsInflight(), ...newsInflight()]);
+    await Promise.allSettled([...inflight, ...domainsInflight(), ...articlesInflight(), ...blogInflight(), ...aiModerationInflight(), ...deeplInflight(), ...analyticsInflight(), ...newsInflight(), ...socialInflight()]);
     clearTimeout(t);
     await prisma.$disconnect();
     log.info("bye");
@@ -112,7 +114,7 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
   // Очереди подборов доменов и статей работают рядом с очередью пинов в том же процессе.
-  await Promise.all([loop(), domainsLoop(WORKER_ID, () => shuttingDown), articlesLoop(WORKER_ID, () => shuttingDown), blogLoop(WORKER_ID, () => shuttingDown), aiModerationLoop(WORKER_ID, () => shuttingDown), deeplLoop(WORKER_ID, () => shuttingDown), analyticsLoop(WORKER_ID, () => shuttingDown), newsLoop(WORKER_ID, () => shuttingDown), tasksPollLoop(() => shuttingDown).catch((e) => log.error("tasks poll loop crashed", e))]);
+  await Promise.all([loop(), domainsLoop(WORKER_ID, () => shuttingDown), articlesLoop(WORKER_ID, () => shuttingDown), blogLoop(WORKER_ID, () => shuttingDown), aiModerationLoop(WORKER_ID, () => shuttingDown), deeplLoop(WORKER_ID, () => shuttingDown), analyticsLoop(WORKER_ID, () => shuttingDown), newsLoop(WORKER_ID, () => shuttingDown), socialLoop(WORKER_ID, () => shuttingDown), tasksPollLoop(() => shuttingDown).catch((e) => log.error("tasks poll loop crashed", e))]);
 }
 
 main().catch((e) => {

@@ -457,5 +457,31 @@ if (discoveryNews) {
     console.log(`news seed: project ${p.name}, ${data.sources.length} sources, ${data.entities.length} entities`);
   }
 }
+// ───────────────────────────── Соцсети (раздел Discovery): посты под сети + импорт Metricool ─────────────────────────────
+// Инструмент команды WexOra: правило слота создаётся для неё, только если его ещё нет (ключ OpenRouter команды).
+const discoverySocial = await prisma.section.findUnique({ where: { slug: "discovery" } });
+if (discoverySocial) {
+  const socialProject = await prisma.project.upsert({
+    where: { slug: "social" },
+    update: {},
+    create: { sectionId: discoverySocial.id, slug: "social", name: "Соцсети", description: "Посты из статей под Instagram, Threads, X, Facebook, TikTok и другие сети: свой текст и фото под каждую, расписание и файлы импорта Metricool", url: "/discovery/social", status: "ACTIVE", order: 3 },
+  });
+  const socialSlot = await prisma.slot.upsert({
+    where: { projectId_key: { projectId: socialProject.id, key: "text_main" } },
+    update: { preferProviders: "openrouter" },
+    create: { projectId: socialProject.id, key: "text_main", name: "Тексты постов", capability: "CHAT", description: "Посты для всех выбранных сетей одним вызовом на статью (google/gemini-2.5-flash)", preferProviders: "openrouter" },
+  });
+  const orSocial = await prisma.provider.findUnique({ where: { slug: "openrouter" } });
+  const wexoraSocial = await prisma.team.findUnique({ where: { slug: "wexora" } });
+  if (orSocial && wexoraSocial) {
+    const key = await prisma.apiKey.findFirst({ where: { teamId: wexoraSocial.id, providerId: orSocial.id, status: "ACTIVE" }, orderBy: { createdAt: "asc" } });
+    const model = await prisma.model.findUnique({ where: { providerId_modelId: { providerId: orSocial.id, modelId: "google/gemini-2.5-flash" } } });
+    const has = await prisma.binding.findFirst({ where: { scope: "TEAM_PROJECT", slotId: socialSlot.id, teamId: wexoraSocial.id } });
+    if (!has && key && model) {
+      await prisma.binding.create({ data: { scope: "TEAM_PROJECT", slotId: socialSlot.id, teamId: wexoraSocial.id, providerId: orSocial.id, modelId: model.id, apiKeyId: key.id } });
+      console.log("social: rule text_main → WexOra / google/gemini-2.5-flash");
+    }
+  }
+}
 console.log("seed done");
 await prisma.$disconnect();

@@ -16,6 +16,7 @@ import { analyticsPurge, analyticsRequeueStale } from "./analytics";
 import { keywordsArticleDatesTick, keywordsDaily, keywordsRequeueStale, keywordsStyleTick } from "./keywords";
 import { uploaderTick } from "@/lib/uploader/runs";
 import { newsDaily, newsFailStale } from "./news";
+import { socialPurgeFiles, socialRequeueStale } from "./social";
 import { tasksTick } from "./tasks";
 import { copyTick } from "@/lib/copy/build";
 import { copyAutoTick } from "@/lib/copy/auto";
@@ -56,6 +57,8 @@ export function startCron(): () => void {
   timers.push(setTimeout(failedKw(true), 90_000), setInterval(failedKw(false), 10 * 60_000));
   // DeepL Articler: статьи с истёкшей арендой — в очередь; кэш переводов старше 90 дней — раз в сутки.
   timers.push(setInterval(() => deeplRequeueStale().catch((e) => log.warn("deepl requeueStale failed", e)), 2 * 60_000));
+  timers.push(setInterval(() => socialRequeueStale().catch((e) => log.warn("social requeueStale failed", e)), 2 * 60_000));
+  timers.push(setInterval(() => socialPurgeFiles().catch((e) => log.warn("social purgeFiles failed", e)), 24 * 60 * 60_000));
   timers.push(setInterval(() => deeplPurgeCache().catch((e) => log.warn("deepl purgeCache failed", e)), 24 * 60 * 60_000));
   // Ключи DeepL: проверка в DeepL раз в час (итог и остаток — в списке ключей).
   timers.push(setInterval(() => deeplCheckKeys().catch((e) => log.warn("deepl keys check failed", e)), 60 * 60_000));
