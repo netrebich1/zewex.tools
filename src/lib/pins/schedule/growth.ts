@@ -3,7 +3,7 @@
  * её норма дальше. Чистые функции без Prisma и React: ими пользуются этап расписания, перераспределение и формы.
  */
 
-import { hash32 } from "@/lib/pins/plan/seed";
+import { hash32, mulberry32 } from "@/lib/pins/plan/seed";
 
 /** = MAX_DAY_PINS в types.ts (тут без импорта: types.ts сам импортирует этот модуль). */
 const DAY_MAX = 200;
@@ -67,7 +67,8 @@ export function growthTotal(steps: readonly GrowthStep[]): number {
  */
 export function rangeQuota(min: number, max: number, seed: number | string): (off: number) => number {
   if (!(max > min)) return () => min;
-  return (off) => min + (hash32(`${seed}|day|${off}`) % (max - min + 1));
+  // hash32 соседних дней даёт похожие младшие биты (92 91 94 93…) — перемешиваем через mulberry32.
+  return (off) => min + Math.floor(mulberry32(hash32(`${seed}|day|${off}`))() * (max - min + 1));
 }
 
 /** «7 дн. × 15 → 7 дн. × 20 → дальше по 40». */
