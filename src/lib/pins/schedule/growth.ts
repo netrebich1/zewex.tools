@@ -3,6 +3,8 @@
  * её норма дальше. Чистые функции без Prisma и React: ими пользуются этап расписания, перераспределение и формы.
  */
 
+import { hash32 } from "@/lib/pins/plan/seed";
+
 /** = MAX_DAY_PINS в types.ts (тут без импорта: types.ts сам импортирует этот модуль). */
 const DAY_MAX = 200;
 
@@ -59,6 +61,15 @@ export function growthTotal(steps: readonly GrowthStep[]): number {
   return steps.reduce((n, s) => n + s.days * s.perDay, 0);
 }
 
+/**
+ * Норма «от min до max» (2026-11-11): у каждого дня своё случайное число из диапазона, повторяемое по сиду
+ * (тот же прогон — тот же план). max ≤ min — ровно min.
+ */
+export function rangeQuota(min: number, max: number, seed: number | string): (off: number) => number {
+  if (!(max > min)) return () => min;
+  return (off) => min + (hash32(`${seed}|day|${off}`) % (max - min + 1));
+}
+
 /** «7 дн. × 15 → 7 дн. × 20 → дальше по 40». */
 export function describeGrowth(steps: readonly GrowthStep[]): string {
   if (!steps.length) return "";
@@ -66,9 +77,9 @@ export function describeGrowth(steps: readonly GrowthStep[]): string {
 }
 
 /** Расписание прогона одной строкой для шапки: «90/день», «плавный рост: …», «вклинен: 15/день, всего 100/день». */
-export function describeSchedule(s: { dailyMode: string; pinsPerDay: number; lastDate?: string; growth?: GrowthStep[]; insertTotal?: number }): string {
+export function describeSchedule(s: { dailyMode: string; pinsPerDay: number; pinsPerDayMax?: number; lastDate?: string; growth?: GrowthStep[]; insertTotal?: number }): string {
   if (s.dailyMode === "growth" && s.growth?.length) return `плавный рост: ${describeGrowth(s.growth)}`;
   if (s.dailyMode === "insert") return `вклинен: ${s.pinsPerDay}/день${s.insertTotal ? `, всего ${s.insertTotal}/день` : ""}`;
   if (s.dailyMode === "dates") return `равномерно до ${(s.lastDate || "").split("-").reverse().join(".")}`;
-  return `${s.pinsPerDay}/день`;
+  return s.pinsPerDayMax && s.pinsPerDayMax > s.pinsPerDay ? `${s.pinsPerDay}–${s.pinsPerDayMax}/день (случайно)` : `${s.pinsPerDay}/день`;
 }

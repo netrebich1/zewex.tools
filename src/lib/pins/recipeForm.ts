@@ -102,6 +102,8 @@ export function recipeFromForm(f: FormData, base: unknown, opts: RecipeFormOptio
       insertTotal: has("insertTotalPresent") ? (f.get("insertKeepTotal") === "on" ? num(f, "insertTotal", 100, 1, MAX_DAY_PINS) : 0) : r.schedule.insertTotal,
       lastDate: day("lastDate", r.schedule.lastDate),
       pinsPerDay: num(f, "pinsPerDay", r.schedule.pinsPerDay, 1, 100),
+      // «До» в режиме «N в день»: пусто — ровно N; в других режимах не действует.
+      pinsPerDayMax: has("dailyMode") ? (str(f, "dailyMode") === "fixed" ? num(f, "pinsPerDayMax", 0, 0, 100) : 0) : r.schedule.pinsPerDayMax,
       startFrom: has("startFrom") ? (/^\d{4}-\d{2}-\d{2}$/.test(str(f, "startFrom")) ? str(f, "startFrom") : "next_free_day") : r.schedule.startFrom,
       moderationMode: has("moderationMode") ? (str(f, "moderationMode") === "auto" ? "auto" : "required") : r.schedule.moderationMode,
       samplePercent: r.schedule.samplePercent,

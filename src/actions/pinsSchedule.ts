@@ -7,7 +7,7 @@ import { applyReschedule, previewReschedule, type ReschedulePlan, type Reschedul
 import { cleanGrowth, type GrowthStep } from "@/lib/pins/schedule/growth";
 import { MAX_DAY_PINS } from "@/lib/pins/types";
 
-export type RescheduleInput = { siteId: string; from: string; mode: "flat" | "growth"; perDay: number; steps: GrowthStep[]; withUndated: boolean };
+export type RescheduleInput = { siteId: string; from: string; mode: "flat" | "growth"; perDay: number; perDayMax?: number; steps: GrowthStep[]; withUndated: boolean };
 export type RescheduleResult = { error?: string; preview?: ReschedulePreview; applied?: boolean };
 
 function planOf(i: RescheduleInput): ReschedulePlan {
@@ -18,7 +18,8 @@ function planOf(i: RescheduleInput): ReschedulePlan {
   }
   const perDay = Math.floor(Number(i.perDay));
   if (!(perDay >= 1 && perDay <= MAX_DAY_PINS)) throw new Error(`Пинов в день: от 1 до ${MAX_DAY_PINS}`);
-  return { mode: "flat", perDay };
+  const perDayMax = Math.min(MAX_DAY_PINS, Math.floor(Number(i.perDayMax) || 0));
+  return { mode: "flat", perDay, ...(perDayMax > perDay ? { perDayMax } : {}) };
 }
 
 async function guard(siteId: string) {

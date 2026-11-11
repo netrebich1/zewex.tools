@@ -157,6 +157,8 @@ export type Recipe = {
     growth: GrowthStep[];
     insertTotal: number;
     pinsPerDay: number; startFrom: "next_free_day" | string; lastDate: string;
+    /** Режим fixed: > pinsPerDay — норма дня случайная от pinsPerDay до pinsPerDayMax («90–99 в день»); 0 — ровно pinsPerDay. */
+    pinsPerDayMax: number;
     moderationMode: ModerationMode; samplePercent: number;
     /** Мягкие предпочтения раскладки (норма дня важнее): окно (только старое поле), пинов статьи в день, первый пин, шаг. */
     windowDays: number; perPagePerDay: number; firstPinWindowDays: number; stepMinDays: number; stepMaxDays: number;
@@ -183,7 +185,7 @@ export const DEFAULT_RECIPE: Recipe = {
     siteName: "",
   },
   publishing: { wpConnectionId: null, linkDomain: "", photoLinkPercent: 40 },
-  schedule: { dailyMode: "fixed", pinsPerDay: 90, startFrom: "next_free_day", lastDate: "", growth: DEFAULT_GROWTH, insertTotal: 0, moderationMode: "required", samplePercent: 20, windowDays: SCHEDULE.windowDays, perPagePerDay: SCHEDULE.perPagePerDay, firstPinWindowDays: SCHEDULE.firstPinWindowDays, stepMinDays: SCHEDULE.stepMinDays, stepMaxDays: SCHEDULE.stepMaxDays },
+  schedule: { dailyMode: "fixed", pinsPerDay: 90, pinsPerDayMax: 0, startFrom: "next_free_day", lastDate: "", growth: DEFAULT_GROWTH, insertTotal: 0, moderationMode: "required", samplePercent: 20, windowDays: SCHEDULE.windowDays, perPagePerDay: SCHEDULE.perPagePerDay, firstPinWindowDays: SCHEDULE.firstPinWindowDays, stepMinDays: SCHEDULE.stepMinDays, stepMaxDays: SCHEDULE.stepMaxDays },
   boards: { multiBoard: false },
 };
 
@@ -328,7 +330,9 @@ export function mergeRecipe(partial: unknown): Recipe {
     schedule: (() => {
       const ps = p.schedule as Partial<Recipe["schedule"]> | undefined;
       const growth = cleanGrowth(ps?.growth);
-      return { ...d.schedule, ...(ps ?? {}), dailyMode: asScheduleMode(ps?.dailyMode), lastDate: isoDay(ps?.lastDate), growth: growth.length ? growth : DEFAULT_GROWTH, insertTotal: Math.max(0, Math.min(MAX_DAY_PINS, Math.floor(Number(ps?.insertTotal) || 0))) };
+      const perDay = Number(ps?.pinsPerDay ?? d.schedule.pinsPerDay);
+      const perDayMax = Math.min(100, Math.floor(Number(ps?.pinsPerDayMax) || 0));
+      return { ...d.schedule, ...(ps ?? {}), dailyMode: asScheduleMode(ps?.dailyMode), lastDate: isoDay(ps?.lastDate), growth: growth.length ? growth : DEFAULT_GROWTH, insertTotal: Math.max(0, Math.min(MAX_DAY_PINS, Math.floor(Number(ps?.insertTotal) || 0))), pinsPerDayMax: perDayMax > perDay ? perDayMax : 0 };
     })(),
     boards: { ...d.boards, ...(p.boards ?? {}) },
   };

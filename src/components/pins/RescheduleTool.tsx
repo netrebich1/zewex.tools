@@ -16,6 +16,7 @@ const SHOW_DAYS = 63;
 export function RescheduleTool({ siteId, today, current }: { siteId: string; today: string; current: number }) {
   const [mode, setMode] = useState<"flat" | "growth">("flat");
   const [perDay, setPerDay] = useState(current || 50);
+  const [perDayMax, setPerDayMax] = useState(0);
   const [from, setFrom] = useState(today);
   const [withUndated, setWithUndated] = useState(true);
   const [preview, setPreview] = useState<ReschedulePreview | null>(null);
@@ -26,7 +27,7 @@ export function RescheduleTool({ siteId, today, current }: { siteId: string; tod
   const input = (): RescheduleInput => {
     const f = formEl ? new FormData(formEl) : new FormData();
     const steps = cleanGrowth(f.getAll("growthDays").map((d, i) => ({ days: d, perDay: f.getAll("growthPerDay")[i] })));
-    return { siteId, from, mode, perDay, steps, withUndated };
+    return { siteId, from, mode, perDay, perDayMax, steps, withUndated };
   };
   const run = (apply: boolean) => start(async () => {
     setMsg({});
@@ -44,8 +45,13 @@ export function RescheduleTool({ siteId, today, current }: { siteId: string; tod
       <div className="grid gap-2 sm:grid-cols-2">
         <label className={`rounded-xl border p-3 cursor-pointer ${mode === "flat" ? "border-brand ring-2 ring-brand/30" : "border-line"}`}>
           <div className="flex items-center gap-2"><input type="radio" checked={mode === "flat"} onChange={() => setMode("flat")} /> <b>Ровно N пинов в день</b></div>
-          <p className="help mt-1">Все подвижные пины сайта встают по N в день подряд с выбранной даты. Порядок пинов сохраняется.</p>
-          {mode === "flat" && <div className="mt-2"><Field label="Всего пинов сайта в день" hint="До 200; сверх 100 — публикация сразу"><input type="number" min={1} max={200} className="input py-1.5" value={perDay} onChange={(e) => setPerDay(Math.max(1, Math.min(200, Math.floor(Number(e.target.value) || 1))))} /></Field></div>}
+          <p className="help mt-1">Все подвижные пины сайта встают по N в день подряд с выбранной даты. Порядок пинов сохраняется. С заполненным «до» у каждого дня своё случайное число из диапазона (например, 90–99).</p>
+          {mode === "flat" && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Field label="Всего пинов сайта в день" hint="До 200; сверх 100 — публикация сразу"><input type="number" min={1} max={200} className="input py-1.5" value={perDay} onChange={(e) => setPerDay(Math.max(1, Math.min(200, Math.floor(Number(e.target.value) || 1))))} /></Field>
+              <Field label="до (необязательно)" hint="Пусто — ровно N"><input type="number" min={1} max={200} className="input py-1.5" value={perDayMax || ""} onChange={(e) => setPerDayMax(Math.max(0, Math.min(200, Math.floor(Number(e.target.value) || 0))))} /></Field>
+            </div>
+          )}
         </label>
         <label className={`rounded-xl border p-3 cursor-pointer ${mode === "growth" ? "border-brand ring-2 ring-brand/30" : "border-line"}`}>
           <div className="flex items-center gap-2"><input type="radio" checked={mode === "growth"} onChange={() => setMode("growth")} /> <b>Плавный рост</b></div>

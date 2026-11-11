@@ -27,10 +27,11 @@ export function ScheduleModeFields({ s }: { s: Recipe["schedule"] }) {
     <div className="grid gap-2 sm:grid-cols-2">
       <label className={box("fixed")}>
         {radio("fixed", "Строго N пинов в день")}
-        <p className="help mt-1">Этот прогон ставит ровно N своих пинов в каждый день, пока пины не кончатся. Пины других прогонов сайта на те же даты плюсуются. Сколько дней выйдет — считается само.</p>
+        <p className="help mt-1">Этот прогон ставит ровно N своих пинов в каждый день, пока пины не кончатся. Пины других прогонов сайта на те же даты плюсуются. Сколько дней выйдет — считается само. Если заполнить «до», у каждого дня будет своё случайное число из диапазона (например, 90–99).</p>
         {mode === "fixed" && (
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Field label="Пинов этого прогона в день"><input name="pinsPerDay" type="number" min={1} max={100} className="input py-1.5" defaultValue={s.pinsPerDay} /></Field>
+            <Field label="до (необязательно)" hint="Пусто — ровно N каждый день"><input name="pinsPerDayMax" type="number" min={1} max={100} className="input py-1.5" defaultValue={s.pinsPerDayMax || ""} /></Field>
             {startField()}
           </div>
         )}

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { scheduleItems, type ScheduleItem } from "@/lib/pins/schedule/plan";
 import { TZ, dayKey } from "@/lib/pins/runs/stats";
-import { growthQuota } from "@/lib/pins/schedule/growth";
+import { growthQuota, rangeQuota } from "@/lib/pins/schedule/growth";
 import { overDays } from "@/lib/pins/schedule/redistribute";
 import { startOfDay } from "@/lib/pins/schedule/math";
 import { applyReschedule } from "@/lib/pins/runs/reschedule";
@@ -42,7 +42,9 @@ export const schedule: StageHandler = async (ctx) => {
       pinsPerDay: sch.pinsPerDay,
       mode: sch.dailyMode === "dates" ? "dates" : "fixed",
       // «Плавный рост»: норма этого прогона по ступеням (15 → 20 → 30…), после последней — её норма.
-      quotaAt: sch.dailyMode === "growth" && sch.growth.length ? (off) => growthQuota(sch.growth, off) : undefined,
+      // «От N до M в день»: у каждого дня своя случайная норма из диапазона (повторяемо по сиду прогона).
+      quotaAt: sch.dailyMode === "growth" && sch.growth.length ? (off) => growthQuota(sch.growth, off)
+        : sch.dailyMode === "fixed" && sch.pinsPerDayMax > sch.pinsPerDay ? rangeQuota(sch.pinsPerDay, sch.pinsPerDayMax, rc.settings.seed) : undefined,
       // «Вклинить в график»: пины прогона встают поверх чужих, день может дойти до 200 (сверх 100 — публикация сразу).
       siteDayLimit: insert ? MAX_DAY_PINS : undefined,
       lastDate: rc.recipe.schedule.lastDate || undefined,

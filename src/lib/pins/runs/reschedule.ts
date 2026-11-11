@@ -8,14 +8,15 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { TZ } from "./stats";
 import { addDays, compareKeys, dayKey, minuteOfDay, startOfDay, todayKey } from "@/lib/pins/schedule/math";
-import { growthQuota, type GrowthStep } from "@/lib/pins/schedule/growth";
+import { growthQuota, rangeQuota, type GrowthStep } from "@/lib/pins/schedule/growth";
 import { redistribute, overDays, type DayOver, type MovablePin } from "@/lib/pins/schedule/redistribute";
 import { MAX_DAY_PINS, SCHEDULE } from "@/lib/pins/types";
 import { hash32 } from "@/lib/pins/plan/seed";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
-export type ReschedulePlan = { mode: "flat"; perDay: number } | { mode: "growth"; steps: GrowthStep[] };
+/** flat: perDayMax > perDay — у каждого дня случайная норма от perDay до perDayMax. */
+export type ReschedulePlan = { mode: "flat"; perDay: number; perDayMax?: number } | { mode: "growth"; steps: GrowthStep[] };
 
 export type RescheduleOptions = {
   siteId: string;
@@ -47,8 +48,11 @@ export type ReschedulePreview = {
 const ITEM_WHERE = { moderation: { not: "REJECTED" as const }, status: { notIn: ["POOL" as const, "REMOVED" as const] } };
 const UNDATED_WHERE = { scheduledAt: null, status: "READY" as const, moderation: "APPROVED" as const, wpMediaUrl: { not: "" }, title: { not: "" } };
 
-export const quotaOf = (plan: ReschedulePlan) => (off: number): number =>
-  plan.mode === "flat" ? Math.min(MAX_DAY_PINS, plan.perDay) : growthQuota(plan.steps, off);
+export const quotaOf = (plan: ReschedulePlan, seed = 0) => {
+  const range = plan.mode === "flat" && plan.perDayMax && plan.perDayMax > plan.perDay ? rangeQuota(plan.perDay, plan.perDayMax, seed) : null;
+  return (off: number): number =>
+    plan.mode === "flat" ? Math.min(MAX_DAY_PINS, range ? range(off) : plan.perDay) : growthQuota(plan.steps, off);
+};
 
 async function compute(db: Db, o: RescheduleOptions) {
   const now = o.now ?? new Date();
@@ -77,7 +81,7 @@ async function compute(db: Db, o: RescheduleOptions) {
   }
   for (const r of undated) movable.push({ id: r.id, pageId: r.pageId, scheduledAt: null });
   const res = redistribute({
-    items: movable, fixedLoad, fixedMinutes, start: from, quotaAt: quotaOf(o.plan), blockedDays: uploaded,
+    items: movable, fixedLoad, fixedMinutes, start: from, quotaAt: quotaOf(o.plan, hash32(`${o.siteId}|${from}|quota`)), blockedDays: uploaded,
     perPagePerDay: SCHEDULE.perPagePerDay, now, tz: TZ, seed: hash32(`${o.siteId}|${from}`),
   });
   const prev = new Map(movable.map((m) => [m.id, m.scheduledAt?.getTime() ?? null] as const));
