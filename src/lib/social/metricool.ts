@@ -81,6 +81,19 @@ function rowValues(header: string[], r: ExportRow, s: SocialSettings): string[] 
   if (r.net === "x") byName.twitterxtype = byName.twittertype = byName.xtype = "POST";
   if (r.net === "linkedin") { byName.linkedintype = "POST"; byName.linkedinimagesascarousel = r.post.images.length > 1 ? "TRUE" : "FALSE"; }
   if (r.net === "threads") byName.threadsposttype = "POST";
+  if (r.net === "ig_reel") { byName.instagramposttype = "REEL"; byName.instagramshowreelonfeed = "TRUE"; }
+  if (r.net === "fb_reel") byName.facebookposttype = "REEL";
+  if (r.net === "tiktok_video") { byName.tiktokpostprivacy = "PUBLIC_TO_EVERYONE"; byName.tiktokdisablecomments = "FALSE"; byName.tiktokdisableduet = "FALSE"; byName.tiktokdisablestitch = "FALSE"; }
+  if (r.net === "yt_short") {
+    byName.youtubevideotitle = (r.post.title ?? "").slice(0, 100);
+    byName.youtubevideotype = "SHORT";
+    byName.youtubevideoprivacy = "PUBLIC";
+    byName.youtubevideoforkids = "FALSE";
+    byName.youtubevideocategory = s.ytCategory;
+    byName.youtubevideotags = (r.post.tags ?? []).join(",").slice(0, 450);
+    byName.youtubenotifysubscribers = "TRUE";
+  }
+  if (r.post.video && r.post.poster) byName.videothumbnailurl = r.post.poster;
   if (r.net === "tiktok") { byName.tiktokpostprivacy = "PUBLIC_TO_EVERYONE"; byName.tiktokautoaddmusic = "TRUE"; }
   r.post.images.slice(0, 10).forEach((u, i) => {
     byName[`pictureurl${i + 1}`] = u;

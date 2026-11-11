@@ -24,9 +24,11 @@ export async function launchSocialRun(_p: FormState, f: FormData): Promise<FormS
       draft: f.get("draft") === "on",
       maxImages: str(f, "maxImages"),
       brand: str(f, "brand"),
+      voice: str(f, "voice") || "coral",
+      ytCategory: str(f, "ytCategory") || "HOWTO_AND_STYLE",
       schedule: { startDate: str(f, "startDate"), perDay: str(f, "perDay"), fromHour: str(f, "fromHour"), toHour: str(f, "toHour") },
     });
-    id = await createRun(me, str(f, "name"), String(f.get("urls") ?? ""), settings);
+    id = await createRun(me, str(f, "name"), String(f.get("urls") ?? ""), settings, { site: str(f, "site"), count: Number(str(f, "siteCount")) || 10 });
   } catch (e) {
     return fail(e);
   }

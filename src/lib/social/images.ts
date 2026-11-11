@@ -11,7 +11,7 @@ import { safeFetch } from "@/lib/pins/fetch";
 import { exists, publicUrl, removePath, writeFileAtomic } from "@/lib/pins/storage";
 import type { ArticleImageRef, NetworkKey } from "./types";
 
-type Format = { key: string; w: number; h: number } | null;
+export type Format = { key: string; w: number; h: number } | null;
 const FORMATS: Partial<Record<NetworkKey, Format>> = {
   instagram: { key: "4x5", w: 1080, h: 1350 },
   tiktok: { key: "9x16", w: 1080, h: 1920 },
@@ -26,7 +26,7 @@ export const runFilesDir = (runId: string) => `social/runs/${runId}`;
 
 const sources = new Map<string, Promise<Buffer>>();
 /** Исходник качаем один раз на прогон статьи (одно фото идёт в несколько сетей). */
-function source(url: string): Promise<Buffer> {
+export function imageSource(url: string): Promise<Buffer> {
   let p = sources.get(url);
   if (!p) {
     p = safeFetch(url, { timeoutMs: 30_000, maxBytes: 20 * 1024 * 1024, accept: "image/*", headers: { "User-Agent": "Mozilla/5.0 (compatible; ZewexSocial/1.0; +https://zewex.tools)" } }).then((r) => {
@@ -39,7 +39,7 @@ function source(url: string): Promise<Buffer> {
   return p;
 }
 
-async function render(buf: Buffer, fmt: Format): Promise<Buffer> {
+export async function renderFormat(buf: Buffer, fmt: Format): Promise<Buffer> {
   const base = sharp(buf, { failOn: "none" }).rotate();
   if (!fmt) {
     return base.resize({ width: ORIG_MAX_SIDE, height: ORIG_MAX_SIDE, fit: "inside", withoutEnlargement: true }).flatten({ background: "#ffffff" }).jpeg({ quality: 88, mozjpeg: true }).toBuffer();
@@ -63,7 +63,7 @@ export async function hostedImages(runId: string, net: NetworkKey, images: Artic
   for (const im of images) {
     const rel = `${runFilesDir(runId)}/${createHash("sha1").update(im.url).digest("hex").slice(0, 16)}-${fmt?.key ?? "orig"}.jpg`;
     try {
-      if (!(await exists(rel))) await writeFileAtomic(rel, await render(await source(im.url), fmt));
+      if (!(await exists(rel))) await writeFileAtomic(rel, await renderFormat(await imageSource(im.url), fmt));
       out.push({ url: publicUrl(rel), alt: im.alt });
     } catch {
       /* фото пропускаем */

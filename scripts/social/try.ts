@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { loadArticle } from "@/lib/social/article";
 import { generatePosts } from "@/lib/social/generate";
 import { hostedImages } from "@/lib/social/images";
+import { makeVideoPosts } from "@/lib/social/video";
 import { parseSettings, type NetworkKey } from "@/lib/social/types";
 
 async function main() {
@@ -20,6 +21,10 @@ async function main() {
   const settings = parseSettings({ networks: nets });
   const started = Date.now();
   const { posts, costUsd } = await generatePosts({ userId: user.id, runId: "try", url, article, settings, nets, prepareImages: (net, images) => hostedImages("try", net, images) });
+  const video = await makeVideoPosts({ userId: user.id, runId: "try", itemId: url, url, article, settings, nets });
+  Object.assign(posts, video.posts);
+  if (video.durationSec) console.log(`\nВидео: ${video.durationSec.toFixed(1)} с, $${video.costUsd.toFixed(4)}`);
+  for (const p of Object.values(video.posts).slice(0, 1)) for (const sc of p?.script ?? []) console.log(`  экран: ${sc.text}\n  голос: ${sc.voice}`);
   console.log(`\nГотово за ${Math.round((Date.now() - started) / 1000)} с, $${costUsd.toFixed(4)}`);
   for (const [net, p] of Object.entries(posts)) {
     console.log(`\n── ${net} (${p!.text.length} зн., фото ${p!.images.length}${p!.trimmed ? ", обрезан" : ""}${p!.skipped ? `, пропущен: ${p!.skipped}` : ""})\n${p!.text}\n${p!.images.join("\n")}`);

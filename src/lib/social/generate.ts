@@ -21,7 +21,7 @@ export async function socialKeyTeamId(): Promise<string> {
 }
 
 /** Правило слота строго с ключом WexOra: чужой или общий ключ не берётся. */
-async function resolveSocialSlot(userId: string) {
+export async function resolveSocialSlot(userId: string) {
   const teamId = await socialKeyTeamId();
   const r = await resolveSlot(userId, PROJECT_SLUG, SLOT_TEXT, teamId);
   if (!r.ok) throw new Error(`${r.error} «Соцсети» работают только на ключах команды ${KEY_TEAM_NAME}.`);
@@ -40,11 +40,13 @@ export async function assertSocialKey(userId: string): Promise<void> {
 /** В X любая ссылка считается за 23 знака, в остальных сетях — по длине. */
 const linkCost = (net: NetworkSpec, link: string) => (net.key === "x" ? 23 : link.length);
 
+const UTM_SOURCE: Partial<Record<NetworkKey, string>> = { x: "twitter", ig_reel: "instagram", tiktok_video: "tiktok", yt_short: "youtube", fb_reel: "facebook" };
+
 export function postLink(url: string, net: NetworkKey, utm: boolean): string {
   if (!utm) return url;
   try {
     const u = new URL(url);
-    u.searchParams.set("utm_source", net === "x" ? "twitter" : net);
+    u.searchParams.set("utm_source", UTM_SOURCE[net] ?? net);
     u.searchParams.set("utm_medium", "social");
     return u.toString();
   } catch {
@@ -123,8 +125,9 @@ export type GenerateResult = { posts: SocialPosts; costUsd: number };
 /** Посты статьи для сетей `nets` (при перегенерации — одна сеть). */
 export async function generatePosts(opts: { userId: string; runId: string; url: string; article: Article; settings: SocialSettings; nets: NetworkKey[]; prepareImages?: (net: NetworkKey, images: Article["images"]) => Promise<Article["images"]> }): Promise<GenerateResult> {
   const { article, settings } = opts;
-  const specs = opts.nets.map(networkOf).filter((n): n is NetworkSpec => !!n);
-  if (!specs.length) throw new Error("Не выбрано ни одной сети");
+  // Видео-сети делает video.ts: здесь только посты с текстом и фото.
+  const specs = opts.nets.map(networkOf).filter((n): n is NetworkSpec => !!n && !n.video);
+  if (!specs.length) return { posts: {}, costUsd: 0 };
   if (article.text.length < 300) throw new Error("На странице не найден текст статьи (меньше 300 знаков)");
   const { teamId, pre } = await resolveSocialSlot(opts.userId);
   const lang = settings.language !== "auto" ? settings.language : `тот же, что у статьи${LANG_NAMES[article.lang.slice(0, 2)] ? ` (${LANG_NAMES[article.lang.slice(0, 2)]})` : ""}`;

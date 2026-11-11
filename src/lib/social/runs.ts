@@ -8,6 +8,8 @@ import type { CurrentUser } from "@/lib/auth";
 import { loadArticle } from "./article";
 import { assertSocialKey, generatePosts, socialKeyTeamId } from "./generate";
 import { hostedImages, removeRunFiles } from "./images";
+import { makeVideoPosts } from "./video";
+import { pickSitePosts } from "./source";
 import { addDays, DEFAULT_HEADER } from "./metricool";
 import { ITEM_LEASE_SECONDS, MAX_RUN_ITEMS, networkOf, parseSettings, type NetworkKey, type SocialPosts, type SocialSettings } from "./types";
 
@@ -59,7 +61,13 @@ export function parseUrls(text: string): { urls: string[]; bad: string[] } {
   return { urls, bad };
 }
 
-export async function createRun(me: CurrentUser, name: string, urlsText: string, settings: SocialSettings): Promise<string> {
+export async function createRun(me: CurrentUser, name: string, urlsText: string, settings: SocialSettings, auto?: { site: string; count: number }): Promise<string> {
+  // Ссылок нет, но указан сайт — берём его свежие статьи по правилу тем (source.ts): мода, стиль, ногти, волосы; без «порад» и новостей.
+  if (!urlsText.trim() && auto?.site) {
+    const picked = await pickSitePosts(auto.site, auto.count);
+    if (!picked.urls.length) throw new Error(`Новых статей по нужным темам на сайте нет${picked.skippedUsed ? ` (уже использовано: ${picked.skippedUsed})` : ""}`);
+    urlsText = picked.urls.join("\n");
+  }
   const { urls, bad } = parseUrls(urlsText);
   if (bad.length) throw new Error(`Не похоже на ссылки: ${bad.slice(0, 5).join(", ")}${bad.length > 5 ? ` и ещё ${bad.length - 5}` : ""}`);
   if (!urls.length) throw new Error("Вставьте хотя бы одну ссылку на статью");
@@ -124,7 +132,11 @@ export async function processItem(item: SocialItem & { run: SocialRun }): Promis
   const settings = parseSettings(item.run.settings);
   try {
     const article = await loadArticle(item.url);
-    const { posts, costUsd } = await generatePosts({ userId: item.run.createdById, runId: item.runId, url: item.url, article, settings, nets: settings.networks, prepareImages: (net, images) => hostedImages(item.runId, net, images) });
+    const text = await generatePosts({ userId: item.run.createdById, runId: item.runId, url: item.url, article, settings, nets: settings.networks, prepareImages: (net, images) => hostedImages(item.runId, net, images) });
+    const video = await makeVideoPosts({ userId: item.run.createdById, runId: item.runId, itemId: item.id, url: item.url, article, settings, nets: settings.networks });
+    const posts = { ...text.posts, ...video.posts };
+    const costUsd = text.costUsd + video.costUsd;
+    if (!Object.keys(posts).length) throw new Error("Модель не вернула ни одного поста");
     await prisma.socialItem.update({
       where: { id: item.id },
       data: { status: "done", title: article.title.slice(0, 1000), posts: posts as unknown as Prisma.InputJsonValue, imageCount: article.images.length, costUsd: { increment: costUsd }, error: null, workerId: null, leaseUntil: null, finishedAt: new Date() },

@@ -10,7 +10,7 @@ export const ITEM_LEASE_SECONDS = 600;
 /** Metricool советует не больше 50 постов в файле: большие файлы импортируются медленно или с ошибками. */
 export const ROWS_PER_FILE = 50;
 
-export type NetworkKey = "instagram" | "threads" | "x" | "facebook" | "tiktok" | "linkedin" | "bluesky" | "gbp";
+export type NetworkKey = "instagram" | "threads" | "x" | "facebook" | "tiktok" | "linkedin" | "bluesky" | "gbp" | "ig_reel" | "tiktok_video" | "yt_short" | "fb_reel";
 
 export type NetworkSpec = {
   key: NetworkKey;
@@ -25,6 +25,8 @@ export type NetworkSpec = {
   linkInText: boolean;
   /** Без фото пост в эту сеть не уходит. */
   needsImage: boolean;
+  /** Видео-формат: пост = ролик из фото статьи с озвучкой и субтитрами (src/lib/social/video.ts). */
+  video?: boolean;
   hashtags: [number, number];
   /** Как писать именно для этой сети — уходит в промпт. */
   style: string;
@@ -47,6 +49,14 @@ export const NETWORKS: NetworkSpec[] = [
     style: "Короткая реплика как в X: один сильный факт или вывод, ссылка в конце." },
   { key: "gbp", label: "Google Business Profile", column: ["GBP", "Google Business Profile"], maxChars: 1500, maxImages: 1, linkInText: true, needsImage: false, hashtags: [0, 0],
     style: "Новость компании: 2–3 предложения по делу, без хэштегов и эмодзи, ссылка в конце." },
+  { key: "ig_reel", label: "Instagram Reels (видео)", column: ["Instagram"], maxChars: 2200, maxImages: 1, linkInText: false, needsImage: true, video: true, hashtags: [4, 8],
+    style: "Подпись к Reels: первая строка — зацепка, 1–2 коротких абзаца о том, что в ролике, призыв «полная статья по ссылке в профиле»." },
+  { key: "tiktok_video", label: "TikTok (видео)", column: ["TikTok"], maxChars: 2000, maxImages: 1, linkInText: false, needsImage: true, video: true, hashtags: [3, 6],
+    style: "Подпись к видео TikTok: одна-две живые фразы и вопрос к зрителям. Ссылок не писать." },
+  { key: "yt_short", label: "YouTube Shorts", column: ["YouTube"], maxChars: 5000, maxImages: 1, linkInText: true, needsImage: true, video: true, hashtags: [2, 4],
+    style: "Описание Shorts: 2–3 предложения с ключевыми словами темы — о чём ролик и что зритель узнает. В конце система добавит ссылку на статью." },
+  { key: "fb_reel", label: "Facebook Reels (видео)", column: ["Facebook"], maxChars: 2200, maxImages: 1, linkInText: false, needsImage: true, video: true, hashtags: [0, 3],
+    style: "Подпись к Reels на Facebook: 1–2 дружелюбные фразы о пользе ролика и вопрос к подписчикам." },
 ];
 
 export const networkOf = (key: string): NetworkSpec | undefined => NETWORKS.find((n) => n.key === key);
@@ -77,6 +87,10 @@ export type SocialSettings = {
   brand: string;
   /** Импортировать черновиками (колонка Draft). */
   draft: boolean;
+  /** Голос озвучки видео (OpenAI TTS). */
+  voice: string;
+  /** Категория YouTube для Shorts — обязательная колонка Metricool (значение из списка в его шаблоне). */
+  ytCategory: string;
   /** Дописывать к ссылке utm_source=<сеть>&utm_medium=social — переходы видны в аналитике по сетям. */
   utm: boolean;
 };
@@ -112,11 +126,14 @@ export function parseSettings(raw: unknown): SocialSettings {
     brand: String(r.brand ?? "").trim().slice(0, 120),
     draft: r.draft === true,
     utm: r.utm !== false,
+    voice: String(r.voice ?? "coral").trim().slice(0, 20) || "coral",
+    ytCategory: String(r.ytCategory ?? "HOWTO_AND_STYLE").trim().toUpperCase().replace(/[^A-Z_&]/g, "_").slice(0, 40) || "HOWTO_AND_STYLE",
   };
 }
 
 /** Пост статьи для одной сети. */
-export type SocialPost = { text: string; firstComment?: string; images: string[]; alts: string[]; trimmed?: boolean; skipped?: string; edited?: boolean };
+/** Для видео-сетей: images[0] — ссылка на mp4, poster — кадр-обложка, title/tags — для YouTube, script — сцены (экран / голос). */
+export type SocialPost = { text: string; firstComment?: string; images: string[]; alts: string[]; trimmed?: boolean; skipped?: string; edited?: boolean; video?: boolean; poster?: string; title?: string; tags?: string[]; durationSec?: number; script?: { text: string; voice: string }[] };
 export type SocialPosts = Partial<Record<NetworkKey, SocialPost>>;
 
 export type ArticleImageRef = { url: string; alt: string };

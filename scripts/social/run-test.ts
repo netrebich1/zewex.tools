@@ -5,19 +5,25 @@
  */
 import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
-import { createRun, metricoolHeader } from "@/lib/social/runs";
+import { createRun, deleteRun, metricoolHeader } from "@/lib/social/runs";
 import { buildExport, parseCsvLine } from "@/lib/social/metricool";
 import { parseSettings, type SocialPosts } from "@/lib/social/types";
 
 async function main() {
-  const urls = process.argv.slice(2);
-  if (!urls.length) throw new Error("Нужны адреса статей");
+  // Аргументы: адреса статей, либо «сайт N» — тогда статьи подбираются по правилу тем (source.ts).
+  const args = process.argv.slice(2);
+  const auto = args.length === 2 && /^\d+$/.test(args[1]) ? { site: args[0], count: Number(args[1]) } : undefined;
+  const urls = auto ? [] : args;
+  if (!urls.length && !auto) throw new Error("Нужны адреса статей или «сайт N»");
   const owners = (process.env.ALLOWED_REGISTRATION_EMAILS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   const user = (owners.length ? await prisma.user.findFirst({ where: { email: { in: owners } } }) : null) ?? (await prisma.user.findFirstOrThrow({ where: { role: "ADMIN" }, orderBy: { createdAt: "asc" } }));
   const me = { id: user.id, role: "ADMIN", teamIds: [], leadTeamIds: [] } as unknown as CurrentUser;
-  const settings = parseSettings({ networks: ["instagram", "threads", "x", "facebook"], schedule: { perDay: 3 } });
-  const id = await createRun(me, "Пример: проверка инструмента", urls.join("\n"), settings);
-  console.log(`прогон ${id}, статей ${urls.length} — жду воркер…`);
+  const NAME = "Пример: мода, ногти, волосы — посты и видео";
+  // Прошлые примеры этого скрипта убираем, чтобы в списке был один актуальный.
+  for (const old of await prisma.socialRun.findMany({ where: { name: { startsWith: "Пример: " }, createdById: user.id }, select: { id: true } })) await deleteRun(me, old.id).catch(() => undefined);
+  const settings = parseSettings({ networks: ["instagram", "threads", "facebook", "tiktok", "linkedin", "gbp", "ig_reel", "tiktok_video", "yt_short"], schedule: { perDay: 3 } });
+  const id = await createRun(me, NAME, urls.join("\n"), settings, auto);
+  console.log(`прогон ${id} — жду воркер…`);
   const started = Date.now();
   for (;;) {
     await new Promise((r) => setTimeout(r, 4000));
@@ -26,7 +32,7 @@ async function main() {
       console.log(`статус ${run.status} за ${Math.round((Date.now() - started) / 1000)} с, расход $${run.costUsd.toFixed(4)}${run.error ? `, ${run.error}` : ""}`);
       break;
     }
-    if (Date.now() - started > 240_000) throw new Error(`воркер не закончил за 4 минуты (статус ${run.status})`);
+    if (Date.now() - started > 900_000) throw new Error(`воркер не закончил за 15 минут (статус ${run.status})`);
   }
   const items = await prisma.socialItem.findMany({ where: { runId: id }, orderBy: { position: "asc" } });
   for (const it of items) console.log(`  ${it.status} · ${it.title || it.url}${it.error ? ` · ${it.error}` : ""}`);

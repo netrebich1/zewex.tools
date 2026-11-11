@@ -103,14 +103,24 @@ export default async function SocialRunPage({ params }: { params: Promise<{ id: 
                       <div key={n} className="rounded-xl border border-line p-3">
                         <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px]">
                           <span className="font-semibold text-[14px]">{spec.label}</span>
-                          {p && !p.skipped && <span className="text-muted">{slot.time.slice(0, 5)} · фото {p.images.length}</span>}
+                          {p && !p.skipped && <span className="text-muted">{slot.time.slice(0, 5)} · {p.video ? `видео ${p.durationSec ?? "?"} с` : `фото ${p.images.length}`}</span>}
                           {p?.trimmed && <Badge tone="warn">обрезан по лимиту</Badge>}
                           {p?.edited && <Badge tone="neutral">правка</Badge>}
                         </div>
                         {!p ? <p className="help">Модель не вернула пост для этой сети — повторите статью.</p> : p.skipped ? <p className="help">Пропущено: {p.skipped}.</p> : (
                           <>
                             <PostEditor runId={run.id} itemId={it.id} net={n} label={spec.label} text={p.text} maxChars={spec.maxChars} isX={n === "x"} />
-                            {p.images.length > 0 && (
+                            {p.video && (
+                              <div className="mt-2 flex flex-wrap items-start gap-3">
+                                <video src={p.images[0]} poster={p.poster} controls preload="none" className="h-64 rounded-lg bg-black" />
+                                <div className="min-w-0 flex-1 text-[13px]">
+                                  {n === "yt_short" && p.title && <div className="mb-1"><span className="text-muted">Заголовок:</span> {p.title}</div>}
+                                  {p.script && <ol className="list-decimal space-y-0.5 pl-4 text-muted">{p.script.map((sc, i) => <li key={i} title={`Голос: ${sc.voice}`}>{sc.text}</li>)}</ol>}
+                                  <a href={p.images[0]} download className="mt-1 inline-block underline">Скачать mp4</a>
+                                </div>
+                              </div>
+                            )}
+                            {!p.video && p.images.length > 0 && (
                               <div className="mt-2 flex gap-1.5 overflow-x-auto">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 {p.images.map((u) => <img key={u} src={u} alt="" loading="lazy" className="h-14 w-14 shrink-0 rounded-md object-cover" />)}
