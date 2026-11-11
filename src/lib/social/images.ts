@@ -15,6 +15,8 @@ type Format = { key: string; w: number; h: number } | null;
 const FORMATS: Partial<Record<NetworkKey, Format>> = {
   instagram: { key: "4x5", w: 1080, h: 1350 },
   tiktok: { key: "9x16", w: 1080, h: 1920 },
+  // Google рекомендует для записей профиля компании 4:3 (1200×900): другие пропорции он обрезает сам и неудачно.
+  gbp: { key: "4x3", w: 1200, h: 900 },
 };
 /** Обрезаем, если пропорции отличаются не больше чем в 1,3 раза; иначе — вписываем на размытый фон. */
 const CROP_MAX_RATIO = 1.3;

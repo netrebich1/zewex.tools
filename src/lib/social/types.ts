@@ -50,7 +50,8 @@ export const NETWORKS: NetworkSpec[] = [
 ];
 
 export const networkOf = (key: string): NetworkSpec | undefined => NETWORKS.find((n) => n.key === key);
-export const DEFAULT_NETWORKS: NetworkKey[] = ["instagram", "threads", "x", "facebook"];
+/** Сети владельца в Metricool (2026-11-11): Facebook, Instagram, Threads, TikTok, LinkedIn, Google Business; X пока не нужен. */
+export const DEFAULT_NETWORKS: NetworkKey[] = ["instagram", "threads", "facebook", "tiktok", "linkedin", "gbp"];
 
 export type SocialSettings = {
   networks: NetworkKey[];
