@@ -26,6 +26,8 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
     return `/pinterest/pins/moderation${s ? `?${s}` : ""}`;
   };
   const visibleRuns = counts.runs.filter((r) => !siteId || r.siteId === siteId);
+  // Сколько пинов в очереди при текущем фильтре — для кнопки «Одобрить все N».
+  const scopeTotal = visibleRuns.filter((r) => !runId || r.runId === runId).reduce((n, r) => n + (engine ? r.byEngine[engine] ?? 0 : r.total), 0);
   const currentRun = runId ? await prisma.pinRun.findUnique({ where: { id: runId }, select: { id: true, name: true } }) : null;
 
   return (
@@ -66,7 +68,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
           <Empty title="Всё проверено" hint={view === "post" ? "Одобренных пинов для повторной проверки по этому фильтру нет." : "Непроверенных пинов по этому фильтру нет."} />
         ) : (
           // key: при смене фильтра сетка создаётся заново — иначе в ней остаются пины прошлого фильтра
-          <ModerationGrid key={`${view}|${siteId ?? ""}|${runId ?? ""}|${engine ?? ""}`} post={view === "post"} initial={first} filter={{ siteId, runId, engine }} showSite={!siteId && counts.sites.length > 1} />
+          <ModerationGrid key={`${view}|${siteId ?? ""}|${runId ?? ""}|${engine ?? ""}`} post={view === "post"} initial={first} filter={{ siteId, runId, engine }} showSite={!siteId && counts.sites.length > 1} total={scopeTotal} />
         )}
       </div>
     </>

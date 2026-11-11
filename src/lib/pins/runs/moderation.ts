@@ -112,6 +112,28 @@ export async function applyDecisions(me: CurrentUser, decisions: Decision[], opt
   return { applied: approve.length + reject.length, continued };
 }
 
+/**
+ * «Одобрить все» (2026-11-11): все пины очереди в рамках фильтра (сайт / прогон / тип) одной кнопкой,
+ * а не пачками по 60. Помеченные на отклонение (rejectIds) отклоняются. В пост-модерации остальные
+ * просто отмечаются просмотренными. После — прогоны без непроверенных пинов продолжаются, как обычно.
+ */
+export async function approveAllInScope(me: CurrentUser, f: Omit<ModerationFilter, "cursor" | "limit">, rejectIds: string[]): Promise<{ approved: number; rejected: number; continued: string[] }> {
+  const post = f.view === "post";
+  const where: Prisma.PinRunItemWhereInput = {
+    run: { ...(await teamWhere(me)), ...(f.runId ? { id: f.runId } : {}), ...(f.siteId ? { siteId: f.siteId } : {}) },
+    ...queueWhere(f.view),
+    ...(f.engine ? { engine: f.engine as "OPENAI" | "PINORA" | "CANVAS" | "PHOTO" } : {}),
+  };
+  const runIds = (await prisma.pinRunItem.findMany({ where, distinct: ["runId"], select: { runId: true } })).map((r) => r.runId);
+  const reviewed = post ? { postReviewedAt: new Date() } : {};
+  const [rej, ok] = await prisma.$transaction([
+    prisma.pinRunItem.updateMany({ where: { ...where, id: { in: rejectIds.slice(0, 5000) } }, data: { moderation: "REJECTED", rejectReason: post ? "post_moderation" : "manual", ...reviewed } }),
+    prisma.pinRunItem.updateMany({ where, data: post ? reviewed : { moderation: "APPROVED", rejectReason: null } }),
+  ]);
+  const continued = await continueModeratedRuns(runIds);
+  return { approved: ok.count, rejected: rej.count, continued };
+}
+
 /** Прогоны в статусе «Модерация» без непроверенных пинов продолжаются сами. */
 export async function continueModeratedRuns(runIds: string[]): Promise<string[]> {
   const out: string[] = [];

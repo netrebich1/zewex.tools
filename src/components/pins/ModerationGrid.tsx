@@ -12,7 +12,7 @@ type Filter = { siteId?: string; runId?: string; engine?: string };
  * Увеличение: ← → листать, Delete отклонить, Enter оставить, Esc закрыть. Черновик — в localStorage.
  */
 /** post — пост-модерация: одобренные пины; клик помечает на отклонение, остальные остаются одобренными и считаются просмотренными. */
-export function ModerationGrid({ initial, filter, showSite = false, post = false }: { initial: Batch; filter: Filter; showSite?: boolean; post?: boolean }) {
+export function ModerationGrid({ initial, filter, showSite = false, post = false, total = 0 }: { initial: Batch; filter: Filter; showSite?: boolean; post?: boolean; total?: number }) {
   const router = useRouter();
   const storageKey = `pins-moderation${post ? "-post" : ""}:${filter.siteId ?? "all"}:${filter.runId ?? "all"}:${filter.engine ?? "all"}`;
   const [batch, setBatch] = useState<Batch>(initial);
@@ -114,6 +114,31 @@ export function ModerationGrid({ initial, filter, showSite = false, post = false
     }
   }, [batch, marked, query, router]);
 
+  // «Одобрить все» — вся очередь фильтра (а не только эта пачка) одним запросом; помеченные отклоняются.
+  const finishAll = useCallback(async () => {
+    const rej = marked.size;
+    const scope = filter.runId ? "этого прогона" : filter.siteId ? "этого сайта" : "во всех прогонах";
+    const q = post
+      ? `Отметить все ${total} пинов ${scope} просмотренными?${rej ? ` Помеченные (${rej}) будут отклонены.` : ""}`
+      : `Одобрить все ${total} непроверенных пинов ${scope}, не листая пачки?${rej ? ` Помеченные (${rej}) будут отклонены.` : ""}`;
+    if (!confirm(q)) return;
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await fetch("/api/pins/moderation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ post, all: { ...filter, reject: [...marked] } }) });
+      if (!res.ok) throw new Error(`Сервер ответил ${res.status}`);
+      const r = (await res.json()) as { approved: number; rejected: number; continued: string[] };
+      setMarked(new Set());
+      setBatch({ items: [], nextCursor: null });
+      setMsg(`${post ? "Просмотрено" : "Одобрено"}: ${r.approved}${r.rejected ? `, отклонено: ${r.rejected}` : ""}${r.continued.length ? `. Прогонов продолжено: ${r.continued.length}` : ""}`);
+      router.refresh();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [filter, marked, post, total, router]);
+
   const cols = size === "s" ? "grid-cols-4 sm:grid-cols-6 lg:grid-cols-8" : size === "m" ? "grid-cols-3 sm:grid-cols-4 lg:grid-cols-6" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4";
   const markedHere = batch.items.filter((i) => marked.has(i.id)).length;
 
@@ -146,6 +171,9 @@ export function ModerationGrid({ initial, filter, showSite = false, post = false
           <span className="text-[14px]">Помечено на отклонение: <b>{markedHere}</b> из {batch.items.length}</span>
           {msg && <span className="help">{msg}</span>}
           <span className="flex w-full gap-2 sm:w-auto sm:ml-auto">
+            {total > batch.items.length && (
+              <button className="btn-primary flex-1 sm:flex-none !whitespace-normal" disabled={busy} onClick={finishAll} title="Вся очередь в этом фильтре одним нажатием, без пролистывания пачек">{post ? `Все ${total} в порядке` : `Одобрить все ${total}`}</button>
+            )}
             <button className="btn-ghost flex-1 sm:flex-none !whitespace-normal" disabled={busy || !markedHere} onClick={() => finish("marked_only")}><span className="sm:hidden">Отклонить</span><span className="hidden sm:inline">Отклонить помеченные</span></button>
             <button className="btn-brand flex-1 sm:flex-none !whitespace-normal" disabled={busy || !batch.items.length} onClick={() => finish("all")}>{busy ? "Сохраняю…" : post ? (markedHere ? <><span className="sm:hidden">Отклонить {markedHere} и дальше</span><span className="hidden sm:inline">Отклонить {markedHere}, остальные оставить и дальше</span></> : "Всё в порядке, дальше") : <><span className="sm:hidden">Одобрить и дальше</span><span className="hidden sm:inline">Одобрить остальные и дальше</span></>}</button>
           </span>
