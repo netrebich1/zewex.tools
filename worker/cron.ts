@@ -21,6 +21,7 @@ import { tasksTick } from "./tasks";
 import { copyTick } from "@/lib/copy/build";
 import { copyAutoTick } from "@/lib/copy/auto";
 import { copyBatchTick } from "@/lib/copy/batch";
+import { prjGridTick } from "@/lib/projects/grid";
 
 /** Периодические задачи воркера: сторож зависших задач, уборка (позже). */
 export function startCron(): () => void {
@@ -98,5 +99,8 @@ export function startCron(): () => void {
 ${r.note}`); }).catch((e) => log.warn("copy auto failed", e)), 60_000));
   // Article Copy, партии: собирает пункты идущих партий (до 15 в минуту); текст пишет очередь «Статей».
   timers.push(setInterval(() => copyBatchTick().then((r) => { if (r.built || r.failed) log.info(`copy batch: +${r.built} built, ${r.failed} failed`); }).catch((e) => log.warn("copy batch failed", e)), 60_000));
+  // Проекты: сетка «сайт × кластер» в Google-таблице владельца — через 3 мин после старта и раз в час.
+  const grid = () => prjGridTick().then((r) => { if (r.written) log.info(`projects grid: sheet rewritten, ${r.sites} sites`); }).catch((e) => log.warn("projects grid failed", e));
+  timers.push(setTimeout(grid, 3 * 60_000), setInterval(grid, 60 * 60_000));
   return () => timers.forEach(clearInterval);
 }
