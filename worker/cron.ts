@@ -100,9 +100,10 @@ export function startCron(): () => void {
 ${r.note}`); }).catch((e) => log.warn("copy auto failed", e)), 60_000));
   // Article Copy, партии: собирает пункты идущих партий (до 15 в минуту); текст пишет очередь «Статей».
   timers.push(setInterval(() => copyBatchTick().then((r) => { if (r.built || r.failed) log.info(`copy batch: +${r.built} built, ${r.failed} failed`); }).catch((e) => log.warn("copy batch failed", e)), 60_000));
-  // Проекты: сетка «сайт × кластер» в Google-таблицах команд — через 3 мин после старта и раз в час.
+  // Проекты: сетка и вкладка «Трафик» в Google-таблицах команд — через 3 мин после старта и раз в 15 минут (пишет только при изменениях:
+  // так статистика, которую агент заливки снимает с аккаунтов, появляется в таблице в течение четверти часа, а не через час).
   const grid = () => prjGridTick().then((r) => { if (r.written) log.info(`projects grid: sheets rewritten, ${r.sites} sites`); if (r.errors.length) log.warn(`projects grid errors: ${r.errors.join("; ")}`); }).catch((e) => log.warn("projects grid failed", e));
-  timers.push(setTimeout(grid, 3 * 60_000), setInterval(grid, 60 * 60_000));
+  timers.push(setTimeout(grid, 3 * 60_000), setInterval(grid, 15 * 60_000));
   // Проекты, вкладка «Трафик»: Яндекс Метрика по токенам команд — новый токен сразу, дальше раз в сутки после 03:00 по Киеву.
   const metrika = () => metrikaTick().then((r) => { if (r.synced.length) log.info(`metrika synced: ${r.synced.join("; ")}`); if (r.errors.length) log.warn(`metrika errors: ${r.errors.join("; ")}`); }).catch((e) => log.warn("metrika tick failed", e));
   timers.push(setTimeout(metrika, 5 * 60_000), setInterval(metrika, 10 * 60_000));
