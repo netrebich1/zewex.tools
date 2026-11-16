@@ -64,8 +64,12 @@ const clusterTitle = (k: ClusterKey): string => {
 const clusterWord = (k: ClusterKey) => (k === "copy" ? "мешап" : clusterTitle(k).toLowerCase());
 /** Порядок сезонных столбцов: по году, внутри года — как в SEASONS. */
 const dynOrder = (k: ClusterKey) => { const [name, year] = k.split(":"); return (Number(year) || 0) * 100 + SEASONS.findIndex((s) => s[0] === name); };
+/** Ниша сайта = вкладка. Определяется по нишам рецептов статей, а если статей портала нет — по нишам страниц в прогонах пинов. */
+type Kind = "women" | "decor" | "food";
+const KIND_OF: Record<string, Kind> = { outfits: "women", outfit: "women", hair: "women", nails: "women", interior: "decor", decor: "decor", cooking: "food", food: "food", recipes: "food", recipe: "food" };
+const KIND_TABS: [Kind, string][] = [["women", "Женские"], ["decor", "Декор"], ["food", "Кулинария"]];
 type Cluster = { total: number; pub: number; pinned: number; pinTo: string | null };
-type GridSite = { domain: string; kind: "women" | "decor"; clusters: Partial<Record<ClusterKey, Cluster>>; old: { pages: number; pinTo: string } | null; until: string | null; uploadLast: string | null };
+type GridSite = { domain: string; kind: Kind; clusters: Partial<Record<ClusterKey, Cluster>>; old: { pages: number; pinTo: string } | null; until: string | null; uploadLast: string | null };
 
 /** Сводка по сайтам команды: кластеры статей, покрытие пинами (по URL страниц прогонов и истории), расписание, заливка. */
 export async function collectGrid(teamSlug: string): Promise<GridSite[]> {
@@ -160,10 +164,12 @@ export async function collectGrid(teamSlug: string): Promise<GridSite[]> {
     const old = oldRuns.length ? { pages: oldRuns.reduce((n, id) => n + (runPages.get(id) ?? 0), 0), pinTo: oldRuns.map((id) => schedTo.get(id)!).sort().pop()! } : null;
     if (!Object.keys(clusters).length && !old) continue;
     const until = s.pinRunIds.map((id) => schedTo.get(id)).filter((x): x is string => !!x).sort().pop() ?? null;
-    const n = s.niches;
-    const women = ["outfits", "hair", "nails"].some((k) => n["art:" + k]);
-    const pinWomen = (n["pin:hair"] ?? 0) + (n["pin:outfit"] ?? 0) + (n["pin:nails"] ?? 0);
-    const kind = n["art:interior"] ? "decor" : women ? "women" : (n["pin:decor"] ?? 0) > pinWomen ? "decor" : "women";
+    const vote = (prefix: string): Kind | null => {
+      const sum: Partial<Record<Kind, number>> = {};
+      for (const [k, c] of Object.entries(s.niches)) { const kd = k.startsWith(prefix) ? KIND_OF[k.slice(prefix.length)] : undefined; if (kd) sum[kd] = (sum[kd] ?? 0) + c; }
+      return (Object.entries(sum) as [Kind, number][]).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    };
+    const kind: Kind = vote("art:") ?? vote("pin:") ?? "women";
     out.push({ domain: s.domain, kind, clusters, old, until, uploadLast: s.uploads.sort().pop() ?? null });
   }
   return out.sort((a, b) => a.domain.localeCompare(b.domain));
@@ -173,7 +179,7 @@ type Color = "g" | "r" | "y" | "x";
 type Tab = { title: string; values: (string | number)[][]; colors: [number, number, Color][]; merges: number[][]; widths: Record<number, number>; dates: number[]; groups: number[]; cols: number; noteCol: number };
 
 /** Вкладка-сетка для одной ниши. notes — ручные заметки владельца по домену. */
-export function buildGridTab(kind: "women" | "decor", title: string, all: GridSite[], today: string, notes: Map<string, string>): Tab {
+export function buildGridTab(kind: Kind, title: string, all: GridSite[], today: string, notes: Map<string, string>): Tab {
   const mine = all.filter((x) => x.kind === kind);
   // Постоянные кластеры — всегда; сезонные — только те, что уже есть хотя бы у одного сайта вкладки.
   const dyn = [...new Set(mine.flatMap((x) => Object.keys(x.clusters)))].filter((k) => !BASE_KEYS.includes(k)).sort((a, b) => dynOrder(a) - dynOrder(b));
@@ -228,7 +234,7 @@ export function buildGridTab(kind: "women" | "decor", title: string, all: GridSi
 
 const LEGEND: string[][] = [
   ["Как читать"], [""],
-  ["Одна строка", "Один сайт. Всё, что по нему сделано и не сделано, — в этой одной строке. Женские и декор — на разных вкладках."],
+  ["Одна строка", "Один сайт. Всё, что по нему сделано и не сделано, — в этой одной строке. Женские, декор и кулинария — на разных вкладках."],
   ["Столбцы", "Кластеры: ПОДБОРКИ 2027, CHRISTMAS 2026, сезонные (если есть), БЛОГ, МЕШАП. У каждого две клетки: «статьи» и «пины»."],
   ["Клетка «статьи»", "Число = сколько статей этого кластера опубликовано. «нет» = кластер на этот сайт не писали."],
   ["Клетка «пины»", "«до 27.04.27» = пины на эти статьи сделаны и расписаны до этой даты. «нет» = статьи есть, а пинов на них нет."],
@@ -282,7 +288,8 @@ async function writeGrid(target: Target, force: boolean): Promise<{ written: boo
     const meta = () => sheetsFetch<Meta>(`/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title),merges)`);
     let m = await meta();
     const find = (t: string) => (m.sheets ?? []).find((s) => s.properties?.title === t);
-    const defs: Array<["women" | "decor", string]> = [["women", "Женские"], ["decor", "Декор"]];
+    // Женские и декор — всегда; кулинария — только если такие сайты у команды есть.
+    const defs = KIND_TABS.filter(([k]) => k !== "food" || sites.some((x) => x.kind === k));
     const tabs: Tab[] = [];
     for (const [kind, title] of defs) {
       const notes = new Map<string, string>();
