@@ -165,7 +165,7 @@ export async function metrikaTick(now = new Date()): Promise<{ synced: string[];
 
 // ───────────────────────────── Вкладка «Трафик» ─────────────────────────────
 
-type Color = "g" | "r" | "y" | "x";
+type Color = "g" | "r" | "y" | "x" | "b";
 type Series = Map<string, number>;
 const sum = (m: Series, end: string, n: number) => { let s = 0; for (let i = 0; i < n; i++) s += m.get(addDays(end, -i)) ?? 0; return s; };
 const fmt = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
@@ -182,10 +182,11 @@ function cmp(cur: number, prev: number): { text: string; color: Color | null } {
 }
 
 /**
- * Вкладка «Трафик»: одна строка = один сайт команды (порядок и ниша — из сетки).
+ * Вкладка «Трафик»: одна строка = один сайт команды, по убыванию кликов на сайт за 30 дней; слева место и его сдвиг за неделю,
+ * резко растущие сайты выделены ярко, в конце — «что сделать» (pinsLeft — на сколько дней расписаны пины, из сетки).
  * Pinterest считается до последнего закрытого дня аккаунта (сегодня и вчера у Pinterest — оценка), Метрика — до вчера.
  */
-export async function buildTrafficTab(teamSlug: string, sites: Array<{ domain: string; kind: string }>, today: string): Promise<Tab | null> {
+export async function buildTrafficTab(teamSlug: string, sites: Array<{ domain: string; kind: string; pinsLeft: number | null }>, today: string): Promise<Tab | null> {
   const team = await prisma.team.findUnique({ where: { slug: teamSlug }, select: { id: true } });
   if (!team) return null;
   const teamId = team.id;
@@ -219,23 +220,53 @@ export async function buildTrafficTab(teamSlug: string, sites: Array<{ domain: s
   const matched = new Set(((token?.counters as Array<{ site?: string; matched?: boolean }> | null) ?? []).filter((c) => c.matched).map((c) => c.site));
   const mState = !token ? " (не подключена)" : token.lastError && !token.lastSyncAt ? " (ошибка токена)" : "";
 
-  const h1 = ["САЙТ", "НИША", "PINTEREST · ПОКАЗЫ", "", "", "PINTEREST · КЛИКИ НА САЙТ", "", "", "PINTEREST · ЗА 30 ДНЕЙ", "", "", "", "", "", `МЕТРИКА · ВИЗИТЫ ЛЮДЕЙ${mState}`, "", "", `МЕТРИКА · С PINTEREST${mState}`, "", "", "", "СВЕЖЕСТЬ", ""];
-  const h2 = ["", "", "30 дней", "7 дней", "день", "30 дней", "7 дней", "день", "вовлечения", "вовлечённость", "сохранения", "save rate", "клики по пину", "CTR на сайт", "30 дней", "7 дней", "день", "30 дней", "7 дней", "день", "роботы, 30 дн", "данные на", "примечание"];
+  // Рейтинг: по кликам на сайт за 30 дней (при равенстве — по показам); место неделю назад — те же 30 дней, но окно сдвинуто на 7 дней.
+  type Row = { domain: string; kind: string; pinsLeft: number | null; s: S | undefined; oc30: number; im30: number; prev30: number };
+  const list: Row[] = sites.map((x) => {
+    const s = data.get(x.domain); const e = s?.ready ?? null;
+    return { ...x, s, oc30: e ? sum(s!.oc, e, 30) : -1, im30: e ? sum(s!.im, e, 30) : -1, prev30: e ? sum(s!.oc, addDays(e, -7), 30) : -1 };
+  });
+  const ranked = list.filter((x) => x.oc30 >= 0);
+  ranked.sort((a, b) => b.oc30 - a.oc30 || b.im30 - a.im30 || a.domain.localeCompare(b.domain));
+  const prevRank = new Map([...ranked].sort((a, b) => b.prev30 - a.prev30 || a.domain.localeCompare(b.domain)).map((x, i) => [x.domain, i + 1]));
+  const ordered = [...ranked, ...list.filter((x) => x.oc30 < 0)];
+
+  const h1 = ["№", "САЙТ", "НИША", "PINTEREST · КЛИКИ НА САЙТ", "", "", "PINTEREST · ПОКАЗЫ", "", "", "PINTEREST · ЗА 30 ДНЕЙ", "", "", "", "", "", `МЕТРИКА · ВИЗИТЫ ЛЮДЕЙ${mState}`, "", "", `МЕТРИКА · С PINTEREST${mState}`, "", "", "", "ИТОГ", "", ""];
+  const h2 = ["место · за неделю", "", "", "30 дней", "7 дней", "день", "30 дней", "7 дней", "день", "вовлечения", "вовлечённость", "сохранения", "save rate", "клики по пину", "CTR на сайт", "30 дней", "7 дней", "день", "30 дней", "7 дней", "день", "роботы, 30 дн", "данные на", "что сделать", "примечание"];
   const values: (string | number)[][] = [h1, h2];
   const colors: [number, number, Color][] = [];
-  for (const site of sites) {
-    const r = values.length; const row: (string | number)[] = [site.domain, site.kind]; const notes: string[] = []; const fresh: string[] = [];
-    const s = data.get(site.domain);
+  ordered.forEach((site, idx) => {
+    const r = values.length; const row: (string | number)[] = []; const notes: string[] = []; const fresh: string[] = []; const todo: string[] = [];
+    const s = site.s;
     const put = (c: { text: string; color: Color | null }) => { if (c.color) colors.push([r, row.length, c.color]); row.push(c.text); };
     const none = (n: number) => { for (let i = 0; i < n; i++) { colors.push([r, row.length, "x"]); row.push("—"); } };
     const trio = (m: Series, e: string) => { put(cmp(sum(m, e, 30), sum(m, addDays(e, -30), 30))); put(cmp(sum(m, e, 7), sum(m, addDays(e, -7), 7))); put(cmp(m.get(e) ?? 0, m.get(addDays(e, -7)) ?? 0)); };
     if (s?.ready) {
+      const rank = idx + 1, was = prevRank.get(site.domain) ?? rank, move = was - rank;
+      if (move > 0) colors.push([r, 0, "g"]); else if (move < 0) colors.push([r, 0, "r"]);
+      row.push(move > 0 ? `${rank} ▲${move}` : move < 0 ? `${rank} ▼${-move}` : `${rank} =`);
+    } else { colors.push([r, 0, "x"]); row.push("—"); }
+    row.push(site.domain, site.kind);
+    if (s?.ready) {
       const e = s.ready; const im30 = sum(s.im, e, 30);
-      trio(s.im, e); trio(s.oc, e);
+      trio(s.oc, e); trio(s.im, e);
       put(cmp(sum(s.en, e, 30), sum(s.en, addDays(e, -30), 30))); row.push(pct(sum(s.en, e, 30), im30));
       put(cmp(sum(s.sv, e, 30), sum(s.sv, addDays(e, -30), 30))); row.push(pct(sum(s.sv, e, 30), im30));
       row.push(fmt(sum(s.pc, e, 30))); row.push(pct(sum(s.oc, e, 30), im30));
       fresh.push(`Pinterest ${dm(e)}`);
+      // Резкий рост кликов на сайт: за 7 дней от +30% (и не меньше 20 кликов) или за день вдвое к тому же дню недели (не меньше 10 и без падения за неделю).
+      const c7 = sum(s.oc, e, 7), p7 = sum(s.oc, addDays(e, -7), 7), c1 = s.oc.get(e) ?? 0, p1 = s.oc.get(addDays(e, -7)) ?? 0;
+      const up7 = c7 >= 20 && c7 >= p7 * 1.3, up1 = c1 >= 10 && c1 >= p1 * 2 && c7 >= p7 * 0.9;
+      const grow = (c: number, p: number) => (p > 0 ? `+${Math.round(((c - p) / p) * 100)}%` : "с нуля");
+      if (up7 || up1) {
+        colors.push([r, 1, "b"]);
+        const why = [up7 ? `за 7 дней ${grow(c7, p7)}` : "", up1 ? `за день ${grow(c1, p1)}` : ""].filter(Boolean).join(", ");
+        const stock = site.pinsLeft == null ? "пинов в расписании нет — срочно сделать и залить" : site.pinsLeft < 0 ? "пины закончились — срочно сделать и залить" : site.pinsLeft <= 14 ? `пинов осталось на ${site.pinsLeft} дн. — сделать ещё` : "добавить пинов на статьи, которые дают клики";
+        todo.push(`РАСТЁТ (клики ${why}): ${stock}`);
+      } else if (p7 >= 20 && c7 <= p7 * 0.7) {
+        todo.push(`падает: клики за 7 дней ${Math.round(((c7 - p7) / p7) * 100)}% — проверить заливку и аккаунт`);
+        colors.push([r, 23, "r"]);
+      }
     } else {
       none(12);
       const a = accOf.get(site.domain);
@@ -255,14 +286,14 @@ export async function buildTrafficTab(teamSlug: string, sites: Array<{ domain: s
     }
     const a = accOf.get(site.domain);
     if (s?.ready && a?.statsAt && Date.now() - a.statsAt.getTime() > 3 * 86_400_000) notes.push(`Pinterest: не обновлялось с ${dm(kyiv(a.statsAt).slice(0, 10))}`);
-    row.push(fresh.join(" · ") || "—", notes.join("; "));
+    row.push(fresh.join(" · ") || "—", todo.join("; "), notes.join("; "));
     values.push(row);
-  }
-  const widths: Record<number, number> = { 0: 200, 1: 85, 21: 150, 22: 330 };
-  for (let c = 2; c <= 20; c++) widths[c] = c === 4 || c === 7 || c === 16 || c === 19 ? 105 : 115;
+  });
+  const widths: Record<number, number> = { 0: 75, 1: 200, 2: 85, 22: 150, 23: 360, 24: 300 };
+  for (let c = 3; c <= 21; c++) widths[c] = c === 5 || c === 8 || c === 17 || c === 20 ? 105 : 115;
   return {
     title: TRAFFIC_TAB, values, colors,
-    merges: [[0, 2, 0, 1], [0, 2, 1, 2], [0, 1, 2, 5], [0, 1, 5, 8], [0, 1, 8, 14], [0, 1, 14, 17], [0, 1, 17, 21], [0, 1, 21, 23]],
-    widths, dates: [], groups: [2, 5, 8, 14, 17, 21], cols: h1.length, noteCol: -1,
+    merges: [[0, 1, 1, 2], [0, 1, 2, 3], [0, 1, 3, 6], [0, 1, 6, 9], [0, 1, 9, 15], [0, 1, 15, 18], [0, 1, 18, 22], [0, 1, 22, 25]],
+    widths, dates: [], groups: [3, 6, 9, 15, 18, 22], cols: h1.length, noteCol: -1, frozenCols: 2,
   };
 }

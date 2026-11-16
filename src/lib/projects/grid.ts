@@ -176,8 +176,8 @@ export async function collectGrid(teamSlug: string): Promise<GridSite[]> {
   return out.sort((a, b) => a.domain.localeCompare(b.domain));
 }
 
-type Color = "g" | "r" | "y" | "x";
-export type Tab = { title: string; values: (string | number)[][]; colors: [number, number, Color][]; merges: number[][]; widths: Record<number, number>; dates: number[]; groups: number[]; cols: number; noteCol: number };
+type Color = "g" | "r" | "y" | "x" | "b";
+export type Tab = { title: string; values: (string | number)[][]; colors: [number, number, Color][]; merges: number[][]; widths: Record<number, number>; dates: number[]; groups: number[]; cols: number; noteCol: number; frozenCols?: number };
 
 /** Вкладка-сетка для одной ниши. notes — ручные заметки владельца по домену. */
 export function buildGridTab(kind: Kind, title: string, all: GridSite[], today: string, notes: Map<string, string>): Tab {
@@ -251,6 +251,7 @@ const LEGEND: string[][] = [
   ["Тестовые запуски меньше 20 статей не считаются. Таблицу заполняет портал zewex.tools сам, раз в час."],
   ["Колонку «заметка» ведёте вы — она сохраняется. Остальное портал перезаписывает, править там руками не нужно."],
   [""],
+  ["Трафик: порядок и рейтинг", "Сайты идут по убыванию кликов на сайт из Pinterest за 30 дней. Слева место и стрелка — на сколько мест сайт поднялся или опустился за неделю. Ярко-зелёное название сайта = резкий рост кликов (за 7 дней от +30% или за день вдвое); что с ним делать — в колонке «что сделать» в конце строки."],
   ["Вкладка «Трафик»", "Показы и клики на сайт из аналитики аккаунта Pinterest и визиты из Яндекс Метрики. В клетке — число и изменение: 30 дней к предыдущим 30, 7 дней к предыдущим 7, день к тому же дню недели неделей раньше. Рост от 5% — зелёным, падение от 5% — красным, «≈» — без заметных изменений."],
   ["Pinterest", "Читает агент заливки, когда заходит в профиль (в визите заливки или отдельным ночным заходом). Считается до последнего закрытого дня: сегодня и вчера у Pinterest ещё оценка. Вовлечённость, save rate и CTR на сайт — доля от показов за 30 дней."],
   ["Метрика", "Портал забирает ночью по токену команды (Заливка в Pinterest → Настройки). «Визиты людей» — без роботов; «с Pinterest» — переходы из соцсети Pinterest и по ссылкам с меткой utm_source=Pinterest вместе (Метрика показывает их в двух разных отчётах); «роботы» — доля роботов во всех визитах."],
@@ -258,7 +259,7 @@ const LEGEND: string[][] = [
 const LEGEND_COLORS: Record<number, Color> = { 9: "g", 10: "y", 11: "r", 12: "x" };
 
 const rgb = (r: number, g: number, b: number) => ({ red: r / 255, green: g / 255, blue: b / 255 });
-const BG: Record<Color, ReturnType<typeof rgb>> = { g: rgb(183, 225, 205), r: rgb(244, 180, 180), y: rgb(255, 229, 153), x: rgb(239, 239, 239) };
+const BG: Record<Color, ReturnType<typeof rgb>> = { g: rgb(183, 225, 205), r: rgb(244, 180, 180), y: rgb(255, 229, 153), x: rgb(239, 239, 239), b: rgb(0, 200, 83) };
 type Meta = { sheets?: Array<{ properties?: { sheetId?: number; title?: string }; merges?: unknown[] }> };
 
 let running = false;
@@ -308,7 +309,7 @@ async function writeGrid(target: Target, force: boolean): Promise<{ written: boo
     }
     // «Трафик»: показы и клики Pinterest, визиты Метрики — те же сайты в том же порядке (src/lib/projects/stats.ts).
     const kindTitle = new Map(KIND_TABS);
-    const traffic = await buildTrafficTab(target.team, defs.flatMap(([k]) => sites.filter((x) => x.kind === k).map((x) => ({ domain: x.domain, kind: (kindTitle.get(k) ?? "").toLowerCase() }))), today);
+    const traffic = await buildTrafficTab(target.team, defs.flatMap(([k]) => sites.filter((x) => x.kind === k).map((x) => ({ domain: x.domain, kind: (kindTitle.get(k) ?? "").toLowerCase(), pinsLeft: x.until ? daysBetween(x.until, today) : null }))), today);
     if (traffic) tabs.push(traffic);
     const stamp = `Обновлено: ${new Date().toLocaleString("ru-RU", { timeZone: TZ, dateStyle: "short", timeStyle: "short" })}`;
     const hash = createHash("sha1").update(JSON.stringify(tabs.map((t) => [t.values, t.colors]))).digest("hex");
@@ -334,7 +335,7 @@ async function writeGrid(target: Target, force: boolean): Promise<{ written: boo
       const none = { style: "NONE" };
       req.push({ updateBorders: { range: all, top: none, bottom: none, left: none, right: none, innerHorizontal: none, innerVertical: none } });
       for (const [c, px] of Object.entries(t.widths)) req.push({ updateDimensionProperties: { range: { sheetId, dimension: "COLUMNS", startIndex: +c, endIndex: +c + 1 }, properties: { pixelSize: px }, fields: "pixelSize" } });
-      req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 2, frozenColumnCount: 1 } }, fields: "gridProperties(frozenRowCount,frozenColumnCount)" } });
+      req.push({ updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 2, frozenColumnCount: t.frozenCols ?? 1 } }, fields: "gridProperties(frozenRowCount,frozenColumnCount)" } });
       for (const [r0, r1, c0, c1] of t.merges) req.push({ mergeCells: { range: cell(r0, r1, c0, c1), mergeType: "MERGE_ALL" } });
       const head = (bg: ReturnType<typeof rgb>, fontSize: number) => ({ backgroundColor: bg, textFormat: { bold: true, fontSize, foregroundColor: rgb(255, 255, 255) }, horizontalAlignment: "CENTER", verticalAlignment: "MIDDLE", wrapStrategy: "WRAP" });
       req.push({ repeatCell: { range: cell(0, 1, 0, cols), cell: { userEnteredFormat: head(rgb(38, 50, 56), 11) }, fields: "userEnteredFormat" } });
@@ -344,7 +345,7 @@ async function writeGrid(target: Target, force: boolean): Promise<{ written: boo
       const align = "userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)";
       req.push({ repeatCell: { range: cell(2, rows, 1, cols), cell: { userEnteredFormat: { horizontalAlignment: "CENTER", verticalAlignment: "MIDDLE", wrapStrategy: "WRAP" } }, fields: align } });
       req.push({ repeatCell: { range: cell(2, rows, cols - 2, cols), cell: { userEnteredFormat: { horizontalAlignment: "LEFT", verticalAlignment: "MIDDLE", wrapStrategy: "WRAP" } }, fields: align } });
-      req.push({ repeatCell: { range: cell(2, rows, 0, 1), cell: { userEnteredFormat: { textFormat: { bold: true }, verticalAlignment: "MIDDLE" } }, fields: "userEnteredFormat(textFormat,verticalAlignment)" } });
+      req.push({ repeatCell: { range: cell(2, rows, 0, t.frozenCols ?? 1), cell: { userEnteredFormat: { textFormat: { bold: true }, verticalAlignment: "MIDDLE" } }, fields: "userEnteredFormat(textFormat,verticalAlignment)" } });
       for (const c of t.dates) req.push({ repeatCell: { range: cell(2, rows, c, c + 1), cell: { userEnteredFormat: { numberFormat: { type: "DATE", pattern: "dd.mm.yy" } } }, fields: "userEnteredFormat.numberFormat" } });
       for (const [r, c, k] of t.colors) req.push({ repeatCell: { range: cell(r, r + 1, c, c + 1), cell: { userEnteredFormat: { backgroundColor: BG[k] } }, fields: "userEnteredFormat.backgroundColor" } });
       const thin = { style: "SOLID", color: rgb(255, 255, 255) }, thick = { style: "SOLID_MEDIUM", color: rgb(38, 50, 56) };
