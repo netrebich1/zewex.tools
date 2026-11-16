@@ -48,6 +48,7 @@ export async function launchDomainRun(_p: FormState, f: FormData): Promise<FormS
       serpKeyword: str(f, "serpKeyword"),
       letterMode: str(f, "letterMode"),
       usePool: f.get("usePool") === "on",
+      useKeywords: f.get("useKeywords") !== "off",
       // Режим «максимум» выключается только явным «off»: форма, открытая до появления галочек, поля не шлёт
       autoResearch: f.get("autoResearch") !== "off",
       checkAll: f.get("checkAll") !== "off",

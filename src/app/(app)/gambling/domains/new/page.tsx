@@ -35,7 +35,8 @@ export default async function NewDomainRunPage({ searchParams }: { searchParams:
     }
   }
   // Режим «максимум» по умолчанию всегда (старые подборы его не знали): ключи и выдача, все варианты, зона страны и зоны конкурентов; снять можно в форме
-  defaults = { ...defaults, autoResearch: true, checkAll: true, autoZones: true };
+  // Анализ ключей по умолчанию включён; «Повторить» сохраняет выбор подбора (например, слоты без ключей)
+  defaults = { ...defaults, autoResearch: true, checkAll: true, autoZones: true, useKeywords: from ? defaults.useKeywords : true };
   const savedPresets: Record<string, CountryPreset> = {};
   for (const p of await prisma.domainCountryPreset.findMany()) savedPresets[p.countryCode] = defaultCountryPreset(p.countryCode, p.tlds);
   return (

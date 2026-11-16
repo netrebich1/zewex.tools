@@ -94,6 +94,8 @@ export function parseSettings(json: unknown): DomainRunSettings {
     // У старых подборов буквы и запаса не было — не включаем их задним числом
     letterMode: LETTER_MODES.includes(s.letterMode as LetterMode) ? (s.letterMode as LetterMode) : "off",
     usePool: s.usePool === true,
+    // Старые подборы ключи анализировали всегда
+    useKeywords: s.useKeywords !== false,
     // У старых подборов сбора ключей перед проверкой не было
     autoResearch: s.autoResearch === true,
     // Старые подборы останавливались на perBrand + запас и брали только общие зоны
@@ -125,6 +127,8 @@ export type SettingsInput = {
   serpKeyword: string;
   letterMode?: string;
   usePool?: boolean;
+  /** Анализ ключевых слов (по умолчанию да) */
+  useKeywords?: boolean;
   /** Собрать ключи и выдачу по брендам перед проверкой */
   autoResearch?: boolean;
   /** Проверять все варианты бренда */
@@ -163,6 +167,7 @@ export function settingsFromInput(i: SettingsInput): DomainRunSettings {
     countryPresets,
     letterMode: LETTER_MODES.includes(i.letterMode as LetterMode) ? (i.letterMode as LetterMode) : "off",
     usePool: i.usePool === true,
+    useKeywords: i.useKeywords !== false,
     autoResearch: i.autoResearch === true,
     checkAll: i.checkAll === true,
     autoZones: i.autoZones === true,
@@ -426,7 +431,7 @@ export async function processDomainRun(run: DomainRun, workerId: string, shouldS
     return;
   }
 
-  if (settings.autoResearch) {
+  if (settings.autoResearch || settings.useKeywords) {
     const r = await researchStage(run, settings, touch);
     if (r === "lost") return;
     if (r === "stop") { await stopped(); return; }
@@ -506,8 +511,25 @@ const RESEARCH_PARALLEL = 3;
  */
 async function researchStage(run: DomainRun, settings: DomainRunSettings, touch: (label: string, index: number) => Promise<"go" | "stop" | "release" | "lost">): Promise<"go" | "stop" | "release" | "lost"> {
   const items = settings.items;
-  const todo = items.map((it, i) => (it.research || it.modifiers.length ? -1 : i)).filter((i) => i >= 0);
   const ctx = { userId: run.createdById, teamId: await domainsKeyTeamId() };
+  if (!settings.useKeywords) {
+    // Без анализа ключей (слоты): только TOP-10 по бренду — домены, зоны и приписки выдачи для карточки и зон
+    const need = items.map((it, i) => (it.research?.top10?.length ? -1 : i)).filter((i) => i >= 0);
+    for (let k = 0; k < need.length; k += RESEARCH_PARALLEL) {
+      const chunk = need.slice(k, k + RESEARCH_PARALLEL);
+      const st = await touch(`выдача Google: ${chunk.map((i) => itemLabel(items[i]!)).join(", ")} (${k + chunk.length} из ${need.length})`, 0);
+      if (st !== "go") return st;
+      await Promise.all(chunk.map(async (i) => {
+        const item = items[i]!;
+        const r = await brandTop10(ctx, item.brand, item.country).catch(() => null);
+        if (!r?.ok || !r.top10.length) return;
+        items[i] = { ...item, research: { ...(item.research ?? { origin: "auto" as const, at: new Date().toISOString(), queries: 0, rejected: [], errors: [], costUsd: 0 }), top10: r.top10, competitorDomains: r.competitorDomains.slice(0, 20), competitorTlds: r.tlds.slice(0, 10) } };
+      }));
+      await prisma.domainRun.update({ where: { id: run.id }, data: { settings: settings as unknown as Prisma.InputJsonValue } });
+    }
+    return "go";
+  }
+  const todo = items.map((it, i) => (it.research || it.modifiers.length ? -1 : i)).filter((i) => i >= 0);
   for (let k = 0; k < todo.length; k += RESEARCH_PARALLEL) {
     const chunk = todo.slice(k, k + RESEARCH_PARALLEL);
     const st = await touch(`ключи и выдача: ${chunk.map((i) => itemLabel(items[i]!)).join(", ")} (${k + chunk.length} из ${todo.length})`, 0);

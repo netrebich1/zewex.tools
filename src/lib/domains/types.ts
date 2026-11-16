@@ -139,6 +139,8 @@ export type DomainRunSettings = {
   letterMode: LetterMode;
   /** Уровни 4–6: модификаторы других брендов той же страны, если своих вариантов не хватило */
   usePool: boolean;
+  /** Анализ ключевых слов: ключи бренда (DataForSEO + ИИ) дают приставки «ключ» и «запас». Выключают для слотов — остаются гео и свои приставки */
+  useKeywords: boolean;
   /** Перед проверкой собрать ключи и выдачу Google по каждому бренду (DataForSEO + ИИ-фильтр) */
   autoResearch: boolean;
   /** Проверять все варианты бренда (до LIMITS.checkAllMax), а не останавливаться на perBrand + запас свободных */
@@ -177,6 +179,7 @@ export const DEFAULT_SETTINGS: DomainRunSettings = {
   countryPresets: {},
   letterMode: "after1",
   usePool: true,
+  useKeywords: true,
   autoResearch: true,
   checkAll: true,
   autoZones: true,

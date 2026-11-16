@@ -39,6 +39,7 @@ export function NewDomainRunForm({ defaults, initialName, savedPresets }: { defa
   const [letterMode, setLetterMode] = useState<LetterMode>(defaults.letterMode);
   const [usePool, setUsePool] = useState(defaults.usePool);
   const [autoResearch, setAutoResearch] = useState(defaults.autoResearch);
+  const [useKeywords, setUseKeywords] = useState(defaults.useKeywords);
   const [checkAll, setCheckAll] = useState(defaults.checkAll);
   const [autoZones, setAutoZones] = useState(defaults.autoZones);
   const [keyword, setKeyword] = useState(defaults.serpKeyword);
@@ -78,7 +79,7 @@ export function NewDomainRunForm({ defaults, initialName, savedPresets }: { defa
     return { ...it, modifiers: entryModifiers(entries[key]), ...(research ? { research } : {}) };
   }), [parsed, entries, savedResearch]);
   const presets = useMemo(() => Object.fromEntries(countries.filter((c) => drafts[c]).map((c) => [c, presetFromDraft(c, drafts[c]!)])), [countries, drafts]);
-  const plan: PlanSettings = { suffixTiers: tierLists, tlds: tldList, countryPresets: presets, usePool, autoZones };
+  const plan: PlanSettings = { suffixTiers: tierLists, tlds: tldList, countryPresets: presets, usePool, autoZones, useKeywords };
   const pool = useMemo(() => (usePool ? modifierPool(items) : undefined), [items, usePool]);
 
   // Превью: какие уровни и домены получит бренд (по порядку проверки)
@@ -239,14 +240,14 @@ export function NewDomainRunForm({ defaults, initialName, savedPresets }: { defa
             </div>
             <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
               <label className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="allowHyphen" className="h-4 w-4" checked={allowHyphen} onChange={(e) => setAllowHyphen(e.target.checked)} /> Разрешить дефис</label>
-              <label className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="usePool" className="h-4 w-4" checked={usePool} onChange={(e) => setUsePool(e.target.checked)} /> Запас: ключевые слова других брендов страны как уровни 4–6</label>
+              <label className="flex items-center gap-2 text-[14px]"><input type="checkbox" name="usePool" className="h-4 w-4" disabled={!useKeywords} checked={usePool && useKeywords} onChange={(e) => setUsePool(e.target.checked)} /> Запас: ключевые слова других брендов страны как уровни 4–6{!useKeywords && <span className="help">(нужен анализ ключей)</span>}</label>
             </div>
             {letterMode !== "off" && (
               <p className="help mt-2 text-warn">Домены «бренд + буква» владельцы брендов оспаривают чаще всего (UDRP считает разницу в одну букву «сходством до смешения»), а Chrome может показывать на них предупреждение «Возможно, вы имели в виду…». В результатах они помечены «буква».</p>
             )}
           </Card>
 
-          <BrandResearchPanel items={parsed.items} entries={entries} setEntries={setEntries} onAddTld={addCountryTld} />
+          {useKeywords && <BrandResearchPanel items={parsed.items} entries={entries} setEntries={setEntries} onAddTld={addCountryTld} />}
 
           {preview && previewItem && (
             <Card
@@ -299,14 +300,19 @@ export function NewDomainRunForm({ defaults, initialName, savedPresets }: { defa
 
           <div className="card p-4 sm:p-5">
             <div className="mb-3 text-[14px] font-semibold">Режим «максимум»</div>
+            <label className="mb-3 flex items-start gap-2 rounded-xl bg-brand-soft/40 p-2 text-[14px]">
+              <input type="hidden" name="useKeywords" value={useKeywords ? "on" : "off"} />
+              <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0" checked={useKeywords} onChange={(e) => setUseKeywords(e.target.checked)} />
+              <span className="font-semibold">Анализ ключевых слов<span className="help block font-normal">Запросы с брендом и частотой, подсказки Google, фильтр ИИ → приставки «ключ» (и «запас» других брендов). Выключите для слотов: останутся гео-приставки страны и ваши приставки из уровней 1–3. ~$0.02–0.04 на бренд.</span></span>
+            </label>
             {([
-              ["autoResearch", autoResearch, setAutoResearch, "Собрать ключи и выдачу Google перед проверкой", "Для каждого бренда без ключей: запросы с частотой, подсказки Google, TOP-10 и домены конкурентов (DataForSEO), фильтр ИИ. ~$0.02–0.04 на бренд."],
+              ["autoResearch", useKeywords || autoResearch, setAutoResearch, "Снять выдачу Google TOP-10 перед проверкой", useKeywords ? "Снимается вместе с анализом ключей: домены, зоны и приписки конкурентов в карточке бренда." : "Домены, зоны и приписки TOP-10 в карточке бренда и зоны из выдачи. ~$0.004 на бренд."],
               ["checkAll", checkAll, setCheckAll, "Проверять все варианты", `Гео, ключи, ваши приставки, все уровни и зоны — до ${LIMITS.checkAllMax} доменов на бренд. Без галочки проверка бренда останавливается, когда набралось «доменов на бренд» + запас.`],
               ["autoZones", autoZones, setAutoZones, "Добавлять зоны из анализа", "Зона страны (.fr, .nl, .uk) и до 6 зон, на которых стоят домены конкурентов в TOP-10."],
             ] as const).map(([name, value, set, title, hint]) => (
               <label key={name} className="mb-3 flex items-start gap-2 text-[14px]">
                 <input type="hidden" name={name} value={value ? "on" : "off"} />
-                <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0" checked={value} onChange={(e) => set(e.target.checked)} />
+                <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0" checked={value} disabled={name === "autoResearch" && useKeywords} onChange={(e) => set(e.target.checked)} />
                 <span>{title}<span className="help block">{hint}</span></span>
               </label>
             ))}

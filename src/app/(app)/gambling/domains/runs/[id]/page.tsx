@@ -52,7 +52,7 @@ export default async function DomainRunPage({ params }: { params: Promise<{ id: 
           <div key={c}><span className="label">Набор страны {c.toUpperCase()}</span><span className="font-mono text-[13px]">1: {p.tiers[0].join(", ") || "—"} · 2: {p.tiers[1].join(", ") || "—"} · 3: {p.tiers[2].join(", ") || "—"}{p.tlds.length ? ` · зоны: ${p.tlds.join(", ")}` : ""}</span></div>
         );
       })}
-      <div><span className="label">Бренд + буква</span>{LETTER_MODE_LABELS[settings.letterMode]} · запас модификаторов (уровни 4–6): {settings.usePool ? "да" : "нет"} · брендов с модификаторами: {settings.items.filter((it) => it.modifiers.length).length}</div>
+      <div><span className="label">Бренд + буква</span>{LETTER_MODE_LABELS[settings.letterMode]} · анализ ключевых слов: {settings.useKeywords ? "да" : "нет"} · запас модификаторов (уровни 4–6): {settings.usePool ? "да" : "нет"} · брендов с модификаторами: {settings.items.filter((it) => it.modifiers.length).length}</div>
       <div><span className="label">Дефис</span>{settings.allowHyphen ? "разрешён" : "запрещён"}{settings.serpKeyword ? <> · <span className="label inline">ключ:</span> {settings.serpKeyword}</> : null}</div>
       {settings.serp && (
         <div className="sm:col-span-2"><span className="label">Выдача Google</span><span className="help">{settings.serp.provider === "dataforseo" ? "DataForSEO" : "SerpAPI"} · доменов с брендом: {settings.serp.domains.length} · снято {fmtDate(settings.serp.fetchedAt)}{settings.minedSuffixes.length ? ` · приставки конкурентов: ${settings.minedSuffixes.slice(0, 12).map((m) => `${m.suffix} (${m.count})`).join(", ")}${settings.minedSuffixes.length > 12 ? "…" : ""}` : ""}</span></div>
