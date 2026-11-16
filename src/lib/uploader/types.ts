@@ -133,13 +133,17 @@ export type TaskResult = {
   triedProfiles?: string[];
   /** Снимок HTML страницы при неизвестной ошибке (для правки селекторов) */
   html?: string | null;
+  /** Аналитика аккаунта (фаза stats или тот же визит после заливки): сколько дней сохранено или почему не снято */
+  stats?: { ok: boolean; saved: number; note: string | null };
 };
 
 /** Что агент получает в next. */
 export type AgentTask = {
   id: string;
   runId: string;
-  phase: "upload" | "verify";
+  phase: "upload" | "verify" | "stats";
+  /** После заливки в этот же визит снять аналитику аккаунта (агент 0.1.8+) */
+  stats?: boolean;
   steps: Step[];
   site: { id: string; name: string };
   profileId: string;

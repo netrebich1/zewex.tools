@@ -12,6 +12,7 @@ import { previewDay } from "./csv";
 import { userAsCurrent, visiblePinSites } from "./sites";
 import { setSiteIds } from "./sets";
 import { agentTeamId } from "./teams";
+import { statsRunsTick } from "./stats";
 import { ERROR_LABELS, LEASE_SEC, MAX_ATTEMPTS, OFFLINE_SEC, parseAgentSettings, parseSchedule, type ErrorKind, type TaskResult, type VerifyResult } from "./types";
 
 export type CreateRunInput = { agentId: string; day: string; siteIds: string[]; parallel?: number; source?: "manual" | "schedule"; force?: boolean; userId?: string | null };
@@ -97,8 +98,8 @@ export async function retryFailed(runId: string): Promise<number> {
 }
 
 /** Счётчики запуска из заданий фазы upload. */
-async function counters(runId: string) {
-  const g = await prisma.uplTask.groupBy({ by: ["status"], where: { runId, phase: "upload" }, _count: { _all: true } });
+async function counters(runId: string, phase = "upload") {
+  const g = await prisma.uplTask.groupBy({ by: ["status"], where: { runId, phase }, _count: { _all: true } });
   const n = (s: string) => g.find((x) => x.status === s)?._count._all ?? 0;
   return { done: n("DONE"), failed: n("FAILED"), skipped: n("SKIPPED"), open: n("QUEUED") + n("LEASED"), total: g.reduce((a, x) => a + x._count._all, 0) - n("SKIPPED") };
 }
@@ -111,6 +112,13 @@ async function counters(runId: string) {
 export async function settleRun(runId: string): Promise<void> {
   const run = await prisma.uplRun.findUnique({ where: { id: runId } });
   if (!run) return;
+  if (run.phase === "stats") {
+    // Запуск «только аналитика»: одна фаза, проверки нет.
+    const s = await counters(runId, "stats");
+    const live = s.open > 0 && !run.stopRequested;
+    await prisma.uplRun.update({ where: { id: runId }, data: { done: s.done, failed: s.failed, skipped: s.skipped, total: s.total, ...(live ? { status: "RUNNING" } : s.open > 0 ? {} : { status: run.stopRequested ? "STOPPED" : s.failed && !s.done ? "FAILED" : "DONE", finishedAt: new Date() }) } });
+    return;
+  }
   const c = await counters(runId);
   const base = { done: c.done, failed: c.failed, skipped: c.skipped, total: c.total };
   if (run.phase === "upload") {
@@ -220,6 +228,8 @@ export async function uploaderTick(now = new Date()): Promise<{ stale: number; v
       if (r.runId) scheduled++;
     } catch { /* нет сайтов с файлами — просто день отмечен */ }
   }
+  // Визиты только за аналитикой Pinterest (вкладка «Трафик») — ночью и «догоняющие» после 15:00.
+  await statsRunsTick(now).catch((e) => console.warn("[uploader] statsRunsTick failed", e));
   return { stale: stale.length, verify: waiting.length, scheduled };
 }
 

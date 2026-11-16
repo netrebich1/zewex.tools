@@ -15,6 +15,7 @@ import { ACCOUNT_STATUS_LABELS, DEFAULT_HUMANIZE, HUMANIZE_FIELDS, isDay, parseH
 import { suggestProfiles } from "@/lib/uploader/match";
 import { setFor } from "@/lib/uploader/sets";
 import { agentTeamOptions, teamTokenRows } from "@/lib/uploader/teams";
+import { metrikaCounters } from "@/lib/projects/stats";
 
 export type FormState = { error?: string; ok?: string };
 export type TokenState = FormState & { token?: string };
@@ -263,6 +264,23 @@ export async function saveDolphinTokenAction(_p: FormState, f: FormData): Promis
     await prisma.uplTeamToken.upsert({ where: { teamId }, update: data, create: { teamId, ...data } });
     refresh(`${BASE}/settings`, `${BASE}/agents`);
     return { ok: `Токен Dolphin команды «${row.teamName}» сохранён; её агенты получат его при следующем выходе на связь` };
+  } catch (e) { return fail(e); }
+}
+
+/** Токен Яндекс Метрики команды: проверяем запросом списка счётчиков, храним зашифрованным; первый сбор — в течение 10 минут. */
+export async function saveMetrikaTokenAction(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUploader();
+  const teamId = str(f, "teamId");
+  const row = (await teamTokenRows(me)).find((t) => t.teamId === teamId);
+  if (!row?.canEdit) return { error: "Токен команды меняет администратор или лид этой команды" };
+  const token = str(f, "token").replace(/^OAuth\s+/i, "");
+  if (!token) return { error: "Вставьте токен Яндекс Метрики" };
+  try {
+    const counters = await metrikaCounters(token);
+    const data = { tokenEnc: encryptSecret(token), hint: secretHint(token), updatedById: me.id, lastSyncAt: null, lastTryAt: null, lastError: null };
+    await prisma.prjMetrikaToken.upsert({ where: { teamId }, update: data, create: { teamId, ...data } });
+    refresh(`${BASE}/settings`);
+    return { ok: `Токен принят: Метрика отдала ${counters.length} счётчиков. Первый сбор начнётся в течение 10 минут, дальше — каждую ночь; цифры появятся на вкладке «Трафик» таблицы команды.` };
   } catch (e) { return fail(e); }
 }
 

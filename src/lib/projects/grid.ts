@@ -10,6 +10,7 @@
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { sheetsFetch, quoteTab, rangePath } from "@/lib/articles/sheets";
+import { buildTrafficTab } from "./stats";
 
 /**
  * Команда портала → её Google-таблица (у каждой команды своя, сетка одинаковая). Таблица должна быть открыта на редактирование по ссылке.
@@ -176,7 +177,7 @@ export async function collectGrid(teamSlug: string): Promise<GridSite[]> {
 }
 
 type Color = "g" | "r" | "y" | "x";
-type Tab = { title: string; values: (string | number)[][]; colors: [number, number, Color][]; merges: number[][]; widths: Record<number, number>; dates: number[]; groups: number[]; cols: number; noteCol: number };
+export type Tab = { title: string; values: (string | number)[][]; colors: [number, number, Color][]; merges: number[][]; widths: Record<number, number>; dates: number[]; groups: number[]; cols: number; noteCol: number };
 
 /** Вкладка-сетка для одной ниши. notes — ручные заметки владельца по домену. */
 export function buildGridTab(kind: Kind, title: string, all: GridSite[], today: string, notes: Map<string, string>): Tab {
@@ -249,6 +250,10 @@ const LEGEND: string[][] = [
   ["Сезоны и праздники (Winter, Valentine, Spring, Easter, Summer, Fall, Halloween, Thanksgiving, Christmas и др.) появляются сами: портал смотрит на слово и год в ключе, например SPRING 2027. Столбец добавится, когда на каком-то сайте вкладки наберётся 20 таких статей; до этого они считаются в ПОДБОРКАХ 2027. Так же появятся ПОДБОРКИ 2028."],
   ["Тестовые запуски меньше 20 статей не считаются. Таблицу заполняет портал zewex.tools сам, раз в час."],
   ["Колонку «заметка» ведёте вы — она сохраняется. Остальное портал перезаписывает, править там руками не нужно."],
+  [""],
+  ["Вкладка «Трафик»", "Показы и клики на сайт из аналитики аккаунта Pinterest и визиты из Яндекс Метрики. В клетке — число и изменение: 30 дней к предыдущим 30, 7 дней к предыдущим 7, день к тому же дню недели неделей раньше. Рост от 5% — зелёным, падение от 5% — красным, «≈» — без заметных изменений."],
+  ["Pinterest", "Читает агент заливки, когда заходит в профиль (в визите заливки или отдельным ночным заходом). Считается до последнего закрытого дня: сегодня и вчера у Pinterest ещё оценка. Вовлечённость, save rate и CTR на сайт — доля от показов за 30 дней."],
+  ["Метрика", "Портал забирает ночью по токену команды (Заливка в Pinterest → Настройки). «Визиты людей» — без роботов; «с Pinterest» — переходы из соцсети Pinterest и по ссылкам с меткой utm_source=Pinterest вместе (Метрика показывает их в двух разных отчётах); «роботы» — доля роботов во всех визитах."],
 ];
 const LEGEND_COLORS: Record<number, Color> = { 9: "g", 10: "y", 11: "r", 12: "x" };
 
@@ -301,6 +306,10 @@ async function writeGrid(target: Target, force: boolean): Promise<{ written: boo
       }
       tabs.push(buildGridTab(kind, title, sites, today, notes));
     }
+    // «Трафик»: показы и клики Pinterest, визиты Метрики — те же сайты в том же порядке (src/lib/projects/stats.ts).
+    const kindTitle = new Map(KIND_TABS);
+    const traffic = await buildTrafficTab(target.team, defs.flatMap(([k]) => sites.filter((x) => x.kind === k).map((x) => ({ domain: x.domain, kind: (kindTitle.get(k) ?? "").toLowerCase() }))), today);
+    if (traffic) tabs.push(traffic);
     const stamp = `Обновлено: ${new Date().toLocaleString("ru-RU", { timeZone: TZ, dateStyle: "short", timeStyle: "short" })}`;
     const hash = createHash("sha1").update(JSON.stringify(tabs.map((t) => [t.values, t.colors]))).digest("hex");
     const ready = !!find(LEGEND_TAB) && tabs.every((t) => find(t.title)) && !OLD.some((t) => find(t));

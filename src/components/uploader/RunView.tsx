@@ -94,12 +94,13 @@ function TaskRow({ t, runId, onZoom }: { t: TaskView; runId: string; onZoom: (ur
             </div>
           ) : null}
           {t.errorLabel ? <div className="sm:hidden text-[12.5px] font-normal text-danger">{t.errorLabel}</div> : null}</td>
-        <td className="col-sm help">{t.phase === "verify" ? "проверка" : "заливка"}</td>
+        <td className="col-sm help">{t.phase === "verify" ? "проверка" : t.phase === "stats" ? "аналитика" : "заливка"}</td>
         <td><TaskBadge status={t.status} />{t.attempts > 1 ? <span className="help ml-1">попытка {t.attempts}</span> : null}</td>
         <td className="tabular-nums">{t.rows ?? "—"}<div className="help">{t.fileName ?? ""}</div>{manual ? <a href={`/api/uploader/runs/${runId}/file?task=${t.id}`} className="btn-secondary btn-sm mt-1.5 inline-flex">⬇ Скачать CSV</a> : null}</td>
         <td className="text-[12.5px]">
           {t.status === "LEASED" ? <span className="text-brand">{t.step ?? "в работе"}</span> : null}
           {t.errorLabel ? <div className="text-danger">{t.errorLabel}{t.error && t.error !== t.errorLabel ? <span className="help"> — {t.error}</span> : null}</div> : t.status === "SKIPPED" && t.error ? <div className="text-warn">{t.error}</div> : null}
+          {t.result?.stats ? <div className={t.result.stats.ok ? "text-ok" : "text-warn"}>{t.result.stats.ok ? `аналитика: ${t.result.stats.saved} дней` : `аналитика не снята: ${t.result.stats.note ?? ""}`}</div> : null}
           {t.status === "DONE" && t.phase === "upload" ? <div className="text-ok">файл принят{t.result?.rowsSeen != null ? `, строк ${t.result.rowsSeen}` : ""}{t.result?.message ? <span className="help"> · {t.result.message}</span> : null}</div> : null}
           {v ? <div className={v.processing || v.scheduled === 0 ? "text-warn" : "text-ok"}>проверка: {verifyLabel(v)}</div> : null}
         </td>
@@ -136,7 +137,8 @@ export function RunView({ initial }: { initial: RunViewT }) {
   }, [live, run.id]);
   const uploads = run.tasks.filter((t) => t.phase === "upload");
   const verifies = run.tasks.filter((t) => t.phase === "verify");
-  const shots = [...uploads, ...verifies].flatMap(taskShots).filter((s, i, a) => a.findIndex((x) => x.url === s.url) === i);
+  const statTasks = run.tasks.filter((t) => t.phase === "stats");
+  const shots = [...uploads, ...verifies, ...statTasks].flatMap(taskShots).filter((s, i, a) => a.findIndex((x) => x.url === s.url) === i);
   const [zoom, setZoom] = useState<number | null>(null);
   const onZoom = (url: string) => setZoom(Math.max(0, shots.findIndex((s) => s.url === url)));
   const pct = run.total ? Math.round(((run.done + run.failed) / run.total) * 100) : 0;
@@ -154,6 +156,14 @@ export function RunView({ initial }: { initial: RunViewT }) {
         <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-ink/10"><div className="h-full bg-brand transition-all" style={{ width: `${pct}%` }} /></div>
         <div className="mt-1 help">Готово {run.done} из {run.total}{run.failed ? ` · ошибок ${run.failed}` : ""}{run.skipped ? ` · пропущено ${run.skipped}` : ""}{run.startedAt ? ` · начат ${dt(run.startedAt)}` : ""}{run.finishedAt ? ` · завершён ${dt(run.finishedAt)}` : ""}</div>
       </Card>
+      {statTasks.length > 0 && (
+        <Card title={`Аналитика Pinterest · ${statTasks.length}`} description="Агент открывает профиль и читает аналитику аккаунта за 90 дней (показы, клики на сайт, вовлечения, сохранения) — для вкладки «Трафик» в таблице команды. Файлы в этом запуске не заливаются.">
+          <div className="table-wrap"><table className="table">
+            <thead><tr><th>Сайт / профиль</th><th className="col-sm">Фаза</th><th>Статус</th><th>Пинов</th><th>Что происходит</th><th className="col-sm">Начато</th><th></th></tr></thead>
+            <tbody>{statTasks.map((t) => <TaskRow key={t.id} t={t} runId={run.id} onZoom={onZoom} />)}</tbody>
+          </table></div>
+        </Card>
+      )}
       <Card title={`Заливка · ${uploads.length}`}>
         <div className="table-wrap"><table className="table">
           <thead><tr><th>Сайт / профиль</th><th className="col-sm">Фаза</th><th>Статус</th><th>Пинов</th><th>Что происходит</th><th className="col-sm">Начато</th><th></th></tr></thead>

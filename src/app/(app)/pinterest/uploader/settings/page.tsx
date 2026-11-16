@@ -4,7 +4,8 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { isAdmin, requireUploader } from "@/lib/uploader/access";
 import { uplSettings } from "@/lib/uploader/runs";
 import { HUMANIZE_FIELDS, parseHumanize } from "@/lib/uploader/types";
-import { saveDolphinTokenAction, saveSettingsAction } from "@/actions/uploader";
+import { saveDolphinTokenAction, saveMetrikaTokenAction, saveSettingsAction } from "@/actions/uploader";
+import { prisma } from "@/lib/db";
 import { teamTokenRows } from "@/lib/uploader/teams";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export default async function UploaderSettingsPage() {
   const me = await requireUploader();
   const [s, tokens] = await Promise.all([uplSettings(), teamTokenRows(me)]);
   const h = parseHumanize(s.humanize);
+  const metrika = new Map((await prisma.prjMetrikaToken.findMany({ where: { teamId: { in: tokens.map((t) => t.teamId) } }, select: { teamId: true, hint: true, lastSyncAt: true, lastError: true, counters: true } })).map((m) => [m.teamId, m]));
   const admin = isAdmin(me);
   return (
     <>
@@ -32,6 +34,27 @@ export default async function UploaderSettingsPage() {
               )}
             </div>
           ))}</div>
+        </Card>
+        <Card title="Яндекс Метрика по командам" description="Для вкладки «Трафик» в таблице команды: визиты сайтов без роботов и отдельно переходы с Pinterest. Портал каждую ночь сам находит счётчики сайтов команды по домену. Нужен токен OAuth с правом «Яндекс Метрика: чтение статистики» от аккаунта, которому видны счётчики. Хранится зашифрованным.">
+          <div className="space-y-3">{tokens.map((t) => {
+            const m = metrika.get(t.teamId);
+            const list = (m?.counters as Array<{ matched?: boolean }> | null) ?? [];
+            return (
+              <div key={t.teamId} className="rounded-xl border border-line p-3">
+                <div className="flex flex-wrap items-center gap-2 text-[13.5px]"><b>{t.teamName}</b>{m ? <code>{m.hint}</code> : <span className="help">не подключена</span>}
+                  {m?.lastSyncAt ? <span className="help">· собрано {m.lastSyncAt.toLocaleString("ru-RU", { timeZone: "Europe/Kyiv" })} · счётчиков сайтов команды {list.filter((c) => c.matched).length} из {list.length}</span> : m && !m.lastError ? <span className="help">· первый сбор в течение 10 минут</span> : null}
+                  {m?.lastError ? <span className="text-danger">· {m.lastError}</span> : null}</div>
+                {t.canEdit && (
+                  <ActionForm action={saveMetrikaTokenAction} className="mt-2 flex flex-wrap gap-2">
+                    <input type="hidden" name="teamId" value={t.teamId} />
+                    <input name="token" className="input font-mono text-[12.5px] min-w-[240px] flex-1" placeholder={`токен Метрики команды ${t.teamName}`} autoComplete="off" required />
+                    <SubmitButton className="btn-primary" pendingText="Проверяю…">{m ? "Заменить" : "Подключить"}</SubmitButton>
+                  </ActionForm>
+                )}
+              </div>
+            );
+          })}</div>
+          <div className="help mt-3">Как получить токен: 1) на oauth.yandex.ru создайте приложение («Для доступа к API или отладки»), в правах отметьте «Яндекс Метрика → Получение статистики, чтение параметров своих и доверенных счётчиков»; 2) откройте в браузере, где вошли в нужный аккаунт Яндекса, адрес <code>https://oauth.yandex.ru/authorize?response_type=token&amp;client_id=ИДЕНТИФИКАТОР_ПРИЛОЖЕНИЯ</code> и разрешите доступ; 3) скопируйте выданный токен сюда.</div>
         </Card>
         <Card title="Поведение агента («как человек»)" description="Диапазоны «от–до»: агент каждый раз берёт случайное значение. Проверка истории: через сколько минут после конца заливки и как часто повторять, если Pinterest ещё обрабатывает.">
           <ActionForm action={saveSettingsAction} className="space-y-3">

@@ -3,7 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AgentError } from "./errors";
 import { filesDir } from "./paths";
-import { AGENT_VERSION, type AgentTask, type ErrorKind, type HelloResponse, type NextResponse, type VerifyResult } from "./protocol";
+import { AGENT_VERSION, type AgentTask, type ErrorKind, type HelloResponse, type NextResponse, type PinStats, type VerifyResult } from "./protocol";
 
 export class PortalClient {
   constructor(private portal: string, private token: string) {}
@@ -30,6 +30,9 @@ export class PortalClient {
   progress(taskId: string, step: string, extra: { screenshot?: string | null; username?: string | null } = {}) { return this.call<{ ok: boolean }>("progress", { taskId, step, state: step, ...extra }); }
   finishUpload(taskId: string, result: { rowsSeen?: number | null; message?: string | null; screenshot?: string | null; timings?: Record<string, number> }) { return this.call<{ ok: boolean }>("finish", { taskId, result }); }
   finishVerify(taskId: string, verify: VerifyResult, screenshot: string | null) { return this.call<{ ok: boolean }>("finish", { taskId, result: { verify, screenshot } }); }
+  /** Аналитика аккаунта, снятая в том же визите после заливки (задание к этому моменту уже закрыто). */
+  stats(taskId: string, stats: PinStats) { return this.call<{ ok: boolean; saved: number }>("stats", { taskId, stats }); }
+  finishStats(taskId: string, stats: PinStats, screenshot: string | null) { return this.call<{ ok: boolean }>("finish", { taskId, result: { stats, screenshot } }); }
   fail(taskId: string, kind: ErrorKind, error: string, screenshot?: string | null, html?: string | null) { return this.call<{ ok: boolean; retry: boolean }>("fail", { taskId, kind, error, screenshot, html }); }
   state(state: string, busy: boolean) { return this.call<{ ok: boolean }>("state", { state, busy }); }
 

@@ -11,6 +11,8 @@ import { writeFileAtomic, publicUrl } from "@/lib/pins/storage";
 import { eventText, logEventByPinSite } from "@/lib/projects/events";
 import { matchScore } from "./match";
 import { agentTeamId, teamDolphinToken } from "./teams";
+import { savePinStats } from "@/lib/projects/stats";
+import { STATS_WITH_UPLOAD_MS } from "./stats";
 import { applyVerify, leaseUntil, settleRun, uplSettings, verifyText } from "./runs";
 import { ERROR_LABELS, MAX_ATTEMPTS, PAUSE_HOURS, PROTOCOL, TRANSIENT, UPLOADER, parseHumanize, type AgentTask, type ErrorKind, type Step, type TaskResult, type VerifyResult } from "./types";
 
@@ -95,10 +97,11 @@ export async function profiles(ctx: Ctx, b: Body) {
 async function toAgentTask(t: UplTask): Promise<AgentTask> {
   const [site, acc] = await Promise.all([
     prisma.pinSite.findUnique({ where: { id: t.pinSiteId }, select: { id: true, name: true } }),
-    prisma.uplAccount.findUnique({ where: { pinSiteId: t.pinSiteId }, select: { profileName: true, pinUsername: true } }),
+    prisma.uplAccount.findUnique({ where: { pinSiteId: t.pinSiteId }, select: { profileName: true, pinUsername: true, statsAt: true } }),
   ]);
   return {
-    id: t.id, runId: t.runId, phase: t.phase as "upload" | "verify", steps: (t.steps as Step[]) ?? [],
+    id: t.id, runId: t.runId, phase: t.phase as "upload" | "verify" | "stats",
+    stats: t.phase === "upload" && (!acc?.statsAt || Date.now() - acc.statsAt.getTime() > STATS_WITH_UPLOAD_MS), steps: (t.steps as Step[]) ?? [],
     site: { id: t.pinSiteId, name: site?.name ?? "сайт" }, profileId: t.profileId, profileName: acc?.profileName ?? null, day: t.day,
     fileName: t.fileName, rows: t.rows, fileUrl: t.phase === "upload" ? `/api/uploader/file?task=${t.id}` : null,
     pinUsername: acc?.pinUsername ?? null, expectFileName: t.fileName,
@@ -215,6 +218,10 @@ export async function finish(ctx: Ctx, b: Body) {
     }
     void logEventByPinSite(t.pinSiteId, { kind: "export_uploaded", refId: `${t.pinSiteId}|${t.day}`, summary: eventText.exportUploadedAuto(t.day, t.rows ?? 0, ctx.agent.name), payload: { taskId: t.id, runId: t.runId, screenshot: shot } });
     await event(t.pinSiteId, t.id, "upload", "ok", `${t.day}: файл ${t.fileName ?? ""} принят${rows != null ? `, строк ${rows}` : ""}`);
+  } else if (t.phase === "stats") {
+    const st = await savePinStats(t.pinSiteId, r.stats);
+    await prisma.uplTask.update({ where: { id: t.id }, data: { status: "DONE", leaseUntil: null, finishedAt: now, step: "готово", error: null, errorKind: null, result: { ...prev, stats: st, screenshot: shot ?? prev.screenshot ?? null } as Prisma.InputJsonValue } });
+    await event(t.pinSiteId, t.id, "check", st.ok ? "ok" : "empty", st.ok ? `аналитика: ${st.saved} дней` : `аналитика не снята: ${st.note ?? ""}`);
   } else {
     const vr = (r.verify && typeof r.verify === "object" ? r.verify : r) as Record<string, unknown>;
     const v: VerifyResult = { published: num(vr.published), failed: num(vr.failed), processing: vr.processing === true, scheduled: num(vr.scheduled), text: str(vr.text, 2000), screenshot: shot };
@@ -294,6 +301,18 @@ async function twinProfile(pinSiteId: string, tried: string[], failedId: string)
   ]);
   const busy = new Set(taken.map((a) => a.profileId));
   return profiles.find((p) => !busy.has(p.id) && matchScore(site, p) === 2) ?? null;
+}
+
+/** Аналитика аккаунта, снятая в том же визите после заливки: задание уже закрыто, поэтому отдельным действием. */
+export async function stats(ctx: Ctx, b: Body) {
+  await touch(ctx, b, "busy");
+  const t = typeof b.taskId === "string" ? await prisma.uplTask.findUnique({ where: { id: b.taskId }, include: { run: { select: { agentId: true } } } }) : null;
+  if (!t || t.run.agentId !== ctx.agent.id) throw new UploaderError("Задание не найдено.", 404, "no_task");
+  const st = await savePinStats(t.pinSiteId, b.stats);
+  const prev = (t.result as TaskResult | null) ?? {};
+  await prisma.uplTask.update({ where: { id: t.id }, data: { result: { ...prev, stats: st } as Prisma.InputJsonValue } });
+  await event(t.pinSiteId, t.id, "check", st.ok ? "ok" : "empty", st.ok ? `аналитика: ${st.saved} дней` : `аналитика не снята: ${st.note ?? ""}`);
+  return { ok: true, saved: st.saved };
 }
 
 /** Строка состояния агента (что делает сейчас). */

@@ -1,6 +1,6 @@
 /** Копия протокола портала (src/lib/uploader/types.ts) — ровно то, что нужно агенту. При изменении протокола править оба файла. */
 
-export const AGENT_VERSION = "0.1.7";
+export const AGENT_VERSION = "0.1.8";
 export const PROTOCOL = 1;
 
 export type StepKind = "upload_csv" | "check_history" | "analytics";
@@ -25,10 +25,18 @@ export const DEFAULT_HUMANIZE: UplHumanize = {
 /** scheduled — сколько пинов в блоке «Scheduled Pins» на вкладке Created профиля (null — блок не прочитан). */
 export type VerifyResult = { published: number | null; failed: number | null; processing: boolean; scheduled?: number | null; text?: string | null };
 
+/** День аналитики аккаунта Pinterest: e — день ещё не закрыт (оценка), показы, вовлечения, клики по пину, клики на сайт, сохранения. */
+export type PinStatDay = { d: string; e: boolean; im: number; en: number; pc: number; oc: number; sv: number };
+/** Аналитика аккаунта за ~90 дней. ok=false — прочитать не удалось (note — почему, raw — кусок ответа для разбора). */
+export type PinStats = { ok: boolean; days: PinStatDay[]; note: string | null; url: string | null; raw?: string | null };
+
 export type AgentTask = {
   id: string;
   runId: string;
-  phase: "upload" | "verify";
+  /** stats — визит только за аналитикой (0.1.8+) */
+  phase: "upload" | "verify" | "stats";
+  /** После заливки в этот же визит снять аналитику аккаунта (0.1.8+) */
+  stats?: boolean;
   steps: Step[];
   site: { id: string; name: string };
   profileId: string;

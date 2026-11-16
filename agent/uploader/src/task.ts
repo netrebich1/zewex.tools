@@ -5,7 +5,7 @@ import type { Dolphin } from "./dolphin";
 import { AgentError, toAgentError } from "./errors";
 import { pause, rand, sleep } from "./humanize";
 import { log } from "./log";
-import { assertLoggedIn, bulkUpload, openPinterest, pageHtml, readScheduled, readUsername, screenshot } from "./pinterest";
+import { assertLoggedIn, bulkUpload, openPinterest, pageHtml, readAnalytics, readScheduled, readUsername, screenshot } from "./pinterest";
 import type { AgentTask, UplHumanize } from "./protocol";
 
 export type TaskEnv = { api: PortalClient; dolphin: Dolphin; humanize: UplHumanize; bulkUrl: string | null; stopped: () => boolean };
@@ -59,6 +59,21 @@ export async function runTask(task: AgentTask, env: TaskEnv): Promise<void> {
       timings.total = Date.now() - t0;
       await api.finishUpload(task.id, { rowsSeen: r.rowsSeen, message: r.message, screenshot: shot, timings });
       log.info(`${label}: загружено${r.rowsSeen != null ? `, строк ${r.rowsSeen}` : ""}`);
+      // Аналитика аккаунта — тем же визитом, уже после отчёта о заливке: её сбой заливку не портит.
+      if (task.stats && !env.stopped()) {
+        try {
+          await pause(h.afterUpload);
+          const st = await readAnalytics(page, h, async (s) => { log.setState(`${task.site.name}: ${s}`); });
+          await api.stats(task.id, st);
+          log.info(`${label}: аналитика — ${st.ok ? `${st.days.length} дней` : st.note}`);
+        } catch (e) { log.warn(`${label}: аналитика не снята`, e); }
+      }
+    } else if (task.phase === "stats") {
+      const st = await readAnalytics(page, h, step);
+      const shot = await screenshot(page);
+      timings.total = Date.now() - t0;
+      await api.finishStats(task.id, st, shot);
+      log.info(`${label}: аналитика — ${st.ok ? `${st.days.length} дней` : st.note}`);
     } else {
       const { result: v, shot } = await readScheduled(page, username ?? task.pinUsername, h, step);
       timings.total = Date.now() - t0;

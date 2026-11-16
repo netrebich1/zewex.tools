@@ -26,7 +26,7 @@ export default async function UploaderRunsPage() {
                 <td className="tabular-nums">{r.done}/{r.total}</td>
                 <td className="tabular-nums">{r.failed || ""}</td>
                 <td className="tabular-nums">{r.skipped || ""}</td>
-                <td className="help">{r.source === "schedule" ? "расписание" : "кнопка"}</td>
+                <td className="help">{r.source === "schedule" ? "расписание" : r.source === "stats" ? "аналитика" : "кнопка"}</td>
                 <td className="help whitespace-nowrap">{r.finishedAt ? dt(r.finishedAt) : "—"}</td>
               </tr>
             ))}</tbody>

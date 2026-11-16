@@ -24,7 +24,7 @@ export default async function UploaderRunPage({ params }: { params: Promise<{ id
       <PageHeader
         back={{ href: "/pinterest/uploader/runs", label: "Запуски" }}
         title={`Заливка за ${formatRu(view.day)}`}
-        subtitle={`${view.source === "schedule" ? "По расписанию" : "Кнопкой"} · агент ${view.agent.name}`}
+        subtitle={`${view.source === "schedule" ? "По расписанию" : view.source === "stats" ? "Аналитика Pinterest" : "Кнопкой"} · агент ${view.agent.name}`}
         actions={
           <>
             {live && <ActionForm action={stopRunAction} className="inline" hidden={{ id }}><SubmitButton className="btn-danger" pendingText="…" confirm="Остановить? Ждущие сайты будут пропущены, текущий агент доделает.">Остановить</SubmitButton></ActionForm>}

@@ -2946,7 +2946,50 @@ model UplAccount {
   lastCheckAt  DateTime?
   /// Логин Pinterest, увиденный агентом в профиле (сверка «тот ли профиль»)
   pinUsername  String?   @db.VarChar(120)
+  /// Когда агент последний раз снял аналитику аккаунта (вкладка «Трафик») и почему не снял, если не вышло
+  statsAt      DateTime?
+  statsNote    String?   @db.VarChar(255)
   updatedAt    DateTime  @updatedAt
+}
+
+/// Дневная статистика сайта для вкладки «Трафик» (src/lib/projects/stats.ts). Сайт = домен, как в сетке «Проектов».
+/// pinterest — аналитика аккаунта от агента заливки; metrika — ночной сбор по токену команды.
+model PrjStatDay {
+  id             String   @id @default(uuid()) @db.Char(36)
+  teamId         String   @db.VarChar(191)
+  /// pinterest | metrika
+  source         String   @db.VarChar(10)
+  site           String   @db.VarChar(190)
+  day            String   @db.VarChar(10)
+  /// Pinterest: день ещё не закрыт (оценка)
+  estimate       Boolean  @default(false)
+  impressions    Int?
+  engagements    Int?
+  pinClicks      Int?
+  outboundClicks Int?
+  saves          Int?
+  /// Метрика: визиты людей (без роботов), из них с Pinterest, визиты роботов
+  visits         Int?
+  pinVisits      Int?
+  robotVisits    Int?
+  updatedAt      DateTime @updatedAt
+
+  @@unique([source, site, day])
+  @@index([teamId, day])
+}
+
+/// Токен OAuth Яндекс Метрики команды (metrika:read): ночной сбор визитов по счётчикам сайтов команды
+model PrjMetrikaToken {
+  teamId      String    @id @db.VarChar(191)
+  tokenEnc    String    @db.Text
+  hint        String    @db.VarChar(32)
+  updatedById String?   @db.VarChar(64)
+  /// Счётчики аккаунта: [{id, site, matched}]
+  counters    Json?
+  lastSyncAt  DateTime?
+  lastTryAt   DateTime?
+  lastError   String?   @db.VarChar(255)
+  updatedAt   DateTime  @updatedAt
 }
 
 /// Запуск заливки («кнопка» или расписание) = пачка визитов в профили
@@ -2954,13 +2997,13 @@ model UplRun {
   id             String    @id @default(uuid()) @db.Char(36)
   agentId        String    @db.Char(36)
   userId         String?   @db.VarChar(64)
-  /// manual | schedule
+  /// manual | schedule | stats
   source         String    @default("manual") @db.VarChar(12)
   /// День файлов YYYY-MM-DD
   day            String    @db.VarChar(10)
   /// QUEUED | RUNNING | VERIFY_WAIT | VERIFYING | DONE | FAILED | STOPPED
   status         String    @default("QUEUED") @db.VarChar(12)
-  /// upload | verify
+  /// upload | verify | stats (визиты только за аналитикой)
   phase          String    @default("upload") @db.VarChar(8)
   verifyAt       DateTime?
   verifyAttempts Int       @default(0)

@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
-import { authAgent, UploaderError, fail, finish, hello, next, profiles, progress, state, type Ctx } from "@/lib/uploader/agent";
+import { authAgent, UploaderError, fail, finish, hello, next, profiles, progress, state, stats, type Ctx } from "@/lib/uploader/agent";
 import { agentLatestVersion, agentZipExists, agentZipRel } from "@/lib/uploader/release";
 import { publicUrl } from "@/lib/pins/storage";
 
 export const dynamic = "force-dynamic";
 
 type Handler = (ctx: Ctx, body: Record<string, unknown>) => Promise<unknown>;
-const ACTIONS: Record<string, Handler> = { hello, profiles, next, progress, finish, fail, state };
+const ACTIONS: Record<string, Handler> = { hello, profiles, next, progress, finish, fail, state, stats };
 
 /**
- * API агента «Zewex Uploader»: POST /api/uploader/agent/{hello|profiles|next|progress|finish|fail|state}.
+ * API агента «Zewex Uploader»: POST /api/uploader/agent/{hello|profiles|next|progress|finish|fail|state|stats}.
  * Вход — токен агента (Authorization: Bearer zxu_…), не сессия портала. Протокол — src/lib/uploader/agent.ts.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ action: string }> }) {

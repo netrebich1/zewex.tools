@@ -91,7 +91,15 @@
    Агенты и запуски в разделе фильтруются по команде из шапки (и у админа).
 4. **beautydaily.com.ua 25–26.10:** «после выбора файла Pinterest не показал ни подтверждения, ни ошибки за 90 с» — смотреть скриншот и HTML в карточке запуска.
 5. Иконка в трее и запуск без .cmd (один exe) — не сделаны. Скриншоты в инструкцию не вставлены. Наборы сайтов пока не используются.
-6. Следующий этап по плану — шаг `analytics`: снятие статистики из Pinterest Analytics в тот же визит.
+6. **Аналитика аккаунта (2026-11-16, агент 0.1.8).** `readAnalytics` (`agent/uploader/src/pinterest.ts`): открывает
+   `analytics.pinterest.com/overview/?aggregation=last90d`, ловит запрос страницы `POST /_/graphql/` с `useDailyBuckets` и `metricTypes`
+   (хэш запроса у Pinterest меняется, поэтому берётся из запроса страницы) и повторяет его из страницы с метриками IMPRESSION, ENGAGEMENT,
+   PIN_CLICK, OUTBOUND_CLICK, SAVE за 90 дней. Ответ: `data.v3AnalyticsMetricsGraphqlQuery.data[0].series.dailyMetrics[{date, dataStatus
+   READY|ESTIMATE, metrics{impressionFloat, engagementFloat, pinClickFloat, outboundClickFloat, saveFloat}}]`. Снимается в визите заливки
+   после отчёта о файле (`AgentTask.stats`, действие API `stats`) либо отдельным запуском «только аналитика» (фаза `stats`,
+   `src/lib/uploader/stats.ts`: ночью 03:00–07:00 и после 15:00 по Киеву для сайтов, где статистике больше 20 часов). Сохранение —
+   `savePinStats` → `PrjStatDay`, отметка `UplAccount.statsAt/statsNote`; показ — вкладка «Трафик» таблиц команд (`src/lib/projects/stats.ts`).
+   Не бизнес-аккаунт или страница не отдала данные — задание не падает, причина пишется в `statsNote` и в примечание вкладки.
 
 ## Эксплуатация
 

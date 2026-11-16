@@ -1,0 +1,268 @@
+/**
+ * «Проекты» → вкладка «Трафик» в Google-таблицах команд: показы и клики из аналитики аккаунтов Pinterest и визиты из Яндекс Метрики.
+ * Pinterest: агент заливки (agent/uploader ≥ 0.1.8) в визите в профиль читает аналитику аккаунта за 90 дней по дням и шлёт её
+ *   порталу (`savePinStats`); визиты только за аналитикой для сайтов без заливки создаёт `statsRunsTick` (src/lib/uploader/stats.ts).
+ * Метрика: токен OAuth команды (`PrjMetrikaToken`, вводится в «Заливка в Pinterest → Настройки»), ночью (после 03:00 по Киеву)
+ *   `metrikaTick` находит счётчики сайтов команды по домену и забирает визиты по дням: люди (без роботов), из них с Pinterest, роботы.
+ * Данные лежат в `PrjStatDay` (сайт = домен, как в сетке). Сравнения во вкладке: 30 дней к предыдущим 30, 7 дней к предыдущим 7,
+ * последний полный день к тому же дню недели неделей раньше; рост зелёным, падение красным (порог 5%).
+ */
+import { prisma } from "@/lib/db";
+import { decryptSecret } from "@/lib/crypto";
+import type { Tab } from "./grid";
+
+const TZ = process.env.SHEETS_TZ || "Europe/Kyiv";
+export const TRAFFIC_TAB = "Трафик";
+const dom = (s: string | null | undefined) => (s || "").toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "").trim();
+const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const kyiv = (now = new Date()) => now.toLocaleString("sv-SE", { timeZone: TZ });
+const dm = (s: string) => `${s.slice(8, 10)}.${s.slice(5, 7)}`;
+
+// ───────────────────────────── Pinterest: аналитика аккаунта от агента заливки ─────────────────────────────
+
+/** Домен сайта пинов — так же, как в сетке: адрес подключённого сайта, иначе имя. */
+export async function pinSiteDomain(pinSiteId: string): Promise<{ domain: string; teamId: string } | null> {
+  const s = await prisma.pinSite.findUnique({ where: { id: pinSiteId }, select: { name: true, teamId: true, wpConnectionId: true } });
+  if (!s) return null;
+  const acc = s.wpConnectionId ? await prisma.siteAccess.findUnique({ where: { id: s.wpConnectionId }, select: { baseUrl: true, name: true } }) : null;
+  const domain = (acc && (dom(acc.baseUrl) || dom(acc.name))) || dom(s.name);
+  return domain ? { domain, teamId: s.teamId } : null;
+}
+
+export type PinStatsSaved = { ok: boolean; saved: number; note: string | null };
+
+/** Аналитика аккаунта от агента: {ok, days:[{d,e,im,en,pc,oc,sv}], note} → строки PrjStatDay и отметка на аккаунте. */
+export async function savePinStats(pinSiteId: string, raw: unknown): Promise<PinStatsSaved> {
+  const p = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const int = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(2_000_000_000, Math.round(v))) : 0);
+  const days = (Array.isArray(p.days) ? p.days : []).slice(0, 120)
+    .map((x) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {}))
+    .filter((x) => typeof x.d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.d as string))
+    .map((x) => ({ day: x.d as string, estimate: x.e === true, impressions: int(x.im), engagements: int(x.en), pinClicks: int(x.pc), outboundClicks: int(x.oc), saves: int(x.sv) }));
+  const note = typeof p.note === "string" ? p.note.slice(0, 250) : null;
+  const site = await pinSiteDomain(pinSiteId);
+  if (!site) return { ok: false, saved: 0, note: "сайт не найден" };
+  if (p.ok !== true || !days.length) {
+    const why = note ?? "аналитика не прочитана";
+    if (typeof p.raw === "string") console.warn(`[stats] pinterest ${site.domain}: ${why}; ответ: ${p.raw.slice(0, 1500)}`);
+    await prisma.uplAccount.updateMany({ where: { pinSiteId }, data: { statsNote: why } });
+    return { ok: false, saved: 0, note: why };
+  }
+  const uniq = [...new Map(days.map((d) => [d.day, d])).values()];
+  await prisma.$transaction([
+    prisma.prjStatDay.deleteMany({ where: { source: "pinterest", site: site.domain, day: { in: uniq.map((d) => d.day) } } }),
+    prisma.prjStatDay.createMany({ data: uniq.map((d) => ({ ...d, source: "pinterest", site: site.domain, teamId: site.teamId })) }),
+  ]);
+  await prisma.uplAccount.updateMany({ where: { pinSiteId }, data: { statsAt: new Date(), statsNote: null } });
+  return { ok: true, saved: uniq.length, note: null };
+}
+
+// ───────────────────────────── Яндекс Метрика ─────────────────────────────
+
+const METRIKA = "https://api-metrika.yandex.net";
+const HUMAN = "ym:s:isRobot=='No'";
+/** Визиты с Pinterest: Метрика делит их на «соцсети» и «поиск по меткам» (utm_source=Pinterest), поэтому условие общее. Варианты — на случай отказа API в имени поля. */
+const PIN_FILTERS = [
+  "(ym:s:lastSignSocialNetwork=='pinterest' OR ym:s:lastSignUTMSource=*'*pinterest*' OR ym:s:referer=*'*pinterest.*')",
+  "(ym:s:UTMSource=*'*pinterest*' OR ym:s:referer=*'*pinterest.*')",
+];
+
+async function mGet<T>(token: string, path: string, params: Record<string, string>): Promise<T> {
+  const res = await fetch(`${METRIKA}${path}?${new URLSearchParams(params)}`, { headers: { Authorization: `OAuth ${token}` }, signal: AbortSignal.timeout(60_000) });
+  const j = (await res.json().catch(() => ({}))) as { message?: string; errors?: Array<{ message?: string }> };
+  if (!res.ok) { const e = new Error(`Метрика ${res.status}: ${j.message ?? j.errors?.[0]?.message ?? res.statusText}`) as Error & { status?: number }; e.status = res.status; throw e; }
+  return j as T;
+}
+
+type Counter = { id: number; site?: string; site2?: { site?: string }; name?: string; status?: string };
+export async function metrikaCounters(token: string): Promise<Array<{ id: number; domain: string; name: string }>> {
+  const j = await mGet<{ counters?: Counter[] }>(token, "/management/v1/counters", { per_page: "1000" });
+  return (j.counters ?? []).map((c) => ({ id: c.id, domain: dom(c.site2?.site ?? c.site), name: c.name ?? "" })).filter((c) => c.id && c.domain);
+}
+
+/** Визиты по дням за период с фильтром. Пустой ответ = нули. */
+async function byTime(token: string, id: number, date1: string, date2: string, filters: string): Promise<Map<string, number>> {
+  const j = await mGet<{ data?: Array<{ metrics?: number[][] }>; totals?: number[][]; time_intervals?: string[][] }>(token, "/stat/v1/data/bytime", {
+    ids: String(id), metrics: "ym:s:visits", date1, date2, group: "day", filters, accuracy: "full",
+  });
+  const series = j.data?.[0]?.metrics?.[0] ?? (Array.isArray(j.totals?.[0]) ? j.totals![0] : []);
+  const out = new Map<string, number>();
+  (j.time_intervals ?? []).forEach((iv, i) => { const d = String(iv?.[0] ?? "").slice(0, 10); if (/^\d{4}-\d{2}-\d{2}$/.test(d)) out.set(d, Math.round(Number(series[i]) || 0)); });
+  return out;
+}
+
+/** Домены сайтов команды (как в сетке): доступы, сайты статей, блога и пинов. */
+async function teamDomains(teamId: string): Promise<Set<string>> {
+  const [access, art, blog, pin] = await Promise.all([
+    prisma.siteAccess.findMany({ where: { teamId }, select: { baseUrl: true, name: true } }),
+    prisma.artSite.findMany({ where: { teamId }, select: { name: true } }),
+    prisma.blogSite.findMany({ where: { teamId }, select: { name: true } }),
+    prisma.pinSite.findMany({ where: { teamId }, select: { name: true } }),
+  ]);
+  return new Set([...access.map((a) => dom(a.baseUrl) || dom(a.name)), ...[...art, ...blog, ...pin].map((s) => dom(s.name))].filter(Boolean));
+}
+
+export type MetrikaSync = { counters: number; matched: number; days: number; pinFilter: number };
+
+/** Сбор Метрики команды: счётчики по доменам её сайтов → визиты за 90 дней по дням (люди, с Pinterest, роботы). */
+export async function metrikaSync(teamId: string): Promise<MetrikaSync> {
+  const row = await prisma.prjMetrikaToken.findUnique({ where: { teamId } });
+  if (!row) throw new Error("токен Метрики не задан");
+  await prisma.prjMetrikaToken.update({ where: { teamId }, data: { lastTryAt: new Date() } });
+  try {
+    const token = decryptSecret(row.tokenEnc);
+    const [counters, domains] = await Promise.all([metrikaCounters(token), teamDomains(teamId)]);
+    const byDomain = new Map<string, number>();
+    for (const c of counters) if (domains.has(c.domain) && !byDomain.has(c.domain)) byDomain.set(c.domain, c.id);
+    const date2 = addDays(kyiv().slice(0, 10), -1), date1 = addDays(date2, -89);
+    let total = 0, pinFilter = 0;
+    for (const [domain, id] of byDomain) {
+      const human = await byTime(token, id, date1, date2, HUMAN);
+      let pins: Map<string, number> | null = null;
+      for (let i = pinFilter; i < PIN_FILTERS.length && !pins; i++) {
+        try { pins = await byTime(token, id, date1, date2, `${HUMAN} AND ${PIN_FILTERS[i]}`); pinFilter = i; }
+        catch (e) { if ((e as { status?: number }).status !== 400 || i === PIN_FILTERS.length - 1) throw e; }
+      }
+      const robots = await byTime(token, id, date1, date2, "ym:s:isRobot=='Yes'").catch(() => new Map<string, number>());
+      const rows = [...human.keys()].map((d) => ({ source: "metrika", site: domain, teamId, day: d, visits: human.get(d) ?? 0, pinVisits: pins?.get(d) ?? 0, robotVisits: robots.get(d) ?? 0 }));
+      if (rows.length) {
+        await prisma.$transaction([
+          prisma.prjStatDay.deleteMany({ where: { source: "metrika", site: domain, day: { in: rows.map((r) => r.day) } } }),
+          prisma.prjStatDay.createMany({ data: rows }),
+        ]);
+        total += rows.length;
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    const list = counters.map((c) => ({ id: c.id, site: c.domain, matched: byDomain.get(c.domain) === c.id })).slice(0, 500);
+    await prisma.prjMetrikaToken.update({ where: { teamId }, data: { lastSyncAt: new Date(), lastError: null, counters: list } });
+    return { counters: counters.length, matched: byDomain.size, days: total, pinFilter };
+  } catch (e) {
+    await prisma.prjMetrikaToken.update({ where: { teamId }, data: { lastError: (e instanceof Error ? e.message : String(e)).slice(0, 250) } }).catch(() => null);
+    throw e;
+  }
+}
+
+let metrikaBusy = false;
+/** Тик воркера (раз в 10 мин): новый токен — сразу; дальше раз в сутки после 03:00 по Киеву; после сбоя — повтор не чаще раза в час. */
+export async function metrikaTick(now = new Date()): Promise<{ synced: string[]; errors: string[] }> {
+  if (metrikaBusy) return { synced: [], errors: [] };
+  metrikaBusy = true;
+  const synced: string[] = [], errors: string[] = [];
+  try {
+    const k = kyiv(now), today = k.slice(0, 10), hour = Number(k.slice(11, 13));
+    for (const t of await prisma.prjMetrikaToken.findMany({ select: { teamId: true, lastSyncAt: true, lastTryAt: true } })) {
+      const due = !t.lastSyncAt || (hour >= 3 && kyiv(t.lastSyncAt).slice(0, 10) !== today);
+      if (!due || (t.lastTryAt && now.getTime() - t.lastTryAt.getTime() < 60 * 60_000)) continue;
+      try { const r = await metrikaSync(t.teamId); synced.push(`${t.teamId}: счётчиков ${r.matched}/${r.counters}, строк ${r.days}`); }
+      catch (e) { errors.push(`${t.teamId}: ${e instanceof Error ? e.message : String(e)}`); }
+    }
+  } finally {
+    metrikaBusy = false;
+  }
+  return { synced, errors };
+}
+
+// ───────────────────────────── Вкладка «Трафик» ─────────────────────────────
+
+type Color = "g" | "r" | "y" | "x";
+type Series = Map<string, number>;
+const sum = (m: Series, end: string, n: number) => { let s = 0; for (let i = 0; i < n; i++) s += m.get(addDays(end, -i)) ?? 0; return s; };
+const fmt = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+const pct = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(a / b < 0.1 ? 1 : 0)}%` : "—");
+
+/** Клетка «значение ▲/▼ процент» и её цвет: рост от 5% — зелёный, падение от 5% — красный. */
+function cmp(cur: number, prev: number): { text: string; color: Color | null } {
+  if (cur === 0 && prev === 0) return { text: "0", color: "x" };
+  if (prev === 0) return { text: `${fmt(cur)} ▲ с нуля`, color: "g" };
+  const d = Math.round(((cur - prev) / prev) * 100);
+  if (d >= 5) return { text: `${fmt(cur)} ▲${d}%`, color: "g" };
+  if (d <= -5) return { text: `${fmt(cur)} ▼${-d}%`, color: "r" };
+  return { text: `${fmt(cur)} ≈`, color: null };
+}
+
+/**
+ * Вкладка «Трафик»: одна строка = один сайт команды (порядок и ниша — из сетки).
+ * Pinterest считается до последнего закрытого дня аккаунта (сегодня и вчера у Pinterest — оценка), Метрика — до вчера.
+ */
+export async function buildTrafficTab(teamSlug: string, sites: Array<{ domain: string; kind: string }>, today: string): Promise<Tab | null> {
+  const team = await prisma.team.findUnique({ where: { slug: teamSlug }, select: { id: true } });
+  if (!team) return null;
+  const teamId = team.id;
+  const [rows, pinSites, token] = await Promise.all([
+    prisma.prjStatDay.findMany({ where: { teamId, day: { gte: addDays(today, -75) } } }),
+    prisma.pinSite.findMany({ where: { teamId }, select: { id: true, name: true, wpConnectionId: true } }),
+    prisma.prjMetrikaToken.findUnique({ where: { teamId }, select: { lastSyncAt: true, lastError: true, counters: true } }),
+  ]);
+  const [access, accounts] = await Promise.all([
+    prisma.siteAccess.findMany({ where: { teamId }, select: { id: true, baseUrl: true, name: true } }),
+    prisma.uplAccount.findMany({ where: { pinSiteId: { in: pinSites.map((p) => p.id) } }, select: { pinSiteId: true, profileId: true, status: true, statsAt: true, statsNote: true } }),
+  ]);
+  const accDom = new Map(access.map((a) => [a.id, dom(a.baseUrl) || dom(a.name)]));
+  const accBy = new Map(accounts.map((a) => [a.pinSiteId, a]));
+  const accOf = new Map<string, (typeof accounts)[number] | null>();
+  for (const p of pinSites) { const d = (p.wpConnectionId && accDom.get(p.wpConnectionId)) || dom(p.name); if (d && !accOf.get(d)) accOf.set(d, accBy.get(p.id) ?? null); }
+
+  type S = { im: Series; oc: Series; en: Series; sv: Series; pc: Series; ready: string | null; v: Series; pv: Series; rv: Series; mLast: string | null };
+  const data = new Map<string, S>();
+  const get = (d: string) => data.get(d) ?? data.set(d, { im: new Map(), oc: new Map(), en: new Map(), sv: new Map(), pc: new Map(), ready: null, v: new Map(), pv: new Map(), rv: new Map(), mLast: null }).get(d)!;
+  for (const r of rows) {
+    const s = get(r.site);
+    if (r.source === "pinterest") {
+      s.im.set(r.day, r.impressions ?? 0); s.oc.set(r.day, r.outboundClicks ?? 0); s.en.set(r.day, r.engagements ?? 0); s.sv.set(r.day, r.saves ?? 0); s.pc.set(r.day, r.pinClicks ?? 0);
+      if (!r.estimate && (!s.ready || r.day > s.ready)) s.ready = r.day;
+    } else {
+      s.v.set(r.day, r.visits ?? 0); s.pv.set(r.day, r.pinVisits ?? 0); s.rv.set(r.day, r.robotVisits ?? 0);
+      if (!s.mLast || r.day > s.mLast) s.mLast = r.day;
+    }
+  }
+  const matched = new Set(((token?.counters as Array<{ site?: string; matched?: boolean }> | null) ?? []).filter((c) => c.matched).map((c) => c.site));
+  const mState = !token ? " (не подключена)" : token.lastError && !token.lastSyncAt ? " (ошибка токена)" : "";
+
+  const h1 = ["САЙТ", "НИША", "PINTEREST · ПОКАЗЫ", "", "", "PINTEREST · КЛИКИ НА САЙТ", "", "", "PINTEREST · ЗА 30 ДНЕЙ", "", "", "", "", "", `МЕТРИКА · ВИЗИТЫ ЛЮДЕЙ${mState}`, "", "", `МЕТРИКА · С PINTEREST${mState}`, "", "", "", "СВЕЖЕСТЬ", ""];
+  const h2 = ["", "", "30 дней", "7 дней", "день", "30 дней", "7 дней", "день", "вовлечения", "вовлечённость", "сохранения", "save rate", "клики по пину", "CTR на сайт", "30 дней", "7 дней", "день", "30 дней", "7 дней", "день", "роботы, 30 дн", "данные на", "примечание"];
+  const values: (string | number)[][] = [h1, h2];
+  const colors: [number, number, Color][] = [];
+  for (const site of sites) {
+    const r = values.length; const row: (string | number)[] = [site.domain, site.kind]; const notes: string[] = []; const fresh: string[] = [];
+    const s = data.get(site.domain);
+    const put = (c: { text: string; color: Color | null }) => { if (c.color) colors.push([r, row.length, c.color]); row.push(c.text); };
+    const none = (n: number) => { for (let i = 0; i < n; i++) { colors.push([r, row.length, "x"]); row.push("—"); } };
+    const trio = (m: Series, e: string) => { put(cmp(sum(m, e, 30), sum(m, addDays(e, -30), 30))); put(cmp(sum(m, e, 7), sum(m, addDays(e, -7), 7))); put(cmp(m.get(e) ?? 0, m.get(addDays(e, -7)) ?? 0)); };
+    if (s?.ready) {
+      const e = s.ready; const im30 = sum(s.im, e, 30);
+      trio(s.im, e); trio(s.oc, e);
+      put(cmp(sum(s.en, e, 30), sum(s.en, addDays(e, -30), 30))); row.push(pct(sum(s.en, e, 30), im30));
+      put(cmp(sum(s.sv, e, 30), sum(s.sv, addDays(e, -30), 30))); row.push(pct(sum(s.sv, e, 30), im30));
+      row.push(fmt(sum(s.pc, e, 30))); row.push(pct(sum(s.oc, e, 30), im30));
+      fresh.push(`Pinterest ${dm(e)}`);
+    } else {
+      none(12);
+      const a = accOf.get(site.domain);
+      notes.push(a === undefined ? "Pinterest: сайта нет в «Пинах»" : !a?.profileId ? "Pinterest: профиль Dolphin не сопоставлен" : a.status === "needs_login" ? "Pinterest: в профиле нет входа" : a.statsNote ? `Pinterest: ${a.statsNote}` : "Pinterest: аналитика ещё не собрана");
+    }
+    if (s?.mLast) {
+      const e = s.mLast;
+      trio(s.v, e); trio(s.pv, e);
+      const hv = sum(s.v, e, 30), rb = sum(s.rv, e, 30);
+      const share = hv + rb > 0 ? rb / (hv + rb) : 0;
+      if (share >= 0.3) colors.push([r, row.length, "y"]);
+      row.push(hv + rb > 0 ? `${Math.round(share * 100)}%` : "—");
+      fresh.push(`Метрика ${dm(e)}`);
+    } else {
+      none(7);
+      if (token) notes.push(matched.has(site.domain) ? "Метрика: визитов нет" : token.lastSyncAt ? "Метрика: нет счётчика для сайта" : token.lastError ? `Метрика: ${token.lastError}` : "Метрика: первый сбор ещё идёт");
+    }
+    const a = accOf.get(site.domain);
+    if (s?.ready && a?.statsAt && Date.now() - a.statsAt.getTime() > 3 * 86_400_000) notes.push(`Pinterest: не обновлялось с ${dm(kyiv(a.statsAt).slice(0, 10))}`);
+    row.push(fresh.join(" · ") || "—", notes.join("; "));
+    values.push(row);
+  }
+  const widths: Record<number, number> = { 0: 200, 1: 85, 21: 150, 22: 330 };
+  for (let c = 2; c <= 20; c++) widths[c] = c === 4 || c === 7 || c === 16 || c === 19 ? 105 : 115;
+  return {
+    title: TRAFFIC_TAB, values, colors,
+    merges: [[0, 2, 0, 1], [0, 2, 1, 2], [0, 1, 2, 5], [0, 1, 5, 8], [0, 1, 8, 14], [0, 1, 14, 17], [0, 1, 17, 21], [0, 1, 21, 23]],
+    widths, dates: [], groups: [2, 5, 8, 14, 17, 21], cols: h1.length, noteCol: -1,
+  };
+}

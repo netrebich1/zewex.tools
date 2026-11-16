@@ -35,6 +35,11 @@ export const PINTEREST = {
   /** Профиль → вкладка Created (проверено 2026-11-02): блок «Scheduled Pins», под ним «4 Pins · Only visible to you». */
   createdUrl: (username: string) => `https://www.pinterest.com/${encodeURIComponent(username)}/_created/`,
   profileLink: ['[data-test-id="header-profile"] a', 'a[data-test-id="header-profile"]', '[data-test-id="profile-avatar"] a'],
+  /** Аналитика аккаунта (проверено 2026-11-16): страница сама шлёт POST /_/graphql/ с дневным рядом (variables.useDailyBuckets,
+   *  metricTypes); агент повторяет этот же запрос со всеми метриками за 90 дней. Хэш запроса берётся из запроса страницы. */
+  analytics: "https://analytics.pinterest.com/overview/?aggregation=last90d",
+  analyticsHost: /analytics\.pinterest\.com/i,
+  analyticsMetrics: ["IMPRESSION", "ENGAGEMENT", "PIN_CLICK", "OUTBOUND_CLICK", "SAVE"],
   scheduledTitle: /scheduled pins?/i,
   scheduledCount: /scheduled pins?\s+(\d[\d,]*)\s*pins?\b/i,
 };
