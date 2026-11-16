@@ -1,18 +1,28 @@
 /**
- * «Проекты» → Google-таблица владельца «Pinterest CRM»: сетка «сайт × кластер» по команде Zewex.
+ * «Проекты» → Google-таблицы команд (TARGETS: Zewex «Pinterest CRM», PinOra, WexOra): сетка «сайт × кластер».
  * Вкладки «Женские» и «Декор»: одна строка = один сайт, столбцы = кластеры (подборки 2027, Christmas 2026, блог, мешап,
  * пины на старые статьи), у кластера две клетки — «статьи» (сколько опубликовано) и «пины» (до какого дня расписаны);
  * справа итог по сайту: пины до, запас, последняя заливка, что сделать и ручная колонка «заметка» (сохраняется при перезаписи).
  * Цвет клетки: зелёный — сделано, жёлтый — частично или кончается за 7 дней, красный — не сделано, серый — не относится.
  * Портал только читает свои таблицы; пишет воркер раз в час (prjGridTick из worker/cron.ts), целиком, если что-то изменилось.
- * Таблица — PRJ_GRID_SHEET_ID (.env) или таблица владельца по умолчанию; доступ у сервисного аккаунта «Статей».
+ * Доступ к таблицам — у сервисного аккаунта «Статей» (таблица открыта на редактирование по ссылке).
  */
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { sheetsFetch, quoteTab, rangePath } from "@/lib/articles/sheets";
 
-const SHEET_ID = process.env.PRJ_GRID_SHEET_ID || "1XNNsdYRlPYkEGZ63XosMLECA7tsRbogCAvRZ9gRLZaA";
-const TEAM_SLUG = process.env.PRJ_GRID_TEAM || "zewex";
+/**
+ * Команда портала → её Google-таблица (у каждой команды своя, сетка одинаковая). Таблица должна быть открыта на редактирование по ссылке.
+ * dropOld — убрать вкладки первых вариантов (были только в таблице Zewex). Переопределение: PRJ_GRID_TARGETS="slug=sheetId,slug=sheetId".
+ */
+type Target = { team: string; sheet: string; dropOld?: boolean };
+const TARGETS: Target[] = process.env.PRJ_GRID_TARGETS
+  ? process.env.PRJ_GRID_TARGETS.split(",").map((x) => x.trim().split("=")).filter((x) => x[0] && x[1]).map(([team, sheet]) => ({ team, sheet }))
+  : [
+      { team: "zewex", sheet: "1XNNsdYRlPYkEGZ63XosMLECA7tsRbogCAvRZ9gRLZaA", dropOld: true },
+      { team: "pinora", sheet: "1jM5YH8tK4tmTzwagPCYNvH2eaXFa_o2Y1GZpnE73sT8" },
+      { team: "wexora", sheet: "1eYCpaNWmLulfx9rwp_Qh8O0fqj6Arpb24a8P-cqPxW0" },
+    ];
 const TZ = process.env.SHEETS_TZ || "Europe/Kyiv";
 const LEGEND_TAB = "Как читать";
 const OLD_TABS = ["Сайты", "Прогоны", "Подробно по прогонам"];
@@ -29,27 +39,37 @@ const dm = (s: string) => `${s.slice(8, 10)}.${s.slice(5, 7)}`;
 const dmy = (s: string) => `${dm(s)}.${s.slice(2, 4)}`;
 const colLetter = (i: number): string => (i >= 26 ? colLetter(Math.floor(i / 26) - 1) : "") + String.fromCharCode(65 + (i % 26));
 
-/** Постоянные кластеры — "y2027" | "xmas" | "blog" | "copy"; сезонные (SEASONS) появляются сами. */
+/** Постоянные кластеры — "y2027" | "xmas" | "blog" | "copy"; остальные («spring:2027», «easter:2027», «year:2028») появляются сами. */
 type ClusterKey = string;
 /**
- * Сезонные кластеры определяются по слову в ключе. Чтобы пара «зимних» ключей внутри подборок 2027 не плодила столбцы,
- * сезон считается отдельным кластером сайта, только когда таких статей на сайте набралось MIN_RUN; иначе они остаются в подборках.
- * Столбец появляется на вкладке сам, как только кластер есть хотя бы у одного её сайта. Новый сезон = строка здесь.
+ * Сезоны и праздники определяются по слову в ключе, год — по году в ключе: «Spring Outfits 2027» → кластер SPRING 2027.
+ * Чтобы пара «зимних» ключей внутри подборок 2027 не плодила столбцы, кластер считается отдельным для сайта, только когда
+ * таких статей на сайте набралось MIN_RUN; иначе они остаются в подборках. Столбец появляется на вкладке сам, как только
+ * кластер есть хотя бы у одного её сайта. Так же появляются вечнозелёные следующего года (ПОДБОРКИ 2028) и Christmas 2027+.
+ * Новый сезон или праздник = строка здесь. Порядок строк — порядок столбцов внутри года.
  */
-const SEASONS: [ClusterKey, string, RegExp][] = [
-  ["winter", "WINTER", /\bwinter\b/i], ["valentine", "VALENTINE", /valentine/i], ["spring", "SPRING", /\bspring\b/i], ["easter", "EASTER", /\beaster\b/i],
-  ["summer", "SUMMER", /\bsummer\b/i], ["fall", "FALL", /\b(fall|autumn)\b/i], ["halloween", "HALLOWEEN", /\bhalloween\b/i], ["thanksgiving", "THANKSGIVING", /thanksgiving/i],
+const SEASONS: [string, string, RegExp][] = [
+  ["winter", "WINTER", /\bwinter\b/i], ["valentine", "VALENTINE", /valentine/i], ["patrick", "ST PATRICK", /patrick/i], ["spring", "SPRING", /\bspring\b/i],
+  ["easter", "EASTER", /\beaster\b/i], ["mother", "MOTHER'S DAY", /mother'?s day/i], ["summer", "SUMMER", /\bsummer\b/i], ["july4", "4TH OF JULY", /4th of july|fourth of july|independence day/i],
+  ["school", "BACK TO SCHOOL", /back to school/i], ["fall", "FALL", /\b(fall|autumn)\b/i], ["halloween", "HALLOWEEN", /\bhalloween\b/i], ["thanksgiving", "THANKSGIVING", /thanksgiving/i],
+  ["xmas", "CHRISTMAS", /christmas|xmas|new year/i], ["year", "ПОДБОРКИ", /^$/],
 ];
 const BASE_KEYS: ClusterKey[] = ["y2027", "xmas", "blog", "copy"];
+const BASE_TITLE: Record<string, string> = { y2027: "ПОДБОРКИ 2027", xmas: "CHRISTMAS 2026", blog: "БЛОГ", copy: "МЕШАП (Article Copy)" };
+const clusterTitle = (k: ClusterKey): string => {
+  if (BASE_TITLE[k]) return BASE_TITLE[k];
+  const [name, year] = k.split(":");
+  return `${SEASONS.find((s) => s[0] === name)?.[1] ?? name.toUpperCase()}${year ? " " + year : ""}`;
+};
+const clusterWord = (k: ClusterKey) => (k === "copy" ? "мешап" : clusterTitle(k).toLowerCase());
+/** Порядок сезонных столбцов: по году, внутри года — как в SEASONS. */
+const dynOrder = (k: ClusterKey) => { const [name, year] = k.split(":"); return (Number(year) || 0) * 100 + SEASONS.findIndex((s) => s[0] === name); };
 type Cluster = { total: number; pub: number; pinned: number; pinTo: string | null };
 type GridSite = { domain: string; kind: "women" | "decor"; clusters: Partial<Record<ClusterKey, Cluster>>; old: { pages: number; pinTo: string } | null; until: string | null; uploadLast: string | null };
 
-const CLUSTER_TITLE: Record<ClusterKey, string> = { y2027: "ПОДБОРКИ 2027", xmas: "CHRISTMAS 2026", blog: "БЛОГ", copy: "МЕШАП (Article Copy)", ...Object.fromEntries(SEASONS.map(([k, t]) => [k, t])) };
-const CLUSTER_WORD: Record<ClusterKey, string> = { y2027: "подборки 2027", xmas: "christmas 2026", blog: "блог", copy: "мешап", ...Object.fromEntries(SEASONS.map(([k, t]) => [k, t.toLowerCase()])) };
-
 /** Сводка по сайтам команды: кластеры статей, покрытие пинами (по URL страниц прогонов и истории), расписание, заливка. */
-export async function collectGrid(): Promise<GridSite[]> {
-  const team = await prisma.team.findUnique({ where: { slug: TEAM_SLUG }, select: { id: true } });
+export async function collectGrid(teamSlug: string): Promise<GridSite[]> {
+  const team = await prisma.team.findUnique({ where: { slug: teamSlug }, select: { id: true } });
   if (!team) return [];
   const teamId = team.id;
   const [access, artSites, blogSites, pinSites, recipes, copyArts] = await Promise.all([
@@ -117,8 +137,11 @@ export async function collectGrid(): Promise<GridSite[]> {
     if (!isCopy && (!a.runId || (runSize.get(a.runId) ?? 0) < MIN_RUN)) continue;
     const s = get(d);
     const n = a.recipeId ? recNiche.get(a.recipeId) : null; if (n) bump(s, "art:" + n);
-    const key = isCopy ? "copy" : XMAS.test(a.keyword) || (/2026/.test(a.keyword) && !/2027/.test(a.keyword)) ? "xmas" : "y2027";
-    const season = key === "y2027" ? SEASONS.find(([, , re]) => re.test(a.keyword))?.[0] ?? null : null;
+    const year = Math.max(0, ...(a.keyword.match(/20\d\d/g) ?? []).map(Number));
+    // Christmas и всё с годом 2026 — постоянный кластер CHRISTMAS 2026; Christmas 2027 и дальше — уже отдельные кластеры по году.
+    const key = isCopy ? "copy" : (XMAS.test(a.keyword) && year < 2027) || year === 2026 ? "xmas" : "y2027";
+    const name = key === "y2027" ? SEASONS.find(([, , re]) => re.test(a.keyword))?.[0] ?? (year >= 2028 ? "year" : null) : null;
+    const season = name ? `${name}:${year || ""}` : null;
     if (season) seasonCount.set(d + "|" + season, (seasonCount.get(d + "|" + season) ?? 0) + 1);
     picked.push({ s, key, season, status: a.status, wpUrl: a.wpUrl });
   }
@@ -153,9 +176,10 @@ type Tab = { title: string; values: (string | number)[][]; colors: [number, numb
 export function buildGridTab(kind: "women" | "decor", title: string, all: GridSite[], today: string, notes: Map<string, string>): Tab {
   const mine = all.filter((x) => x.kind === kind);
   // Постоянные кластеры — всегда; сезонные — только те, что уже есть хотя бы у одного сайта вкладки.
-  const keys: ClusterKey[] = [...BASE_KEYS.slice(0, 2), ...SEASONS.map(([k]) => k).filter((k) => mine.some((x) => x.clusters[k])), ...BASE_KEYS.slice(2)];
+  const dyn = [...new Set(mine.flatMap((x) => Object.keys(x.clusters)))].filter((k) => !BASE_KEYS.includes(k)).sort((a, b) => dynOrder(a) - dynOrder(b));
+  const keys: ClusterKey[] = [...BASE_KEYS.slice(0, 2), ...dyn, ...BASE_KEYS.slice(2)];
   const h1: string[] = ["САЙТ"], h2: string[] = [""], merges: number[][] = [];
-  for (const k of keys) { merges.push([0, 1, h1.length, h1.length + 2]); h1.push(CLUSTER_TITLE[k], ""); h2.push("статьи", "пины"); }
+  for (const k of keys) { merges.push([0, 1, h1.length, h1.length + 2]); h1.push(clusterTitle(k), ""); h2.push("статьи", "пины"); }
   const oldC = h1.length; h1.push("СТАРЫЕ СТАТЬИ САЙТА"); h2.push("пины");
   const t0 = h1.length; h1.push("ИТОГО ПО САЙТУ", "", "", "", ""); h2.push("пины расписаны до", "запас, дней", "последняя заливка", "что сделать", "заметка");
   merges.push([0, 1, t0, t0 + 5], [0, 2, 0, 1]);
@@ -171,8 +195,8 @@ export function buildGridTab(kind: "women" | "decor", title: string, all: GridSi
       if (c.pub === 0) { row.push(`пишется (${c.total})`, "—"); colors.push([r, ci, "y"], [r, ci + 1, "x"]); continue; }
       row.push(c.pub); colors.push([r, ci, "g"]);
       const miss = c.pub - c.pinned;
-      if (c.pinned === 0 || !c.pinTo) { row.push("нет"); colors.push([r, ci + 1, "r"]); todo.push(`пины на ${CLUSTER_WORD[k]}: ${miss} ст.`); }
-      else if (miss >= MIN_RUN) { row.push(`нет на ${miss} ст.`); colors.push([r, ci + 1, "y"]); todo.push(`пины на ${CLUSTER_WORD[k]}: ещё ${miss} ст.`); }
+      if (c.pinned === 0 || !c.pinTo) { row.push("нет"); colors.push([r, ci + 1, "r"]); todo.push(`пины на ${clusterWord(k)}: ${miss} ст.`); }
+      else if (miss >= MIN_RUN) { row.push(`нет на ${miss} ст.`); colors.push([r, ci + 1, "y"]); todo.push(`пины на ${clusterWord(k)}: ещё ${miss} ст.`); }
       else {
         const left = daysBetween(c.pinTo, today);
         row.push(left < 0 ? `кончились ${dm(c.pinTo)}` : left <= 7 ? `до ${dm(c.pinTo)} ⚠` : `до ${dmy(c.pinTo)}`);
@@ -216,7 +240,7 @@ const LEGEND: string[][] = [
   ["красное", "не сделано: статей нет, пинов нет или пины закончились"],
   ["серое", "не относится к сайту или уже прошло"],
   [""],
-  ["Сезонные кластеры (Winter, Valentine, Spring, Easter, Summer, Fall, Halloween, Thanksgiving) появляются сами: портал смотрит на слово в ключе. Столбец добавится, когда на каком-то сайте вкладки наберётся 20 статей с этим словом; до этого такие статьи считаются в ПОДБОРКАХ 2027."],
+  ["Сезоны и праздники (Winter, Valentine, Spring, Easter, Summer, Fall, Halloween, Thanksgiving, Christmas и др.) появляются сами: портал смотрит на слово и год в ключе, например SPRING 2027. Столбец добавится, когда на каком-то сайте вкладки наберётся 20 таких статей; до этого они считаются в ПОДБОРКАХ 2027. Так же появятся ПОДБОРКИ 2028."],
   ["Тестовые запуски меньше 20 статей не считаются. Таблицу заполняет портал zewex.tools сам, раз в час."],
   ["Колонку «заметка» ведёте вы — она сохраняется. Остальное портал перезаписывает, править там руками не нужно."],
 ];
@@ -225,19 +249,35 @@ const LEGEND_COLORS: Record<number, Color> = { 9: "g", 10: "y", 11: "r", 12: "x"
 const rgb = (r: number, g: number, b: number) => ({ red: r / 255, green: g / 255, blue: b / 255 });
 const BG: Record<Color, ReturnType<typeof rgb>> = { g: rgb(183, 225, 205), r: rgb(244, 180, 180), y: rgb(255, 229, 153), x: rgb(239, 239, 239) };
 type Meta = { sheets?: Array<{ properties?: { sheetId?: number; title?: string }; merges?: unknown[] }> };
-const batch = (requests: unknown[]) => (requests.length ? sheetsFetch(`/spreadsheets/${SHEET_ID}:batchUpdate`, { method: "POST", body: { requests } }) : Promise.resolve(null));
-const putValues = (range: string, values: unknown[][]) => sheetsFetch(`${rangePath(SHEET_ID, range)}?valueInputOption=USER_ENTERED`, { method: "PUT", body: { values } });
 
 let running = false;
-let lastHash = "";
+const lastHash = new Map<string, string>();
 
-/** Тик воркера: пересобрать сетку; в таблицу пишем, только если данные или заметки изменились. */
-export async function prjGridTick(force = false): Promise<{ written: boolean; sites: number }> {
-  if (running) return { written: false, sites: 0 };
+/** Тик воркера: пересобрать сетки всех команд; сбой одной таблицы не мешает остальным. */
+export async function prjGridTick(force = false): Promise<{ written: boolean; sites: number; errors: string[] }> {
+  if (running) return { written: false, sites: 0, errors: [] };
   running = true;
   try {
+    let written = false, total = 0; const errors: string[] = [];
+    for (const t of TARGETS) {
+      try { const r = await writeGrid(t, force); written ||= r.written; total += r.sites; }
+      catch (e) { errors.push(`${t.team}: ${e instanceof Error ? e.message.slice(0, 200) : String(e)}`); }
+    }
+    return { written, sites: total, errors };
+  } finally {
+    running = false;
+  }
+}
+
+/** Сетка одной команды в её таблице; пишем, только если данные или заметки изменились. */
+async function writeGrid(target: Target, force: boolean): Promise<{ written: boolean; sites: number }> {
+  const SHEET_ID = target.sheet;
+  const OLD = target.dropOld ? OLD_TABS : [];
+  const batch = (requests: unknown[]) => (requests.length ? sheetsFetch(`/spreadsheets/${SHEET_ID}:batchUpdate`, { method: "POST", body: { requests } }) : Promise.resolve(null));
+  const putValues = (range: string, values: unknown[][]) => sheetsFetch(`${rangePath(SHEET_ID, range)}?valueInputOption=USER_ENTERED`, { method: "PUT", body: { values } });
+  {
     const today = todayStr();
-    const sites = await collectGrid();
+    const sites = await collectGrid(target.team);
     if (!sites.length) return { written: false, sites: 0 };
     const meta = () => sheetsFetch<Meta>(`/spreadsheets/${SHEET_ID}?fields=sheets(properties(sheetId,title),merges)`);
     let m = await meta();
@@ -256,13 +296,13 @@ export async function prjGridTick(force = false): Promise<{ written: boolean; si
     }
     const stamp = `Обновлено: ${new Date().toLocaleString("ru-RU", { timeZone: TZ, dateStyle: "short", timeStyle: "short" })}`;
     const hash = createHash("sha1").update(JSON.stringify(tabs.map((t) => [t.values, t.colors]))).digest("hex");
-    const ready = !!find(LEGEND_TAB) && tabs.every((t) => find(t.title)) && !OLD_TABS.some((t) => find(t));
-    if (!force && ready && hash === lastHash) { await putValues(`${quoteTab(LEGEND_TAB)}!B1`, [[stamp]]); return { written: false, sites: sites.length }; }
+    const ready = !!find(LEGEND_TAB) && tabs.every((t) => find(t.title)) && !OLD.some((t) => find(t));
+    if (!force && ready && hash === lastHash.get(SHEET_ID)) { await putValues(`${quoteTab(LEGEND_TAB)}!B1`, [[stamp]]); return { written: false, sites: sites.length }; }
 
     const pre: unknown[] = [];
     for (const t of [...tabs.map((x) => x.title), LEGEND_TAB]) if (!find(t)) pre.push({ addSheet: { properties: { title: t } } });
     // Вкладки первых вариантов (список сайтов и прогонов) заменены сеткой — убираем, чтобы не лежал устаревший снимок.
-    for (const t of OLD_TABS) { const s = find(t); if (s) pre.push({ deleteSheet: { sheetId: s.properties!.sheetId } }); }
+    for (const t of OLD) { const s = find(t); if (s) pre.push({ deleteSheet: { sheetId: s.properties!.sheetId } }); }
     if (pre.length) { await batch(pre); m = await meta(); }
 
     const req: unknown[] = [];
@@ -309,9 +349,7 @@ export async function prjGridTick(force = false): Promise<{ written: boolean; si
       for (const [r, k] of Object.entries(LEGEND_COLORS)) req.push({ repeatCell: { range: cell(+r, +r + 1, 0, 1), cell: { userEnteredFormat: { backgroundColor: BG[k], textFormat: { bold: true } } }, fields: "userEnteredFormat(backgroundColor,textFormat)" } });
     }
     await batch(req);
-    lastHash = hash;
+    lastHash.set(SHEET_ID, hash);
     return { written: true, sites: sites.length };
-  } finally {
-    running = false;
   }
 }
