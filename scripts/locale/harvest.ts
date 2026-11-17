@@ -4,7 +4,9 @@
  * (цифры-годы, города, явные бренды), потом модель пачками по 60 запросов решает «наша ниша и намерение идеи/вдохновения
  * или нет». Семена, уже собранные (harvestedAt), пропускаются без --again.
  *
- *   npx tsx scripts/locale/harvest.ts --lang cs --niche nails [--limit 300] [--max-units 12000] [--again] [--no-junk]
+ *   npx tsx scripts/locale/harvest.ts --lang cs --niche nails [--limit 200] [--max-units 13000] [--again] [--no-junk]
+ * Строк на семя — пропорционально его объёму (самое крупное получает --limit, остальные не меньше 25). Семя, в котором
+ * целиком содержится более крупное семя («gelové nehty» ⊃ «nehty»), не собирается: его запросы уже есть в выгрузке крупного.
  */
 import { prisma } from "@/lib/db";
 import { aiChat } from "@/lib/articles/ai";
@@ -12,7 +14,7 @@ import { SLOTS } from "@/lib/articles/types";
 import { parseModelJsonSafe } from "@/lib/articles/text/jsonRepair";
 import { LOCALE_LANGS } from "@/lib/locale/languages";
 import { fullSearch, hasAio, semrushUnits } from "@/lib/locale/semrush";
-import { aiCtxForLocale, NICHE_LABEL } from "./common";
+import { aiCtxForLocale, fold, NICHE_LABEL } from "./common";
 
 const MODEL = "openrouter:google/gemini-2.5-flash";
 const args = process.argv.slice(2);
@@ -39,21 +41,33 @@ async function main() {
   const lang = LOCALE_LANGS[get("--lang")[0] ?? "cs"];
   const niche = get("--niche")[0] ?? "nails";
   if (!lang || !NICHE_LABEL[niche]) throw new Error("нужны --lang и --niche");
-  const limit = Number(get("--limit")[0] ?? 300);
-  const maxUnits = Number(get("--max-units")[0] ?? 12_000);
-  const seeds = await prisma.locSeed.findMany({ where: { lang: lang.code, niche, enabled: true, ...(args.includes("--again") ? {} : { harvestedAt: null }) }, orderBy: { volume: "desc" } });
-  console.log(`семян к сбору ${seeds.length}, лимит строк на семя ${limit}, бюджет ${maxUnits} юнитов`);
+  const limit = Number(get("--limit")[0] ?? 200);
+  const maxUnits = Number(get("--max-units")[0] ?? 13_000);
+  const allSeeds = await prisma.locSeed.findMany({ where: { lang: lang.code, niche, enabled: true }, orderBy: { volume: "desc" } });
+  const seeds = allSeeds.filter((s) => args.includes("--again") || !s.harvestedAt);
+  const maxVol = Math.max(1, ...allSeeds.map((s) => s.volume ?? 0));
+  const linesFor = (s: { volume: number | null }) => Math.max(25, Math.min(limit, Math.round(((s.volume ?? 0) / maxVol) * limit / 25) * 25));
+  const coveredBy = (s: { phrase: string; volume: number | null }) => allSeeds.find((o) => o.phrase !== s.phrase && (o.volume ?? 0) > (s.volume ?? 0) && fold(s.phrase).split(" ").includes(fold(o.phrase)));
+  console.log(`семян к сбору ${seeds.length}, строк на крупнейшее семя ${limit}, бюджет ${maxUnits} юнитов`);
 
   let added = 0, updated = 0;
   for (const seed of seeds) {
-    if (semrushUnits.spent + limit * 20 > maxUnits) { console.log(`бюджет: остановка перед «${seed.phrase}» (потрачено ${semrushUnits.spent})`); break; }
-    const rows = await fullSearch(seed.phrase, lang.semrushDb, limit);
+    const parent = coveredBy(seed);
+    if (parent) {
+      await prisma.locSeed.update({ where: { id: seed.id }, data: { harvestedAt: new Date(), lines: 0 } });
+      console.log(`${seed.phrase}: внутри «${parent.phrase}», отдельно не собираем`);
+      continue;
+    }
+    const lines = linesFor(seed);
+    if (semrushUnits.spent + lines * 20 > maxUnits) { console.log(`бюджет: остановка перед «${seed.phrase}» (${lines} строк; потрачено ${semrushUnits.spent})`); break; }
+    const rows = await fullSearch(seed.phrase, lang.semrushDb, lines);
     for (const m of rows) {
       const phrase = m.phrase.toLowerCase().trim();
       if (!phrase) continue;
       const data = { niche, volume: m.volume, kd: m.kd == null ? null : Math.round(m.kd), cpc: m.cpc, intent: m.intent ?? null, serp: m.serp ?? null, aio: hasAio(m), trends: m.trends ?? undefined };
-      const ex = await prisma.locQuery.findUnique({ where: { lang_phrase: { lang: lang.code, phrase } }, select: { id: true } });
-      if (ex) { await prisma.locQuery.update({ where: { id: ex.id }, data }); updated++; }
+      // Коллация MariaDB не различает диакритику: «ruzove nehty» найдёт строку «růžové nehty» — тогда оставляем более частотную.
+      const ex = await prisma.locQuery.findUnique({ where: { lang_phrase: { lang: lang.code, phrase } }, select: { id: true, phrase: true, volume: true } });
+      if (ex) { if (ex.phrase === phrase || m.volume > ex.volume) { await prisma.locQuery.update({ where: { id: ex.id }, data: { ...data, phrase } }); updated++; } }
       else { await prisma.locQuery.create({ data: { lang: lang.code, phrase, seedId: seed.id, ...data, junk: JUNK_RE.test(phrase), junkWhy: JUNK_RE.test(phrase) ? "код: год/цена/город/бренд" : null } }); added++; }
     }
     await prisma.locSeed.update({ where: { id: seed.id }, data: { harvestedAt: new Date(), lines: rows.length } });

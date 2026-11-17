@@ -11,7 +11,7 @@ import { SLOTS } from "@/lib/articles/types";
 import { parseModelJsonSafe } from "@/lib/articles/text/jsonRepair";
 import { LOCALE_LANGS } from "@/lib/locale/languages";
 import { keywordOverview, semrushUnits } from "@/lib/locale/semrush";
-import { aiCtxForLocale, NICHE_LABEL } from "./common";
+import { aiCtxForLocale, fold, NICHE_LABEL } from "./common";
 
 const MODEL = "openrouter:google/gemini-2.5-flash";
 const args = process.argv.slice(2);
@@ -31,12 +31,19 @@ async function main() {
   console.log(`семян от модели ${fromModel.length}${added.length ? `, от владельца ${added.length}` : ""}`);
   if (args.includes("--dry")) { console.log(fromModel.join(" | ")); await prisma.$disconnect(); return; }
 
-  const existing = new Set((await prisma.locSeed.findMany({ where: { lang: lang.code, niche }, select: { phrase: true } })).map((s) => s.phrase));
-  const fresh = [...new Set([...fromModel, ...added])].filter((p) => !existing.has(p));
+  // Уникальность в MariaDB не различает диакритику (gelove/gelové) — сравниваем по свёртке и ловим P2002.
+  const existing = new Set((await prisma.locSeed.findMany({ where: { lang: lang.code, niche }, select: { phrase: true } })).map((s) => fold(s.phrase)));
+  const seen = new Set<string>();
+  const fresh = [...new Set([...fromModel, ...added])].filter((p) => { const f = fold(p); if (existing.has(f) || seen.has(f)) return false; seen.add(f); return true; });
   const metrics = await keywordOverview(fresh, lang.semrushDb);
   for (const phrase of fresh) {
     const m = metrics.get(phrase);
-    await prisma.locSeed.create({ data: { lang: lang.code, niche, phrase, source: added.includes(phrase) ? "owner" : "model", volume: m?.volume ?? 0, kd: m?.kd == null ? null : Math.round(m.kd), measuredAt: new Date(), enabled: added.includes(phrase) || (m?.volume ?? 0) >= 50 } });
+    try {
+      await prisma.locSeed.create({ data: { lang: lang.code, niche, phrase, source: added.includes(phrase) ? "owner" : "model", volume: m?.volume ?? 0, kd: m?.kd == null ? null : Math.round(m.kd), measuredAt: new Date(), enabled: added.includes(phrase) || (m?.volume ?? 0) >= 50 } });
+    } catch (e) {
+      if ((e as { code?: string }).code === "P2002") continue;
+      throw e;
+    }
   }
   const all = await prisma.locSeed.findMany({ where: { lang: lang.code, niche }, orderBy: { volume: "desc" } });
   console.table(all.map((s) => ({ phrase: s.phrase, volume: s.volume, kd: s.kd, enabled: s.enabled, source: s.source })));
