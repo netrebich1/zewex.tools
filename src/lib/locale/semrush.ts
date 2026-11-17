@@ -6,7 +6,18 @@
  * Ответ — CSV с «;», первая строка — заголовки; ошибки — текстом «ERROR N :: …» (503 = у шлюза лежит апстрим).
  */
 
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+
 const BASE = process.env.GROUPBYSEO_SEMRUSH_URL || "https://api-semrush.groupbuyseo.org/";
+/** Кэш замеров на диске (ключ «база|фраза»): юниты за один и тот же ключ не тратятся дважды. Данные Semrush месячные. */
+const CACHE_FILE = process.env.SEMRUSH_CACHE_FILE || ".semrush-cache.json";
+let cache: Record<string, KeywordMetrics> | null = null;
+function loadCache() {
+  if (cache) return cache;
+  try { cache = existsSync(CACHE_FILE) ? (JSON.parse(readFileSync(CACHE_FILE, "utf8")) as Record<string, KeywordMetrics>) : {}; } catch { cache = {}; }
+  return cache;
+}
+function saveCache() { if (cache) writeFileSync(CACHE_FILE, JSON.stringify(cache), "utf8"); }
 
 export class SemrushError extends Error {
   constructor(public code: number, message: string) { super(message); }
@@ -30,7 +41,7 @@ export type KeywordMetrics = {
 };
 
 /** Колонки Semrush → поля. Остальные колонки игнорируются. */
-const COL: Record<string, keyof KeywordMetrics> = { Keyword: "phrase", "Search Volume": "volume", "Keyword Difficulty": "kd", CPC: "cpc", Competition: "competition", "Number of Results": "results", "Related Relevance": "relevance" };
+const COL: Record<string, keyof KeywordMetrics> = { Keyword: "phrase", "Search Volume": "volume", "Keyword Difficulty": "kd", "Keyword Difficulty Index": "kd", CPC: "cpc", Competition: "competition", "Number of Results": "results", "Related Relevance": "relevance" };
 
 function parseCsv(text: string): KeywordMetrics[] {
   const lines = text.trim().split(/\r?\n/).filter(Boolean);
@@ -95,17 +106,28 @@ export const semrushUnits = { spent: 0 };
  */
 export async function keywordOverview(phrases: string[], database: string): Promise<Map<string, KeywordMetrics>> {
   const out = new Map<string, KeywordMetrics>();
+  const c = loadCache();
   const uniq = [...new Set(phrases.map((p) => p.trim().toLowerCase()).filter(Boolean))];
-  for (let i = 0; i < uniq.length; i += 100) {
-    const batch = uniq.slice(i, i + 100);
+  const fresh: string[] = [];
+  for (const p of uniq) {
+    const hit = c[`${database}|${p}`];
+    if (hit) { if (hit.volume > 0) out.set(p, hit); } else fresh.push(p);
+  }
+  const zero = (p: string): KeywordMetrics => ({ phrase: p, volume: 0, kd: null, cpc: null, competition: null, results: null });
+  for (let i = 0; i < fresh.length; i += 100) {
+    const batch = fresh.slice(i, i + 100);
     try {
       const text = await withRetry(() => request({ type: "phrase_these", phrase: batch.join(";"), database, export_columns: "Ph,Nq,Cp,Co,Nr,Kd" }));
       const rows = parseCsv(text);
       semrushUnits.spent += rows.length * 10;
-      for (const r of rows) out.set(r.phrase.toLowerCase(), r);
+      for (const r of rows) { out.set(r.phrase.toLowerCase(), r); c[`${database}|${r.phrase.toLowerCase()}`] = r; }
+      // Ключей, которых нет в ответе, Semrush не знает: запоминаем как объём 0, чтобы не спрашивать снова.
+      for (const p of batch) if (!c[`${database}|${p}`]) c[`${database}|${p}`] = zero(p);
     } catch (e) {
-      if (e instanceof SemrushError && e.nothingFound) continue;
+      if (e instanceof SemrushError && e.nothingFound) { for (const p of batch) c[`${database}|${p}`] = zero(p); continue; }
       throw e;
+    } finally {
+      saveCache();
     }
   }
   return out;

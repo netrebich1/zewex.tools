@@ -20,7 +20,29 @@ const CANDIDATE_MODEL = "openrouter:google/gemini-2.5-flash";
 const NICHE_LABEL: Record<string, string> = { nails: "nail designs and manicure", hair: "haircuts, hairstyles and hair color", outfits: "women's outfits and fashion", interior: "home interior and decor" };
 
 type Core = { id: string; niche: string; core: string; volume: number | null; volClass: string | null; formulations: unknown };
-type Pick = { core: Core; candidates: Array<KeywordMetrics & { source: "model" | "related" }>; best: KeywordMetrics | null; reason: string; related?: KeywordMetrics[] };
+type Cand = KeywordMetrics & { source: "model" | "related"; /** Смысл совпадает с ядром (проверка моделью); undefined — не проверялось */ ok?: boolean };
+type Pick = { core: Core; candidates: Cand[]; best: KeywordMetrics | null; reason: string; related?: KeywordMetrics[] };
+
+/**
+ * Проверка смысла: из кандидатов с объёмом модель отмечает те, что означают ровно тему ядра (тот же предмет,
+ * не шире и не уже, не смежная тема). Без этого побеждает объём: «blonde hair» → «blond melír» (мелирование),
+ * «outfit» → «jarní outfity», а related приносит «pánské účesy» и «svatební salon brno».
+ */
+async function verifyMeaning(ai: { userId: string; teamId: string }, lang: (typeof LOCALE_LANGS)[string], core: Core, cands: Cand[]): Promise<void> {
+  const list = cands.filter((c) => c.volume > 0).slice(0, 8);
+  if (!list.length) return;
+  const system = `You are a native ${lang.language} speaker and SEO editor. Topic (English): "${core.core}" (${NICHE_LABEL[core.niche] ?? core.niche}). For each ${lang.language} search query decide whether a Google user typing it wants exactly this topic: the same subject and the same scope (not a specific sub-type, season, gender, product, brand, salon, tutorial or dress code unless the English topic says so), with an idea/inspiration intent that an article of photo examples would satisfy. Return JSON only: {"ok":[indexes of matching queries]}.`;
+  const user = JSON.stringify({ topic: core.core, queries: list.map((c, i) => ({ i, q: c.phrase })) });
+  try {
+    const r = await aiChat(ai, { slot: SLOTS.textFast, model: CANDIDATE_MODEL, system, user, json: true, temperature: 0, maxTokens: 200, timeoutMs: 60_000 });
+    const out = (r.json && typeof r.json === "object" ? r.json : parseModelJsonSafe(r.text)) as { ok?: unknown } | null;
+    const ok = new Set(Array.isArray(out?.ok) ? out!.ok.map(Number) : []);
+    list.forEach((c, i) => { c.ok = ok.has(i); });
+  } catch (e) {
+    console.error(`проверка смысла ${core.core}: ${e instanceof Error ? e.message : e}`);
+    list.forEach((c) => { c.ok = c.source === "model"; });
+  }
+}
 
 const args = process.argv.slice(2);
 const get = (k: string) => args.flatMap((a, i) => (a === k ? [args[i + 1]] : []));
@@ -86,15 +108,21 @@ async function main() {
   const metrics = await keywordOverview(all, lang.semrushDb);
   console.log(`с данными ${metrics.size} из ${all.length}; юнитов ${semrushUnits.spent}`);
 
-  // 3. Выбор.
+  // 3. Кандидаты с метриками; предварительный лучший нужен только чтобы выбрать ядра для related.
+  const choose = (p: Pick) => {
+    p.candidates.sort((a, b) => score(b) - score(a));
+    const ok = p.candidates.filter((c) => c.ok !== false);
+    p.best = ok[0] && ok[0].volume >= lang.minVolume ? ok[0] : null;
+    p.reason = p.best ? "" : ok.length ? `лучший объём ${ok[0]?.volume ?? 0} < ${lang.minVolume}` : p.candidates.length ? "ни один кандидат не совпал по смыслу" : "нет кандидатов";
+  };
   const picks: Pick[] = cores.map((core) => {
-    const list = (cands.get(core.id) ?? []).map((q) => ({ ...(metrics.get(q) ?? { phrase: q, volume: 0, kd: null, cpc: null, competition: null, results: null }), source: "model" as const }));
-    list.sort((a, b) => score(b) - score(a));
-    const best = list[0] && list[0].volume >= lang.minVolume ? list[0] : null;
-    return { core, candidates: list, best, reason: best ? "" : list.length ? `лучший объём ${list[0]?.volume ?? 0} < ${lang.minVolume}` : "нет кандидатов" };
+    const list: Cand[] = (cands.get(core.id) ?? []).map((q) => ({ ...(metrics.get(q) ?? { phrase: q, volume: 0, kd: null, cpc: null, competition: null, results: null }), source: "model" as const }));
+    const p: Pick = { core, candidates: list, best: null, reason: "" };
+    choose(p);
+    return p;
   });
 
-  // 4. Related для лучших N ядер: подсказки рынка; если находится ключ с большим баллом — он и выбирается.
+  // 4. Related для лучших N ядер: подсказки рынка (40 юнитов за строку); попадают в кандидаты и проходят проверку смысла.
   if (relatedN > 0) {
     const top = picks.filter((p) => p.best).sort((a, b) => score(b.best!) - score(a.best!)).slice(0, relatedN);
     for (const p of top) {
@@ -103,12 +131,16 @@ async function main() {
         for (const r of p.related) {
           if (!p.candidates.some((c) => c.phrase === r.phrase.toLowerCase())) p.candidates.push({ ...r, phrase: r.phrase.toLowerCase(), source: "related" });
         }
-        p.candidates.sort((a, b) => score(b) - score(a));
       } catch (e) { console.error(`related ${p.core.core}: ${e instanceof Error ? e.message : e}`); }
     }
   }
 
-  // 5. Склейка: один ключ — одно ядро (у второго ядра ключ становится дубликатом).
+  // 5. Проверка смысла моделью и окончательный выбор.
+  for (let i = 0; i < picks.length; i += 5) {
+    await Promise.all(picks.slice(i, i + 5).map(async (p) => { p.candidates.sort((a, b) => score(b) - score(a)); await verifyMeaning(ai, lang, p.core, p.candidates); choose(p); }));
+  }
+
+  // 6. Склейка: один ключ — одно ядро (у второго ядра ключ становится дубликатом).
   const taken = new Map<string, string>();
   for (const p of picks.sort((a, b) => (b.core.volume ?? 0) - (a.core.volume ?? 0))) {
     if (!p.best) continue;
@@ -116,10 +148,10 @@ async function main() {
     if (owner) { p.reason = `дубликат ядра «${owner}»`; p.best = null; } else taken.set(p.best.phrase, p.core.core);
   }
 
-  // 6. TSV.
-  const rows = [["niche", "core_en", "vol_us", "class", "keyword", "volume", "kd", "cpc", "status", "reason", "candidates (phrase:volume:kd)"].join("\t")];
+  // 7. TSV.
+  const rows = [["niche", "core_en", "vol_us", "class", "keyword", "volume", "kd", "cpc", "status", "reason", "candidates (phrase:volume:kd; * related, ~ не по смыслу)"].join("\t")];
   for (const p of picks) {
-    rows.push([p.core.niche, p.core.core, p.core.volume ?? "", p.core.volClass ?? "", p.best?.phrase ?? "", p.best?.volume ?? "", p.best?.kd ?? "", p.best?.cpc ?? "", p.best ? "auto" : "skip", p.reason, p.candidates.slice(0, 12).map((c) => `${c.phrase}:${c.volume}:${c.kd ?? "-"}${c.source === "related" ? "*" : ""}`).join(" | ")].join("\t"));
+    rows.push([p.core.niche, p.core.core, p.core.volume ?? "", p.core.volClass ?? "", p.best?.phrase ?? "", p.best?.volume ?? "", p.best?.kd ?? "", p.best?.cpc ?? "", p.best ? "auto" : "skip", p.reason, p.candidates.slice(0, 12).map((c) => `${c.ok === false ? "~" : ""}${c.phrase}:${c.volume}:${c.kd ?? "-"}${c.source === "related" ? "*" : ""}`).join(" | ")].join("\t"));
   }
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, rows.join("\n") + "\n", "utf8");

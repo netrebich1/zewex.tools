@@ -25,6 +25,20 @@
 
 ## 2. Ключи: как перевести «как ищут», а не «как пишется»
 
+**Сделано 17.11.2026 (этап 1, первый прогон).** Клиент шлюза `src/lib/locale/semrush.ts` (phrase_these / phrase_related,
+CSV, повтор при 503, кэш замеров на диске `docs/copy/locale/.semrush-cache.json` на сервере), языки `src/lib/locale/languages.ts`,
+скрипт `scripts/locale/keywords.ts` (кандидаты gemini-2.5-flash → замер → related для лучших → проверка смысла моделью →
+выбор по объёму × (1 − 0.6·KD/100) → склейка дубликатов → TSV). Чешский, по 10 ВЧ-ядер на нишу, ≈ 3 800 юнитов:
+волосы 8 из 10 (účesy 8 100, kudrnaté vlasy 3 600, krátké účesy 2 900, melíry 2 400, blond vlasy 1 300, drdoly 1 000),
+ногти 7 из 10 (nehty 18 100, růžové nehty 1 300, francouzské nehty 1 000, nail art 1 000, krátké/černé nehty 720, hnědé 480),
+образы 3 из 10 (svatební šaty 9 900, outfit 3 600, casual 1 600) — в Чехии почти не ищут «X outfits»: concert/jeans/boots/party
+outfits дают 10–210 в месяц. Таблицы: `docs/copy/locale/cs-{hair,nails,outfits}.tsv` (колонка candidates: `*` — из related,
+`~` — модель отклонила по смыслу). Известные промахи проверки смысла: «half up half down» → «účesy polodlouhé vlasy»,
+«brown hair» → «světle hnědé vlasy» (сужение) — нужна правка владельцем в словаре. Шлюз Group by SEO утром 17.11 два часа
+отдавал 503 на весь SEO API (Trends работал) — клиент повторяет запрос, скрипт можно просто перезапустить.
+Расход: ≈ 100 юнитов на ядро без related, ≈ 130 с related у трети ядер; 467 ВЧ-ядер женских ниш ≈ 50–60 тыс. юнитов.
+
+
 Это сердце задачи. Схема — «кандидаты → замер → выбор → словарь», один раз на ядро и язык, результат служит всем
 сайтам этого языка.
 
