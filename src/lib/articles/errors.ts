@@ -133,7 +133,12 @@ export type RetryPlan = { retry: true; delayMs: number; n: number; max: number |
  * Решение по очередному сбою вида `kind`: n — номер этого повтора (1 = первый сбой подряд),
  * firstAt — когда случился первый сбой этого вида в текущей серии, stageDelay — пауза, которую попросил этап.
  */
-export function retryPlan(kind: RetryKind, n: number, firstAt: Date | null, stage: string, stageDelayMs?: number): RetryPlan {
+/** Начало следующего календарного месяца (UTC, как monthStart в run.ts) — когда обнуляется месячный лимит ключа портала. */
+export function nextMonthStart(now = new Date()): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+}
+
+export function retryPlan(kind: RetryKind, n: number, firstAt: Date | null, stage: string, stageDelayMs?: number, code?: string): RetryPlan {
   const pick = (list: number[]) => list[Math.min(n - 1, list.length - 1)];
   switch (kind) {
     case "transient": {
@@ -149,7 +154,12 @@ export function retryPlan(kind: RetryKind, n: number, firstAt: Date | null, stag
       return { retry: true, n, max, delayMs: Math.max(pick(MALFORMED_DELAYS_MS), stageDelayMs ?? 0) };
     }
     case "key": {
-      if (firstAt && Date.now() - firstAt.getTime() > KEY_WAIT_WINDOW_MS) return { retry: false, n, max: null };
+      // Месячный лимит ключа портала сам не вернётся раньше 1-го числа: ждём до него (+сутки), а не 7 дней,
+      // иначе сотни статей команды одновременно стали бы ошибкой посреди месяца (PinOra, 17.11.2026).
+      const windowEnd = code === "month_limit" && firstAt
+        ? Math.max(firstAt.getTime() + KEY_WAIT_WINDOW_MS, nextMonthStart(firstAt).getTime() + 24 * 60 * MIN)
+        : (firstAt?.getTime() ?? Date.now()) + KEY_WAIT_WINDOW_MS;
+      if (firstAt && Date.now() > windowEnd) return { retry: false, n, max: null };
       return { retry: true, n, max: null, delayMs: Math.max(pick(KEY_DELAYS_MS), stageDelayMs ?? 0) };
     }
     case "planned": {

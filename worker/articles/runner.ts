@@ -25,9 +25,9 @@ import type { Article, ArtStatus } from "@prisma/client";
 import { decryptSecret } from "@/lib/crypto";
 import { articleCost } from "@/lib/articles/ai";
 import { aiModerationOn, type ArticleCursor, type ArticleFacts, type ArticlePlan, type ArticleRecipeSnapshot } from "@/lib/articles/types";
-import { nextStage, stageLabel, type StageKey } from "@/lib/articles/stages";
+import { firstWritingStage, nextStage, stageLabel, type StageKey } from "@/lib/articles/stages";
 import { markArticleStatus } from "@/lib/articles/sheets";
-import { classifyFailure, inWords, isTransientError, retryPlan, TRANSIENT_DELAYS_MS, type Classified, type RetryKind } from "@/lib/articles/errors";
+import { classifyFailure, inWords, isTransientError, nextMonthStart, retryPlan, TRANSIENT_DELAYS_MS, type Classified, type RetryKind } from "@/lib/articles/errors";
 import { STAGES, StopRequested, type ArtStageCtx, type ArtStageResult } from "./stages";
 import { finishLog, markDetails, recordError, retryStreak, type RetryStreak } from "./journal";
 import { MAX_ATTEMPTS, releaseArticle, renewLease } from "./queue";
@@ -83,6 +83,17 @@ export async function processArticle(article: Article, workerId: string, shuttin
       const handler = STAGES[stage];
       if (!handler) {
         await fail(current, `Этап «${stageLabel(stage)}» ещё не реализован в этой версии сервиса. Всё сделанное сохранено.`);
+        return;
+      }
+      // Страховка: при модерации фото текст пишется только после одобрения фото (approvePhotos ставит photoReviewApproved).
+      // Статью, попавшую к написанию в обход модерации (массовое «В очередь»/«Повторить», ручная правка), возвращаем ждать решения.
+      if (current.photoReview && stage === firstWritingStage(current.format) && !(current.cursor as ArticleCursor | null)?.photoReviewApproved) {
+        const back: ArtStatus = current.insufficientReason ? "INSUFFICIENT_PHOTOS" : "PHOTO_REVIEW";
+        const note = back === "INSUFFICIENT_PHOTOS"
+          ? "Мало фото: текст не пишется, пока фото не одобрены. Доберите фото, одобрите или закройте статью в модерации."
+          : "Фото не одобрены в модерации — текст не пишется до одобрения фото.";
+        await prisma.article.update({ where: { id: current.id }, data: { status: back, workerId: null, leaseUntil: null, attempts: 0, nextRunAt: null, note } });
+        log.warn(`article ${current.id} reached ${stage} without photo approval — back to ${back}`);
         return;
       }
       const started = await prisma.artStageLog.create({ data: { articleId: current.id, stage, status: "running" } });
@@ -276,8 +287,9 @@ async function retryOrFail(
   opts: { cost?: number; stageDelayMs?: number; details?: unknown; giveUp?: string; summary?: string },
 ): Promise<void> {
   const n = streak.counts[kind] + 1;
-  const plan = retryPlan(kind, n, streak.firstAt[kind] ?? new Date(), stage, opts.stageDelayMs);
+  const plan = retryPlan(kind, n, streak.firstAt[kind] ?? new Date(), stage, opts.stageDelayMs, c.code);
   const label = stageLabel(stage);
+  if (kind === "key" && c.code === "month_limit") c = { ...c, detail: `${c.detail}. ${monthLimitHint()}` };
   if (!plan.retry) {
     const reason = opts.giveUp ?? giveUpText(kind, label, n - 1, c);
     await finishLog(logId, "error", opts.summary, reason, markDetails(opts.details, { final: true }), opts.cost);
@@ -289,7 +301,7 @@ async function retryOrFail(
   const extra = c.detail && c.detail !== c.human ? ` — ${short(c.detail)}` : "";
   const note =
     kind === "key"
-      ? `${c.human} — статья ждёт и продолжит автоматически, когда ключ снова заработает (следующая проверка через ${inWords(delay)}).${extra ? ` ${short(c.detail)}` : ""}`
+      ? `${c.human} — статья ждёт и продолжит автоматически, когда ключ снова заработает (следующая проверка через ${inWords(delay)}).${extra ? ` ${short(c.detail, 600)}` : ""}`
       : kind === "malformed"
         ? `Повтор ${counter} через ${inWords(delay)}: ${c.human} на этапе «${label}»${extra}`
         : kind === "transient" && plan.max === null
@@ -314,6 +326,14 @@ async function retryOrFail(
     await recordError({ teamId: a.teamId, siteId: a.siteId, articleId: a.id, stage, message: `${c.human}: провайдер не отвечает час, статья ждёт (проверка раз в 30 мин, до суток) и продолжит сама. ${c.detail}`, code: c.code, human: c.human });
   }
   log.info(`article ${a.id.slice(0, 8)} ${kind} retry ${counter} at ${stage} in ${Math.round(delay / 1000)}s: ${c.human.slice(0, 160)}`);
+}
+
+const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+
+/** Что делать при исчерпанном месячном лимите ключа: это лимит портала, а не баланс у провайдера. */
+function monthLimitHint(): string {
+  const d = nextMonthStart();
+  return `Это лимит расхода, заданный на портале (раздел «Ключи», поле «Месячный лимит»), он обнулится ${d.getUTCDate()} ${MONTHS_GEN[d.getUTCMonth()]}, и статьи продолжат сами. Чтобы продолжить раньше — поднимите лимит ключа или добавьте команде ещё ключ`;
 }
 
 function giveUpText(kind: RetryKind, label: string, tries: number, c: Classified): string {

@@ -19,7 +19,7 @@ import { failedKeywordHints, type FailedHint } from "@/lib/articles/failedKeywor
 import { updateSiteSettings } from "@/lib/articles/automation";
 import { fetchAccessToken, markRows, parseServiceKey, planSheetImport, type SheetPlan } from "@/lib/articles/sheets";
 import { purgeArticleFiles } from "@/lib/articles/storage";
-import { firstStage, stageLabel, stagesFor, type StageKey } from "@/lib/articles/stages";
+import { firstStage, firstWritingStage, stageLabel, stagesFor, type StageKey } from "@/lib/articles/stages";
 import { syncCategories } from "@/lib/articles/wp/categories";
 
 export type FormState = { error?: string; ok?: string };
@@ -349,6 +349,15 @@ async function articleForUser(me: CurrentUser, id: string) {
 
 type Art = Awaited<ReturnType<typeof articleForUser>>;
 
+/**
+ * Статьи, ждущие решения по фото. После «Отбора» у них уже stage = первый этап написания, поэтому «Повторить» /
+ * «В очередь» без проверки отправляли их писать текст в обход модерации — 17.11.2026 так массово ушли в «План по фото»
+ * 19 статей PinOra из «Мало фото» и с модерации фото (у части 2–5 фото при минимуме 15).
+ */
+const PHOTO_WAIT_STATUSES = ["PHOTO_REVIEW", "INSUFFICIENT_PHOTOS", "WAITING_FOR_PHOTOS"];
+const PHOTO_WAIT_ERROR =
+  "Статья ждёт решения по фото (модерация фото / «Мало фото»): одобрите фото, доберите их или закройте статью в модерации. «Повторить» без этапа и «В очередь» не пропускают модерацию";
+
 /** Повторить с этапа: по умолчанию — с этапа ошибки или текущего. Для RUNNING — нельзя (сначала «Стоп»). */
 async function retryArticle(a: Art, fromStage?: string): Promise<string> {
   if (a.status === "RUNNING") throw new Error("Статья сейчас выполняется: сначала нажмите «Остановить»");
@@ -356,6 +365,8 @@ async function retryArticle(a: Art, fromStage?: string): Promise<string> {
   let stage = (fromStage || a.errorStage || a.stage) as StageKey;
   if (!list.includes(stage)) stage = a.stage === "done" ? list[list.length - 1] : firstStage(a.format);
   if (a.stage === "done" && !fromStage) stage = list[list.length - 1];
+  // Из ожидания фото можно только заново пройти этапы фото (поиск…отбор), но не перейти сразу к тексту.
+  if (PHOTO_WAIT_STATUSES.includes(a.status) && list.indexOf(stage) >= list.indexOf(firstWritingStage(a.format))) throw new Error(PHOTO_WAIT_ERROR);
   await prisma.article.update({
     where: { id: a.id },
     data: { status: "PENDING", stage, attempts: 0, error: null, errorStage: null, note: null, nextRunAt: new Date(), workerId: null, leaseUntil: null, stopRequested: false, finishedAt: null },
@@ -379,6 +390,7 @@ async function stopArticle(a: Art): Promise<string> {
 async function requeueArticle(a: Art): Promise<void> {
   if (a.status === "RUNNING") throw new Error("Статья уже выполняется");
   if (a.status === "COMPLETED") throw new Error("Статья уже опубликована. Если нужно опубликовать заново — «Повторить этап» → Публикация");
+  if (PHOTO_WAIT_STATUSES.includes(a.status)) throw new Error(PHOTO_WAIT_ERROR);
   const stage = stagesFor(a.format).includes(a.stage as StageKey) ? a.stage : firstStage(a.format);
   await prisma.article.update({
     where: { id: a.id },

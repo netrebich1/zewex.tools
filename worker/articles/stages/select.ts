@@ -515,7 +515,8 @@ export const select: ArtStageHandler = async (ctx) => {
 
   // Фото отобраны — счётчики колец добора больше не нужны (оригинал: direct-pipeline:588-591).
   const cursor: ArticleCursor = { ...ctx.cursor };
-  for (const k of ["filterCycles", "rateTopups", "selectCycles", "topup", "rescuePass", "filterPending"]) delete cursor[k];
+  // Новый отбор — новая модерация: прежнее одобрение фото не должно пропустить статью к тексту (страховка в runner.ts).
+  for (const k of ["filterCycles", "rateTopups", "selectCycles", "topup", "rescuePass", "filterPending", "photoReviewApproved"]) delete cursor[k];
   await ctx.save({ cursor });
 
   const reusedCount = ready.filter((s) => s.row.usedCount > 0).length;
