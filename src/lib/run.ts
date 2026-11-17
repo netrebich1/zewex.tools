@@ -1,7 +1,8 @@
 import { prisma } from "./db";
 import { decryptSecret } from "./crypto";
-import { resolveBinding } from "./resolve";
-import { runProvider, type RunInput } from "./adapters";
+import { resolveBinding, type ResolvedBinding } from "./resolve";
+import type { Capability } from "@prisma/client";
+import { isOpenRouter, runProvider, type RunInput } from "./adapters";
 import { monthStart } from "./utils";
 
 export type RunRequest = {
@@ -9,7 +10,52 @@ export type RunRequest = {
   projectSlug: string;
   slotKey: string;
   payload: Record<string, unknown>;
+  /** Таймаут одного вызова провайдера (по умолчанию 180 с). */
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  /** Привязка записи расхода к команде и объекту (например, прогону). */
+  meta?: { teamId?: string; refId?: string };
+  /** Уже выбранное правило (resolveSlot), чтобы не искать его второй раз. */
+  pre?: ResolvedSlot;
+  /**
+   * Модель, заданная настройкой инструмента (например, рецептом статьи): `provider:model` или просто `model`.
+   * Применяется, если провайдер правила совпадает с указанным (или провайдер не указан); иначе берётся модель правила.
+   */
+  model?: string;
 };
+
+export type ResolvedSlot = {
+  project: { id: string; name: string; slug: string };
+  slot: { id: string; key: string; name: string; capability: Capability };
+  binding: NonNullable<ResolvedBinding["binding"]>;
+  warnings: string[];
+};
+
+export type ResolveSlotResult = { ok: true; value: ResolvedSlot } | { ok: false; status: number; error: string };
+
+/**
+ * Находит проект, слот и правило (ключ + модель) для пользователя. Без вызова провайдера.
+ * `teamId` — команда, с ключей которой списывать (команда сайта / прогона); см. `resolveBinding`.
+ */
+export async function resolveSlot(userId: string, projectSlug: string, slotKey: string, teamId?: string | null): Promise<ResolveSlotResult> {
+  const project = await prisma.project.findUnique({ where: { slug: projectSlug }, include: { slots: true } });
+  if (!project) return { ok: false, status: 404, error: `Проект «${projectSlug}» не найден` };
+  const slot = project.slots.find((s) => s.key === slotKey);
+  if (!slot) return { ok: false, status: 404, error: `Слот «${slotKey}» не найден в проекте «${project.name}»` };
+  const resolved = await resolveBinding(userId, slot.id, teamId);
+  if (!resolved.binding && resolved.onlyProviders) {
+    return { ok: false, status: 409, error: `Слот «${slot.name}» работает только через ${resolved.onlyProviders.join(", ")}, а рабочего ключа ${resolved.onlyProviders.join("/")} сейчас нет (закончились деньги или ключ выключен). Пополните или включите ключ — прогон продолжится сам.` };
+  }
+  if (!resolved.binding) {
+    return { ok: false, status: 409, error: `Для слота «${slot.name}» не настроено ни одного правила (ключ + модель). Откройте страницу проекта и добавьте привязку.` };
+  }
+  return { ok: true, value: { project: { id: project.id, name: project.name, slug: project.slug }, slot, binding: resolved.binding, warnings: resolved.warnings } };
+}
+
+/** Выключает ключ (нет баланса / отклонён провайдером); правила с ним пропускаются при следующем выборе. */
+export async function disableKey(apiKeyId: string, note: string): Promise<void> {
+  await prisma.apiKey.update({ where: { id: apiKeyId }, data: { status: "DISABLED", lastCheckedAt: new Date(), lastCheckOk: false, lastCheckNote: note.slice(0, 500) } });
+}
 
 export type RunResponse = {
   ok: boolean;
@@ -18,6 +64,15 @@ export type RunResponse = {
   error?: string;
   meta?: { provider: string; model: string | null; key: string; scope: string; inputTokens: number; outputTokens: number; costUsd: number | null; durationMs: number };
 };
+
+/** `provider:model` → {provider, model}; строка без двоеточия (или с "/" слева от него) — только модель. */
+export function parseModelSpec(spec?: string | null): { provider: string | null; model: string } | null {
+  const s = (spec ?? "").trim();
+  if (!s) return null;
+  const i = s.indexOf(":");
+  if (i > 0 && !s.slice(0, i).includes("/")) return { provider: s.slice(0, i).toLowerCase(), model: s.slice(i + 1) };
+  return { provider: null, model: s };
+}
 
 function estimateCost(inT: number, outT: number, inPrice: number | null, outPrice: number | null): number | null {
   if (inPrice == null && outPrice == null) return null;
@@ -30,22 +85,21 @@ export async function monthSpendForKey(apiKeyId: string): Promise<number> {
 }
 
 export async function runSlot(req: RunRequest): Promise<RunResponse> {
-  const project = await prisma.project.findUnique({ where: { slug: req.projectSlug }, include: { slots: true } });
-  if (!project) return { ok: false, status: 404, error: `Проект «${req.projectSlug}» не найден` };
-  const slot = project.slots.find((s) => s.key === req.slotKey);
-  if (!slot) return { ok: false, status: 404, error: `Слот «${req.slotKey}» не найден в проекте «${project.name}»` };
-
-  const resolved = await resolveBinding(req.userId, slot.id);
-  if (!resolved.binding) {
-    return { ok: false, status: 409, error: `Для слота «${slot.name}» не настроено ни одного правила (ключ + модель). Откройте страницу проекта и добавьте привязку.` };
+  let pre = req.pre;
+  if (!pre) {
+    // Без готового правила ключ ищется по команде из meta: списание идёт с её ключей.
+    const r = await resolveSlot(req.userId, req.projectSlug, req.slotKey, req.meta?.teamId);
+    if (!r.ok) return { ok: false, status: r.status, error: r.error };
+    pre = r.value;
   }
-  const b = resolved.binding;
+  const { project, slot } = pre;
+  const b = pre.binding;
   if (b.provider.kind === "LLM" && !b.model) {
     return { ok: false, status: 409, error: `В правиле для слота «${slot.name}» не выбрана модель` };
   }
   if (b.apiKey.monthlyLimitUsd != null) {
     // A limit is only enforceable when every call's cost can be computed; refuse rather than silently bypass it.
-    const priced = b.provider.adapter === "DATAFORSEO" || (b.model != null && (b.model.inputPrice != null || b.model.outputPrice != null));
+    const priced = b.provider.adapter === "DATAFORSEO" || isOpenRouter(b.provider) || (b.model != null && (b.model.inputPrice != null || b.model.outputPrice != null || b.model.unitPrice != null));
     if (!priced) {
       const why = slot.capability === "SERP"
         ? "SerpAPI не сообщает стоимость запросов"
@@ -61,17 +115,27 @@ export async function runSlot(req: RunRequest): Promise<RunResponse> {
   const keyRow = await prisma.apiKey.findUniqueOrThrow({ where: { id: b.apiKey.id }, select: { secretEnc: true } });
   const secret = decryptSecret(keyRow.secretEnc);
 
+  // Модель из настройки инструмента: только для провайдера, который совпадает с правилом ключа.
+  let modelId = b.model?.modelId ?? "";
+  let modelRow = b.model;
+  const wanted = parseModelSpec(req.model);
+  if (wanted && (!wanted.provider || wanted.provider === b.provider.slug) && wanted.model !== modelId) {
+    modelId = wanted.model;
+    const known = await prisma.model.findUnique({ where: { providerId_modelId: { providerId: b.provider.id, modelId } }, select: { id: true, modelId: true, name: true, inputPrice: true, outputPrice: true, unitPrice: true } });
+    modelRow = known ?? { id: "", modelId, name: modelId, inputPrice: null, outputPrice: null, unitPrice: null };
+  }
+
   let input: RunInput;
   const payload = req.payload ?? {};
   switch (slot.capability) {
     case "CHAT":
-      input = { kind: "chat", model: b.model!.modelId, body: payload };
+      input = { kind: "chat", model: modelId, body: payload };
       break;
     case "IMAGE":
-      input = { kind: "image", model: b.model!.modelId, body: payload };
+      input = { kind: "image", model: modelId, body: payload };
       break;
     case "EMBEDDING":
-      input = { kind: "embedding", model: b.model!.modelId, body: payload };
+      input = { kind: "embedding", model: modelId, body: payload };
       break;
     case "SERP": {
       const params: Record<string, string> = {};
@@ -85,13 +149,14 @@ export async function runSlot(req: RunRequest): Promise<RunResponse> {
   }
 
   const started = Date.now();
-  const result = await runProvider(b.provider, secret, input);
+  const result = await runProvider(b.provider, secret, input, { timeoutMs: req.timeoutMs, signal: req.signal });
   const durationMs = Date.now() - started;
-  const costUsd = result.ok
-    ? slot.capability === "SERP"
-      ? null
-      : estimateCost(result.inputTokens, result.outputTokens, b.model?.inputPrice ?? null, b.model?.outputPrice ?? null)
-    : null;
+  let costUsd: number | null = null;
+  if (result.ok && slot.capability !== "SERP") {
+    if (result.exactCostUsd != null) costUsd = result.exactCostUsd;
+    else if (slot.capability === "IMAGE" && modelRow?.unitPrice != null) costUsd = result.units * modelRow.unitPrice;
+    else costUsd = estimateCost(result.inputTokens, result.outputTokens, modelRow?.inputPrice ?? null, modelRow?.outputPrice ?? null);
+  }
   const dfsCost = slot.capability === "SEO_DATA" && result.ok ? ((result.data as { cost?: number })?.cost ?? null) : null;
 
   await prisma.usageLog.create({
@@ -100,7 +165,7 @@ export async function runSlot(req: RunRequest): Promise<RunResponse> {
       projectId: project.id,
       slotId: slot.id,
       providerId: b.provider.id,
-      modelId: b.model?.id ?? null,
+      modelId: modelRow?.id || null,
       apiKeyId: b.apiKey.id,
       scope: b.scope,
       inputTokens: result.inputTokens,
@@ -110,6 +175,8 @@ export async function runSlot(req: RunRequest): Promise<RunResponse> {
       durationMs,
       ok: result.ok,
       error: result.error != null ? String(result.error).slice(0, 2000) : null,
+      teamId: req.meta?.teamId ?? null,
+      refId: req.meta?.refId ?? null,
     },
   });
 
@@ -120,7 +187,7 @@ export async function runSlot(req: RunRequest): Promise<RunResponse> {
     error: result.error,
     meta: {
       provider: b.provider.name,
-      model: b.model?.modelId ?? null,
+      model: modelId || null,
       key: b.apiKey.label,
       scope: b.scope,
       inputTokens: result.inputTokens,

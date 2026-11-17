@@ -5,33 +5,37 @@ import { createBinding } from "@/actions/admin";
 import { Field } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { CAPABILITY_LABELS, SCOPE_LABELS } from "@/lib/utils";
+import { keyFitsRule, type TeamScope } from "@/lib/permissions";
 
 export type ProviderOption = {
   id: string; name: string; kind: string;
   models: { id: string; modelId: string; name: string; capabilities: string }[];
-  keys: { id: string; label: string; secretHint: string; ownerId: string | null; status: string }[];
+  keys: { id: string; label: string; secretHint: string; ownerId: string | null; teamId: string | null; status: string }[];
 };
 export type Option = { id: string; name: string };
+export type UserOption = { id: string; name: string; teamIds: string[] };
 
-export function BindingForm({ providers, teams, users, slots, isAdmin, meId, leadTeamIds = [], fixedScope, fixedSlotId, fixedTeamId, compact }: {
+/** Что может текущий пользователь (из src/lib/permissions.ts): любые правила, или правила перечисленных команд. */
+export type BindingAbility = { meId: string; myTeamIds: string[]; assign: TeamScope };
+
+export function BindingForm({ providers, teams, users, slots, can, fixedScope, fixedSlotId, fixedTeamId, compact }: {
   providers: ProviderOption[];
   teams: Option[];
-  users: Option[];
+  users: UserOption[];
   slots: { id: string; name: string; capability: string }[];
-  isAdmin: boolean;
-  meId: string;
-  /** Teams the current user leads: they may add TEAM / TEAM_PROJECT rules for those teams. */
-  leadTeamIds?: string[];
+  can: BindingAbility;
   fixedScope?: string;
   fixedSlotId?: string;
   fixedTeamId?: string;
   compact?: boolean;
 }) {
-  const scopes = isAdmin ? Object.keys(SCOPE_LABELS) : leadTeamIds.length ? ["USER_PROJECT", "TEAM_PROJECT", "TEAM"] : ["USER_PROJECT"];
-  const teamOptions = isAdmin ? teams : teams.filter((t) => leadTeamIds.includes(t.id));
-  const [scope, setScope] = useState(fixedScope ?? (isAdmin ? "PROJECT" : "USER_PROJECT"));
+  const global = can.assign === "all";
+  const teamOptions = global ? teams : teams.filter((t) => can.assign.includes(t.id));
+  const scopes = global ? Object.keys(SCOPE_LABELS) : teamOptions.length ? ["USER_PROJECT", "TEAM_PROJECT", "TEAM"] : ["USER_PROJECT"];
+  const [scope, setScope] = useState(fixedScope ?? (global ? "PROJECT" : "USER_PROJECT"));
   const [slotId, setSlotId] = useState(fixedSlotId ?? slots[0]?.id ?? "");
-  const [userId, setUserId] = useState(meId);
+  const [userId, setUserId] = useState(can.meId);
+  const [teamId, setTeamId] = useState(fixedTeamId ?? teamOptions[0]?.id ?? "");
   const slot = slots.find((s) => s.id === slotId);
   const [capability, setCapability] = useState(slot?.capability ?? "CHAT");
   const needCap = scope === "TEAM" || scope === "GLOBAL";
@@ -47,9 +51,11 @@ export function BindingForm({ providers, teams, users, slots, isAdmin, meId, lea
   const [providerId, setProviderId] = useState(usableProviders[0]?.id ?? "");
   const provider = usableProviders.find((p) => p.id === providerId) ?? usableProviders[0];
   const models = (provider?.models ?? []).filter((m) => m.capabilities.split(",").includes(effectiveCap) || provider?.kind === "DATA");
-  // Shared keys are always available; a personal key only inside its owner's personal rule.
-  const ruleUser = scope === "USER_PROJECT" ? (isAdmin ? userId : meId) : null;
-  const keys = (provider?.keys ?? []).filter((k) => k.status === "ACTIVE" && (!k.ownerId || k.ownerId === ruleUser));
+  // Ключ должен подходить правилу: личный — только владельцу, командный — своей команде, общий — куда угодно.
+  const ruleUser = scope === "USER_PROJECT" ? (global ? userId : can.meId) : null;
+  const ruleTeam = scope === "TEAM" || scope === "TEAM_PROJECT" ? teamId : null;
+  const ruleUserTeams = ruleUser === can.meId ? can.myTeamIds : (users.find((u) => u.id === ruleUser)?.teamIds ?? []);
+  const keys = (provider?.keys ?? []).filter((k) => k.status === "ACTIVE" && !keyFitsRule(k, { scope, teamId: ruleTeam, userId: ruleUser, userTeamIds: ruleUserTeams }));
 
   return (
     <ActionForm action={createBinding} className={compact ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-3" : "grid gap-3 sm:grid-cols-2"}>
@@ -80,20 +86,20 @@ export function BindingForm({ providers, teams, users, slots, isAdmin, meId, lea
       {(scope === "TEAM" || scope === "TEAM_PROJECT") && (
         fixedTeamId ? <input type="hidden" name="teamId" value={fixedTeamId} /> : (
           <Field label="Команда" hint={teamOptions.length ? undefined : "Нет команд, которыми вы управляете"}>
-            <select className="input" name="teamId" defaultValue={teamOptions[0]?.id}>
+            <select className="input" name="teamId" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
               {teamOptions.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </Field>
         )
       )}
       {scope === "USER_PROJECT" && (
-        isAdmin ? (
+        global ? (
           <Field label="Пользователь">
             <select className="input" name="userId" value={userId} onChange={(e) => setUserId(e.target.value)}>
               {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </Field>
-        ) : <input type="hidden" name="userId" value={meId} />
+        ) : <input type="hidden" name="userId" value={can.meId} />
       )}
       <Field label="Провайдер">
         <select className="input" value={provider?.id ?? ""} onChange={(e) => setProviderId(e.target.value)}>
@@ -107,9 +113,9 @@ export function BindingForm({ providers, teams, users, slots, isAdmin, meId, lea
           </select>
         </Field>
       )}
-      <Field label="Ключ" hint={keys.length ? undefined : "Нет подходящих активных ключей: личные ключи доступны только в личном правиле владельца"}>
-        <select className="input" name="apiKeyId" defaultValue={keys[0]?.id} key={`${provider?.id}-${scope}-${ruleUser}`}>
-          {keys.map((k) => <option key={k.id} value={k.id}>{k.label} · {k.secretHint}{k.ownerId ? " · личный" : ""}</option>)}
+      <Field label="Ключ" hint={keys.length ? undefined : "Нет подходящих активных ключей: личные ключи работают только в личном правиле владельца, командные — в правилах своей команды"}>
+        <select className="input" name="apiKeyId" defaultValue={keys[0]?.id} key={`${provider?.id}-${scope}-${ruleUser}-${ruleTeam}`}>
+          {keys.map((k) => <option key={k.id} value={k.id}>{k.label} · {k.secretHint}{k.ownerId ? " · личный" : k.teamId ? " · командный" : ""}</option>)}
         </select>
       </Field>
       <div className="flex items-end">

@@ -1,0 +1,56 @@
+===SYSTEM===
+
+===TEXT===
+Write {{batch_size}} sections for the article "{{focus_keyword}}".
+Batch {{batch_number}} of {{total_batches}}. Personality: {{article_personality}}.
+Topic type: {{topic_kind}}. Facts required in every section: {{required_facts}}.
+
+ARTICLE CONTEXT (theme, hook, narrative arc, meta)
+{{article_context}}
+
+TREND CONTEXT (background only; use at most once in this batch, and only where a brief's angle calls for it)
+{{trend_context}}
+
+PHOTO SCENES (what the reader sees above each section; you may mention the light or the camera angle, never a person)
+{{scene_context}}
+
+PREVIOUS BATCH
+Summary: {{previous_batch_summary}}
+Last paragraph of the previous section: {{previous_ending}}
+Headings already used: {{keywords_bolded_previous}}
+
+SECTION BRIEFS (one per section, in article order)
+{{section_briefs}}
+
+HOW TO READ A BRIEF
+Each brief is one hair idea: the section recipe (angle, opening, length, paragraphs, optional blocks), the section plan and the photo facts written from the file.
+- The recipe is authoritative for structure and length. The code adds the heading; you never output <h2>. No emphasis tags, no asterisks.
+- visual_anchor: the details the text must name, exactly as written. Nothing visual beyond the facts and visual_anchor may appear; if the note says the facts give no length, bangs or technique, do not name one.
+- ask_for feeds the chair line ("Tell your colorist:" for color topics, "Tell your stylist:" for cut and styling topics), who_it_suits and skip_if feed the decision, wear_tip feeds the upkeep fact. Use them in your own words, never as labels.
+- Hair data (description, occasion, difficulty_level, cut, hair_length, texture, hair_color, bangs): raw material; use 3-4 pieces, never all, never as a data dump.
+- The section keyword is optional: once, only where it reads as natural English.
+- If a brief contains nail, makeup or outfit placeholders, they are a fallback from another niche: ignore them completely.
+
+RULES FOR THIS BATCH
+- Exactly {{batch_size}} sections, in the order given, section_number = the position from the brief.
+- First section: continue from previous_ending naturally. In batch 1, open cold, no throat-clearing, no "first up", no restating the heading.
+- The first word of every section in this batch is different and is never This, The, That, A or These; never the same idiom twice; never the same closing move in two adjacent sections. The chair line appears in at most half of the sections of this batch; the skip_if exception in at most half, each time with a different phrasing.
+- Do not invent styling times, techniques or details that are not in the brief. No first person anywhere.
+
+- A question opens a section at most once in this batch, and only where the recipe opener is "question". An upkeep timing in weeks appears only in sections whose recipe has include_care, and never the same number of weeks twice. Never reuse the phrase named in the brief's note as "do not reuse".
+
+FINAL CHECK, per section, before output
+- Length and paragraph count follow the recipe. Three of the four moves are present. Section openings differ. No length or highlight word that the facts do not state.
+- Every length, bangs, shade, placement and technique word in the text exists in the brief's facts or visual_anchor.
+- No <b>, <em>, <strong> or asterisks. No em dashes, no guillemets, no banned words, no brands, no dollar amounts, no nail, makeup or outfit words, no skin-tone claims, the right topic type. American spelling.
+
+OUTPUT (valid JSON only, no fences, no commentary)
+{
+  "sections": [
+    {
+      "section_number": 1,
+      "h2": "the h2 from the brief, unchanged",
+      "html": "<p>...</p>\n<p>...</p>"
+    }
+  ]
+}

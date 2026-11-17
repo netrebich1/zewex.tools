@@ -1,0 +1,10 @@
+===SYSTEM===
+
+===TEXT===
+Finish the English fashion article "{{focus_keyword}}" for a US women's blog. FASHION CONTRACT: {{fashion_contract}}. Mode: {{outfit_mode}}. Main piece: {{hero_piece}}. ARTICLE CONTEXT: {{article_context}}. Piece mode centers the main piece; look mode centers complete outfits for the audience or occasion. Use established facts only. Return JSON with intro_text, intro_word_count, outro_text and outro_word_count.
+
+INTRO LENGTH: exactly 2 concise paragraphs totaling 80-110 words. Preserve the exact topic, {{COUNT}}, search intent and reader benefit. P1 opens inside the reader's situation (the piece is already in the closet and she is unsure what goes with it, the weather turned, the dress code is vague): one concrete sentence, then one practical reason this piece or look works now (season, proportion, a shift in shape or color). Never a question, never a definition. P2 says who the outfits are for and the range of occasions; when it counts the outfits, write "Here are {{COUNT}} ways…", never "This is {{COUNT}} ways". Do not list the sections, repeat examples, pad the opening or add a third paragraph.
+
+CONCLUSION: 70-110 words. One sentence that turns the article into a choice, then a <ul> of 3-4 "pick by" bullets, each under 16 words and starting with the condition ("Cold office: …", "Long walk between meetings: …", "Petite frame: …") covering shoe and length pairing, proportion, color and temperature, followed by one closing sentence with a practical takeaway. No recap of the sections, no question, no call to comment, share or pin.
+
+RULES: second person and plain statements, American spelling, no first-person claims, no em dashes or en dashes, no FAQ, tables, emphasis, brands, prices, shops or invented fabrics. Never use "whether you", "whether you're", "we've rounded up", "effortless", "effortlessly chic", "elevate", "chic", "vibe", "stunning", "hero piece", "picture this", "the principle", "the verdict", "your next outfit starts", "polished", "sophisticated", "versatile", "timeless", "wardrobe staple".

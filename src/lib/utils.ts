@@ -26,6 +26,17 @@ export function fmtDate(d: Date | string | null | undefined): string {
   return date.toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
 }
 
+/** Длительность: «45 сек», «28 мин», «2 ч 18 мин», «3 дн 4 ч». */
+export function fmtDuration(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
+  const min = Math.floor(ms / 60_000);
+  if (min < 1) return `${Math.max(1, Math.round(ms / 1000))} сек`;
+  if (min < 60) return `${min} мин`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} ч${min % 60 ? ` ${min % 60} мин` : ""}`;
+  return `${Math.floor(h / 24)} дн${h % 24 ? ` ${h % 24} ч` : ""}`;
+}
+
 export function monthStart(d = new Date()): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }

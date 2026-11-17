@@ -1,0 +1,84 @@
+/**
+ * Article Copy: разбор ключа статьи на ядро и формулировку.
+ * «Classy Almond Nails 2027» → ядро «almond nails», формулировка «classy». Формулировки одного ядра владелец делал
+ * специально разными для разных сайтов, поэтому похожие ключи считаются одной темой.
+ */
+export const PROJECT_SLUG = "copy";
+/** teamId строк CopyCore при общем банке: ядра всех команд склеены в одну карту. */
+export const SHARED_TEAM = "shared";
+export const COPY = "/pinterest/copy";
+
+/** Стандартный набор формулировок («» — ключ без приставки). */
+export const FORMULATIONS = ["", "classy", "trendy", "simple", "aesthetic", "cute", "elegant", "chic"] as const;
+/** Слова-приставки, которые не меняют тему (стоят первым словом ключа). */
+const LEAD = new Set(["classy", "trendy", "simple", "aesthetic", "cute", "elegant", "chic", "easy", "best", "stunning", "charming", "dreamy", "gorgeous", "pretty", "beautiful", "stylish", "lovely"]);
+/** Хвосты, которые не меняют тему. */
+const TAIL = new Set(["ideas", "idea", "inspo", "inspiration"]);
+const YEAR = /^20\d\d$/;
+
+/** Запасные приставки, когда стандартные заняты (не меняют смысл темы; easy и best сюда не входят). */
+export const EXTRA_FORMULATIONS = ["stylish", "pretty", "gorgeous", "stunning", "beautiful", "lovely", "dreamy", "charming"] as const;
+
+/** Свободная формулировка ядра: случайная из стандартных, когда они кончились — из запасных; null — заняты все. */
+export function pickModifier(used: Iterable<string>): string | null {
+  const u = new Set(used);
+  for (const pool of [FORMULATIONS, EXTRA_FORMULATIONS]) {
+    const free = pool.filter((m) => !u.has(m));
+    if (free.length) return free[Math.floor(Math.random() * free.length)];
+  }
+  return null;
+}
+
+/** Слова ядра, по которым считается разнообразие партии: без «головных» слов ниши и служебных. */
+const HEAD_WORDS = new Set(["nails", "nail", "outfits", "outfit", "hair", "hairstyles", "hairstyle", "haircuts", "haircut", "ideas", "idea", "style", "styles", "look", "looks", "for", "with", "and", "the", "a", "of", "to", "in", "women", "woman", "girls", "ladies", "decor", "decorations", "decoration", "design", "designs", "home", "room"]);
+export const clusterWords = (core: string) => core.split(" ").filter((w) => w.length > 2 && !HEAD_WORDS.has(w));
+/** Кластер темы для сводки партии: первое содержательное слово ядра («almond nails» → almond). */
+export const clusterOf = (core: string) => clusterWords(core)[0] ?? core;
+
+/** Ключ с другой приставкой: «Classy Almond Nail Ideas 2027» + chic → «Chic Almond Nail Ideas 2027». */
+export function swapModifier(keyword: string, modifier: string): string {
+  const words = keyword.trim().split(/\s+/);
+  if (words.length > 1 && LEAD.has(words[0].toLowerCase().replace(/[^a-z]/g, ""))) words.shift();
+  if (modifier) words.unshift(modifier[0].toUpperCase() + modifier.slice(1));
+  return words.join(" ");
+}
+
+/** Классы частотности ядра (Ads Manager, США): ВЧ ≥ 30 000, СЧ 10–30 000, НЧ 3 000–10 000, мелкие < 3 000. */
+export const VOL_CLASSES = ["hi", "mid", "low"] as const;
+export type VolClass = (typeof VOL_CLASSES)[number];
+export const VOL_LABEL: Record<string, string> = { hi: "ВЧ", mid: "СЧ", low: "НЧ", small: "мелкие", none: "нет данных", any: "любые" };
+export const volClassOf = (v: number | null | undefined): string | null => (v == null ? null : v >= 30000 ? "hi" : v >= 10000 ? "mid" : v >= 3000 ? "low" : "small");
+export const fmtVolume = (v: number | null | undefined) => (v == null ? "—" : v >= 1000 ? `${Math.round(v / 1000)}k` : String(v));
+
+/** Сезонные темы — не для вечнозелёных партий «на 2027». */
+const SEASONAL = /\b(christmas|xmas|holiday|halloween|thanksgiving|easter|valentine|valentines|new year|nye|winter|summer|spring|fall|autumn|july 4th|4th of july|fourth of july|st patrick|back to school|prom|graduation|festival|coachella|snow)\b/i;
+export const isSeasonal = (core: string) => SEASONAL.test(core);
+
+export type KeyParts = { core: string; modifier: string };
+
+export function splitKeyword(keyword: string): KeyParts {
+  let t = (keyword.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => !YEAR.test(w));
+  let modifier = "";
+  if (t.length > 1 && LEAD.has(t[0])) {
+    modifier = t[0];
+    t = t.slice(1);
+  }
+  while (t.length > 1 && TAIL.has(t[t.length - 1])) t = t.slice(0, -1);
+  return { core: t.join(" ").slice(0, 191), modifier };
+}
+
+export const groupOf = (niche: string | null | undefined) => (niche === "interior" || niche === "decor" || niche === "outdoor" ? "interior" : "women");
+export const GROUP_LABEL: Record<string, string> = { women: "Женские", interior: "Интерьер" };
+export const NICHE_LABEL: Record<string, string> = { outfits: "Образы", hair: "Волосы", nails: "Ногти", interior: "Интерьер", makeup: "Макияж", tattoo: "Тату", other: "Без ниши" };
+export const nicheLabel = (n: string) => NICHE_LABEL[n] ?? n;
+export const modifierLabel = (m: string) => m || "без приставки";
+
+/** Сколько статей выходит из банка ядра: статьи по N фото, из каждой старой статьи в новую — не больше доли maxOverlapPct. */
+export function capacityByPhotos(p: { published: number; reserve: number; articles: number; perArticle: number; maxOverlapPct: number }): number {
+  const n = Math.max(1, p.perArticle);
+  const fromOne = Math.floor((n * p.maxOverlapPct) / 100);
+  const total = Math.floor((p.published + p.reserve) / n);
+  const perNew = fromOne * p.articles;
+  if (perNew >= n) return total;
+  return Math.min(total, Math.floor(p.reserve / (n - perNew)));
+}

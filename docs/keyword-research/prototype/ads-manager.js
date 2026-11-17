@@ -1,0 +1,12 @@
+// Ads Manager (ads.pinterest.com, черновик кампании, US): частотность = reach_estimate из XHR get_audience_sizing_handler
+window.__setKw = async (v)=>{const t=document.querySelector('textarea'); t.focus(); const s=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set; s.call(t,v); t.dispatchEvent(new Event('input',{bubbles:true})); t.dispatchEvent(new Event('change',{bubbles:true})); t.blur(); t.dispatchEvent(new FocusEvent('focusout',{bubbles:true}));};
+window.__aud=()=>{const e=[...document.querySelectorAll('*')].find(e=>e.children.length===0 && /Monthly active ads audience/.test(e.textContent)); return e.parentElement.parentElement.innerText.split('\n')[2]};
+performance.clearResourceTimings();
+await __setKw('"Hairstyles for Women Over 70"'); await new Promise(r=>setTimeout(r,5000)); [__aud(), performance.getEntriesByType('resource').map(e=>e.name).filter(n=>/api|resource|estimate|audience|reach/i.test(n)).slice(-10)]
+
+if(!window.__p2){window.__p2=1; window.__sz=[]; const oo=XMLHttpRequest.prototype.open, os=XMLHttpRequest.prototype.send; XMLHttpRequest.prototype.open=function(m,u){this.__u2=u; return oo.apply(this,arguments)}; XMLHttpRequest.prototype.send=function(b){this.addEventListener('load',()=>{const t=this.responseText||''; if(t.includes('get_audience_sizing_handler')){try{const u=new URL(this.__u2,location.href); const d=JSON.parse(u.searchParams.get('data')); const re=JSON.parse(t).resource_response.data.reach_estimate; __sz.push({kw:(d.options.data.phrase_keywords||[]).join('|'), re})}catch(e){__sz.push({err:e+''})}}}); return os.apply(this,arguments)}}
+window.__vol=async(kw,timeout=12000)=>{await __setKw('"'+kw+'"'); const t0=Date.now(); while(Date.now()-t0<timeout){const h=__sz.filter(x=>x.kw&&x.kw.toLowerCase()===kw.toLowerCase()).pop(); if(h) return h.re; await new Promise(r=>setTimeout(r,300));} return null};
+const out={}; for(const k of ['Hairstyles for Women','Squoval Nails','Outfit Ideas','Hairstyles for Women Over 70']) {const t=Date.now(); const r=await __vol(k); out[k]=r?[r.estimate,r.lower_bound,r.upper_bound,Date.now()-t]:null} out
+
+window.__vol=async(kw,timeout=8000)=>{const lk=kw.toLowerCase().replace(/\s+/g,' ').trim(); await __setKw('"'+lk+'"'); const t0=Date.now(); while(Date.now()-t0<timeout){const h=__sz.filter(x=>x.kw&&x.kw.toLowerCase().replace(/\s+/g,' ').trim()===lk).pop(); if(h) return h.re; await new Promise(r=>setTimeout(r,300));} return null};
+const ta=document.getElementById('__in'); ta.value=''; ta.focus(); document.activeElement===ta
