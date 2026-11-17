@@ -33,7 +33,13 @@ function groupByWords(qs: Q[]): Group[] {
   return [...map.values()].sort((a, b) => b.volume - a.volume);
 }
 
-/** Сезон по тренду: пик — месяц максимума; сезонная, если максимум ≥ 2.5 × медианы. Td[0] — 12 месяцев назад. */
+/**
+ * Сезон по тренду: пик — месяц максимума; сезонная, если максимум ≥ 2.5 × медианы. Td — 12 значений от старых к новым;
+ * по калибровке на cz 17.11.2026 (jarní → апрель, letní → июль–август, podzimní → ноябрь, zimní → февраль) последнее
+ * значение отстаёт от текущего месяца примерно на 2 месяца (TREND_LAG). «vánoční nehty» в данные не ложится — ряд Semrush
+ * для него выглядит сдвинутым; сезон рождественских тем лучше задавать руками.
+ */
+const TREND_LAG = 2;
 function season(trendsList: unknown[]): { peak: number; window: [number, number] } | null {
   const rows = trendsList.filter((t): t is number[] => Array.isArray(t) && t.length === 12);
   if (!rows.length) return null;
@@ -43,7 +49,7 @@ function season(trendsList: unknown[]): { peak: number; window: [number, number]
   if (!median || max < 2.5 * median) return null;
   const idx = avg.indexOf(max);
   const now = new Date();
-  const peakMonth = ((now.getMonth() - (11 - idx)) % 12 + 12) % 12 + 1;
+  const peakMonth = ((now.getMonth() - TREND_LAG - (11 - idx)) % 12 + 12) % 12 + 1;
   return { peak: peakMonth, window: [((peakMonth - 3 + 11) % 12) + 1, peakMonth] };
 }
 
