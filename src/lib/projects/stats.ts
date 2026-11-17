@@ -181,6 +181,31 @@ function cmp(cur: number, prev: number): { text: string; color: Color | null } {
   return { text: `${fmt(cur)} ≈`, color: null };
 }
 
+export type WeekCell = { text: string; color: Color | null };
+/**
+ * Клики на сайт из Pinterest за 7 дней и их изменение к предыдущим 7 — короткая клетка слева от сайта на вкладках ниш.
+ * Считается до последнего закрытого дня аккаунта; резкий рост (как на «Трафике»: от +30% и не меньше 20 кликов) — ярко-зелёным.
+ */
+export async function weekClicks(teamSlug: string, today: string): Promise<Map<string, WeekCell>> {
+  const out = new Map<string, WeekCell>();
+  const team = await prisma.team.findUnique({ where: { slug: teamSlug }, select: { id: true } });
+  if (!team) return out;
+  const rows = await prisma.prjStatDay.findMany({ where: { teamId: team.id, source: "pinterest", day: { gte: addDays(today, -30) } }, select: { site: true, day: true, estimate: true, outboundClicks: true } });
+  const by = new Map<string, { oc: Series; ready: string | null }>();
+  for (const r of rows) {
+    const s = by.get(r.site) ?? by.set(r.site, { oc: new Map(), ready: null }).get(r.site)!;
+    s.oc.set(r.day, r.outboundClicks ?? 0);
+    if (!r.estimate && (!s.ready || r.day > s.ready)) s.ready = r.day;
+  }
+  for (const [d, s] of by) {
+    if (!s.ready) continue;
+    const c7 = sum(s.oc, s.ready, 7), p7 = sum(s.oc, addDays(s.ready, -7), 7);
+    const c = cmp(c7, p7);
+    out.set(d, c7 >= 20 && c7 >= p7 * 1.3 ? { text: c.text, color: "b" } : c);
+  }
+  return out;
+}
+
 /**
  * Вкладка «Трафик»: одна строка = один сайт команды, по убыванию кликов на сайт за 30 дней; слева место и его сдвиг за неделю,
  * резко растущие сайты выделены ярко, в конце — «что сделать» (pinsLeft — на сколько дней расписаны пины, из сетки).

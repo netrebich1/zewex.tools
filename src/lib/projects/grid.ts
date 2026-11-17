@@ -10,7 +10,7 @@
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { sheetsFetch, quoteTab, rangePath } from "@/lib/articles/sheets";
-import { buildTrafficTab } from "./stats";
+import { buildTrafficTab, weekClicks, type WeekCell } from "./stats";
 
 /**
  * Команда портала → её Google-таблица (у каждой команды своя, сетка одинаковая). Таблица должна быть открыта на редактирование по ссылке.
@@ -179,22 +179,23 @@ export async function collectGrid(teamSlug: string): Promise<GridSite[]> {
 type Color = "g" | "r" | "y" | "x" | "b";
 export type Tab = { title: string; values: (string | number)[][]; colors: [number, number, Color][]; merges: number[][]; widths: Record<number, number>; dates: number[]; groups: number[]; cols: number; noteCol: number; frozenCols?: number };
 
-/** Вкладка-сетка для одной ниши. notes — ручные заметки владельца по домену. */
-export function buildGridTab(kind: Kind, title: string, all: GridSite[], today: string, notes: Map<string, string>): Tab {
+/** Вкладка-сетка для одной ниши. notes — ручные заметки владельца по домену; week — клики с Pinterest за 7 дней (первая колонка). */
+export function buildGridTab(kind: Kind, title: string, all: GridSite[], today: string, notes: Map<string, string>, week: Map<string, WeekCell> = new Map()): Tab {
   const mine = all.filter((x) => x.kind === kind);
   // Постоянные кластеры — всегда; сезонные — только те, что уже есть хотя бы у одного сайта вкладки.
   const dyn = [...new Set(mine.flatMap((x) => Object.keys(x.clusters)))].filter((k) => !BASE_KEYS.includes(k)).sort((a, b) => dynOrder(a) - dynOrder(b));
   const keys: ClusterKey[] = [...BASE_KEYS.slice(0, 2), ...dyn, ...BASE_KEYS.slice(2)];
-  const h1: string[] = ["САЙТ"], h2: string[] = [""], merges: number[][] = [];
+  const h1: string[] = ["КЛИКИ С PINTEREST", "САЙТ"], h2: string[] = ["7 дней · к прошлым 7", ""], merges: number[][] = [];
   for (const k of keys) { merges.push([0, 1, h1.length, h1.length + 2]); h1.push(clusterTitle(k), ""); h2.push("статьи", "пины"); }
   const oldC = h1.length; h1.push("СТАРЫЕ СТАТЬИ САЙТА"); h2.push("пины");
   const t0 = h1.length; h1.push("ИТОГО ПО САЙТУ", "", "", "", ""); h2.push("пины расписаны до", "запас, дней", "последняя заливка", "что сделать", "заметка");
-  merges.push([0, 1, t0, t0 + 5], [0, 2, 0, 1]);
+  merges.push([0, 1, t0, t0 + 5], [0, 2, 1, 2]);
   const values: (string | number)[][] = [h1, h2];
   const colors: [number, number, Color][] = [];
   const band = (left: number): Color => (left < 0 ? "r" : left <= 7 ? "y" : "g");
   for (const s of mine) {
-    const r = values.length; const row: (string | number)[] = [s.domain]; const todo: string[] = [];
+    const r = values.length; const w = week.get(s.domain); const row: (string | number)[] = [w?.text ?? "—", s.domain]; const todo: string[] = [];
+    colors.push([r, 0, w ? w.color ?? "x" : "x"]);
     for (const k of keys) {
       const c = s.clusters[k]; const ci = row.length; const core = k !== "copy";
       // Нет кластера; блог и мешап с парой пробных статей тоже считаем «не писали».
@@ -228,9 +229,9 @@ export function buildGridTab(kind: Kind, title: string, all: GridSite[], today: 
     row.push(notes.get(s.domain) ?? "");
     values.push(row);
   }
-  const widths: Record<number, number> = { 0: 200, [oldC]: 170, [t0]: 95, [t0 + 1]: 70, [t0 + 2]: 95, [t0 + 3]: 330, [t0 + 4]: 240 };
-  keys.forEach((_, i) => { widths[1 + i * 2] = 90; widths[2 + i * 2] = 125; });
-  return { title, values, colors, merges, widths, dates: [t0, t0 + 2], groups: [...keys.map((_, i) => 1 + i * 2), oldC, t0], cols: h1.length, noteCol: t0 + 4 };
+  const widths: Record<number, number> = { 0: 115, 1: 200, [oldC]: 170, [t0]: 95, [t0 + 1]: 70, [t0 + 2]: 95, [t0 + 3]: 330, [t0 + 4]: 240 };
+  keys.forEach((_, i) => { widths[2 + i * 2] = 90; widths[3 + i * 2] = 125; });
+  return { title, values, colors, merges, widths, dates: [t0, t0 + 2], groups: [...keys.map((_, i) => 2 + i * 2), oldC, t0], cols: h1.length, noteCol: t0 + 4, frozenCols: 2 };
 }
 
 const LEGEND: string[][] = [
@@ -251,6 +252,7 @@ const LEGEND: string[][] = [
   ["Тестовые запуски меньше 20 статей не считаются. Таблицу заполняет портал zewex.tools сам, раз в час."],
   ["Колонку «заметка» ведёте вы — она сохраняется. Остальное портал перезаписывает, править там руками не нужно."],
   [""],
+  ["Первая колонка на вкладках ниш", "Клики на сайт из Pinterest за последние 7 дней и изменение к предыдущим 7 дням. Зелёное — рост от 5%, ярко-зелёное — резкий рост (от +30%): на такой сайт стоит писать и пинить больше. Красное — падение от 5%. «—» — аналитика аккаунта ещё не собрана. Подробности — на вкладке «Трафик»."],
   ["Трафик: порядок и рейтинг", "Сайты идут по убыванию кликов на сайт из Pinterest за 30 дней. Слева место и стрелка — на сколько мест сайт поднялся или опустился за неделю. Ярко-зелёное название сайта = резкий рост кликов (за 7 дней от +30% или за день вдвое); что с ним делать — в колонке «что сделать» в конце строки."],
   ["Вкладка «Трафик»", "Показы и клики на сайт из аналитики аккаунта Pinterest и визиты из Яндекс Метрики. В клетке — число и изменение: 30 дней к предыдущим 30, 7 дней к предыдущим 7, день к тому же дню недели неделей раньше. Рост от 5% — зелёным, падение от 5% — красным, «≈» — без заметных изменений."],
   ["Pinterest", "Читает агент заливки, когда заходит в профиль (в визите заливки или отдельным ночным заходом). Считается до последнего закрытого дня: сегодня и вчера у Pinterest ещё оценка. Вовлечённость, save rate и CTR на сайт — доля от показов за 30 дней."],
@@ -297,15 +299,17 @@ async function writeGrid(target: Target, force: boolean): Promise<{ written: boo
     // Женские и декор — всегда; кулинария — только если такие сайты у команды есть.
     const defs = KIND_TABS.filter(([k]) => k !== "food" || sites.some((x) => x.kind === k));
     const tabs: Tab[] = [];
+    const week = await weekClicks(target.team, today);
     for (const [kind, title] of defs) {
       const notes = new Map<string, string>();
       if (find(title)) {
         const cur = await sheetsFetch<{ values?: unknown[][] }>(rangePath(SHEET_ID, `${quoteTab(title)}!A1:AZ300`));
         const rows = cur.values ?? [];
         const nc = (rows[1] ?? []).findIndex((v) => String(v ?? "").trim().toLowerCase() === "заметка");
-        if (nc >= 0) for (const r of rows.slice(2)) { const d = String(r?.[0] ?? "").trim(); const n = String(r?.[nc] ?? "").trim(); if (d && n) notes.set(d, n); }
+        const dc = Math.max(0, (rows[0] ?? []).findIndex((v) => String(v ?? "").trim() === "САЙТ"));
+        if (nc >= 0) for (const r of rows.slice(2)) { const d = String(r?.[dc] ?? "").trim(); const n = String(r?.[nc] ?? "").trim(); if (d && n) notes.set(d, n); }
       }
-      tabs.push(buildGridTab(kind, title, sites, today, notes));
+      tabs.push(buildGridTab(kind, title, sites, today, notes, week));
     }
     // «Трафик»: показы и клики Pinterest, визиты Метрики — те же сайты в том же порядке (src/lib/projects/stats.ts).
     const kindTitle = new Map(KIND_TABS);
@@ -343,7 +347,7 @@ async function writeGrid(target: Target, force: boolean): Promise<{ written: boo
       req.push({ updateDimensionProperties: { range: { sheetId, dimension: "ROWS", startIndex: 0, endIndex: 2 }, properties: { pixelSize: 34 }, fields: "pixelSize" } });
       req.push({ updateDimensionProperties: { range: { sheetId, dimension: "ROWS", startIndex: 2, endIndex: rows }, properties: { pixelSize: 30 }, fields: "pixelSize" } });
       const align = "userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)";
-      req.push({ repeatCell: { range: cell(2, rows, 1, cols), cell: { userEnteredFormat: { horizontalAlignment: "CENTER", verticalAlignment: "MIDDLE", wrapStrategy: "WRAP" } }, fields: align } });
+      req.push({ repeatCell: { range: cell(2, rows, t.frozenCols === 2 ? 0 : 1, cols), cell: { userEnteredFormat: { horizontalAlignment: "CENTER", verticalAlignment: "MIDDLE", wrapStrategy: "WRAP" } }, fields: align } });
       req.push({ repeatCell: { range: cell(2, rows, cols - 2, cols), cell: { userEnteredFormat: { horizontalAlignment: "LEFT", verticalAlignment: "MIDDLE", wrapStrategy: "WRAP" } }, fields: align } });
       req.push({ repeatCell: { range: cell(2, rows, 0, t.frozenCols ?? 1), cell: { userEnteredFormat: { textFormat: { bold: true }, verticalAlignment: "MIDDLE" } }, fields: "userEnteredFormat(textFormat,verticalAlignment)" } });
       for (const c of t.dates) req.push({ repeatCell: { range: cell(2, rows, c, c + 1), cell: { userEnteredFormat: { numberFormat: { type: "DATE", pattern: "dd.mm.yy" } } }, fields: "userEnteredFormat.numberFormat" } });
