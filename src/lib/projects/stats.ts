@@ -61,15 +61,17 @@ export async function savePinStats(pinSiteId: string, raw: unknown): Promise<Pin
 
 const METRIKA = "https://api-metrika.yandex.net";
 const HUMAN = "ym:s:isRobot=='No'";
-/** Визиты с Pinterest: Метрика делит их на «соцсети» и «поиск по меткам» (utm_source=Pinterest), поэтому условие общее. Варианты — на случай отказа API в имени поля. */
+/** Визиты с Pinterest: Метрика делит их на «соцсети» и «поиск по меткам» (utm_source=Pinterest), поэтому условие общее. Метка у нас пишется с заглавной («Pinterest»), а сравнение по маске чувствительно к регистру — отсюда «*interest*». Варианты — на случай отказа API в имени поля. */
 const PIN_FILTERS = [
-  "(ym:s:lastSignSocialNetwork=='pinterest' OR ym:s:lastSignUTMSource=*'*pinterest*' OR ym:s:referer=*'*pinterest.*')",
-  "(ym:s:UTMSource=*'*pinterest*' OR ym:s:referer=*'*pinterest.*')",
+  "(ym:s:lastSignSocialNetwork=='pinterest' OR ym:s:lastSignUTMSource=*'*interest*' OR ym:s:referer=*'*pinterest.*')",
+  "(ym:s:UTMSource=*'*interest*' OR ym:s:referer=*'*pinterest.*')",
 ];
 
-async function mGet<T>(token: string, path: string, params: Record<string, string>): Promise<T> {
+async function mGet<T>(token: string, path: string, params: Record<string, string>, attempt = 0): Promise<T> {
+  // Временные отказы Метрики (429, 5xx) — до двух повторов с паузой.
   const res = await fetch(`${METRIKA}${path}?${new URLSearchParams(params)}`, { headers: { Authorization: `OAuth ${token}` }, signal: AbortSignal.timeout(60_000) });
   const j = (await res.json().catch(() => ({}))) as { message?: string; errors?: Array<{ message?: string }> };
+  if ((res.status === 429 || res.status >= 500) && attempt < 2) { await new Promise((r) => setTimeout(r, 5000 * (attempt + 1))); return mGet<T>(token, path, params, attempt + 1); }
   if (!res.ok) { const e = new Error(`Метрика ${res.status}: ${j.message ?? j.errors?.[0]?.message ?? res.statusText}`) as Error & { status?: number }; e.status = res.status; throw e; }
   return j as T;
 }
@@ -80,10 +82,25 @@ export async function metrikaCounters(token: string): Promise<Array<{ id: number
   return (j.counters ?? []).map((c) => ({ id: c.id, domain: dom(c.site2?.site ?? c.site), name: c.name ?? "" })).filter((c) => c.id && c.domain);
 }
 
-/** Визиты по дням за период с фильтром. Пустой ответ = нули. */
-async function byTime(token: string, id: number, date1: string, date2: string, filters: string): Promise<Map<string, number>> {
+/**
+ * Визиты по дням за период с фильтром. На больших счётчиках Метрика отвечает 400 «Query is too complicated» — тогда период
+ * делится пополам (до недели), а если и неделя не проходит — точность снижается (выборка вместо полного подсчёта).
+ */
+async function byTime(token: string, id: number, date1: string, date2: string, filters: string, accuracy = "full"): Promise<Map<string, number>> {
+  try { return await byTimeRaw(token, id, date1, date2, filters, accuracy); }
+  catch (e) {
+    const err = e as Error & { status?: number };
+    if (err.status !== 400 || !/complicated|reduce the date/i.test(err.message)) throw e;
+    const n = Math.round((Date.parse(date2) - Date.parse(date1)) / 86_400_000) + 1;
+    if (n <= 7) { if (accuracy === "full") return byTime(token, id, date1, date2, filters, "medium"); if (accuracy === "medium") return byTime(token, id, date1, date2, filters, "low"); throw e; }
+    const mid = addDays(date1, Math.floor(n / 2) - 1);
+    const a = await byTime(token, id, date1, mid, filters, accuracy), b = await byTime(token, id, addDays(mid, 1), date2, filters, accuracy);
+    return new Map([...a, ...b]);
+  }
+}
+async function byTimeRaw(token: string, id: number, date1: string, date2: string, filters: string, accuracy: string): Promise<Map<string, number>> {
   const j = await mGet<{ data?: Array<{ metrics?: number[][] }>; totals?: number[][]; time_intervals?: string[][] }>(token, "/stat/v1/data/bytime", {
-    ids: String(id), metrics: "ym:s:visits", date1, date2, group: "day", filters, accuracy: "full",
+    ids: String(id), metrics: "ym:s:visits", date1, date2, group: "day", filters, accuracy,
   });
   const series = j.data?.[0]?.metrics?.[0] ?? (Array.isArray(j.totals?.[0]) ? j.totals![0] : []);
   const out = new Map<string, number>();
@@ -104,8 +121,8 @@ async function teamDomains(teamId: string): Promise<Set<string>> {
 
 export type MetrikaSync = { counters: number; matched: number; days: number; pinFilter: number };
 
-/** Сбор Метрики команды: счётчики по доменам её сайтов → визиты за 90 дней по дням (люди, с Pinterest, роботы). */
-export async function metrikaSync(teamId: string): Promise<MetrikaSync> {
+/** Сбор Метрики команды: счётчики по доменам её сайтов → визиты за 90 дней по дням (люди, с Pinterest, роботы). only — досбор одного домена. */
+export async function metrikaSync(teamId: string, only?: string): Promise<MetrikaSync> {
   const row = await prisma.prjMetrikaToken.findUnique({ where: { teamId } });
   if (!row) throw new Error("токен Метрики не задан");
   await prisma.prjMetrikaToken.update({ where: { teamId }, data: { lastTryAt: new Date() } });
@@ -115,8 +132,10 @@ export async function metrikaSync(teamId: string): Promise<MetrikaSync> {
     const byDomain = new Map<string, number>();
     for (const c of counters) if (domains.has(c.domain) && !byDomain.has(c.domain)) byDomain.set(c.domain, c.id);
     const date2 = addDays(kyiv().slice(0, 10), -1), date1 = addDays(date2, -89);
-    let total = 0, pinFilter = 0;
+    let total = 0, pinFilter = 0; const failed: string[] = [];
     for (const [domain, id] of byDomain) {
+     if (only && domain !== only) continue;
+     try {
       const human = await byTime(token, id, date1, date2, HUMAN);
       let pins: Map<string, number> | null = null;
       for (let i = pinFilter; i < PIN_FILTERS.length && !pins; i++) {
@@ -132,10 +151,16 @@ export async function metrikaSync(teamId: string): Promise<MetrikaSync> {
         ]);
         total += rows.length;
       }
+     } catch (e) {
+      // Один счётчик не должен срывать сбор остальных; без доступа (401/403) — сразу наружу.
+      const st = (e as { status?: number }).status; if (st === 401 || st === 403) throw e;
+      failed.push(`${domain}: ${e instanceof Error ? e.message.slice(0, 80) : String(e)}`);
+     }
       await new Promise((r) => setTimeout(r, 300));
     }
+    if (failed.length && failed.length === (only ? 1 : byDomain.size)) throw new Error(failed[0]);
     const list = counters.map((c) => ({ id: c.id, site: c.domain, matched: byDomain.get(c.domain) === c.id })).slice(0, 500);
-    await prisma.prjMetrikaToken.update({ where: { teamId }, data: { lastSyncAt: new Date(), lastError: null, counters: list } });
+    await prisma.prjMetrikaToken.update({ where: { teamId }, data: { lastSyncAt: new Date(), lastError: failed.length ? `не собраны (${failed.length}): ${failed.join("; ")}`.slice(0, 250) : null, counters: list } });
     return { counters: counters.length, matched: byDomain.size, days: total, pinFilter };
   } catch (e) {
     await prisma.prjMetrikaToken.update({ where: { teamId }, data: { lastError: (e instanceof Error ? e.message : String(e)).slice(0, 250) } }).catch(() => null);
