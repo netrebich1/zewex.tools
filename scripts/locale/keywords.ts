@@ -5,7 +5,7 @@
  *
  *   sudo -u zewex_tools_usr -H npx tsx scripts/locale/keywords.ts --lang cs --niche hair --limit 30 [--related 5] [--out docs/copy/locale/cs-hair.tsv]
  *   --cores "balayage;french nails" — только эти ядра. --niche можно несколько. --min-class hi|mid|low — ядра не ниже класса.
- *   --related N — для N лучших ядер ещё и phrase_related (40 юнитов за строку, 8 строк) — что рынок ищет, чего мы не придумали.
+ *   --dry — только кандидаты модели, без Semrush. --related N — для N лучших ядер ещё и phrase_related (40 юнитов за строку, 8 строк) — что рынок ищет, чего мы не придумали.
  */
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -52,13 +52,15 @@ async function main() {
 
   const user = await prisma.user.findFirst({ where: { role: "ADMIN" }, select: { id: true } });
   if (!user) throw new Error("нет администратора");
-  // Команда — та, у которой есть ядра мешапа (владелец работает в одной команде); --team переопределяет.
-  const teamId = get("--team")[0] ?? (await prisma.copyCore.groupBy({ by: ["teamId"], _count: { _all: true }, orderBy: { _count: { teamId: "desc" } }, take: 1 }))[0]?.teamId;
-  if (!teamId) throw new Error("нет ядер мешапа ни в одной команде");
+  // Ядра лежат в общем банке (teamId = "shared", решение владельца 05.11), а слоты ИИ настроены у команды,
+  // которая собирает мешап-статьи — её и берём для вызовов модели; --team переопределяет.
+  const lastCopy = await prisma.copyArticle.findFirst({ orderBy: { id: "desc" }, select: { teamId: true } });
+  const teamId = get("--team")[0] ?? lastCopy?.teamId;
+  if (!teamId) throw new Error("нет команды с мешап-статьями — укажите --team");
   const ai = { userId: user.id, teamId };
 
   const cores = (await prisma.copyCore.findMany({
-    where: { teamId, grp: "women", ...(niches.length ? { niche: { in: niches } } : {}), ...(onlyCores ? { core: { in: onlyCores } } : {}), ...(classes ? { volClass: { in: classes } } : {}) },
+    where: { grp: "women", ...(niches.length ? { niche: { in: niches } } : {}), ...(onlyCores ? { core: { in: onlyCores } } : {}), ...(classes ? { volClass: { in: classes } } : {}) },
     orderBy: [{ volume: "desc" }],
     take: onlyCores ? undefined : limit,
     select: { id: true, niche: true, core: true, volume: true, volClass: true, formulations: true },
@@ -75,6 +77,11 @@ async function main() {
 
   // 2. Один замер на все кандидаты всех ядер (по 100 за запрос).
   const all = [...new Set([...cands.values()].flat())];
+  if (args.includes("--dry")) {
+    for (const c of cores) console.log(`${c.core} → ${(cands.get(c.id) ?? []).join(" | ")}`);
+    await prisma.$disconnect();
+    return;
+  }
   console.log(`кандидатов ${all.length}, замер Semrush…`);
   const metrics = await keywordOverview(all, lang.semrushDb);
   console.log(`с данными ${metrics.size} из ${all.length}; юнитов ${semrushUnits.spent}`);
