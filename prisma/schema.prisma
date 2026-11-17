@@ -3803,24 +3803,24 @@ model CopyBatchItem {
 
 /// Прогон: статьи → посты под соцсети → файлы импорта Metricool. Расход — с ключей команды WexOra.
 model SocialRun {
-  id          String       @id @default(uuid()) @db.Char(36)
-  teamId      String?
-  createdById String
-  name        String       @default("")
+  id            String       @id @default(uuid()) @db.Char(36)
+  teamId        String?
+  createdById   String
+  name          String       @default("")
   /// QUEUED | RUNNING | DONE | FAILED
-  status      String       @default("QUEUED") @db.VarChar(12)
+  status        String       @default("QUEUED") @db.VarChar(12)
   /// SocialSettings (src/lib/social/types.ts)
-  settings    Json
-  total       Int          @default(0)
-  costUsd     Float        @default(0)
-  error       String?      @db.Text
+  settings      Json
+  total         Int          @default(0)
+  costUsd       Float        @default(0)
+  error         String?      @db.Text
   /// Фото прогона убраны с диска (через 14 дней после последней публикации)
   filesPurgedAt DateTime?
-  startedAt   DateTime?
-  finishedAt  DateTime?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  items       SocialItem[]
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  items         SocialItem[]
 
   @@index([createdById, createdAt])
   @@index([teamId, createdAt])
@@ -3860,4 +3860,92 @@ model SocialTemplate {
   header      Json
   updatedById String?
   updatedAt   DateTime @updatedAt
+}
+
+// ─── Семантика на других языках (docs/copy/LOCALES-PLAN.md, раздел 2а) ───────────────────────────────────
+
+/// Семя сбора спроса: головное слово ниши на языке (от модели или владельца); fullsearch идёт по семенам с объёмом
+model LocSeed {
+  id          String    @id @default(uuid()) @db.Char(36)
+  /// cs | de | pl | ro | es (src/lib/locale/languages.ts)
+  lang        String    @db.VarChar(8)
+  /// nails | hair | outfits | interior
+  niche       String    @db.VarChar(32)
+  phrase      String    @db.VarChar(191)
+  /// model | owner
+  source      String    @default("model") @db.VarChar(16)
+  enabled     Boolean   @default(true)
+  volume      Int?
+  kd          Int?
+  measuredAt  DateTime?
+  /// Когда и сколько строк дал последний fullsearch по семени
+  harvestedAt DateTime?
+  lines       Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@unique([lang, niche, phrase])
+  @@index([lang, niche, enabled])
+}
+
+/// Реальный запрос рынка из Semrush (одна строка на фразу и язык)
+model LocQuery {
+  id        String    @id @default(uuid()) @db.Char(36)
+  lang      String    @db.VarChar(8)
+  niche     String    @db.VarChar(32)
+  phrase    String    @db.VarChar(191)
+  volume    Int       @default(0)
+  kd        Int?
+  cpc       Float?
+  /// Намерение Semrush: 0 коммерческое, 1 информационное, 2 навигационное, 3 транзакционное (через запятую)
+  intent    String?   @db.VarChar(16)
+  /// Коды SERP-признаков Semrush через запятую; 52 = AI Overview
+  serp      String?   @db.VarChar(191)
+  aio       Boolean   @default(false)
+  /// 12 месячных значений тренда 0–1
+  trends    Json?
+  seedId    String?   @db.Char(36)
+  topicId   String?   @db.Char(36)
+  /// Отфильтровано как мусор (не наша ниша, товар, бренд, салон, город, мужское, детское)
+  junk      Boolean   @default(false)
+  junkWhy   String?   @db.VarChar(191)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  topic     LocTopic? @relation(fields: [topicId], references: [id], onDelete: SetNull)
+
+  @@unique([lang, phrase])
+  @@index([lang, niche, junk, volume])
+  @@index([topicId])
+}
+
+/// Тема (кластер запросов) на языке: главный ключ, сумма объёма, лёгкость, сезон, атрибуты для поиска кадров
+model LocTopic {
+  id        String     @id @default(uuid()) @db.Char(36)
+  lang      String     @db.VarChar(8)
+  niche     String     @db.VarChar(32)
+  /// Главный ключ (самый частотный запрос темы или правка владельца)
+  primary   String     @db.VarChar(191)
+  /// Тема по-английски (для кадров и для нас)
+  nameEn    String     @db.VarChar(191)
+  /// Атрибуты для поиска кадров в банке: {garment, color, shape, technique, hair_color, length…} по-английски
+  attrs     Json
+  /// Суммарный объём запросов темы
+  volume    Int        @default(0)
+  kd        Int?
+  /// Доля запросов темы с AI Overview, 0–1
+  aioShare  Float      @default(0)
+  easy      Boolean    @default(false)
+  /// {peak: 1–12, window: [from, to]} или null — вечнозелёная
+  season    Json?
+  /// new | ready | waiting_photos | rejected
+  status    String     @default("new") @db.VarChar(16)
+  /// Кадров в банке под атрибуты (последний пересчёт)
+  photos    Int?
+  /// Сколько статей можно собрать по кадрам и лимитам языка
+  capacity  Int?
+  note      String?    @db.Text
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  queries   LocQuery[]
+
+  @@index([lang, niche, status, volume])
 }

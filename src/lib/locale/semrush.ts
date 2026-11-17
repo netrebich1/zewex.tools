@@ -38,10 +38,22 @@ export type KeywordMetrics = {
   results: number | null;
   /** Релевантность для phrase_related */
   relevance?: number;
+  /** Намерение: коды Semrush через запятую (0 коммерческое, 1 информационное, 2 навигационное, 3 транзакционное) */
+  intent?: string;
+  /** SERP-признаки: коды через запятую; 52 = AI Overview */
+  serp?: string;
+  /** 12 месячных значений тренда 0–1 */
+  trends?: number[];
 };
 
+export const AIO_CODE = "52";
+export const hasAio = (m: Pick<KeywordMetrics, "serp">) => !!m.serp && m.serp.split(",").map((s) => s.trim()).includes(AIO_CODE);
+/** Полный набор колонок обзора: метрики, намерение, SERP-признаки, тренд — всё в одной строке за те же 10 юнитов. */
+const FULL_COLUMNS = "Ph,Nq,Cp,Co,Nr,Kd,In,Fk,Td";
+
 /** Колонки Semrush → поля. Остальные колонки игнорируются. */
-const COL: Record<string, keyof KeywordMetrics> = { Keyword: "phrase", "Search Volume": "volume", "Keyword Difficulty": "kd", "Keyword Difficulty Index": "kd", CPC: "cpc", Competition: "competition", "Number of Results": "results", "Related Relevance": "relevance" };
+const COL: Record<string, keyof KeywordMetrics> = { Keyword: "phrase", "Search Volume": "volume", "Keyword Difficulty": "kd", "Keyword Difficulty Index": "kd", CPC: "cpc", Competition: "competition", "Number of Results": "results", "Related Relevance": "relevance", Intent: "intent", "Keywords SERP Features": "serp", Trends: "trends" };
+const TEXT_COLS = new Set<keyof KeywordMetrics>(["phrase", "intent", "serp"]);
 
 function parseCsv(text: string): KeywordMetrics[] {
   const lines = text.trim().split(/\r?\n/).filter(Boolean);
@@ -55,6 +67,8 @@ function parseCsv(text: string): KeywordMetrics[] {
       if (!key) return;
       const v = (cells[i] ?? "").trim();
       if (key === "phrase") m.phrase = v;
+      else if (key === "trends") m.trends = v ? v.split(",").map((x) => Number(x)).filter((x) => !Number.isNaN(x)) : undefined;
+      else if (TEXT_COLS.has(key)) (m as Record<string, unknown>)[key] = v || undefined;
       else {
         const n = Number(v.replace(",", "."));
         (m as Record<string, unknown>)[key] = v === "" || Number.isNaN(n) ? null : n;
@@ -117,7 +131,7 @@ export async function keywordOverview(phrases: string[], database: string): Prom
   for (let i = 0; i < fresh.length; i += 100) {
     const batch = fresh.slice(i, i + 100);
     try {
-      const text = await withRetry(() => request({ type: "phrase_these", phrase: batch.join(";"), database, export_columns: "Ph,Nq,Cp,Co,Nr,Kd" }));
+      const text = await withRetry(() => request({ type: "phrase_these", phrase: batch.join(";"), database, export_columns: FULL_COLUMNS }));
       const rows = parseCsv(text);
       semrushUnits.spent += rows.length * 10;
       for (const r of rows) { out.set(r.phrase.toLowerCase(), r); c[`${database}|${r.phrase.toLowerCase()}`] = r; }
@@ -131,6 +145,22 @@ export async function keywordOverview(phrases: string[], database: string): Prom
     }
   }
   return out;
+}
+
+/**
+ * Все запросы базы, содержащие фразу (phrase_fullsearch, 20 юнитов за строку), по убыванию объёма. Это и есть «карта спроса»:
+ * семя «nehty» даёт все чешские запросы про ногти. Кэш не используется: выгрузка одноразовая, результат хранится в LocQuery.
+ */
+export async function fullSearch(phrase: string, database: string, limit = 300, offset = 0): Promise<KeywordMetrics[]> {
+  try {
+    const text = await withRetry(() => request({ type: "phrase_fullsearch", phrase, database, display_limit: String(limit), display_offset: String(offset), display_sort: "nq_desc", export_columns: FULL_COLUMNS }));
+    const rows = parseCsv(text);
+    semrushUnits.spent += rows.length * 20;
+    return rows;
+  } catch (e) {
+    if (e instanceof SemrushError && e.nothingFound) return [];
+    throw e;
+  }
 }
 
 /** Похожие ключи (phrase_related, 40 юнитов за строку) — только для лучших кандидатов, limit маленький. */
