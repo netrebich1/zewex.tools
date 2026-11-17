@@ -645,7 +645,7 @@ model PinRunItem {
   @@index([runId, pageId])
   @@index([runId, engine])
   @@index([runId, moderation])
-  @@index([siteId, scheduledAt])
+  @@index([siteId, scheduledAt, moderation, status]) // покрывающий: запас по дням считается по индексу без чтения строк
   @@index([runId, sourceImageUrl(length: 191)])
 }
 
