@@ -151,23 +151,18 @@ export async function keywordOverview(phrases: string[], database: string): Prom
  * Все запросы базы, содержащие фразу (phrase_fullsearch, 20 юнитов за строку), по убыванию объёма. Это и есть «карта спроса»:
  * семя «nehty» даёт все чешские запросы про ногти. Кэш не используется: выгрузка одноразовая, результат хранится в LocQuery.
  */
-export async function fullSearch(phrase: string, database: string, limit = 300): Promise<KeywordMetrics[]> {
-  // Шлюз принимает display_limit ≤ 100 — страницы по 100 через display_offset.
-  const out: KeywordMetrics[] = [];
-  for (let offset = 0; offset < limit; offset += 100) {
-    const page = Math.min(100, limit - offset);
-    try {
-      const text = await withRetry(() => request({ type: "phrase_fullsearch", phrase, database, display_limit: String(page), display_offset: String(offset), display_sort: "nq_desc", export_columns: FULL_COLUMNS }));
-      const rows = parseCsv(text);
-      semrushUnits.spent += rows.length * 20;
-      out.push(...rows);
-      if (rows.length < page) break;
-    } catch (e) {
-      if (e instanceof SemrushError && e.nothingFound) break;
-      throw e;
-    }
+export async function fullSearch(phrase: string, database: string, limit = 100): Promise<KeywordMetrics[]> {
+  // Шлюз: display_limit ≤ 100 и это конечная позиция (offset < limit), поэтому глубже 100 строк на фразу не достать —
+  // глубина карты набирается числом семян (под-семена «gelové nehty», «nehty na léto»…), а не страницами.
+  try {
+    const text = await withRetry(() => request({ type: "phrase_fullsearch", phrase, database, display_limit: String(Math.min(100, limit)), display_sort: "nq_desc", export_columns: FULL_COLUMNS }));
+    const rows = parseCsv(text);
+    semrushUnits.spent += rows.length * 20;
+    return rows;
+  } catch (e) {
+    if (e instanceof SemrushError && e.nothingFound) return [];
+    throw e;
   }
-  return out;
 }
 
 /** Похожие ключи (phrase_related, 40 юнитов за строку) — только для лучших кандидатов, limit маленький. */
