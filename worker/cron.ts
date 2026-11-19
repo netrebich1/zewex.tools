@@ -21,6 +21,7 @@ import { tasksTick } from "./tasks";
 import { copyTick } from "@/lib/copy/build";
 import { copyAutoTick } from "@/lib/copy/auto";
 import { copyBatchTick } from "@/lib/copy/batch";
+import { copySheetTick } from "@/lib/copy/sheet";
 import { prjGridTick } from "@/lib/projects/grid";
 import { metrikaTick } from "@/lib/projects/stats";
 
@@ -100,6 +101,9 @@ export function startCron(): () => void {
 ${r.note}`); }).catch((e) => log.warn("copy auto failed", e)), 60_000));
   // Article Copy, партии: собирает пункты идущих партий (до 15 в минуту); текст пишет очередь «Статей».
   timers.push(setInterval(() => copyBatchTick().then((r) => { if (r.built || r.failed) log.info(`copy batch: +${r.built} built, ${r.failed} failed`); }).catch((e) => log.warn("copy batch failed", e)), 60_000));
+  // Article Copy → таблица публикаций (вкладка = домен: ключ, ниша, частотность, URL) — для пинов; раз в 5 минут, до 100 статей за проход.
+  const copySheet = () => copySheetTick().then((r) => { if (r.written) log.info(`copy sheet: +${r.written} rows`); if (r.error) log.warn(`copy sheet failed: ${r.error}`); }).catch((e) => log.warn("copy sheet failed", e));
+  timers.push(setTimeout(copySheet, 2 * 60_000), setInterval(copySheet, 5 * 60_000));
   // Проекты: сетка и вкладка «Трафик» в Google-таблицах команд — через 3 мин после старта и раз в 15 минут (пишет только при изменениях:
   // так статистика, которую агент заливки снимает с аккаунтов, появляется в таблице в течение четверти часа, а не через час).
   const grid = () => prjGridTick().then((r) => { if (r.written) log.info(`projects grid: sheets rewritten, ${r.sites} sites`); if (r.errors.length) log.warn(`projects grid errors: ${r.errors.join("; ")}`); }).catch((e) => log.warn("projects grid failed", e));
