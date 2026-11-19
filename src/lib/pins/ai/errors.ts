@@ -14,11 +14,14 @@ export function classifyAiError(status: number, message: string): ClassifiedErro
   if (status === 402 || /insufficient_quota|insufficient credits|no credits|exceeded your current quota|billing hard limit|payment required|balance is insufficient|not enough balance|配额不足|余额不足/.test(m)) {
     return { code: "no_credits", kind: "fatal_run", message: msg };
   }
+  // Отказ по правилам контента — раньше проверки ключа: OpenRouter отдаёт «Gemini blocked the request: PROHIBITED_CONTENT»
+  // с HTTP 403, и это выключало весь ключ из-за одного запроса (19.11.2026: ключи OpenRouter весь день выключались и
+  // включались автопроверкой, а «Углы и ТЗ» в новостях падали с «не настроено ни одного правила»).
+  if (/safety|content_policy|content policy|moderation_blocked|flagged|rejected by the safety|prohibited_content|blocked the request|content_policy_violation/.test(m)) {
+    return { code: "safety", kind: "permanent", message: msg };
+  }
   if (status === 401 || status === 403 || /invalid api key|incorrect api key|unauthorized|authentication/.test(m)) {
     return { code: "auth", kind: "fatal_run", message: msg };
-  }
-  if (/safety|content_policy|content policy|moderation_blocked|flagged|rejected by the safety/.test(m)) {
-    return { code: "safety", kind: "permanent", message: msg };
   }
   if (status === 429 || /rate limit|rate_limit|too many requests|overloaded|capacity/.test(m)) {
     return { code: "rate_limited", kind: "transient", message: msg };
