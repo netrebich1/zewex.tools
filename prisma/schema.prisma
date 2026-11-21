@@ -4042,9 +4042,12 @@ model CompCluster {
   top      Json?
   /// Главные страницы кластера: [url]
   pages    Json?
+  /// Общая тема для сравнения площадок (src/lib/competitors/themes.ts); пусто — ещё не размечен
+  theme    String   @default("") @db.VarChar(100)
   site     CompSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
 
   @@index([siteId, position])
+  @@index([theme])
 }
 
 /// Настройки и состояние сбора (одна запись id = "main")

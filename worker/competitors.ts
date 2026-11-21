@@ -1,5 +1,6 @@
 import { analyzeSite } from "@/lib/competitors/analyze";
 import { claimSite, loadState, queueByRules, requeueStale, runSync, syncDue } from "@/lib/competitors/sites";
+import { assignThemes } from "@/lib/competitors/themes";
 import { log } from "./log";
 
 /**
@@ -29,6 +30,12 @@ export async function competitorsLoop(workerId: string, shouldStop: () => boolea
           // Суточный лимит освобождается в течение дня — добираем очередь по правилам.
           const n = await queueByRules((await loadState()).settings);
           if (n) log.info(`competitors: queued ${n} site(s) by rules`);
+          // Разбор не идёт — относим новые кластеры к общим темам (страница «Темы»).
+          if (!n && !inflight.size) {
+            const t = await assignThemes();
+            if (t.error) log.warn(`competitors: themes failed: ${t.error}`);
+            else if (t.assigned) log.info(`competitors: themes for ${t.assigned} cluster(s), $${t.costUsd.toFixed(4)}`);
+          }
         }
       }
       if (inflight.size >= CONCURRENCY) {

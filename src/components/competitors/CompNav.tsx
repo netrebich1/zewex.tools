@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 
 const ITEMS = [
   { href: "/discovery/competitors", label: "Площадки", exact: true },
+  { href: "/discovery/competitors/themes", label: "Темы" },
   { href: "/discovery/competitors/settings", label: "Настройки" },
 ];
 
