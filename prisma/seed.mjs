@@ -483,5 +483,38 @@ if (discoverySocial) {
     }
   }
 }
+// ───────────────────────────── Анализ конкурентов (раздел Discovery): новые площадки Collaborator + семантика ─────────────────────────────
+// Инструмент команды WexOra: правила слотов создаются для неё, только если их ещё нет (ключи DataForSEO и OpenRouter команды).
+const discoveryComp = await prisma.section.findUnique({ where: { slug: "discovery" } });
+if (discoveryComp) {
+  const compProject = await prisma.project.upsert({
+    where: { slug: "competitors" },
+    update: {},
+    create: { sectionId: discoveryComp.id, slug: "competitors", name: "Анализ конкурентов", description: "Новые площадки Collaborator.pro с трафиком и заказами: какие запросы и кластеры дают им трафик, выводы и выгрузка в Excel", url: "/discovery/competitors", status: "ACTIVE", order: 4 },
+  });
+  const compSlots = [
+    { key: "seo_dfs", name: "Запросы сайта (DataForSEO)", capability: "SEO_DATA", description: "Запросы площадки в топ-30 Google по базе её страны (DataForSEO Labs, около $0.05 за сайт)", preferProviders: "dataforseo", provider: "dataforseo", model: null },
+    { key: "text_main", name: "Кластеры и выводы", capability: "CHAT", description: "Группировка запросов в кластеры и вывод по площадке (google/gemini-2.5-flash, около $0.01 за сайт)", preferProviders: "openrouter", provider: "openrouter", model: "google/gemini-2.5-flash" },
+  ];
+  const wexoraComp = await prisma.team.findUnique({ where: { slug: "wexora" } });
+  for (const sl of compSlots) {
+    const { provider: providerSlug, model: modelId, ...slotData } = sl;
+    const slot = await prisma.slot.upsert({ where: { projectId_key: { projectId: compProject.id, key: sl.key } }, update: { preferProviders: sl.preferProviders }, create: { ...slotData, projectId: compProject.id } });
+    const provider = await prisma.provider.findUnique({ where: { slug: providerSlug } });
+    if (!provider || !wexoraComp) continue;
+    const has = await prisma.binding.findFirst({ where: { scope: "TEAM_PROJECT", slotId: slot.id, teamId: wexoraComp.id } });
+    if (has) continue;
+    const key = await prisma.apiKey.findFirst({ where: { teamId: wexoraComp.id, providerId: provider.id, status: "ACTIVE" }, orderBy: { createdAt: "asc" } });
+    const model = modelId ? await prisma.model.findUnique({ where: { providerId_modelId: { providerId: provider.id, modelId } } }) : null;
+    if (!key || (modelId && !model)) continue;
+    await prisma.binding.create({ data: { scope: "TEAM_PROJECT", slotId: slot.id, teamId: wexoraComp.id, providerId: provider.id, modelId: model?.id ?? null, apiKeyId: key.id } });
+    console.log(`competitors: rule ${sl.key} → WexOra / ${modelId ?? providerSlug}`);
+  }
+  // Первая установка: авторазбор стоит (0 площадок в сутки), пока владелец не проверит первый сбор и не задаст лимит в настройках.
+  const compState = await prisma.compState.findUnique({ where: { id: "main" } });
+  if (!compState) {
+    await prisma.compState.create({ data: { id: "main", settings: { enabled: true, countries: ["Украина"], periodDays: 61, minDeals: 1, minClicks: 1, kwLimit: 300, dailyLimit: 0 } } });
+  }
+}
 console.log("seed done");
 await prisma.$disconnect();

@@ -3949,3 +3949,113 @@ model LocTopic {
 
   @@index([lang, niche, status, volume])
 }
+
+// ─── Анализ конкурентов (раздел Discovery, проект `competitors`): новые площадки Collaborator.pro и их семантика ───
+
+/// Площадка из каталога Collaborator (добавлена за последние ~3 месяца, есть клики GSC) и итог разбора её семантики
+model CompSite {
+  id          String        @id @default(uuid()) @db.Char(36)
+  /// id площадки в Collaborator
+  collabId    Int           @unique
+  domain      String        @db.VarChar(191)
+  /// Страны и языки площадки: «|Украина|Польша|» — поиск по вхождению «|X|»
+  countries   String        @default("") @db.VarChar(500)
+  languages   String        @default("") @db.VarChar(300)
+  categories  String        @default("") @db.VarChar(500)
+  /// Дата добавления в каталог Collaborator
+  addedAt     DateTime?
+  /// Нижняя граница числа сделок (точное до 5, дальше 5/10/20/50)
+  deals       Int           @default(0)
+  gscClicks   Int           @default(0)
+  gscImpr     Int           @default(0)
+  /// Рост кликов GSC за 3 месяца, %
+  gscGrowth   Int?
+  traffic     Int?
+  serpstatTop Int?
+  ahrefsKw    Int?
+  /// Цена статьи в валюте кабинета
+  price       Float?
+  currency    String        @default("") @db.VarChar(8)
+  collabUrl   String        @default("") @db.VarChar(300)
+  /// Клики и показы GSC по месяцам, описание площадки: { gsc: {clicks: [{month,value}], impressions: […]}, description }
+  data        Json?
+  /// none | queued | processing | done | empty | error
+  status      String        @default("none") @db.VarChar(12)
+  /// Запросов в топ-30 Google по базе страны (DataForSEO)
+  kwTotal     Int?
+  kwTop10     Int?
+  /// Оценка поискового трафика в месяц (DataForSEO)
+  etv         Int?
+  /// Страна базы, по которой снята семантика
+  kwCountry   String        @default("") @db.VarChar(64)
+  summary     String?       @db.Text
+  takeaway    String?       @db.Text
+  /// Главные кластеры с долями одной строкой — для списка и выгрузки
+  mainClusters String?      @db.Text
+  costUsd     Float         @default(0)
+  error       String?       @db.Text
+  analyzedAt  DateTime?
+  workerId    String?
+  leaseUntil  DateTime?
+  attempts    Int           @default(0)
+  firstSeenAt DateTime      @default(now())
+  lastSeenAt  DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  keywords    CompKeyword[]
+  clusters    CompCluster[]
+
+  @@index([addedAt])
+  @@index([status, leaseUntil])
+  @@index([gscClicks])
+}
+
+/// Запрос, по которому площадка стоит в топ-30
+model CompKeyword {
+  id      String   @id @default(uuid()) @db.Char(36)
+  siteId  String   @db.Char(36)
+  kw      String   @db.VarChar(300)
+  volume  Int      @default(0)
+  pos     Int?
+  etv     Float    @default(0)
+  url     String?  @db.Text
+  cluster String   @default("") @db.VarChar(191)
+  site    CompSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, etv])
+}
+
+/// Тематический кластер запросов площадки (выделяет модель)
+model CompCluster {
+  id       String   @id @default(uuid()) @db.Char(36)
+  siteId   String   @db.Char(36)
+  position Int      @default(0)
+  name     String   @db.VarChar(191)
+  type     String   @default("") @db.VarChar(32)
+  /// Какой контент собирает трафик
+  what     String?  @db.Text
+  count    Int      @default(0)
+  etv      Int      @default(0)
+  volume   Int      @default(0)
+  /// Доля в оценке трафика разобранных запросов, %
+  share    Int      @default(0)
+  /// Примеры запросов: [{kw, vol, pos}]
+  top      Json?
+  /// Главные страницы кластера: [url]
+  pages    Json?
+  site     CompSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, position])
+}
+
+/// Настройки и состояние сбора (одна запись id = "main")
+model CompState {
+  id         String    @id @db.VarChar(16)
+  /// CompSettings (src/lib/competitors/types.ts)
+  settings   Json
+  lastSyncAt DateTime?
+  /// Итог последнего сбора: { total, kept, fresh, queued, error }
+  lastSync   Json?
+  /// Кнопка «Обновить сейчас»: воркер запускает сбор вне расписания
+  syncAsked  DateTime?
+  updatedAt  DateTime  @updatedAt
+}
