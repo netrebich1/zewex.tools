@@ -5,7 +5,7 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Card, Empty, PageHeader } from "@/components/ui";
 import { StNav } from "@/components/stylist/StNav";
 import { ItemPhoto } from "@/components/stylist/ItemCard";
-import { createLook, deleteCollection, renameLook, saveCollection } from "@/actions/stylist";
+import { checkStock, createLook, deleteCollection, renameLook, saveCollection } from "@/actions/stylist";
 import { BASE_PATH, money } from "@/lib/stylist/consts";
 import { activeLook, canSee, listCollections, listLooks, lookTotals, type LookFull } from "@/lib/stylist/queries";
 
@@ -90,6 +90,12 @@ export default async function StylistLooks() {
                 <div className="text-[13px] text-muted">образов: {list.length}{list.length ? ` · все вместе ≈ ${money(sum(list), "EUR")}` : ""}{c.note ? ` · ${c.note}` : ""}</div>
               </div>
               <div className="flex flex-wrap gap-2">
+                {list.length > 0 && <Link href={`${BASE_PATH}/list?collection=${c.id}`} className="btn-brand btn-sm">Шопинг-лист</Link>}
+                {list.length > 0 && (
+                  <ActionForm action={checkStock} className="" hidden={{ collection: c.id }}>
+                    <SubmitButton className="btn-ghost btn-sm" pendingText="Проверяю… до минуты">Проверить наличие</SubmitButton>
+                  </ActionForm>
+                )}
                 <ActionForm action={createLook} className="" hidden={{ collection: c.id, name: `Образ ${list.length + 1}` }}>
                   <SubmitButton className="btn-primary btn-sm" pendingText="…">+ Образ {list.length + 1}</SubmitButton>
                 </ActionForm>

@@ -8,8 +8,9 @@ import { StNav } from "@/components/stylist/StNav";
 import { SizeGrid } from "@/components/stylist/Sizes";
 import { StoreContacts, branchCount } from "@/components/stylist/StoreContacts";
 import { ColorDot, ItemPhoto, Price, SpiritChips } from "@/components/stylist/ItemCard";
-import { activateLook, checkSpirit, copyLook, deleteLook, lookPieceAction, saveLook } from "@/actions/stylist";
-import { BASE_PATH, CATEGORY_LABELS, GEO_LABELS, SEGMENT_LABELS, money, seasonLabel } from "@/lib/stylist/consts";
+import { activateLook, checkSpirit, checkStock, copyLook, deleteLook, lookPieceAction, saveLook } from "@/actions/stylist";
+import { AutoSubmitSelect } from "@/components/stylist/PrintButton";
+import { BASE_PATH, CATEGORY_LABELS, GEO_LABELS, SEGMENT_LABELS, money, seasonLabel, unpack } from "@/lib/stylist/consts";
 import { activeLook, canSee, getLook, listCollections, lookTotals, type LookPiece } from "@/lib/stylist/queries";
 import { fmtDate } from "@/lib/utils";
 
@@ -17,6 +18,28 @@ export const dynamic = "force-dynamic";
 
 function Sizes({ piece }: { piece: LookPiece }) {
   return <span className="flex flex-wrap items-center gap-1.5">{piece.item.sizesAt ? "Размеры:" : ""} <SizeGrid item={piece.item} /></span>;
+}
+
+/** Нужный клиенту размер: из сетки магазина; если магазин сетку не отдаёт — поле для ввода. */
+function WantedSize({ piece }: { piece: LookPiece }) {
+  const all = unpack(piece.item.sizesAll).length ? unpack(piece.item.sizesAll) : unpack(piece.item.sizes);
+  const have = unpack(piece.item.sizes);
+  const missing = !!piece.size && !!piece.item.sizesAt && !have.includes(piece.size);
+  return (
+    <ActionForm action={lookPieceAction} className="flex flex-wrap items-center gap-2 text-[13px]" hidden={{ piece: piece.id, op: "size" }}>
+      <span className="font-medium">Нужный размер:</span>
+      {all.length ? (
+        <AutoSubmitSelect name="size" defaultValue={piece.size} options={[{ value: "", label: "не выбран" }, ...[...new Set([...all, ...(piece.size ? [piece.size] : [])])].map((s) => ({ value: s, label: have.includes(s) ? s : `${s} — нет` }))]} />
+      ) : (
+        <>
+          <input name="size" defaultValue={piece.size} maxLength={20} placeholder="M или 38" className="input !w-[90px] !py-1 text-[13px]" />
+          <SubmitButton className="btn-ghost btn-sm" pendingText="…">Сохранить</SubmitButton>
+        </>
+      )}
+      {missing && <span className="font-medium text-danger">этого размера сейчас нет</span>}
+      {!!piece.size && !missing && !!piece.item.sizesAt && <span className="text-ok">есть в наличии</span>}
+    </ActionForm>
+  );
 }
 
 function PieceActions({ piece, analog }: { piece: LookPiece; analog?: boolean }) {
@@ -67,9 +90,13 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
       <PageHeader
         title={look.name}
         back={{ href: `${BASE_PATH}/looks`, label: look.collection ? `Коллекция «${look.collection.name}»` : "Все образы" }}
-        actions={isActive ? <Link href={BASE_PATH} className="btn-primary">Добавить вещи из каталога</Link> : (
-          <ActionForm action={activateLook} className="" hidden={{ look: look.id }}><SubmitButton>Собирать этот образ</SubmitButton></ActionForm>
-        )}
+        actions={<>
+          <Link href={`${BASE_PATH}/list?look=${look.id}`} className="btn-brand">Шопинг-лист</Link>
+          <ActionForm action={checkStock} className="" hidden={{ look: look.id }}><SubmitButton className="btn-ghost" pendingText="Проверяю… до минуты">Проверить наличие</SubmitButton></ActionForm>
+          {isActive ? <Link href={BASE_PATH} className="btn-primary">Добавить вещи из каталога</Link> : (
+            <ActionForm action={activateLook} className="" hidden={{ look: look.id }}><SubmitButton>Собирать этот образ</SubmitButton></ActionForm>
+          )}
+        </>}
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -130,6 +157,7 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
                       <Sizes piece={p} />
                       {!p.item.inStock && <span className="font-medium text-danger">нет в наличии</span>}
                     </div>
+                    <WantedSize piece={p} />
                     <PieceActions piece={p} />
                     {branchCount(p.item.store.contacts) > 0 && (
                       <details className="rounded-lg border border-line px-3 py-2">

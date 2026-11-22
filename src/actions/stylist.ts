@@ -182,6 +182,10 @@ export async function lookPieceAction(_p: FormState, f: FormData): Promise<FormS
         prisma.stLookItem.update({ where: { id: parent.id }, data: { itemId: piece.itemId } }),
         prisma.stLookItem.update({ where: { id: piece.id }, data: { itemId: parent.itemId } }),
       ]);
+    } else if (op === "size") {
+      await prisma.stLookItem.update({ where: { id: piece.id }, data: { size: str(f, "size").slice(0, 20) } });
+      revalidatePath(BASE_PATH, "layout");
+      return {};
     } else if (op === "sizes") {
       const done = await refreshSizes(piece.itemId, true);
       revalidatePath(`${BASE_PATH}/looks/${look.id}`);
@@ -192,6 +196,52 @@ export async function lookPieceAction(_p: FormState, f: FormData): Promise<FormS
     return {};
   } catch (e) {
     if (e instanceof BlockedError) return { error: "Магазин сейчас не отвечает на запрос размеров — попробуйте позже" };
+    return fail(e);
+  }
+}
+
+/* ---------- Проверка наличия ---------- */
+
+/**
+ * «Проверить наличие» для образа или коллекции: по каждой вещи (и её аналогам) заново спрашиваем магазин
+ * тем способом, который он поддерживает (Zara — карточка товара, Inditex — остатки по размерам).
+ * Магазины «по ссылке» и Parfois размеры не отдают — такие вещи перечисляются в итоге отдельно.
+ */
+export async function checkStock(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  try {
+    await assertSee(me);
+    const lookId = str(f, "look");
+    const colId = str(f, "collection");
+    const looks = lookId ? [await getLook(me, lookId)] : colId ? await prisma.stLook.findMany({ where: { collectionId: colId }, select: { id: true } }).then((r) => Promise.all(r.map((x) => getLook(me, x.id)))) : [];
+    const pieces = looks.flatMap((l) => l?.items ?? []);
+    if (!pieces.length) throw new Error("В образах нет вещей");
+    const ids = [...new Set(pieces.map((p) => p.itemId))].slice(0, 80);
+    let done = 0, manual = 0, failed = 0;
+    // По четыре вещи разом: быстрее, чем по одной, и без всплеска запросов к магазину.
+    for (let i = 0; i < ids.length; i += 4) {
+      await Promise.all(ids.slice(i, i + 4).map(async (id) => {
+        try {
+          if (await refreshSizes(id, true)) done++;
+          else manual++;
+        } catch {
+          failed++;
+        }
+      }));
+    }
+    revalidatePath(BASE_PATH, "layout");
+    const fresh = (await Promise.all(looks.filter(Boolean).map((l) => getLook(me, l!.id)))).flatMap((l) => l?.items ?? []).filter((p) => !p.parentId);
+    const gone = fresh.filter((p) => !p.item.inStock).length;
+    const noSize = fresh.filter((p) => p.item.inStock && p.size && p.item.sizesAt && !p.item.sizes.includes(`|${p.size}|`)).length;
+    const parts = [`Проверено у магазинов: ${done}`];
+    if (gone) parts.push(`нет в наличии: ${gone}`);
+    if (noSize) parts.push(`нет нужного размера: ${noSize}`);
+    if (!gone && !noSize && done) parts.push("всё в наличии");
+    if (manual) parts.push(`без автоматической проверки (уточнять в магазине): ${manual}`);
+    if (failed) parts.push(`магазин не ответил: ${failed} — попробуйте ещё раз позже`);
+    if (pieces.length > 80) parts.push("проверены первые 80 вещей");
+    return gone || noSize || failed ? { error: `${parts.join(" · ")}.` } : { ok: `${parts.join(" · ")}.` };
+  } catch (e) {
     return fail(e);
   }
 }
@@ -239,7 +289,7 @@ export async function copyLook(_p: FormState, f: FormData): Promise<FormState> {
     const made = await prisma.stLook.create({ data: { name: `${look.name} — копия`.slice(0, 200), note: look.note, teamId: look.teamId, collectionId: look.collectionId, createdById: me.id } });
     const map = new Map<string, string>();
     for (const p of look.items.filter((x) => !x.parentId)) {
-      map.set(p.id, (await prisma.stLookItem.create({ data: { lookId: made.id, itemId: p.itemId, order: p.order } })).id);
+      map.set(p.id, (await prisma.stLookItem.create({ data: { lookId: made.id, itemId: p.itemId, order: p.order, size: p.size } })).id);
     }
     for (const a of look.items.filter((x) => x.parentId && map.has(x.parentId))) {
       await prisma.stLookItem.create({ data: { lookId: made.id, itemId: a.itemId, parentId: map.get(a.parentId!)!, order: a.order } });

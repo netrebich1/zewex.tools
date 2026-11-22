@@ -625,6 +625,9 @@ model PinRunItem {
   boardName       String        @default("")
   scheduledAt     DateTime?
   scheduleFixed   Boolean       @default(false)
+  /// Пин уже залит в Pinterest (агентом или отметкой «залито» за его день). Такие пины и пины с той же картинкой
+  /// больше не попадают ни в один файл — защита от дублей на аккаунте.
+  uploadedAt      DateTime?
   status          PinItemStatus @default(PENDING)
   moderation      PinModeration @default(NONE)
   rejectReason    String?
@@ -3044,6 +3047,8 @@ model UplTask {
   order      Int       @default(0)
   /// Строк в файле (из выгрузки)
   rows       Int?
+  /// id пинов, отданных агенту в CSV: после успешной заливки им ставится PinRunItem.uploadedAt
+  pinIds     Json?
   /// Имя файла выгрузки
   fileName   String?   @db.VarChar(190)
   /// Что делает агент сейчас (строка шага)
@@ -4214,6 +4219,8 @@ model StLookItem {
   lookId    String       @db.Char(36)
   itemId    String       @db.Char(36)
   parentId  String?      @db.Char(36)
+  /// Нужный клиенту размер этой вещи (как у магазина: «M», «38»)
+  size      String       @default("") @db.VarChar(20)
   order     Int          @default(0)
   createdAt DateTime     @default(now())
   look      StLook       @relation(fields: [lookId], references: [id], onDelete: Cascade)
