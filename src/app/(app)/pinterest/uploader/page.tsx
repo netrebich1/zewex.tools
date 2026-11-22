@@ -8,6 +8,7 @@ import { ERROR_LABELS, isDay, type ErrorKind } from "@/lib/uploader/types";
 import { TZ } from "@/lib/pins/runs/stats";
 import { addDays, formatRu, todayKey } from "@/lib/pins/schedule/math";
 import { StartRunForm, type StartSite } from "@/components/uploader/StartRunForm";
+import { dupesText } from "@/lib/pins/export/uploaded";
 import { AccountBadge, AgentBadge, RunBadge, TaskBadge, ago, dt } from "@/components/uploader/ui";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +21,8 @@ export default async function UploaderTodayPage({ searchParams }: { searchParams
   const day = isDay(sp(q, "day") ?? "") ? (sp(q, "day") as string) : today;
   const [rows, agents, runs, sets, profileCount] = await Promise.all([todayRows(me, day), agentRows(me), runRows(me, 5), setRows(me), prisma.uplProfile.count({ where: { teamId: { in: me.activeTeamId ? [me.activeTeamId] : me.teamIds } } })]);
   const now = new Date();
-  const withFile = rows.filter((r) => r.file);
+  const withFile = rows.filter((r) => r.file && r.file.count > 0);
+  const dupeRows = rows.filter((r) => dupesText(r.file?.dupes));
   const uploaded = withFile.filter((r) => r.uploaded).length;
   const noProfile = withFile.filter((r) => !r.account?.profileId).length;
   const sites: StartSite[] = withFile.map((r) => {
@@ -36,6 +38,7 @@ export default async function UploaderTodayPage({ searchParams }: { searchParams
       <PageHeader title={`Заливка на ${formatRu(day)}`} subtitle="Файл выгрузки каждого сайта агент загружает в Pinterest через профиль Dolphin Anty и ставит отметку в «Проектах». Запуск кнопкой или по расписанию агента." />
       <div className="space-y-4">
         {profileCount === 0 && <div className="rounded-xl border border-warn/40 bg-warn-soft px-4 py-3 text-[13.5px]"><b>Профилей Dolphin вашей команды пока нет.</b> Что не так — видно по шагам в <Link href="/pinterest/uploader/mapping" className="underline">«Готовности команды»</Link> на «Сопоставлении»; подробно — в <Link href="/pinterest/uploader/guide" className="underline">Инструкции</Link>.</div>}
+        {dupeRows.length > 0 && <div className="rounded-xl border border-warn/40 bg-warn-soft px-4 py-3 text-[13.5px]"><b>Найдены дубли пинов — в Pinterest они не уйдут.</b> Пины, которые уже заливались на аккаунт (или с той же картинкой), убраны из файлов: {dupeRows.map((r) => `${r.site.name} — ${r.file!.dupes.uploaded + r.file!.dupes.sameImage}`).join(", ")}. Обычно так бывает, если файл дня заливали поздно вечером или даты пинов переносили.</div>}
         <div className="flex flex-wrap items-center gap-2">
           {quick(today, "Сегодня")}{quick(addDays(today, 1), "Завтра")}{quick(addDays(today, -1), "Вчера")}
           <span className="help ml-2">Сайтов с файлом: <b>{withFile.length}</b> · залито: <b>{uploaded}</b>{noProfile ? <> · <span className="text-warn">без профиля: {noProfile}</span> (<Link href="/pinterest/uploader/mapping" className="underline">сопоставить</Link>)</> : null}</span>
@@ -49,7 +52,7 @@ export default async function UploaderTodayPage({ searchParams }: { searchParams
             <tbody>{rows.map((r) => (
               <tr key={r.site.id} className={r.file && !r.uploaded && !r.account?.profileId ? "bg-warn-soft/40" : ""}>
                 <td className="font-medium">{r.site.accessId ? <Link href={`/pinterest/projects/${r.site.accessId}?tab=uploads`} className="hover:underline">{r.site.name}</Link> : r.site.name}</td>
-                <td>{r.file ? <><span className="tabular-nums">{r.file.count}</span> <span className="help">{r.file.fileName}{r.file.issues ? ` · проблем ${r.file.issues}` : ""}</span></> : <span className="help">—</span>}</td>
+                <td>{r.file ? <>{r.file.count ? <><span className="tabular-nums">{r.file.count}</span> <span className="help">{r.file.fileName}{r.file.issues ? ` · проблем ${r.file.issues}` : ""}</span></> : <span className="help">все пины дня уже залиты</span>}{dupesText(r.file.dupes) ? <div className="text-[12.5px] text-warn">⚠ {dupesText(r.file.dupes)}</div> : null}</> : <span className="help">—</span>}</td>
                 <td>{r.account?.profileId ? <span>{r.account.profileName ?? r.account.profileId}{r.account.profileName ? <span className="help"> · {r.account.profileId}</span> : null}</span> : <Link href="/pinterest/uploader/mapping" className="text-warn underline">не задан</Link>}</td>
                 <td>{r.account ? <><AccountBadge status={r.account.status} />{r.account.pinUsername ? <span className="help ml-1">@{r.account.pinUsername}</span> : null}</> : <span className="help">—</span>}</td>
                 <td>{r.uploaded ? <span className="badge bg-ok-soft text-ok">✓ {dt(r.uploaded.at)}{r.uploaded.source === "auto" ? " · авто" : ""}</span> : <span className="help">нет</span>}{r.lastTask?.scheduled != null ? <div className={`text-[12.5px] ${r.lastTask.scheduled > 0 ? "text-ok" : "text-warn"}`}>в расписании: {r.lastTask.scheduled}{r.lastTask.createdShot ? <> · <a href={r.lastTask.createdShot} target="_blank" rel="noreferrer" className="underline">скрин Created</a></> : null}</div> : null}</td>

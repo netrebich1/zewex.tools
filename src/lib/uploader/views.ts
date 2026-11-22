@@ -9,7 +9,8 @@ import { ERROR_LABELS, parseAgentSettings, parseSchedule, type AgentSchedule, ty
 
 export type TodayRow = {
   site: { id: string; name: string; accessId: string | null };
-  file: { fileName: string; count: number; issues: number } | null;
+  /** count 0 — пины на день есть, но все уже залиты (дубли), заливать нечего. */
+  file: { fileName: string; count: number; issues: number; dupes: { uploaded: number; sameImage: number } } | null;
   account: { profileId: string | null; profileName: string | null; status: string; pausedUntil: Date | null; lastUploadAt: Date | null; lastError: string | null; pinUsername: string | null } | null;
   uploaded: { at: Date; source: string; note: string | null } | null;
   lastTask: { id: string; runId: string; status: string; errorKind: string | null; error: string | null; finishedAt: Date | null; scheduled: number | null; createdShot: string | null } | null;

@@ -8,6 +8,7 @@ import { ensureCard } from "@/lib/projects/card";
 import { logEventByCard, logEventByPinSite, eventText } from "@/lib/projects/events";
 import { DEFAULT_STEPS, PROJECT_STATUSES, statusLabel } from "@/lib/projects/steps";
 import { canAccessPinSite } from "@/lib/sites/access";
+import { markDayUploaded, unmarkDayUploaded } from "@/lib/pins/export/uploaded";
 import { slugify } from "@/lib/utils";
 
 export type FormState = { error?: string; ok?: string };
@@ -257,6 +258,7 @@ export async function markUploaded(_p: FormState, f: FormData): Promise<FormStat
   try {
     await pinSiteFor(me, pinSiteId);
     await prisma.prjUpload.upsert({ where: { pinSiteId_day: { pinSiteId, day } }, update: { uploadedAt: new Date(), uploadedById: me.id, source: "manual" }, create: { pinSiteId, day, uploadedById: me.id, source: "manual" } });
+    await markDayUploaded(pinSiteId, day);
     await logEventByPinSite(pinSiteId, { kind: "export_uploaded", userId: me.id, refId: `${pinSiteId}|${day}`, summary: eventText.exportUploaded(day) });
     if (accessId) refresh(accessId);
     return {};
@@ -269,6 +271,7 @@ export async function unmarkUploaded(_p: FormState, f: FormData): Promise<FormSt
   try {
     await pinSiteFor(me, pinSiteId);
     await prisma.prjUpload.deleteMany({ where: { pinSiteId, day } });
+    await unmarkDayUploaded(pinSiteId, day);
     await logEventByPinSite(pinSiteId, { kind: "export_unmarked", userId: me.id, summary: `Снята отметка заливки за ${day}` });
     if (accessId) refresh(accessId);
     return {};
@@ -289,6 +292,7 @@ export async function markUploadedThrough(_p: FormState, f: FormData): Promise<F
     const haveSet = new Set(have.map((h) => h.day));
     const todo = days.map((d) => d.day).filter((d) => !haveSet.has(d));
     if (todo.length) await prisma.prjUpload.createMany({ data: todo.map((d) => ({ pinSiteId, day: d, uploadedById: me.id, source: "manual" })), skipDuplicates: true });
+    for (const d of todo) await markDayUploaded(pinSiteId, d);
     await logEventByPinSite(pinSiteId, { kind: "export_uploaded", userId: me.id, summary: `Залито в Pinterest всё по ${day} (${todo.length} дн.)` });
     if (accessId) refresh(accessId);
     return { ok: `Отмечено дней: ${todo.length}` };

@@ -61,6 +61,7 @@ export async function createRun(me: CurrentUser, input: CreateRunInput): Promise
     const open = await prisma.uplTask.findFirst({ where: { pinSiteId: s.id, day: input.day, phase: "upload", status: { in: ["QUEUED", "LEASED"] } }, select: { id: true } });
     if (open) { skip("уже в очереди другого запуска"); continue; }
     const preview = await previewDay(s.id, s.name, input.day, now);
+    if (preview && !preview.count) { skip("все пины дня уже залиты — дубли не заливаем", "no_file"); continue; }
     if (!preview) { skip(ERROR_LABELS.no_file, "no_file"); continue; }
     tasks.push({ pinSiteId: s.id, profileId: acc.profileId, day: input.day, phase: "upload", steps: [{ kind: "upload_csv" }], status: "QUEUED", order: order++, fileName: preview.fileName, rows: preview.count });
   }

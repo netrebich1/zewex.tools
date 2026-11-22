@@ -10,7 +10,8 @@ import { TZ } from "../runs/stats";
 import { publicUrl } from "../storage";
 import { eventText, logEventByPinSite } from "@/lib/projects/events";
 
-const READY_WHERE = { status: "READY" as const, moderation: "APPROVED" as const, title: { not: "" } };
+// uploadedAt: null — уже залитые в Pinterest пины в файлы не попадают никогда (защита от дублей).
+const READY_WHERE = { status: "READY" as const, moderation: "APPROVED" as const, title: { not: "" }, uploadedAt: null };
 type Row = Prisma.PinRunItemGetPayload<{ include: { page: { select: { keyword: true } } } }>;
 const toExportItem = (r: Row): ExportItem => ({
   id: r.id,
@@ -28,14 +29,43 @@ const toExportItem = (r: Row): ExportItem => ({
 
 /** Пины сайта на день (в рабочем поясе), готовые к выгрузке: одобрены, с текстом и картинкой в WP. */
 export async function dayItems(siteId: string, day: string): Promise<ExportItem[]> {
+  return (await dayItemsChecked(siteId, day)).items;
+}
+
+/** Сколько пинов дня убрано как дубли: уже залиты (их дата могла сдвинуться) или с картинкой, уже залитой на этот аккаунт. */
+export type DupeReport = { uploaded: number; sameImage: number };
+
+/** Пины дня без дублей + отчёт, сколько и каких дублей убрано. */
+export async function dayItemsChecked(siteId: string, day: string): Promise<{ items: ExportItem[]; dupes: DupeReport }> {
   const from = startOfDay(day, TZ);
   const to = startOfDay(addDays(day, 1), TZ);
-  const rows = await prisma.pinRunItem.findMany({
-    where: { siteId, scheduledAt: { gte: from, lt: to }, ...READY_WHERE },
-    orderBy: { scheduledAt: "asc" },
-    include: { page: { select: { keyword: true } } },
-  });
-  return rows.map(toExportItem);
+  const [rows, uploaded] = await Promise.all([
+    prisma.pinRunItem.findMany({
+      where: { siteId, scheduledAt: { gte: from, lt: to }, ...READY_WHERE },
+      orderBy: { scheduledAt: "asc" },
+      include: { page: { select: { keyword: true } } },
+    }),
+    prisma.pinRunItem.count({ where: { siteId, scheduledAt: { gte: from, lt: to }, status: "READY", moderation: "APPROVED", uploadedAt: { not: null } } }),
+  ]);
+  const kept = await dropSameImage(siteId, rows);
+  return { items: kept.rows.map(toExportItem), dupes: { uploaded, sameImage: kept.dropped } };
+}
+
+/** Убирает пины, чья картинка уже залита на этот сайт (другой строкой) или повторяется в самом наборе. */
+async function dropSameImage(siteId: string, rows: Row[]): Promise<{ rows: Row[]; dropped: number }> {
+  const urls = [...new Set(rows.map((r) => r.wpMediaUrl).filter(Boolean))];
+  const done = new Set<string>();
+  for (let i = 0; i < urls.length; i += 500) {
+    const part = urls.slice(i, i + 500);
+    for (const r of await prisma.pinRunItem.findMany({ where: { siteId, uploadedAt: { not: null }, wpMediaUrl: { in: part } }, select: { wpMediaUrl: true } })) done.add(r.wpMediaUrl);
+  }
+  const out: Row[] = [];
+  for (const r of rows) {
+    if (r.wpMediaUrl && done.has(r.wpMediaUrl)) continue;
+    if (r.wpMediaUrl) done.add(r.wpMediaUrl);
+    out.push(r);
+  }
+  return { rows: out, dropped: rows.length - out.length };
 }
 
 /** Сколько готовых пинов с датами (сегодня и позже) у каждого сайта и на сколько дней — для кнопки «Выгрузить всё». */
@@ -76,7 +106,7 @@ export async function siteAllZip(me: CurrentUser, siteId: string): Promise<{ fil
   });
   if (!rows.length) return null;
   const byDay = new Map<string, ExportItem[]>();
-  for (const r of rows) { const k = dayKey(r.scheduledAt as Date, TZ); byDay.set(k, [...(byDay.get(k) ?? []), toExportItem(r)]); }
+  for (const r of (await dropSameImage(siteId, rows)).rows) { const k = dayKey(r.scheduledAt as Date, TZ); byDay.set(k, [...(byDay.get(k) ?? []), toExportItem(r)]); }
   const files: Array<{ name: string; data: string }> = [];
   const logs: Array<{ day: string; fileName: string; rows: number }> = [];
   let pins = 0;

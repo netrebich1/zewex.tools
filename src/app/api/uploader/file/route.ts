@@ -13,8 +13,9 @@ export async function GET(req: Request) {
     if (!t || t.run.agentId !== ctx.agent.id) return new Response("Задание не найдено", { status: 404 });
     if (t.status !== "LEASED") return new Response("Задание не в работе", { status: 409 });
     const f = await buildTaskCsv(t.pinSiteId, t.day);
-    if (!f) return new Response("Файл пуст", { status: 404 });
-    await prisma.uplTask.update({ where: { id: t.id }, data: { fileName: f.fileName, rows: f.count } });
+    if (!f) return new Response("Файл пуст: на этот день нет пинов, которые ещё не заливались", { status: 404 });
+    // pinIds: после успешной заливки именно этим пинам ставится «залит» — повторно они в файлы не попадут.
+    await prisma.uplTask.update({ where: { id: t.id }, data: { fileName: f.fileName, rows: f.count, pinIds: f.pinIds } });
     return new Response(f.csv, {
       headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${f.fileName}"`, "X-File-Name": f.fileName, "X-Rows": String(f.count), "Cache-Control": "no-store" },
     });

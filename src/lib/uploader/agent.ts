@@ -12,6 +12,7 @@ import { eventText, logEventByPinSite } from "@/lib/projects/events";
 import { matchScore } from "./match";
 import { agentTeamId, teamDolphinToken } from "./teams";
 import { savePinStats } from "@/lib/projects/stats";
+import { markDayUploaded, markPinsUploaded } from "@/lib/pins/export/uploaded";
 import { STATS_WITH_UPLOAD_MS } from "./stats";
 import { applyVerify, leaseUntil, settleRun, uplSettings, verifyText } from "./runs";
 import { ERROR_LABELS, MAX_ATTEMPTS, PAUSE_HOURS, PROTOCOL, TRANSIENT, UPLOADER, parseHumanize, type AgentTask, type ErrorKind, type Step, type TaskResult, type VerifyResult } from "./types";
@@ -208,6 +209,9 @@ export async function finish(ctx: Ctx, b: Body) {
     await prisma.uplTask.update({ where: { id: t.id }, data: { status: "DONE", leaseUntil: null, finishedAt: now, step: "готово", error: null, errorKind: null, result: result as Prisma.InputJsonValue } });
     const note = `авто · агент ${ctx.agent.name}${t.rows != null ? ` · ${t.rows} пинов` : ""}${shot ? ` · ${shot}` : ""}`;
     await prisma.prjUpload.upsert({ where: { pinSiteId_day: { pinSiteId: t.pinSiteId, day: t.day } }, update: { uploadedAt: now, uploadedById: null, source: "auto", note }, create: { pinSiteId: t.pinSiteId, day: t.day, uploadedById: null, source: "auto", note } });
+    // Защита от дублей: залитые пины помечаются и больше не попадут ни в один файл.
+    const ids = Array.isArray(t.pinIds) ? (t.pinIds as unknown[]).filter((x): x is string => typeof x === "string") : [];
+    if (ids.length) await markPinsUploaded(ids, now); else await markDayUploaded(t.pinSiteId, t.day, now);
     await prisma.uplAccount.updateMany({ where: { pinSiteId: t.pinSiteId }, data: { lastUploadAt: now, agentId: ctx.agent.id, status: "ok", pausedUntil: null, blockStep: 0, lastError: null } });
     // Залил профиль-двойник (основной не открылся) — дальше сайт работает через него.
     const acc = await prisma.uplAccount.findUnique({ where: { pinSiteId: t.pinSiteId }, select: { profileId: true, profileName: true } });
