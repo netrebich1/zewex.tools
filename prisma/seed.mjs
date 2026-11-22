@@ -30,6 +30,7 @@ const sections = [
   // Только закрытые инструменты (PRIVATE_TOOLS): без доступа раздел не виден.
   { slug: "wexora", name: "Wexora", icon: "chart", order: 5 },
   { slug: "analytics", name: "Аналитика", icon: "chart", order: 6 },
+  { slug: "stylist", name: "Стилист", icon: "hanger", order: 7 },
 ];
 
 // Seed only creates what is missing; it never overwrites values the admin may have edited in the UI.
@@ -514,6 +515,42 @@ if (discoveryComp) {
   const compState = await prisma.compState.findUnique({ where: { id: "main" } });
   if (!compState) {
     await prisma.compState.create({ data: { id: "main", settings: { enabled: true, countries: ["Украина"], periodDays: 61, minDeals: 1, minClicks: 1, kwLimit: 300, dailyLimit: 0 } } });
+  }
+}
+// ───────────────────────────── Стилист: каталог вещей магазинов, образы и аналоги (команда Zewex) ─────────────────────────────
+const stylistSection = await prisma.section.findUnique({ where: { slug: "stylist" } });
+if (stylistSection) {
+  await prisma.project.upsert({
+    where: { slug: "stylist" },
+    update: {},
+    create: { sectionId: stylistSection.id, slug: "stylist", name: "Стилист", description: "Вещи магазинов Мальты и Украины в одном каталоге: тип, цвет, фасон, цена и фото с сайта магазина; образы из вещей разных магазинов с общей ценой и аналогами", url: "/stylist", status: "ACTIVE", order: 1 },
+  });
+  // Слот ИИ «в духе бренда»: правило создаётся для команды Zewex, только если у неё уже есть ключ OpenRouter.
+  const stProject = await prisma.project.findUnique({ where: { slug: "stylist" } });
+  const stSlot = await prisma.slot.upsert({
+    where: { projectId_key: { projectId: stProject.id, key: "vision" } },
+    update: {},
+    create: { projectId: stProject.id, key: "vision", name: "В духе какого бренда (фото)", capability: "CHAT", description: "Модель смотрит фото вещи и справочник ДНК люксовых домов: «в духе Prada», «похоже на знаковую вещь» (google/gemini-2.5-flash, меньше цента за вещь)", preferProviders: "openrouter" },
+  });
+  const stTeam = await prisma.team.findUnique({ where: { slug: "zewex" } });
+  const stProvider = await prisma.provider.findUnique({ where: { slug: "openrouter" } });
+  if (stTeam && stProvider && !(await prisma.binding.findFirst({ where: { scope: "TEAM_PROJECT", slotId: stSlot.id, teamId: stTeam.id } }))) {
+    const key = await prisma.apiKey.findFirst({ where: { teamId: stTeam.id, providerId: stProvider.id, status: "ACTIVE" }, orderBy: { createdAt: "asc" } });
+    const model = await prisma.model.findUnique({ where: { providerId_modelId: { providerId: stProvider.id, modelId: "google/gemini-2.5-flash" } } });
+    if (key && model) {
+      await prisma.binding.create({ data: { scope: "TEAM_PROJECT", slotId: stSlot.id, teamId: stTeam.id, providerId: stProvider.id, modelId: model.id, apiKeyId: key.id } });
+      console.log("stylist: rule vision → Zewex / google/gemini-2.5-flash");
+    }
+  }
+  // Магазины создаются один раз (по slug); дальше их правят на странице «Магазины».
+  const stStores = JSON.parse(readFileSync(new URL("./seed-data/stylist-stores.json", import.meta.url), "utf8"));
+  for (const s of stStores) {
+    const auto = s.adapter && s.adapter !== "manual";
+    await prisma.stStore.upsert({
+      where: { slug: s.slug },
+      update: {},
+      create: { slug: s.slug, name: s.name, brand: s.brand ?? s.name, segment: s.segment, geo: s.geo, adapter: s.adapter ?? "manual", baseUrl: s.baseUrl ?? "", currency: s.currency ?? (s.geo === "UA" ? "UAH" : "EUR"), config: s.config ?? undefined, isActive: !!auto },
+    });
   }
 }
 console.log("seed done");

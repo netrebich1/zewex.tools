@@ -4062,3 +4062,130 @@ model CompState {
   syncAsked  DateTime?
   updatedAt  DateTime  @updatedAt
 }
+
+// ───────────────────────────── Стилист (раздел «Стилист», проект `stylist`) ─────────────────────────────
+
+/// Магазин одной страны (Zara Мальта и Zara Украина — две записи: цены и наличие разные)
+model StStore {
+  id            String    @id @default(uuid()) @db.Char(36)
+  slug          String    @unique @db.VarChar(60)
+  name          String    @db.VarChar(100)
+  /// Бренд без страны — вкладки каталога («Zara»)
+  brand         String    @db.VarChar(60)
+  /// budget | mid | premium | luxury
+  segment       String    @default("mid") @db.VarChar(12)
+  /// Страна: MT | UA
+  geo           String    @db.VarChar(4)
+  /// zara | parfois | manual (вещи добавляются по ссылке или вручную)
+  adapter       String    @db.VarChar(20)
+  baseUrl       String    @default("") @db.VarChar(300)
+  currency      String    @default("EUR") @db.VarChar(4)
+  /// Настройки адаптера (путь страны и языка и т. п.)
+  config        Json?
+  /// Автообновление раз в сутки
+  isActive      Boolean   @default(true)
+  /// Кнопка «Обновить сейчас»
+  scanAsked     DateTime?
+  /// idle | running | ok | error
+  scanStatus    String    @default("idle") @db.VarChar(10)
+  scanNote      String?   @db.Text
+  scanStartedAt DateTime?
+  lastScanAt    DateTime?
+  lockedBy      String?   @db.VarChar(100)
+  itemCount     Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  items         StItem[]
+
+  @@index([geo, segment])
+}
+
+/// Вещь магазина; у вещи в нескольких цветах каждая расцветка — отдельная запись
+model StItem {
+  id          String       @id @default(uuid()) @db.Char(36)
+  storeId     String       @db.Char(36)
+  /// id товара у магазина (с цветом)
+  extId       String       @db.VarChar(120)
+  name        String       @db.VarChar(300)
+  url         String       @db.VarChar(700)
+  /// Фото не хранится у нас — ссылка на картинку магазина
+  imageUrl    String       @default("") @db.VarChar(700)
+  /// Остальные фото: [url]
+  images      Json?
+  price       Float
+  oldPrice    Float?
+  currency    String       @db.VarChar(4)
+  /// Цена в евро по курсу дня сбора — для сумм образов и фильтра цены
+  priceEur    Float        @default(0)
+  /// woman | man | kids | unisex
+  gender      String       @default("woman") @db.VarChar(8)
+  /// Тип вещи (src/lib/stylist/consts.ts: CATEGORIES)
+  category    String       @default("other") @db.VarChar(20)
+  /// Как раздел назван у магазина
+  rawCategory String       @default("") @db.VarChar(200)
+  colorName   String       @default("") @db.VarChar(80)
+  /// Группа цвета (COLORS)
+  color       String       @default("") @db.VarChar(16)
+  colorHex    String       @default("") @db.VarChar(8)
+  /// Размеры в наличии: «|S|M|L|» — поиск по вхождению «|M|»; пусто — ещё не загружены
+  sizes       String       @default("") @db.VarChar(400)
+  sizesAt     DateTime?
+  /// Фасон, материал, детали: «|oversize|leather|» (TAGS)
+  tags        String       @default("") @db.VarChar(400)
+  inStock     Boolean      @default(true)
+  /// «В духе брендов»: «|prada|chanel|» (id из src/lib/stylist/brands.json) — для фильтра
+  spirit      String       @default("") @db.VarChar(200)
+  /// Метки подробно: [{brand, source: rule | ai, level: spirit | lookalike, score, icon, why}]
+  spiritData  Json?
+  /// Когда вещь смотрел ИИ (после этого метки по словам названия не ставятся)
+  spiritAt    DateTime?
+  /// Очередь на проверку ИИ (кнопка «Проверить ИИ показанные вещи»); расход пишется на spiritById
+  spiritAsked DateTime?
+  spiritById  String?
+  /// manual — добавлена по ссылке или руками, сбор её не трогает
+  source      String       @default("scan") @db.VarChar(8)
+  firstSeenAt DateTime     @default(now())
+  lastSeenAt  DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  store       StStore      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  lookItems   StLookItem[]
+
+  @@unique([storeId, extId])
+  @@index([category, gender, inStock])
+  @@index([storeId, inStock, category])
+  @@index([color])
+  @@index([priceEur])
+  @@index([spiritAsked])
+}
+
+/// Сохранённый образ команды
+model StLook {
+  id          String       @id @default(uuid()) @db.Char(36)
+  teamId      String?
+  name        String       @db.VarChar(200)
+  note        String?      @db.Text
+  createdById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  items       StLookItem[]
+
+  @@index([teamId, updatedAt])
+}
+
+/// Вещь образа. parentId пуст — основная вещь; заполнен — аналог к основной вещи этого образа
+model StLookItem {
+  id        String       @id @default(uuid()) @db.Char(36)
+  lookId    String       @db.Char(36)
+  itemId    String       @db.Char(36)
+  parentId  String?      @db.Char(36)
+  order     Int          @default(0)
+  createdAt DateTime     @default(now())
+  look      StLook       @relation(fields: [lookId], references: [id], onDelete: Cascade)
+  item      StItem       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  parent    StLookItem?  @relation("StAnalog", fields: [parentId], references: [id], onDelete: Cascade)
+  analogs   StLookItem[] @relation("StAnalog")
+
+  @@index([lookId, order])
+  @@index([itemId])
+  @@index([parentId])
+}

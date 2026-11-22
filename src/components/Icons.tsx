@@ -13,6 +13,7 @@ const base = (props: SVGProps<SVGSVGElement>) => ({
 });
 
 export const Icon = {
+  hanger: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M12 8.5V7.6a2.2 2.2 0 1 0-2.2-2.2" /><path d="M12 8.5 3.6 15a1.6 1.6 0 0 0 1 2.9h14.8a1.6 1.6 0 0 0 1-2.9z" /></svg>),
   home: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M3 11.5 12 4l9 7.5" /><path d="M5 10v10h14V10" /></svg>),
   key: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><circle cx="8" cy="15" r="4" /><path d="M11 12 21 2" /><path d="m17 6 3 3" /><path d="m14 9 2 2" /></svg>),
   cloud: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M7 18a4 4 0 0 1-.6-7.95A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z" /></svg>),
