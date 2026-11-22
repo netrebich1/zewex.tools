@@ -3,18 +3,19 @@
  * Конфигурация → номер каталога страны → дерево разделов → номера товаров раздела → карточки товаров пачками.
  * Карточка несёт всё сразу: расцветки, размеры с наличием, артикул, фото. Каждая расцветка — отдельная вещь.
  */
-import type { RawItem } from "../consts";
+import type { RawItem, StoreContacts } from "../consts";
 import type { Getter } from "./zara";
 
 export type ItxConfig = { host: string; storeId: string; path: string; gender?: string };
 
 type ICat = { id: number; name?: string; nameEn?: string; type?: string | number; viewCategoryId?: number; subcategories?: ICat[] };
 type IMedia = { url?: string; extraInfo?: { deliveryUrl?: string; url?: string } };
-type ISize = { name?: string; isBuyable?: boolean; visibilityValue?: string; price?: string; oldPrice?: string | null };
+type ISize = { sku?: number; name?: string; isBuyable?: boolean; visibilityValue?: string; price?: string; oldPrice?: string | null; country?: string };
+type IComp = { composition?: Array<{ name?: string; percentage?: string }> };
 type IColor = { id?: string | number; name?: string; image?: { url?: string } | null; sizes?: ISize[] };
-type IDetail = { displayReference?: string; reference?: string; colors?: IColor[]; xmedia?: Array<{ path?: string; xmediaItems?: Array<{ medias?: IMedia[] }> }> };
+type IDetail = { longDescription?: string; composition?: IComp[]; displayReference?: string; reference?: string; colors?: IColor[]; xmedia?: Array<{ path?: string; xmediaItems?: Array<{ medias?: IMedia[] }> }> };
 type IProduct = {
-  id: number; name?: string; nameEn?: string; productUrl?: string; productUrlParam?: string; sectionNameEN?: string;
+  id: number; startDate?: string; name?: string; nameEn?: string; productUrl?: string; productUrlParam?: string; sectionNameEN?: string;
   familyNameEN?: string; familyName?: string; subFamilyNameEN?: string; subFamilyName?: string; detail?: IDetail; bundleProductSummaries?: IProduct[];
 };
 
@@ -65,8 +66,39 @@ const tidy = (s: string) => {
   return t === t.toUpperCase() ? t.charAt(0) + t.slice(1).toLowerCase() : t;
 };
 
-/** Карточки товаров → вещи. `hint` — раздел, где товар найден, и пол раздела. */
-export function itxProducts(json: string, cfg: ItxConfig, hint: (id: number) => { name: string; gender: string } | undefined): RawItem[] {
+/** Остатки по размерам: номер размера (sku) → in_stock | low_on_stock | out_of_stock | … */
+export function itxStock(json: string): Map<number, string> {
+  const data = JSON.parse(json) as { stocks?: Array<{ stocks?: Array<{ id?: number; availability?: string }> }> };
+  const out = new Map<number, string>();
+  for (const p of data.stocks ?? []) for (const s of p.stocks ?? []) if (s.id != null) out.set(s.id, s.availability ?? "");
+  return out;
+}
+
+const DAYS = ["", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+/** Обычные магазины бренда в стране (официальный список сайта): адрес, телефон, часы. */
+export function itxStores(json: string): StoreContacts {
+  type S = { name?: string; addressLines?: string[]; city?: string; zipCode?: string; phones?: string[]; openingHours?: { schedule?: Array<{ weekdays?: number[]; timeStripList?: Array<{ initHour?: string; endHour?: string }> }> } };
+  const data = JSON.parse(json) as { closerStores?: S[]; stores?: S[] };
+  const hours = (s: S) => (s.openingHours?.schedule ?? []).map((x) => {
+    const d = [...(x.weekdays ?? [])].sort((a, b) => a - b);
+    const days = d.length > 2 && d[d.length - 1] - d[0] === d.length - 1 ? `${DAYS[d[0]]}–${DAYS[d[d.length - 1]]}` : d.map((n) => DAYS[n]).join(", ");
+    return `${days} ${(x.timeStripList ?? []).map((t) => `${t.initHour}–${t.endHour}`).join(", ")}`;
+  }).join("; ");
+  return {
+    branches: (data.closerStores ?? data.stores ?? []).map((s) => ({
+      name: tidy(s.name ?? ""),
+      address: [...(s.addressLines ?? []), s.zipCode, s.city].filter(Boolean).map((x) => tidy(String(x))).join(", "),
+      phone: (s.phones ?? []).filter(Boolean).map((p) => (/^\+/.test(p) ? p : `+${p}`).replace(/\s+/g, " ")).join(", "),
+      email: "",
+      hours: hours(s),
+      note: "по данным сайта магазина",
+    })),
+  };
+}
+
+/** Карточки товаров → вещи. `hint` — раздел, где товар найден, и пол раздела; `stock` — остатки (нет — по признаку «можно купить»). */
+export function itxProducts(json: string, cfg: ItxConfig, hint: (id: number) => { name: string; gender: string } | undefined, stock: Map<number, string> | null = null): RawItem[] {
   const data = JSON.parse(json) as { products?: IProduct[] };
   const out: RawItem[] = [];
   for (const p of data.products ?? []) {
@@ -85,11 +117,17 @@ export function itxProducts(json: string, cfg: ItxConfig, hint: (id: number) => 
       if (!prices.length) continue;
       const price = Math.min(...prices) / 100;
       const olds = sizes.map((z) => Number(z.oldPrice)).filter((n) => n > 0);
-      const inStock = [...new Set(sizes.filter((z) => z.isBuyable && (z.visibilityValue ?? "SHOW") === "SHOW").map((z) => z.name!.trim()))];
+      const state = (z: ISize) => (stock && z.sku != null && stock.has(z.sku) ? stock.get(z.sku)! : z.isBuyable && (z.visibilityValue ?? "SHOW") === "SHOW" ? "in_stock" : "out_of_stock");
+      const inStock = [...new Set(sizes.filter((z) => /^(in_stock|low_on_stock)$/.test(state(z))).map((z) => z.name!.trim()))];
+      const low = [...new Set(sizes.filter((z) => state(z) === "low_on_stock").map((z) => z.name!.trim()))];
+      const all = [...new Set(sizes.map((z) => z.name!.trim()))];
       const medias = (detail.xmedia ?? []).find((x) => x.path === c.image?.url)?.xmediaItems?.flatMap((i) => i.medias ?? []) ?? [];
       const imgs = [...new Set(medias.map((m) => m.extraInfo?.deliveryUrl || m.url || "").filter((u) => /^https:.*\.(jpe?g|png|webp)/i.test(u)))].map((u) => `${u}${u.includes("?") ? "&" : "?"}w=600`);
       if (!imgs.length) continue;
       const ref = detail.displayReference || (detail.reference ?? "").split("-")[0];
+      const season = /-([IV]20\d\d)$/.exec(detail.reference ?? "")?.[1] ?? "";
+      const composition = [...new Set((detail.composition ?? []).flatMap((x) => x.composition ?? []).filter((x) => x.name).map((x) => `${x.name} ${x.percentage ?? ""}%`.replace(" %", "")))].join(", ");
+      const started = p.startDate ? new Date(p.startDate) : null;
       out.push({
         extId: `${p.id}-${c.id}`,
         name: tidy(name),
@@ -103,8 +141,15 @@ export function itxProducts(json: string, cfg: ItxConfig, hint: (id: number) => 
         colorName: tidy(c.name ?? ""),
         colorHex: "",
         sizes: inStock,
+        sizesAll: all,
+        sizesLow: low,
         inStock: inStock.length > 0,
         sku: ref ? `${ref}/${c.id}` : "",
+        season,
+        composition,
+        description: (detail.longDescription ?? "").trim(),
+        madeIn: tidy(sizes.find((z) => z.country)?.country ?? ""),
+        storeDate: started && !Number.isNaN(started.getTime()) && started.getFullYear() > 2015 ? started : null,
       });
     }
   }
@@ -134,8 +179,11 @@ export async function scanItx(get: Getter, cfg: ItxConfig, onProgress?: (done: n
   let failed = 0;
   for (let i = 0; i < ids.length; i += BATCH) {
     try {
-      const json = await get(`${api(cfg, 3, catalogId)}/productsArray?productIds=${ids.slice(i, i + BATCH).join(",")}&languageId=-1&appId=1`);
-      for (const it of itxProducts(json, cfg, (id) => where.get(id))) if (!seen.has(it.extId)) seen.set(it.extId, it);
+      const part = ids.slice(i, i + BATCH).join(",");
+      const json = await get(`${api(cfg, 3, catalogId)}/productsArray?productIds=${part}&languageId=-1&appId=1`);
+      // Остатки по размерам — отдельным лёгким запросом; не ответил — берём признак «можно купить» из карточки.
+      const stock = await get(`${api(cfg, 2, catalogId)}/product/stock?productIds=${part}&languageId=-1&appId=1`).then(itxStock).catch(() => null);
+      for (const it of itxProducts(json, cfg, (id) => where.get(id), stock)) if (!seen.has(it.extId)) seen.set(it.extId, it);
     } catch (e) {
       if (++failed > Math.max(3, ids.length / BATCH / 4)) throw e;
     }
@@ -143,6 +191,26 @@ export async function scanItx(get: Getter, cfg: ItxConfig, onProgress?: (done: n
     await pause();
   }
   return [...seen.values()];
+}
+
+/** Одна карточка товара со свежими остатками — для кнопки «Проверить размеры». */
+export async function fetchItxProduct(get: Getter, cfg: ItxConfig, productId: string): Promise<RawItem[]> {
+  const conf = JSON.parse(await get(`https://www.${cfg.host}/itxrest/2/web/seo/config?appId=1`)) as { seoCatalogMap?: Record<string, string[]> };
+  const catalogId = conf.seoCatalogMap?.[cfg.storeId]?.[0];
+  if (!catalogId) return [];
+  const json = await get(`${api(cfg, 3, catalogId)}/productsArray?productIds=${productId}&languageId=-1&appId=1`);
+  const stock = await get(`${api(cfg, 2, catalogId)}/product/stock?productIds=${productId}&languageId=-1&appId=1`).then(itxStock).catch(() => null);
+  return itxProducts(json, cfg, () => undefined, stock);
+}
+
+/** Магазины бренда на Мальте (центр острова, до 30 ближайших в стране). */
+export async function fetchItxStores(get: Getter, cfg: ItxConfig, countryCode: string): Promise<StoreContacts | null> {
+  try {
+    const c = itxStores(await get(`https://www.${cfg.host}/itxrest/2/bam/store/${cfg.storeId}/physical-store?latitude=35.9122&longitude=14.5042&countryCode=${countryCode}&max=30&appId=1&languageId=-1`));
+    return c.branches?.length ? c : null;
+  } catch {
+    return null;
+  }
 }
 
 const pause = () => new Promise((r) => setTimeout(r, 350 + Math.random() * 350));

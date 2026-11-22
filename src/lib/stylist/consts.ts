@@ -153,6 +153,24 @@ export type RawItem = {
   /** Размеры в наличии, если магазин отдаёт их в списке. */
   sizes?: string[] | null;
   inStock?: boolean;
+  /** Вся размерная сетка и размеры, которых осталось мало (если магазин отдаёт остатки). */
+  sizesAll?: string[];
+  sizesLow?: string[];
   /** Артикул, как он написан на бирке и на сайте магазина. */
   sku?: string;
+  /** Сезон коллекции («I2026»), состав, описание, страна производства, дата появления на сайте — если магазин отдаёт. */
+  season?: string;
+  composition?: string;
+  description?: string;
+  madeIn?: string;
+  storeDate?: Date | null;
 };
+
+/** «I2026» → «осень–зима 2026», «V2026» → «весна–лето 2026». */
+export function seasonLabel(code: string): string {
+  const m = /^([IV])(20\d\d)$/.exec(code);
+  return m ? `${m[1] === "I" ? "осень–зима" : "весна–лето"} ${m[2]}` : code;
+}
+
+export type StoreBranch = { name?: string; address?: string; phone?: string; email?: string; hours?: string; note?: string; source?: string };
+export type StoreContacts = { customerService?: { phone?: string; email?: string; note?: string }; branches?: StoreBranch[] };

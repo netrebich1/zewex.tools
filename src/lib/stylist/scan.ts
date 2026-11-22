@@ -12,7 +12,7 @@ import { mergeSpirits, ruleSpirit } from "./dna";
 import { shopGet } from "./net";
 import { scanZara, zaraSizes, type ZaraConfig } from "./adapters/zara";
 import { scanParfois, type ParfoisConfig } from "./adapters/parfois";
-import { scanItx, type ItxConfig } from "./adapters/itx";
+import { fetchItxProduct, fetchItxStores, scanItx, type ItxConfig } from "./adapters/itx";
 
 /** Автообновление магазина — раз в сутки. */
 export const SCAN_EVERY_MS = 24 * 3600_000;
@@ -37,6 +37,9 @@ async function collect(store: StStore, onProgress: (d: number, t: number) => voi
     return scanZara((url) => shopGet(url, { proxy: true, accept: "application/json" }), cfg as ZaraConfig, onProgress);
   }
   if (store.adapter === "itx") {
+    // Заодно обновляем адреса, телефоны и часы магазинов бренда — официальный список с сайта.
+    const contacts = await fetchItxStores((url) => shopGet(url, { proxy: true, accept: "application/json" }), cfg as unknown as ItxConfig, store.geo);
+    if (contacts) await prisma.stStore.update({ where: { id: store.id }, data: { contacts: contacts as unknown as Prisma.InputJsonValue } }).catch(() => {});
     return scanItx((url) => shopGet(url, { proxy: true, accept: "application/json" }), cfg as unknown as ItxConfig, onProgress);
   }
   if (store.adapter === "parfois") {
@@ -93,6 +96,11 @@ export async function scanStore(store: StStore): Promise<{ total: number; fresh:
       ...mergeSpirits(ruleSpirit(it.name, category, color), old?.spiritData, !!old?.spiritAt),
       name: it.name.slice(0, 300),
       sku: (it.sku ?? "").slice(0, 60),
+      season: (it.season ?? "").slice(0, 12),
+      composition: (it.composition ?? "").slice(0, 500),
+      ...(it.description ? { description: it.description.slice(0, 3000) } : {}),
+      madeIn: (it.madeIn ?? "").slice(0, 60),
+      ...(it.storeDate ? { storeDate: it.storeDate } : {}),
       url: it.url.slice(0, 700),
       imageUrl: it.imageUrl.slice(0, 700),
       images: (it.images ?? []).filter((u) => u.length <= 700) as Prisma.InputJsonValue,
@@ -109,7 +117,7 @@ export async function scanStore(store: StStore): Promise<{ total: number; fresh:
       tags: pack(classifyTags(it.name)).slice(0, 400),
       inStock: it.inStock !== false,
       lastSeenAt: startedAt,
-      ...(it.sizes ? { sizes: pack(it.sizes).slice(0, 400), sizesAt: startedAt } : {}),
+      ...(it.sizes ? { sizes: pack(it.sizes).slice(0, 400), sizesAt: startedAt, sizesAll: pack(it.sizesAll ?? it.sizes).slice(0, 400), sizesLow: pack(it.sizesLow ?? []).slice(0, 400) } : {}),
       };
     };
     for (let i = 0; i < raw.length; i += 50) {
@@ -138,11 +146,17 @@ export async function scanStore(store: StStore): Promise<{ total: number; fresh:
 /** Размеры в наличии для одной вещи (карточка товара магазина). Не чаще раза в 6 часов; false — магазин размеры не отдаёт. */
 export async function refreshSizes(itemId: string, force = false): Promise<boolean> {
   const item = await prisma.stItem.findUnique({ where: { id: itemId }, include: { store: true } });
-  if (!item || item.source !== "scan" || item.store.adapter !== "zara") return false;
+  if (!item || item.source !== "scan" || !["zara", "itx"].includes(item.store.adapter)) return false;
   if (!force && item.sizesAt && Date.now() - item.sizesAt.getTime() < 6 * 3600_000) return true;
+  if (item.store.adapter === "itx") {
+    const fresh = (await fetchItxProduct((url) => shopGet(url, { proxy: true, accept: "application/json" }), item.store.config as unknown as ItxConfig, item.extId.split("-")[0])).find((x) => x.extId === item.extId);
+    if (!fresh) return false;
+    await prisma.stItem.update({ where: { id: item.id }, data: { sizes: pack(fresh.sizes ?? []).slice(0, 400), sizesAll: pack(fresh.sizesAll ?? []).slice(0, 400), sizesLow: pack(fresh.sizesLow ?? []).slice(0, 400), sizesAt: new Date(), inStock: fresh.inStock !== false, price: fresh.price } });
+    return true;
+  }
   const json = await shopGet(`${item.url}${item.url.includes("?") ? "&" : "?"}ajax=true`, { proxy: true, accept: "application/json" });
   const got = zaraSizes(json, item.extId);
   if (!got) return false;
-  await prisma.stItem.update({ where: { id: item.id }, data: { sizes: pack(got.sizes).slice(0, 400), sizesAt: new Date(), inStock: got.inStock } });
+  await prisma.stItem.update({ where: { id: item.id }, data: { sizes: pack(got.sizes).slice(0, 400), sizesAll: pack(got.all).slice(0, 400), sizesLow: pack(got.low).slice(0, 400), sizesAt: new Date(), inStock: got.inStock } });
   return true;
 }

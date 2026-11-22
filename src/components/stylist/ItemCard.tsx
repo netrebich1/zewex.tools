@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { COLOR_HEX, GEO_LABELS, TAG_LABELS, money, unpack } from "@/lib/stylist/consts";
+import { COLOR_HEX, GEO_LABELS, TAG_LABELS, money, seasonLabel, unpack } from "@/lib/stylist/consts";
 import type { CatalogItem } from "@/lib/stylist/queries";
 import { BRAND_NAMES, parseSpirits } from "@/lib/stylist/dna";
+import { SizeGrid } from "./Sizes";
 
 /** Точка цвета: группа цвета или точный оттенок магазина. */
 export function ColorDot({ color, hex, title }: { color: string; hex?: string; title?: string }) {
@@ -54,7 +55,6 @@ export function SpiritChips({ item }: { item: { spiritData: unknown; spiritAt: D
 
 /** Карточка вещи каталога. `action` — кнопка под карточкой. */
 export function ItemCard({ item, action, showGeo }: { item: CatalogItem; action?: ReactNode; showGeo?: boolean }) {
-  const sizes = unpack(item.sizes);
   const tags = unpack(item.tags).slice(0, 3);
   return (
     <div className={`flex flex-col overflow-hidden rounded-xl border border-line bg-surface ${item.inStock ? "" : "opacity-60"}`}>
@@ -69,12 +69,18 @@ export function ItemCard({ item, action, showGeo }: { item: CatalogItem; action?
           <span className="flex items-center gap-1 truncate"><ColorDot color={item.color} hex={item.colorHex} /><span className="truncate">{item.colorName}</span></span>
         </div>
         <div className="line-clamp-2 min-h-[2.5em] text-[13px] leading-tight">{item.name}</div>
-        {item.sku && <div className="text-[11px] text-muted" title="Артикул на бирке и на сайте магазина">арт. <span className="select-all font-mono">{item.sku}</span></div>}
+        {(item.sku || item.season) && (
+          <div className="flex flex-wrap gap-x-2 text-[11px] text-muted">
+            {item.sku && <span title="Артикул на бирке и на сайте магазина">арт. <span className="select-all font-mono">{item.sku}</span></span>}
+            {item.season && <span title="Сезон коллекции">{seasonLabel(item.season)}</span>}
+          </div>
+        )}
+        {item.composition && <div className="line-clamp-1 text-[11px] text-muted" title={item.composition}>{item.composition}</div>}
         <Price item={item} />
         <SpiritChips item={item} />
-        {(sizes.length > 0 || tags.length > 0) && (
+        {(item.sizesAt || tags.length > 0) && (
           <div className="flex flex-wrap gap-1 text-[11px] text-muted">
-            {sizes.length > 0 && <span className="rounded bg-ink/5 px-1.5 py-0.5">{sizes.join(" · ")}</span>}
+            <SizeGrid item={item} compact />
             {tags.map((t) => <span key={t} className="rounded bg-ink/5 px-1.5 py-0.5">{TAG_LABELS[t] ?? t}</span>)}
           </div>
         )}

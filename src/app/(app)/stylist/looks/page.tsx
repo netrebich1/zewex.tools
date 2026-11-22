@@ -5,7 +5,7 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Card, Empty, PageHeader } from "@/components/ui";
 import { StNav } from "@/components/stylist/StNav";
 import { ItemPhoto } from "@/components/stylist/ItemCard";
-import { createLook, deleteCollection, saveCollection } from "@/actions/stylist";
+import { createLook, deleteCollection, renameLook, saveCollection } from "@/actions/stylist";
 import { BASE_PATH, money } from "@/lib/stylist/consts";
 import { activeLook, canSee, listCollections, listLooks, lookTotals, type LookFull } from "@/lib/stylist/queries";
 
@@ -15,19 +15,24 @@ function LookCard({ look, active }: { look: LookFull; active: boolean }) {
   const t = lookTotals(look);
   const main = look.items.filter((p) => !p.parentId);
   return (
-    <Link href={`${BASE_PATH}/looks/${look.id}`} className="card card-hover flex flex-col gap-3 p-4">
-      <div className="grid grid-cols-4 gap-1.5">
+    <div className="card flex flex-col gap-3 p-4">
+      <Link href={`${BASE_PATH}/looks/${look.id}`} className="grid grid-cols-4 gap-1.5">
         {main.slice(0, 4).map((p) => <div key={p.id} className="aspect-[3/4] overflow-hidden rounded-lg bg-ink/5"><ItemPhoto item={p.item} /></div>)}
         {main.length === 0 && <div className="col-span-4 flex aspect-[4/1] items-center justify-center rounded-lg bg-ink/5 text-[13px] text-muted">пока пусто</div>}
-      </div>
+      </Link>
       <div>
-        <div className="flex items-center gap-2 font-semibold">{look.name}{active && <span className="badge bg-brand-soft text-warn">собирается</span>}</div>
+        <ActionForm action={renameLook} className="flex items-center gap-1.5" hidden={{ look: look.id }}>
+          <input name="name" defaultValue={look.name} maxLength={200} aria-label="Название образа" title="Название можно изменить прямо здесь" className="input !py-1.5 font-semibold" />
+          <SubmitButton className="btn-ghost btn-sm shrink-0" pendingText="…">Сохранить</SubmitButton>
+        </ActionForm>
+        {active && <span className="badge mt-1 bg-brand-soft text-warn">последний открытый</span>}
         <div className="mt-0.5 text-[13px] text-muted">
           {t.pieces} вещ.{main.length > 4 ? ` (+${main.length - 4} на фото не вошли)` : ""} · {t.native ? `${money(t.native.sum, t.native.currency)} ≈ ` : ""}{money(t.eur, "EUR")}
           {t.outOfStock > 0 && <span className="text-danger"> · нет в наличии: {t.outOfStock}</span>}
         </div>
+        <Link href={`${BASE_PATH}/looks/${look.id}`} className="mt-2 inline-block text-[13px] font-medium underline">Открыть образ →</Link>
       </div>
-    </Link>
+    </div>
   );
 }
 

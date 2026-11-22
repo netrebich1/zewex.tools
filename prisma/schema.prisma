@@ -4093,6 +4093,8 @@ model StStore {
   lastScanAt    DateTime?
   lockedBy      String?   @db.VarChar(100)
   itemCount     Int       @default(0)
+  /// Обычные магазины бренда в стране: { customerService: {phone, email, note}, branches: [{name, address, phone, email, hours, note, source}] }
+  contacts      Json?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   items         StItem[]
@@ -4132,9 +4134,23 @@ model StItem {
   /// Размеры в наличии: «|S|M|L|» — поиск по вхождению «|M|»; пусто — ещё не загружены
   sizes       String       @default("") @db.VarChar(400)
   sizesAt     DateTime?
+  /// Вся размерная сетка вещи: «|XS|S|M|L|XL|» (в наличии — те, что в sizes)
+  sizesAll    String       @default("") @db.VarChar(400)
+  /// Размеры, которых осталось мало: «|XL|»
+  sizesLow    String       @default("") @db.VarChar(400)
   /// Фасон, материал, детали: «|oversize|leather|» (TAGS)
   tags        String       @default("") @db.VarChar(400)
   inStock     Boolean      @default(true)
+  /// Сезон коллекции из артикула магазина: «I2026» — осень–зима 2026, «V2026» — весна–лето
+  season      String       @default("") @db.VarChar(12)
+  /// Состав ткани строкой: «хлопок 55%, полиамид 33%» (как у магазина)
+  composition String       @default("") @db.VarChar(500)
+  /// Описание вещи с сайта магазина
+  description String?      @db.Text
+  /// Страна производства
+  madeIn      String       @default("") @db.VarChar(60)
+  /// Когда вещь появилась на сайте магазина (если магазин отдаёт дату)
+  storeDate   DateTime?
   /// «В духе брендов»: «|prada|chanel|» (id из src/lib/stylist/brands.json) — для фильтра
   spirit      String       @default("") @db.VarChar(200)
   /// Метки подробно: [{brand, source: rule | ai, level: spirit | lookalike, score, icon, why}]

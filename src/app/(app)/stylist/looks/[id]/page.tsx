@@ -5,18 +5,18 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Alert, Card, Empty, PageHeader } from "@/components/ui";
 import { StNav } from "@/components/stylist/StNav";
+import { SizeGrid } from "@/components/stylist/Sizes";
+import { StoreContacts, branchCount } from "@/components/stylist/StoreContacts";
 import { ColorDot, ItemPhoto, Price, SpiritChips } from "@/components/stylist/ItemCard";
 import { activateLook, checkSpirit, copyLook, deleteLook, lookPieceAction, saveLook } from "@/actions/stylist";
-import { BASE_PATH, CATEGORY_LABELS, GEO_LABELS, SEGMENT_LABELS, money, unpack } from "@/lib/stylist/consts";
+import { BASE_PATH, CATEGORY_LABELS, GEO_LABELS, SEGMENT_LABELS, money, seasonLabel } from "@/lib/stylist/consts";
 import { activeLook, canSee, getLook, listCollections, lookTotals, type LookPiece } from "@/lib/stylist/queries";
 import { fmtDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 function Sizes({ piece }: { piece: LookPiece }) {
-  const sizes = unpack(piece.item.sizes);
-  if (!piece.item.sizesAt) return <span className="text-muted">размеры ещё не загружены</span>;
-  return sizes.length ? <span>Размеры в наличии: <b>{sizes.join(" · ")}</b></span> : <span className="text-danger">размеров в наличии нет</span>;
+  return <span className="flex flex-wrap items-center gap-1.5">{piece.item.sizesAt ? "Размеры:" : ""} <SizeGrid item={piece.item} /></span>;
 }
 
 function PieceActions({ piece, analog }: { piece: LookPiece; analog?: boolean }) {
@@ -28,7 +28,7 @@ function PieceActions({ piece, analog }: { piece: LookPiece; analog?: boolean })
           <SubmitButton className="btn-ghost btn-sm" pendingText="…">Сделать основной</SubmitButton>
         </ActionForm>
       )}
-      {piece.item.store.adapter === "zara" && (
+      {(piece.item.store.adapter === "zara" || piece.item.store.adapter === "itx") && (
         <ActionForm action={lookPieceAction} className="" hidden={{ piece: piece.id, op: "sizes" }}>
           <SubmitButton className="btn-ghost btn-sm" pendingText="Проверяю…">Проверить размеры</SubmitButton>
         </ActionForm>
@@ -107,8 +107,22 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
                     <div className="text-[16px] font-semibold leading-snug">{p.item.name}</div>
                     <div className="text-[13px] text-muted">
                       {p.item.sku && <>Артикул: <span className="select-all font-mono text-ink">{p.item.sku}</span> · </>}
-                      наличие проверено {fmtDate(p.item.sizesAt ?? p.item.lastSeenAt)}
+                      наличие в интернет-магазине проверено {fmtDate(p.item.sizesAt ?? p.item.lastSeenAt)}
                     </div>
+                    {(p.item.season || p.item.composition || p.item.madeIn || p.item.storeDate) && (
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[13px] text-ink-2">
+                        {p.item.season && <span>Сезон: {seasonLabel(p.item.season)}</span>}
+                        {p.item.storeDate && <span>На сайте с {fmtDate(p.item.storeDate)}</span>}
+                        {p.item.composition && <span>Состав: {p.item.composition}</span>}
+                        {p.item.madeIn && <span>Сделано: {p.item.madeIn}</span>}
+                      </div>
+                    )}
+                    {p.item.description && (
+                      <details className="text-[13px]">
+                        <summary className="cursor-pointer text-muted">Описание магазина</summary>
+                        <p className="mt-1 leading-relaxed text-ink-2">{p.item.description}</p>
+                      </details>
+                    )}
                     <Price item={p.item} />
                     <SpiritChips item={p.item} />
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
@@ -117,6 +131,13 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
                       {!p.item.inStock && <span className="font-medium text-danger">нет в наличии</span>}
                     </div>
                     <PieceActions piece={p} />
+                    {branchCount(p.item.store.contacts) > 0 && (
+                      <details className="rounded-lg border border-line px-3 py-2">
+                        <summary className="cursor-pointer text-[13px] font-medium">Уточнить наличие в магазине: {branchCount(p.item.store.contacts)} адр.</summary>
+                        <p className="help my-2">Назовите артикул{p.item.sku ? ` ${p.item.sku}` : ""} и размер. Письмо по нажатию на почту уже заполнено — останется вписать размер.</p>
+                        <StoreContacts contacts={p.item.store.contacts} ask={{ brand: p.item.store.brand, name: p.item.name, sku: p.item.sku, color: p.item.colorName, url: p.item.url }} />
+                      </details>
+                    )}
                     <div className="mt-2 border-t border-line pt-3">
                       <div className="mb-2 flex flex-wrap items-center gap-3">
                         <span className="text-[13px] font-semibold">Аналоги{analogs.length ? `: ${analogs.length}` : ""}</span>

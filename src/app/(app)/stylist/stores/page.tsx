@@ -2,8 +2,9 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { Badge, Card, Empty, Field, PageHeader } from "@/components/ui";
+import { Alert, Badge, Card, Empty, Field, PageHeader } from "@/components/ui";
 import { StNav } from "@/components/stylist/StNav";
+import { StoreContacts, branchCount } from "@/components/stylist/StoreContacts";
 import { saveStore, scanStoreNow } from "@/actions/stylist";
 import { GEOS, SEGMENTS, SEGMENT_LABELS } from "@/lib/stylist/consts";
 import { ADAPTERS } from "@/lib/stylist/scan";
@@ -17,13 +18,20 @@ export default async function StylistStores() {
   if (!(await canSee(me))) return <Empty title="Нет доступа" hint="«Стилист» открыт команде Zewex." />;
   const stores = await prisma.stStore.findMany({ orderBy: [{ geo: "asc" }, { adapter: "asc" }, { name: "asc" }] });
   const segOrder = SEGMENTS.map((s) => s.id as string);
+  const running = stores.filter((s) => s.scanStatus === "running");
+  const queued = stores.filter((s) => ADAPTERS[s.adapter]?.auto && s.scanStatus !== "running" && (s.scanAsked || (s.isActive && !s.lastScanAt)));
   return (
     <>
       <StNav />
       <PageHeader
         title="Магазины"
-        subtitle="Какие магазины есть в каталоге. «Собирается сам» — каталог обновляется раз в сутки; у остальных вещи добавляются по ссылке, пока для магазина не сделан свой сбор."
+        subtitle="Какие магазины есть в каталоге. «Собирается сам» — каталог с ценами, размерами и наличием обновляется раз в сутки автоматически. «По ссылке» — сайт магазина закрыт от автоматического сбора или интернет-магазина нет: вещи из него добавляются вручную на вкладке «Добавить вещь»."
       />
+      {running.length > 0 ? (
+        <div className="mb-4"><Alert tone="warn">Сейчас собирается: {running.map((s) => `${s.name} (${s.scanNote ?? "идёт сбор"})`).join("; ")}. В очереди: {queued.length ? queued.map((s) => s.name).join(", ") : "никого"}. Магазины собираются по одному; обновите страницу, чтобы увидеть продвижение.</Alert></div>
+      ) : (
+        <div className="mb-4"><Alert tone="ok">Сейчас сбор не идёт: все автоматические магазины собраны. Следующее обновление — через сутки после предыдущего или по кнопке «Обновить сейчас».</Alert></div>
+      )}
       {GEOS.map((g) => {
         const list = stores.filter((s) => s.geo === g.id).sort((a, b) => Number(ADAPTERS[b.adapter]?.auto ?? false) - Number(ADAPTERS[a.adapter]?.auto ?? false) || segOrder.indexOf(a.segment) - segOrder.indexOf(b.segment) || a.name.localeCompare(b.name));
         return (
@@ -40,6 +48,12 @@ export default async function StylistStores() {
                           <td>
                             <div className="font-medium">{s.name}</div>
                             {s.baseUrl && <a href={s.baseUrl} target="_blank" rel="noreferrer noopener" className="text-[12px] text-muted underline">{s.baseUrl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}</a>}
+                            {branchCount(s.contacts) > 0 && (
+                              <details className="mt-1 max-w-[420px] !whitespace-normal">
+                                <summary className="cursor-pointer text-[12px] font-medium">Адреса и телефоны: {branchCount(s.contacts)}</summary>
+                                <div className="mt-2"><StoreContacts contacts={s.contacts} /></div>
+                              </details>
+                            )}
                           </td>
                           <td>{SEGMENT_LABELS[s.segment] ?? s.segment}</td>
                           <td>{auto ? <Badge tone="ok">собирается сам</Badge> : <Badge>по ссылке</Badge>}</td>

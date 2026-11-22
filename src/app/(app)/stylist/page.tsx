@@ -11,7 +11,7 @@ import { queueSpirit } from "@/actions/stylist";
 import { BRANDS } from "@/lib/stylist/dna";
 import { ColorDot, ItemCard } from "@/components/stylist/ItemCard";
 import { BASE_PATH, CATEGORIES, COLORS, GEOS, SEGMENTS, SIZE_OPTIONS, TAGS, money } from "@/lib/stylist/consts";
-import { PAGE_SIZE, activeLook, canSee, filterQuery, listItems, lookChoices, looksOfItems, lookTotals, parseFilter } from "@/lib/stylist/queries";
+import { PAGE_SIZE, activeLook, canSee, filterQuery, listCollections, listItems, lookChoices, looksOfItems, lookTotals, parseFilter } from "@/lib/stylist/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +24,11 @@ export default async function StylistCatalog({ searchParams }: { searchParams: P
   const q = await searchParams;
   const f = parseFilter((k) => one(q, k), (k) => many(q, k));
   const analogId = (one(q, "analog") ?? "").slice(0, 40);
-  const [data, look, choices, analogPiece] = await Promise.all([
+  const [data, look, choices, collections, analogPiece] = await Promise.all([
     listItems(f),
     activeLook(me),
     lookChoices(me),
+    listCollections(me),
     analogId ? prisma.stLookItem.findUnique({ where: { id: analogId }, include: { item: { include: { store: true } }, look: { select: { id: true, name: true } } } }) : null,
   ]);
   const analog = analogPiece && !analogPiece.parentId ? analogPiece : null;
@@ -59,13 +60,13 @@ export default async function StylistCatalog({ searchParams }: { searchParams: P
         </div>
       ) : look && totals ? (
         <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-line bg-brand-soft px-4 py-2.5 text-[14px]">
-          <span>Собираете образ: <b>{look.collection ? `${look.collection.name} → ` : ""}{look.name}</b></span>
+          <span>Последний образ: <b>{look.collection ? `${look.collection.name} → ` : ""}{look.name}</b></span>
           <span className="text-ink-2">{totals.pieces ? `${totals.pieces} вещ. · ${totals.native ? `${money(totals.native.sum, totals.native.currency)} ≈ ` : ""}${money(totals.eur, "EUR")}` : "пока пусто — нажимайте «В образ» на карточках"}</span>
           <Link href={`${BASE_PATH}/looks/${look.id}`} className="btn-primary btn-sm">Открыть образ</Link>
           <Link href={`${BASE_PATH}/looks`} className="text-[13px] text-muted underline">другой образ</Link>
         </div>
       ) : (
-        <div className="mb-4"><Alert>Нажмите «В новый образ» на любой вещи — образ создастся сам. Кнопка «⋯» рядом кладёт вещь в любой другой образ: список разбит по коллекциям, одна вещь может лежать в нескольких образах.</Alert></div>
+        <div className="mb-4"><Alert>Нажмите «＋ В образ» на любой вещи: откроется список коллекций и образов. Там же можно создать новый образ с названием и новую коллекцию. Одна вещь может лежать в нескольких образах.</Alert></div>
       )}
 
       <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -196,7 +197,7 @@ export default async function StylistCatalog({ searchParams }: { searchParams: P
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {data.rows.map((it) => (
-            <ItemCard key={it.id} item={it} action={analog ? <AddButton itemId={it.id} analog={analog.id} /> : <LookPicker itemId={it.id} looks={choices} activeId={look?.id ?? null} inLooks={inLooks[it.id] ?? []} />} />
+            <ItemCard key={it.id} item={it} action={analog ? <AddButton itemId={it.id} analog={analog.id} /> : <LookPicker itemId={it.id} itemName={`${it.store.brand} · ${it.name}`} looks={choices} collections={collections} activeId={look?.id ?? null} inLooks={inLooks[it.id] ?? []} />} />
           ))}
         </div>
       )}

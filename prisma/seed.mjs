@@ -544,6 +544,9 @@ if (stylistSection) {
   }
   // Магазины создаются один раз (по slug); дальше их правят на странице «Магазины».
   const stStores = JSON.parse(readFileSync(new URL("./seed-data/stylist-stores.json", import.meta.url), "utf8"));
+  // Адреса, телефоны, почты и часы обычных магазинов (ресерч) — обновляются из файла при каждом сиде.
+  let stContacts = {};
+  try { stContacts = JSON.parse(readFileSync(new URL("./seed-data/stylist-locations.json", import.meta.url), "utf8")); } catch { /* файла ещё нет */ }
   for (const s of stStores) {
     const auto = s.adapter && s.adapter !== "manual";
     const was = await prisma.stStore.findUnique({ where: { slug: s.slug }, select: { adapter: true } });
@@ -556,6 +559,7 @@ if (stylistSection) {
       update: {},
       create: { slug: s.slug, name: s.name, brand: s.brand ?? s.name, segment: s.segment, geo: s.geo, adapter: s.adapter ?? "manual", baseUrl: s.baseUrl ?? "", currency: s.currency ?? (s.geo === "UA" ? "UAH" : "EUR"), config: s.config ?? undefined, isActive: !!auto },
     });
+    if (stContacts[s.slug] && s.adapter !== "itx") await prisma.stStore.update({ where: { slug: s.slug }, data: { contacts: stContacts[s.slug] } });
   }
 }
 console.log("seed done");

@@ -97,7 +97,7 @@ export function filterWhere(f: Filter, skip: "store" | "cat" | "" = ""): Prisma.
   return { AND: and };
 }
 
-const ITEM_INCLUDE = { store: { select: { id: true, name: true, brand: true, segment: true, geo: true, adapter: true } } } satisfies Prisma.StItemInclude;
+const ITEM_INCLUDE = { store: { select: { id: true, name: true, brand: true, segment: true, geo: true, adapter: true, contacts: true } } } satisfies Prisma.StItemInclude;
 export type CatalogItem = Prisma.StItemGetPayload<{ include: typeof ITEM_INCLUDE }>;
 
 export async function listItems(f: Filter): Promise<{ rows: CatalogItem[]; total: number; byBrand: Array<{ brand: string; count: number }>; byCat: Record<string, number> }> {
@@ -153,11 +153,11 @@ export async function listCollections(me: CurrentUser): Promise<CollectionRow[]>
 }
 
 /** Список «коллекция → образы» для выбора, куда положить вещь (карточка каталога). */
-export type LookChoice = { id: string; name: string; collection: string };
+export type LookChoice = { id: string; name: string; collectionId: string; collection: string };
 
 export async function lookChoices(me: CurrentUser): Promise<LookChoice[]> {
-  const rows = await prisma.stLook.findMany({ where: await lookWhere(me), orderBy: [{ updatedAt: "desc" }], take: 300, select: { id: true, name: true, collection: { select: { name: true } } } });
-  return rows.map((r) => ({ id: r.id, name: r.name, collection: r.collection?.name ?? "" }));
+  const rows = await prisma.stLook.findMany({ where: await lookWhere(me), orderBy: [{ updatedAt: "desc" }], take: 300, select: { id: true, name: true, collectionId: true, collection: { select: { name: true } } } });
+  return rows.map((r) => ({ id: r.id, name: r.name, collectionId: r.collectionId ?? "", collection: r.collection?.name ?? "" }));
 }
 
 /** В каких образах уже лежит каждая из вещей (основной вещью): itemId → id образов. */

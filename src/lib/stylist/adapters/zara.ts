@@ -11,7 +11,7 @@ type ZCat = { id: number; name?: string; sectionName?: string; layout?: string |
 type ZMedia = { type?: string; url?: string };
 type ZColor = { id?: string; name?: string; price?: number; oldPrice?: number; availability?: string; xmedia?: ZMedia[]; sizes?: Array<{ name?: string; availability?: string }> };
 type ZProduct = {
-  id: number; type?: string; kind?: string; name?: string; price?: number; oldPrice?: number; sectionName?: string; familyName?: string; subfamilyName?: string;
+  id: number; reference?: string; type?: string; kind?: string; name?: string; price?: number; oldPrice?: number; sectionName?: string; familyName?: string; subfamilyName?: string;
   availability?: string; seo?: { keyword?: string; seoProductId?: string; discernProductId?: number };
   detail?: { colors?: ZColor[]; displayReference?: string }; availableColors?: Array<{ colorName?: string; hexColor?: string }>;
 };
@@ -79,6 +79,7 @@ export function zaraProducts(json: string, cfg: ZaraConfig, cat: { gender: strin
             sizes: null,
             inStock: availability === "in_stock" || availability === "low_on_stock",
             sku: p.detail?.displayReference ? `${p.detail.displayReference}/${c.id}` : "",
+            season: /-([IV]20\d\d)$/.exec(p.reference ?? "")?.[1] ?? "",
           });
         }
       }
@@ -88,14 +89,15 @@ export function zaraProducts(json: string, cfg: ZaraConfig, cat: { gender: strin
 }
 
 /** Размеры расцветки в наличии из карточки товара (url вещи + ajax). null — расцветка не найдена. */
-export function zaraSizes(json: string, extId: string): { sizes: string[]; inStock: boolean } | null {
+export function zaraSizes(json: string, extId: string): { sizes: string[]; all: string[]; low: string[]; inStock: boolean } | null {
   const data = JSON.parse(json) as { product?: { detail?: { colors?: ZColor[] } } };
   const colorId = extId.split("-")[1];
   const colors = data.product?.detail?.colors ?? [];
   const c = colors.find((x) => x.id === colorId) ?? (colors.length === 1 ? colors[0] : null);
   if (!c) return null;
   const sizes = (c.sizes ?? []).filter((s) => s.name && (s.availability === "in_stock" || s.availability === "low_on_stock")).map((s) => s.name!.trim());
-  return { sizes, inStock: sizes.length > 0 };
+  const named = (c.sizes ?? []).filter((s) => s.name);
+  return { sizes, all: [...new Set(named.map((s) => s.name!.trim()))], low: named.filter((s) => s.availability === "low_on_stock").map((s) => s.name!.trim()), inStock: sizes.length > 0 };
 }
 
 export async function scanZara(get: Getter, cfg: ZaraConfig, onProgress?: (done: number, total: number) => void): Promise<RawItem[]> {
