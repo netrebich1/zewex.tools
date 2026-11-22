@@ -6,9 +6,10 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Alert, Card, Empty, PageHeader } from "@/components/ui";
 import { StNav } from "@/components/stylist/StNav";
 import { ColorDot, ItemPhoto, Price, SpiritChips } from "@/components/stylist/ItemCard";
-import { activateLook, checkSpirit, deleteLook, lookPieceAction, saveLook } from "@/actions/stylist";
+import { activateLook, checkSpirit, copyLook, deleteLook, lookPieceAction, saveLook } from "@/actions/stylist";
 import { BASE_PATH, CATEGORY_LABELS, GEO_LABELS, SEGMENT_LABELS, money, unpack } from "@/lib/stylist/consts";
-import { activeLook, canSee, getLook, lookTotals, type LookPiece } from "@/lib/stylist/queries";
+import { activeLook, canSee, getLook, listCollections, lookTotals, type LookPiece } from "@/lib/stylist/queries";
+import { fmtDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
   const me = await requireUser();
   if (!(await canSee(me))) return <Empty title="Нет доступа" hint="«Стилист» открыт команде Zewex." />;
   const { id } = await params;
-  const [look, active] = await Promise.all([getLook(me, id), activeLook(me)]);
+  const [look, active, collections] = await Promise.all([getLook(me, id), activeLook(me), listCollections(me)]);
   if (!look) notFound();
   const t = lookTotals(look);
   const main = look.items.filter((p) => !p.parentId);
@@ -65,7 +66,7 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
       <StNav />
       <PageHeader
         title={look.name}
-        back={{ href: `${BASE_PATH}/looks`, label: "Все образы" }}
+        back={{ href: `${BASE_PATH}/looks`, label: look.collection ? `Коллекция «${look.collection.name}»` : "Все образы" }}
         actions={isActive ? <Link href={BASE_PATH} className="btn-primary">Добавить вещи из каталога</Link> : (
           <ActionForm action={activateLook} className="" hidden={{ look: look.id }}><SubmitButton>Собирать этот образ</SubmitButton></ActionForm>
         )}
@@ -104,6 +105,10 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
                       {p.item.store.brand} · {GEO_LABELS[p.item.store.geo] ?? p.item.store.geo} · {SEGMENT_LABELS[p.item.store.segment] ?? ""} · {CATEGORY_LABELS[p.item.category] ?? ""}
                     </div>
                     <div className="text-[16px] font-semibold leading-snug">{p.item.name}</div>
+                    <div className="text-[13px] text-muted">
+                      {p.item.sku && <>Артикул: <span className="select-all font-mono text-ink">{p.item.sku}</span> · </>}
+                      наличие проверено {fmtDate(p.item.sizesAt ?? p.item.lastSeenAt)}
+                    </div>
                     <Price item={p.item} />
                     <SpiritChips item={p.item} />
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
@@ -125,6 +130,7 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
                               <div className="flex min-w-0 flex-1 flex-col gap-1">
                                 <div className="text-[12px] font-semibold uppercase tracking-wide text-muted">{a.item.store.brand} · {GEO_LABELS[a.item.store.geo] ?? a.item.store.geo}</div>
                                 <div className="text-[14px] leading-snug">{a.item.name}</div>
+                                {a.item.sku && <div className="text-[12px] text-muted">Артикул: <span className="select-all font-mono text-ink">{a.item.sku}</span></div>}
                                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
                                   <Price item={a.item} />
                                   {a.item.priceEur > 0 && p.item.priceEur > 0 && a.item.priceEur !== p.item.priceEur && (
@@ -154,13 +160,20 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
         <div className="mt-4"><Alert>В образе вещи с ценами в разных валютах — сумма посчитана в евро по курсу дня, когда собирался каталог.</Alert></div>
       )}
 
-      <Card className="mt-5" title="Название и заметка">
+      <Card className="mt-5" title="Название, коллекция и заметка">
         <ActionForm action={saveLook} hidden={{ look: look.id }}>
           <input name="name" defaultValue={look.name} className="input" maxLength={200} />
+          <select name="collection" defaultValue={look.collectionId ?? ""} className="input">
+            <option value="">Без коллекции</option>
+            {collections.map((c) => <option key={c.id} value={c.id}>Коллекция: {c.name}</option>)}
+          </select>
           <textarea name="note" defaultValue={look.note ?? ""} rows={3} placeholder="Для кого образ, повод, что учесть" className="input" />
           <SubmitButton>Сохранить</SubmitButton>
         </ActionForm>
-        <div className="mt-4 border-t border-line pt-4">
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
+          <ActionForm action={copyLook} className="" hidden={{ look: look.id }}>
+            <SubmitButton className="btn-ghost btn-sm" pendingText="Копирую…">Сделать копию образа</SubmitButton>
+          </ActionForm>
           <ActionForm action={deleteLook} className="" hidden={{ look: look.id }}>
             <SubmitButton className="btn-danger btn-sm" confirm="Удалить образ? Вещи в каталоге останутся.">Удалить образ</SubmitButton>
           </ActionForm>

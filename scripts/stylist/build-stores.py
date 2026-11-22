@@ -6,6 +6,11 @@ import io, json, os, re
 AUTO = [
     {"slug": "zara-mt", "name": "Zara Мальта", "brand": "Zara", "segment": "mid", "geo": "MT", "adapter": "zara", "baseUrl": "https://www.zara.com/mt/en/", "currency": "EUR", "config": {"path": "mt/en"}},
     {"slug": "parfois-mt", "name": "Parfois Мальта", "brand": "Parfois", "segment": "mid", "geo": "MT", "adapter": "parfois", "baseUrl": "https://www.parfois.com/en/mt/", "currency": "EUR", "config": {"path": "en/mt", "locale": "en_MT", "country": "MT"}},
+    {"slug": "massimo-dutti-mt", "name": "Massimo Dutti", "brand": "Massimo Dutti", "segment": "premium", "geo": "MT", "adapter": "itx", "baseUrl": "https://www.massimodutti.com/mt/", "currency": "EUR", "config": {"host": "massimodutti.com", "storeId": "35009489", "path": "mt"}},
+    {"slug": "bershka-mt", "name": "Bershka", "brand": "Bershka", "segment": "mid", "geo": "MT", "adapter": "itx", "baseUrl": "https://www.bershka.com/mt/", "currency": "EUR", "config": {"host": "bershka.com", "storeId": "45109539", "path": "mt"}},
+    {"slug": "pullandbear-mt", "name": "Pull&Bear", "brand": "Pull&Bear", "segment": "mid", "geo": "MT", "adapter": "itx", "baseUrl": "https://www.pullandbear.com/mt/", "currency": "EUR", "config": {"host": "pullandbear.com", "storeId": "25009539", "path": "mt"}},
+    {"slug": "stradivarius-mt", "name": "Stradivarius", "brand": "Stradivarius", "segment": "mid", "geo": "MT", "adapter": "itx", "baseUrl": "https://www.stradivarius.com/mt/", "currency": "EUR", "config": {"host": "stradivarius.com", "storeId": "55009589", "path": "mt", "gender": "woman"}},
+    {"slug": "oysho-mt", "name": "Oysho", "brand": "Oysho", "segment": "mid", "geo": "MT", "adapter": "itx", "baseUrl": "https://www.oysho.com/mt/", "currency": "EUR", "config": {"host": "oysho.com", "storeId": "65009639", "path": "mt", "gender": "woman"}},
     {"slug": "zara-ua", "name": "Zara Украина", "brand": "Zara", "segment": "mid", "geo": "UA", "adapter": "zara", "baseUrl": "https://www.zara.com/ua/uk/", "currency": "UAH", "config": {"path": "ua/uk"}},
 ]
 
@@ -85,12 +90,8 @@ Matalan | budget |
 Sports Direct | budget | https://www.sportsdirect.mt/
 Mango | mid | https://shop.mango.com/mt/en
 H&M | mid | https://www2.hm.com/en_mt/
-Bershka | mid | https://www.bershka.com/mt/
-Pull&Bear | mid | https://www.pullandbear.com/mt/
-Stradivarius | mid | https://www.stradivarius.com/mt/
 Next | mid | https://www.next.com.mt/en
 Marks & Spencer | mid | https://retail.com.mt/
-Oysho | mid | https://www.oysho.com/mt/
 ASOS | mid | https://www.asos.com/
 Hudson Store | mid | https://hudsonstore.com/
 Nike | mid | https://hudsonstore.com/
@@ -116,7 +117,6 @@ Desigual | mid | https://www.desigual.com/en_MT/
 Levi's | mid |
 Victoria's Secret | mid |
 MVintage | mid |
-Massimo Dutti | premium | https://www.massimodutti.com/mt/
 Tommy Hilfiger | premium | https://hudsonstore.com/
 Calvin Klein | premium | https://hudsonstore.com/
 Guess | premium | https://www.guess.com/en-mt/

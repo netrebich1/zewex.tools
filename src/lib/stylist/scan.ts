@@ -12,6 +12,7 @@ import { mergeSpirits, ruleSpirit } from "./dna";
 import { shopGet } from "./net";
 import { scanZara, zaraSizes, type ZaraConfig } from "./adapters/zara";
 import { scanParfois, type ParfoisConfig } from "./adapters/parfois";
+import { scanItx, type ItxConfig } from "./adapters/itx";
 
 /** Автообновление магазина — раз в сутки. */
 export const SCAN_EVERY_MS = 24 * 3600_000;
@@ -20,6 +21,7 @@ const STALE_MS = 45 * 60_000;
 
 export const ADAPTERS: Record<string, { label: string; auto: boolean }> = {
   zara: { label: "Zara — каталог сайта", auto: true },
+  itx: { label: "Inditex — каталог сайта", auto: true },
   parfois: { label: "Parfois — каталог сайта", auto: true },
   manual: { label: "Вручную и по ссылке", auto: false },
 };
@@ -33,6 +35,9 @@ async function collect(store: StStore, onProgress: (d: number, t: number) => voi
   const cfg = (store.config ?? {}) as Record<string, string>;
   if (store.adapter === "zara") {
     return scanZara((url) => shopGet(url, { proxy: true, accept: "application/json" }), cfg as ZaraConfig, onProgress);
+  }
+  if (store.adapter === "itx") {
+    return scanItx((url) => shopGet(url, { proxy: true, accept: "application/json" }), cfg as unknown as ItxConfig, onProgress);
   }
   if (store.adapter === "parfois") {
     return scanParfois((url) => shopGet(url, { accept: "text/html,*/*;q=0.8" }), cfg as ParfoisConfig, onProgress);
@@ -74,7 +79,7 @@ export async function scanStore(store: StStore): Promise<{ total: number; fresh:
     const raw = await collect(store, (d, t) => {
       if (Date.now() - lastNote < 10_000) return;
       lastNote = Date.now();
-      void prisma.stStore.update({ where: { id: store.id }, data: { scanNote: `Собираю каталог: раздел ${d} из ${t}` } }).catch(() => {});
+      void prisma.stStore.update({ where: { id: store.id }, data: { scanNote: `Собираю каталог: ${d} из ${t}` } }).catch(() => {});
     });
     if (!raw.length) throw new Error("магазин не отдал ни одной вещи");
     const rate = await eurRate(store.currency);
@@ -87,6 +92,7 @@ export async function scanStore(store: StStore): Promise<{ total: number; fresh:
       return {
       ...mergeSpirits(ruleSpirit(it.name, category, color), old?.spiritData, !!old?.spiritAt),
       name: it.name.slice(0, 300),
+      sku: (it.sku ?? "").slice(0, 60),
       url: it.url.slice(0, 700),
       imageUrl: it.imageUrl.slice(0, 700),
       images: (it.images ?? []).filter((u) => u.length <= 700) as Prisma.InputJsonValue,
@@ -100,7 +106,7 @@ export async function scanStore(store: StStore): Promise<{ total: number; fresh:
       colorName: (it.colorName ?? "").slice(0, 80),
       color,
       colorHex: (it.colorHex ?? "").slice(0, 8),
-      tags: pack(classifyTags(it.name, it.rawCategory)).slice(0, 400),
+      tags: pack(classifyTags(it.name)).slice(0, 400),
       inStock: it.inStock !== false,
       lastSeenAt: startedAt,
       ...(it.sizes ? { sizes: pack(it.sizes).slice(0, 400), sizesAt: startedAt } : {}),

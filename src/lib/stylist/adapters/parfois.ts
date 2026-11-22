@@ -57,6 +57,7 @@ export function parfoisTiles(html: string, cfg: ParfoisConfig): RawItem[] {
       colorHex: "",
       sizes: null,
       inStock: !/sold-out|out-of-stock|js_soldout/i.test(part.slice(0, 600)),
+      sku: pid.replace(/-\d+$/, "").replace("_", " "),
     });
   }
   return out;

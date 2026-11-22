@@ -89,7 +89,7 @@ export function filterWhere(f: Filter, skip: "store" | "cat" | "" = ""): Prisma.
   if (f.size) and.push({ sizes: { contains: `|${f.size}|` } });
   if (f.spirit) and.push(f.spirit === "any" ? { spirit: { not: "" } } : { spirit: { contains: `|${f.spirit}|` } });
   for (const t of f.tags) and.push({ tags: { contains: `|${t}|` } });
-  if (f.q) and.push({ OR: [{ name: { contains: f.q } }, { colorName: { contains: f.q } }, { rawCategory: { contains: f.q } }] });
+  if (f.q) and.push({ OR: [{ name: { contains: f.q } }, { sku: { contains: f.q } }, { colorName: { contains: f.q } }, { rawCategory: { contains: f.q } }] });
   if (f.pmin != null) and.push({ priceEur: { gte: f.pmin } });
   if (f.pmax != null) and.push({ priceEur: { lte: f.pmax } });
   if (!f.all) and.push({ inStock: true });
@@ -126,6 +126,7 @@ export async function listItems(f: Filter): Promise<{ rows: CatalogItem[]; total
 /* ---------- Образы ---------- */
 
 const LOOK_INCLUDE = {
+  collection: { select: { id: true, name: true } },
   items: { orderBy: [{ order: "asc" }, { createdAt: "asc" }], include: { item: { include: ITEM_INCLUDE } } },
 } satisfies Prisma.StLookInclude;
 export type LookFull = Prisma.StLookGetPayload<{ include: typeof LOOK_INCLUDE }>;
@@ -142,7 +143,30 @@ export async function getLook(me: CurrentUser, id: string): Promise<LookFull | n
 }
 
 export async function listLooks(me: CurrentUser): Promise<LookFull[]> {
-  return prisma.stLook.findMany({ where: await lookWhere(me), orderBy: { updatedAt: "desc" }, take: 200, include: LOOK_INCLUDE });
+  return prisma.stLook.findMany({ where: await lookWhere(me), orderBy: { updatedAt: "desc" }, take: 300, include: LOOK_INCLUDE });
+}
+
+export type CollectionRow = { id: string; name: string; note: string | null };
+
+export async function listCollections(me: CurrentUser): Promise<CollectionRow[]> {
+  return prisma.stCollection.findMany({ where: me.role === "ADMIN" ? {} : { teamId: (await teamId()) ?? "-" }, orderBy: { createdAt: "desc" }, take: 200, select: { id: true, name: true, note: true } });
+}
+
+/** Список «коллекция → образы» для выбора, куда положить вещь (карточка каталога). */
+export type LookChoice = { id: string; name: string; collection: string };
+
+export async function lookChoices(me: CurrentUser): Promise<LookChoice[]> {
+  const rows = await prisma.stLook.findMany({ where: await lookWhere(me), orderBy: [{ updatedAt: "desc" }], take: 300, select: { id: true, name: true, collection: { select: { name: true } } } });
+  return rows.map((r) => ({ id: r.id, name: r.name, collection: r.collection?.name ?? "" }));
+}
+
+/** В каких образах уже лежит каждая из вещей (основной вещью): itemId → id образов. */
+export async function looksOfItems(me: CurrentUser, itemIds: string[]): Promise<Record<string, string[]>> {
+  if (!itemIds.length) return {};
+  const rows = await prisma.stLookItem.findMany({ where: { itemId: { in: itemIds }, parentId: null, look: await lookWhere(me) }, select: { itemId: true, lookId: true } });
+  const out: Record<string, string[]> = {};
+  for (const r of rows) (out[r.itemId] ??= []).push(r.lookId);
+  return out;
 }
 
 /** Образ, в который сейчас складываются вещи из каталога (cookie); null — не выбран или удалён. */

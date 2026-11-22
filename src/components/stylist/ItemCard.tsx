@@ -69,6 +69,7 @@ export function ItemCard({ item, action, showGeo }: { item: CatalogItem; action?
           <span className="flex items-center gap-1 truncate"><ColorDot color={item.color} hex={item.colorHex} /><span className="truncate">{item.colorName}</span></span>
         </div>
         <div className="line-clamp-2 min-h-[2.5em] text-[13px] leading-tight">{item.name}</div>
+        {item.sku && <div className="text-[11px] text-muted" title="Артикул на бирке и на сайте магазина">арт. <span className="select-all font-mono">{item.sku}</span></div>}
         <Price item={item} />
         <SpiritChips item={item} />
         {(sizes.length > 0 || tags.length > 0) && (

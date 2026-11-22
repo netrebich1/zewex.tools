@@ -28,7 +28,8 @@ export async function createLook(_p: FormState, f: FormData): Promise<FormState>
   let id: string;
   try {
     await assertSee(me);
-    const look = await prisma.stLook.create({ data: { name: str(f, "name").slice(0, 200) || `Образ от ${new Date().toLocaleDateString("ru-RU")}`, teamId: await teamId(), createdById: me.id } });
+    const col = str(f, "collection") ? await prisma.stCollection.findUnique({ where: { id: str(f, "collection") }, select: { id: true } }) : null;
+    const look = await prisma.stLook.create({ data: { name: str(f, "name").slice(0, 200) || `Образ от ${new Date().toLocaleDateString("ru-RU")}`, teamId: await teamId(), createdById: me.id, collectionId: col?.id ?? null } });
     await setActive(look.id);
     id = look.id;
   } catch (e) {
@@ -45,7 +46,8 @@ export async function saveLook(_p: FormState, f: FormData): Promise<FormState> {
     if (!look) throw new Error("Образ не найден");
     const name = str(f, "name").slice(0, 200);
     if (!name) throw new Error("Дайте образу название");
-    await prisma.stLook.update({ where: { id: look.id }, data: { name, note: str(f, "note").slice(0, 5000) || null } });
+    const col = str(f, "collection") ? await prisma.stCollection.findUnique({ where: { id: str(f, "collection") }, select: { id: true } }) : null;
+    await prisma.stLook.update({ where: { id: look.id }, data: { name, note: str(f, "note").slice(0, 5000) || null, collectionId: col?.id ?? null } });
     revalidatePath(BASE_PATH, "layout");
     return { ok: "Сохранено" };
   } catch (e) {
@@ -85,7 +87,7 @@ export async function activateLook(_p: FormState, f: FormData): Promise<FormStat
  * Вещь из каталога — в образ. Без `analog` — основной вещью в образ `look` (или в собираемый; нет его — создаётся новый).
  * С `analog` (id основной вещи образа) — аналогом к ней. Вызывается кнопкой карточки, поэтому возвращает итог, а не редирект.
  */
-export async function addToLook(itemId: string, opts: { analog?: string; look?: string } = {}): Promise<{ ok?: string; error?: string; lookId?: string }> {
+export async function addToLook(itemId: string, opts: { analog?: string; look?: string; fresh?: boolean } = {}): Promise<{ ok?: string; error?: string; lookId?: string }> {
   const me = await requireUser();
   try {
     await assertSee(me);
@@ -103,13 +105,15 @@ export async function addToLook(itemId: string, opts: { analog?: string; look?: 
       return { ok: "Добавлено как аналог", lookId: look.id };
     }
     const cookieId = (await cookies()).get(LOOK_COOKIE)?.value;
-    let look = (opts.look ? await getLook(me, opts.look) : null) ?? (cookieId ? await getLook(me, cookieId) : null);
+    // fresh — новый образ; look — выбранный в списке (собираемый образ при этом не меняется); иначе — собираемый.
+    let look = opts.fresh ? null : ((opts.look ? await getLook(me, opts.look) : null) ?? (cookieId ? await getLook(me, cookieId) : null));
+    const picked = !!opts.look && look?.id === opts.look && look.id !== cookieId;
     if (!look) {
       const made = await prisma.stLook.create({ data: { name: `Образ от ${new Date().toLocaleDateString("ru-RU")}`, teamId: await teamId(), createdById: me.id } });
       look = await getLook(me, made.id);
       if (!look) throw new Error("Не удалось создать образ");
     }
-    await setActive(look.id);
+    if (!picked) await setActive(look.id);
     if (look.items.some((p) => !p.parentId && p.itemId === itemId)) return { ok: "Уже в образе", lookId: look.id };
     await prisma.stLookItem.create({ data: { lookId: look.id, itemId, order: look.items.length } });
     await prisma.stLook.update({ where: { id: look.id }, data: { updatedAt: new Date() } });
@@ -154,6 +158,62 @@ export async function lookPieceAction(_p: FormState, f: FormData): Promise<FormS
     if (e instanceof BlockedError) return { error: "Магазин сейчас не отвечает на запрос размеров — попробуйте позже" };
     return fail(e);
   }
+}
+
+/* ---------- Коллекции образов ---------- */
+
+export async function saveCollection(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  try {
+    await assertSee(me);
+    const name = str(f, "name").slice(0, 200);
+    if (!name) throw new Error("Дайте коллекции название");
+    const note = str(f, "note").slice(0, 2000) || null;
+    const id = str(f, "collection");
+    if (id) await prisma.stCollection.update({ where: { id }, data: { name, note } });
+    else await prisma.stCollection.create({ data: { name, note, teamId: await teamId(), createdById: me.id } });
+    revalidatePath(BASE_PATH, "layout");
+    return { ok: id ? "Сохранено" : `Коллекция «${name}» создана` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Удаляется только коллекция: её образы остаются и переходят в «Без коллекции». */
+export async function deleteCollection(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  try {
+    await assertSee(me);
+    await prisma.stCollection.delete({ where: { id: str(f, "collection") } });
+    revalidatePath(BASE_PATH, "layout");
+    return { ok: "Коллекция удалена, образы остались в «Без коллекции»" };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Копия образа (со всеми вещами и аналогами) — чтобы сделать вариант, не трогая исходный. */
+export async function copyLook(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  let id: string;
+  try {
+    await assertSee(me);
+    const look = await getLook(me, str(f, "look"));
+    if (!look) throw new Error("Образ не найден");
+    const made = await prisma.stLook.create({ data: { name: `${look.name} — копия`.slice(0, 200), note: look.note, teamId: look.teamId, collectionId: look.collectionId, createdById: me.id } });
+    const map = new Map<string, string>();
+    for (const p of look.items.filter((x) => !x.parentId)) {
+      map.set(p.id, (await prisma.stLookItem.create({ data: { lookId: made.id, itemId: p.itemId, order: p.order } })).id);
+    }
+    for (const a of look.items.filter((x) => x.parentId && map.has(x.parentId))) {
+      await prisma.stLookItem.create({ data: { lookId: made.id, itemId: a.itemId, parentId: map.get(a.parentId!)!, order: a.order } });
+    }
+    id = made.id;
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath(BASE_PATH, "layout");
+  redirect(`${BASE_PATH}/looks/${id}`);
 }
 
 /* ---------- «В духе бренда» (ИИ по фото) ---------- */

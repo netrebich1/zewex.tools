@@ -13,7 +13,7 @@ type ZColor = { id?: string; name?: string; price?: number; oldPrice?: number; a
 type ZProduct = {
   id: number; type?: string; kind?: string; name?: string; price?: number; oldPrice?: number; sectionName?: string; familyName?: string; subfamilyName?: string;
   availability?: string; seo?: { keyword?: string; seoProductId?: string; discernProductId?: number };
-  detail?: { colors?: ZColor[] }; availableColors?: Array<{ colorName?: string; hexColor?: string }>;
+  detail?: { colors?: ZColor[]; displayReference?: string }; availableColors?: Array<{ colorName?: string; hexColor?: string }>;
 };
 
 const GENDER: Record<string, string> = { WOMAN: "woman", MAN: "man", KID: "kids" };
@@ -78,6 +78,7 @@ export function zaraProducts(json: string, cfg: ZaraConfig, cat: { gender: strin
             colorHex: hexByName.get((c.name ?? "").toLowerCase()) ?? "",
             sizes: null,
             inStock: availability === "in_stock" || availability === "low_on_stock",
+            sku: p.detail?.displayReference ? `${p.detail.displayReference}/${c.id}` : "",
           });
         }
       }

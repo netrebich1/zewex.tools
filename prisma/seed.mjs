@@ -546,6 +546,11 @@ if (stylistSection) {
   const stStores = JSON.parse(readFileSync(new URL("./seed-data/stylist-stores.json", import.meta.url), "utf8"));
   for (const s of stStores) {
     const auto = s.adapter && s.adapter !== "manual";
+    const was = await prisma.stStore.findUnique({ where: { slug: s.slug }, select: { adapter: true } });
+    if (was && auto && was.adapter === "manual") {
+      await prisma.stStore.update({ where: { slug: s.slug }, data: { adapter: s.adapter, config: s.config ?? undefined, baseUrl: s.baseUrl ?? "", isActive: true } });
+      console.log(`stylist: ${s.slug} → автосбор (${s.adapter})`);
+    }
     await prisma.stStore.upsert({
       where: { slug: s.slug },
       update: {},

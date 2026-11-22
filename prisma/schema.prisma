@@ -4076,7 +4076,7 @@ model StStore {
   segment       String    @default("mid") @db.VarChar(12)
   /// Страна: MT | UA
   geo           String    @db.VarChar(4)
-  /// zara | parfois | manual (вещи добавляются по ссылке или вручную)
+  /// zara | itx (Massimo Dutti, Bershka, Pull&Bear, Stradivarius, Oysho) | parfois | manual (вещи добавляются по ссылке или вручную)
   adapter       String    @db.VarChar(20)
   baseUrl       String    @default("") @db.VarChar(300)
   currency      String    @default("EUR") @db.VarChar(4)
@@ -4107,6 +4107,8 @@ model StItem {
   /// id товара у магазина (с цветом)
   extId       String       @db.VarChar(120)
   name        String       @db.VarChar(300)
+  /// Артикул, как на бирке и на сайте магазина («6775/126/422») — чтобы найти вещь в магазине
+  sku         String       @default("") @db.VarChar(60)
   url         String       @db.VarChar(700)
   /// Фото не хранится у нас — ссылка на картинку магазина
   imageUrl    String       @default("") @db.VarChar(700)
@@ -4158,10 +4160,27 @@ model StItem {
   @@index([spiritAsked])
 }
 
+/// Коллекция (подборка) образов: «Осень — Анна», «Капсула офис»
+model StCollection {
+  id          String   @id @default(uuid()) @db.Char(36)
+  teamId      String?
+  name        String   @db.VarChar(200)
+  note        String?  @db.Text
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  looks       StLook[]
+
+  @@index([teamId, updatedAt])
+}
+
 /// Сохранённый образ команды
 model StLook {
   id          String       @id @default(uuid()) @db.Char(36)
   teamId      String?
+  /// Коллекция образа; пусто — «Без коллекции»
+  collectionId String?     @db.Char(36)
+  collection  StCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
   name        String       @db.VarChar(200)
   note        String?      @db.Text
   createdById String?
@@ -4170,6 +4189,7 @@ model StLook {
   items       StLookItem[]
 
   @@index([teamId, updatedAt])
+  @@index([collectionId])
 }
 
 /// Вещь образа. parentId пуст — основная вещь; заполнен — аналог к основной вещи этого образа
