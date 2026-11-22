@@ -37,6 +37,19 @@ function Fit({ client, piece }: { client: ClientSizes; piece: LookPiece }) {
   return <span className="text-[13px] font-medium text-danger">{f.state === "out" ? `Размера клиента ${f.size} сейчас нет в наличии` : `В размерной сетке вещи нет размера клиента (${f.size})`}</span>;
 }
 
+/** Что прислало расширение со страницы магазина: в каких магазинах есть вещь (город и размеры, по которым искали). */
+function StoreStock({ piece }: { piece: LookPiece }) {
+  const s = piece.item.storeStock as { at?: string; city?: string; sizes?: string[]; stores?: string[]; none?: boolean } | null;
+  if (!s?.at) return null;
+  return (
+    <div className={`rounded-lg px-3 py-2 text-[13px] ${s.none ? "bg-danger-soft text-danger" : "bg-ok-soft text-ok"}`}>
+      <b>{s.none ? "В магазинах поблизости нет" : `Есть в магазинах: ${(s.stores ?? []).length}`}</b>
+      <span className="text-ink-2"> · {[s.city && `город ${s.city}`, s.sizes?.length && `размеры ${s.sizes.join(", ")}`, `проверено на сайте магазина ${fmtDate(s.at)}`].filter(Boolean).join(" · ")}</span>
+      {!s.none && <ul className="mt-1 list-disc pl-5 text-ink">{(s.stores ?? []).map((x) => <li key={x}>{x}</li>)}</ul>}
+    </div>
+  );
+}
+
 /** Отметка стилиста: есть ли вещь в обычном магазине (после звонка, письма или проверки на сайте магазина). */
 function InStore({ piece }: { piece: LookPiece }) {
   return (
@@ -131,7 +144,7 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
       {client && (
         <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-line bg-surface px-4 py-2.5 text-[14px]">
           <span>Клиент: <Link href={`${BASE_PATH}/clients/${client.id}`} className="font-semibold underline">{client.name}</Link>{!look.client && look.collection ? <span className="text-muted"> (по коллекции)</span> : null}</span>
-          <span className="text-ink-2">{[client.height && `рост ${client.height}`, client.sizeTop && `верх ${client.sizeTop}`, client.sizeBottom && `низ ${client.sizeBottom}`, client.sizeShoes && `обувь ${client.sizeShoes}`].filter(Boolean).join(" · ") || "размеры в карточке не указаны"}</span>
+          <span className="text-ink-2">{[client.city && `город ${client.city}`, client.height && `рост ${client.height}`, client.sizeTop && `верх ${client.sizeTop}`, client.sizeBottom && `низ ${client.sizeBottom}`, client.sizeShoes && `обувь ${client.sizeShoes}`].filter(Boolean).join(" · ") || "размеры в карточке не указаны"}</span>
           {client.budget ? <span className={t.eur > client.budget ? "font-medium text-danger" : "text-ok"}>бюджет {money(client.budget, "EUR")}: {t.eur > client.budget ? `превышен на ${money(Math.round((t.eur - client.budget) * 100) / 100, "EUR")}` : "укладываемся"}</span> : null}
         </div>
       )}
@@ -198,6 +211,7 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
                     <WantedSize piece={p} />
                     {client && <Fit client={client} piece={p} />}
                     <InStore piece={p} />
+                    <StoreStock piece={p} />
                     <PieceActions piece={p} />
                     {branchCount(p.item.store.contacts) > 0 && (
                       <details className="rounded-lg border border-line px-3 py-2">

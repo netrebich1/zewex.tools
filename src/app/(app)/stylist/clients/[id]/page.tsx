@@ -33,6 +33,7 @@ export default async function StylistClient({ params }: { params: Promise<{ id: 
             <Field label="Имя"><input name="name" defaultValue={c.name} required maxLength={200} className="input" /></Field>
             <Field label="Рост, см"><input name="height" defaultValue={c.height ?? ""} inputMode="numeric" className="input" /></Field>
             <Field label="Вес, кг"><input name="weight" defaultValue={c.weight ?? ""} inputMode="decimal" className="input" /></Field>
+            <Field label="Город" hint="где проверять наличие в магазинах"><input name="city" defaultValue={c.city} maxLength={80} placeholder="Sliema" className="input" /></Field>
             <Field label="Бюджет на образ, €"><input name="budget" defaultValue={c.budget ?? ""} inputMode="decimal" className="input" /></Field>
             <Field label="Размер верха" hint="куртки, свитеры, рубашки, платья"><input name="sizeTop" defaultValue={c.sizeTop} maxLength={40} placeholder="S, 36" className="input" /></Field>
             <Field label="Размер низа" hint="брюки, джинсы, юбки"><input name="sizeBottom" defaultValue={c.sizeBottom} maxLength={40} placeholder="M, 38" className="input" /></Field>

@@ -9,6 +9,7 @@ const ITEMS = [
   { href: "/stylist/brands", label: "ДНК брендов" },
   { href: "/stylist/add", label: "Добавить вещь" },
   { href: "/stylist/stores", label: "Магазины" },
+  { href: "/stylist/extension", label: "Расширение" },
 ];
 
 /** Подменю инструмента «Стилист» (пилюли под шапкой портала). */

@@ -205,6 +205,22 @@ export async function lookPieceAction(_p: FormState, f: FormData): Promise<FormS
   }
 }
 
+/* ---------- Расширение Chrome ---------- */
+
+/** Новый токен расширения: показывается один раз в сообщении формы. */
+export async function issueExtToken(_p: FormState, _f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  try {
+    await assertSee(me);
+    const { issueToken } = await import("@/lib/stylist/ext");
+    const token = await issueToken(me.id);
+    revalidatePath(`${BASE_PATH}/extension`);
+    return { ok: `Токен (скопируйте сейчас, больше он не покажется): ${token}` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 /* ---------- Избранное ---------- */
 
 export async function toggleFav(itemId: string): Promise<{ fav?: boolean; error?: string }> {
@@ -239,7 +255,7 @@ export async function saveClient(_p: FormState, f: FormData): Promise<FormState>
       const measures: Record<string, string> = {};
       for (const [k, v] of f.entries()) if (k.startsWith("m_") && String(v).trim()) measures[k.slice(2)] = String(v).trim().slice(0, 10);
       const height = num("height");
-      await prisma.stClient.update({ where: { id }, data: { name, note: str(f, "note").slice(0, 5000) || null, height: height ? Math.round(height) : null, weight: num("weight"), budget: num("budget"), sizeTop: str(f, "sizeTop").slice(0, 40), sizeBottom: str(f, "sizeBottom").slice(0, 40), sizeShoes: str(f, "sizeShoes").slice(0, 40), measures } });
+      await prisma.stClient.update({ where: { id }, data: { name, note: str(f, "note").slice(0, 5000) || null, height: height ? Math.round(height) : null, weight: num("weight"), budget: num("budget"), sizeTop: str(f, "sizeTop").slice(0, 40), sizeBottom: str(f, "sizeBottom").slice(0, 40), sizeShoes: str(f, "sizeShoes").slice(0, 40), city: str(f, "city").slice(0, 80), measures } });
     }
   } catch (e) {
     return fail(e);
