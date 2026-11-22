@@ -185,7 +185,9 @@ export async function scanItx(get: Getter, cfg: ItxConfig, onProgress?: (done: n
       const stock = await get(`${api(cfg, 2, catalogId)}/product/stock?productIds=${part}&languageId=-1&appId=1`).then(itxStock).catch(() => null);
       for (const it of itxProducts(json, cfg, (id) => where.get(id), stock)) if (!seen.has(it.extId)) seen.set(it.extId, it);
     } catch (e) {
-      if (++failed > Math.max(3, ids.length / BATCH / 4)) throw e;
+      // Отказ на середине — сайт просит сбавить темп: ждём минуту и идём дальше (пачка доберётся при следующем сборе).
+      if (++failed > Math.max(6, ids.length / BATCH / 4)) throw e;
+      await new Promise((r) => setTimeout(r, 60_000));
     }
     onProgress?.(Math.min(i + BATCH, ids.length), ids.length);
     await pause();
@@ -213,4 +215,5 @@ export async function fetchItxStores(get: Getter, cfg: ItxConfig, countryCode: s
   }
 }
 
-const pause = () => new Promise((r) => setTimeout(r, 350 + Math.random() * 350));
+/** Темп: около одной пачки в 3 секунды — быстрее Pull&Bear начинал отвечать отказом (22.11.2026). */
+const pause = () => new Promise((r) => setTimeout(r, 1300 + Math.random() * 900));
