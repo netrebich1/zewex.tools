@@ -165,7 +165,11 @@ export function itxProducts(json: string, cfg: ItxConfig, hint: (id: number) => 
   return out;
 }
 
-export async function scanItx(get: Getter, cfg: ItxConfig, onProgress?: (done: number, total: number) => void, limit = Infinity): Promise<RawItem[]> {
+/**
+ * `opts.onBatch` — сохранить пачку сразу (обрыв сбора не теряет собранное); `opts.skip` — номера товаров, собранных недавно
+ * (сбор продолжается с места остановки). Возвращает вещи, собранные за этот проход.
+ */
+export async function scanItx(get: Getter, cfg: ItxConfig, onProgress?: (done: number, total: number) => void, limit = Infinity, opts: { skip?: Set<string>; onBatch?: (items: RawItem[]) => Promise<void> } = {}): Promise<RawItem[]> {
   const conf = JSON.parse(await get(`https://www.${cfg.host}/itxrest/2/web/seo/config?appId=1`)) as { seoCatalogMap?: Record<string, string[]> };
   const catalogId = conf.seoCatalogMap?.[cfg.storeId]?.[0];
   if (!catalogId) throw new Error(`${cfg.host}: в конфигурации сайта нет каталога для магазина ${cfg.storeId}`);
@@ -182,8 +186,10 @@ export async function scanItx(get: Getter, cfg: ItxConfig, onProgress?: (done: n
     await pause();
     if (where.size >= limit) break;
   }
-  const ids = [...where.keys()].slice(0, limit);
-  if (!ids.length) throw new Error(`${cfg.host}: в разделах нет товаров`);
+  const found = [...where.keys()].slice(0, limit);
+  if (!found.length) throw new Error(`${cfg.host}: в разделах нет товаров`);
+  const ids = opts.skip?.size ? found.filter((id) => !opts.skip!.has(String(id))) : found;
+  const skipped = found.length - ids.length;
   const seen = new Map<string, RawItem>();
   let failed = 0;
   for (let i = 0; i < ids.length; i += BATCH) {
@@ -192,13 +198,15 @@ export async function scanItx(get: Getter, cfg: ItxConfig, onProgress?: (done: n
       const json = await get(`${api(cfg, 3, catalogId)}/productsArray?productIds=${part}&languageId=-1&appId=1`);
       // Остатки по размерам — отдельным лёгким запросом; не ответил — берём признак «можно купить» из карточки.
       const stock = await get(`${api(cfg, 2, catalogId)}/product/stock?productIds=${part}&languageId=-1&appId=1`).then(itxStock).catch(() => null);
-      for (const it of itxProducts(json, cfg, (id) => where.get(id), stock)) if (!seen.has(it.extId)) seen.set(it.extId, it);
+      const batch = itxProducts(json, cfg, (id) => where.get(id), stock).filter((it) => !seen.has(it.extId));
+      for (const it of batch) seen.set(it.extId, it);
+      if (batch.length) await opts.onBatch?.(batch);
     } catch (e) {
       // Отказ на середине — сайт просит сбавить темп: ждём минуту и идём дальше (пачка доберётся при следующем сборе).
       if (++failed > Math.max(6, ids.length / BATCH / 4)) throw e;
       await new Promise((r) => setTimeout(r, 60_000));
     }
-    onProgress?.(Math.min(i + BATCH, ids.length), ids.length);
+    onProgress?.(skipped + Math.min(i + BATCH, ids.length), found.length);
     await pause();
   }
   return [...seen.values()];

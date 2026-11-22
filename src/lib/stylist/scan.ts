@@ -34,7 +34,7 @@ export async function eurRate(currency: string): Promise<number> {
   return (await rateToEur(currency, todayYmd()).catch(() => null))?.rate ?? 0;
 }
 
-async function collect(store: StStore, onProgress: (d: number, t: number) => void): Promise<RawItem[]> {
+async function collect(store: StStore, onProgress: (d: number, t: number) => void, itx: { skip?: Set<string>; onBatch?: (items: RawItem[]) => Promise<void> } = {}): Promise<RawItem[]> {
   const cfg = (store.config ?? {}) as Record<string, string>;
   if (store.adapter === "zara") {
     return scanZara((url) => shopGet(url, { proxy: true, accept: "application/json" }), cfg as ZaraConfig, onProgress);
@@ -43,7 +43,7 @@ async function collect(store: StStore, onProgress: (d: number, t: number) => voi
     // Заодно обновляем адреса, телефоны и часы магазинов бренда — официальный список с сайта.
     const contacts = await fetchItxStores((url) => shopGet(url, { proxy: true, accept: "application/json" }), cfg as unknown as ItxConfig, store.geo);
     if (contacts) await prisma.stStore.update({ where: { id: store.id }, data: { contacts: contacts as unknown as Prisma.InputJsonValue } }).catch(() => {});
-    return scanItx((url) => shopGet(url, { proxy: true, accept: "application/json" }), cfg as unknown as ItxConfig, onProgress);
+    return scanItx((url) => shopGet(url, { proxy: true, accept: "application/json" }), cfg as unknown as ItxConfig, onProgress, Infinity, itx);
   }
   if (store.adapter === "parfois") {
     return scanParfois((url) => shopGet(url, { accept: "text/html,*/*;q=0.8" }), cfg as ParfoisConfig, onProgress);
@@ -73,24 +73,25 @@ export async function claimStore(workerId: string): Promise<StStore | null> {
 export async function requeueStale(hostPrefix: string): Promise<number> {
   const r = await prisma.stStore.updateMany({
     where: { scanStatus: "running", OR: [{ lockedBy: { startsWith: `${hostPrefix}-` } }, { scanStartedAt: { lt: new Date(Date.now() - STALE_MS) } }] },
-    data: { scanStatus: "idle", lockedBy: null, scanAsked: new Date(), scanNote: "Сбор был прерван — запущен заново" },
+    data: { scanStatus: "idle", lockedBy: null, scanAsked: new Date(), scanNote: "Сбор был прерван перезапуском — продолжается с места остановки" },
   });
   return r.count;
 }
 
+/** Сбор Inditex можно продолжить: товары, собранные за последние часы, повторно не запрашиваются. */
+const RESUME_MS = 12 * 3600_000;
+
 export async function scanStore(store: StStore): Promise<{ total: number; fresh: number; gone: number }> {
   const startedAt = new Date();
+  let saved = 0;
+  let fresh = 0;
   try {
-    let lastNote = 0;
-    const raw = await collect(store, (d, t) => {
-      if (Date.now() - lastNote < 10_000) return;
-      lastNote = Date.now();
-      void prisma.stStore.update({ where: { id: store.id }, data: { scanNote: `Собираю каталог: ${d} из ${t}` } }).catch(() => {});
-    });
-    if (!raw.length) throw new Error("магазин не отдал ни одной вещи");
     const rate = await eurRate(store.currency);
-    const known = new Map((await prisma.stItem.findMany({ where: { storeId: store.id }, select: { id: true, extId: true, spiritAt: true, spiritData: true } })).map((r) => [r.extId, r]));
-    let fresh = 0;
+    const rows = await prisma.stItem.findMany({ where: { storeId: store.id }, select: { id: true, extId: true, spiritAt: true, spiritData: true, lastSeenAt: true, source: true } });
+    const known = new Map(rows.map((r) => [r.extId, r]));
+    const resumable = store.adapter === "itx";
+    // Что уже собрано недавно (прошлый проход оборвался) — пропускаем.
+    const skip = new Set(resumable ? rows.filter((r) => r.source === "scan" && startedAt.getTime() - r.lastSeenAt.getTime() < RESUME_MS).map((r) => r.extId.split("-")[0]) : []);
     const fields = (it: RawItem) => {
       const category = classifyCategory(it.name, it.rawCategory);
       const color = classifyColor(it.colorName ?? "", it.colorHex ?? "");
@@ -124,25 +125,46 @@ export async function scanStore(store: StStore): Promise<{ total: number; fresh:
       ...(it.sizes ? { sizesCount: new Set(it.sizes).size, sizes: pack(it.sizes).slice(0, 400), sizesAt: startedAt, sizesAll: pack(it.sizesAll ?? it.sizes).slice(0, 400), sizesLow: pack(it.sizesLow ?? []).slice(0, 400) } : {}),
       };
     };
-    for (let i = 0; i < raw.length; i += 50) {
-      await prisma.$transaction(raw.slice(i, i + 50).map((it) => {
-        const id = known.get(it.extId)?.id;
-        if (!id) fresh++;
-        return id ? prisma.stItem.update({ where: { id }, data: fields(it) }) : prisma.stItem.create({ data: { storeId: store.id, extId: it.extId.slice(0, 120), source: "scan", ...fields(it) } });
-      }));
+    // Запись в базу сразу, пачками: обрыв сбора (перезапуск, отказ магазина) не теряет уже собранное.
+    const save = async (items: RawItem[]) => {
+      for (let i = 0; i < items.length; i += 50) {
+        const made = await prisma.$transaction(items.slice(i, i + 50).map((it) => {
+          const id = known.get(it.extId)?.id;
+          if (!id) fresh++;
+          return id ? prisma.stItem.update({ where: { id }, data: fields(it), select: { id: true, extId: true } }) : prisma.stItem.create({ data: { storeId: store.id, extId: it.extId.slice(0, 120), source: "scan", ...fields(it) }, select: { id: true, extId: true } });
+        }));
+        for (const m of made) if (!known.has(m.extId)) known.set(m.extId, { id: m.id, extId: m.extId, spiritAt: null, spiritData: null, lastSeenAt: startedAt, source: "scan" });
+      }
+      saved += items.length;
+    };
+    let lastNote = 0;
+    const raw = await collect(store, (d, t) => {
+      if (Date.now() - lastNote < 10_000) return;
+      lastNote = Date.now();
+      void prisma.stStore.update({ where: { id: store.id }, data: { scanNote: `Собираю каталог: ${d} из ${t}${saved ? ` · сохранено вещей: ${saved}` : ""}` } }).catch(() => {});
+    }, resumable ? { skip, onBatch: save } : {});
+    if (!resumable) {
+      if (!raw.length) throw new Error("магазин не отдал ни одной вещи");
+      await save(raw);
     }
+    if (!saved && !skip.size) throw new Error("магазин не отдал ни одной вещи");
+    // Граница «не видели в этом сборе»: при продолжении сбора недавно собранное не запрашивалось заново.
+    const seenSince = resumable ? new Date(startedAt.getTime() - RESUME_MS) : startedAt;
+    const total = resumable ? await prisma.stItem.count({ where: { storeId: store.id, source: "scan", lastSeenAt: { gte: seenSince } } }) : raw.length;
     // Пропала из каталога — «нет в наличии». Если сбор принёс подозрительно мало (меньше половины прошлого), не трогаем: вероятно, сайт отдал не всё.
     let gone = 0;
-    const before = await prisma.stItem.count({ where: { storeId: store.id, source: "scan", inStock: true, lastSeenAt: { lt: startedAt } } });
-    if (raw.length >= (before + raw.length) / 2 || before < 50) {
-      gone = (await prisma.stItem.updateMany({ where: { storeId: store.id, source: "scan", inStock: true, lastSeenAt: { lt: startedAt } }, data: { inStock: false } })).count;
+    const before = await prisma.stItem.count({ where: { storeId: store.id, source: "scan", inStock: true, lastSeenAt: { lt: seenSince } } });
+    if (total >= (before + total) / 2 || before < 50) {
+      gone = (await prisma.stItem.updateMany({ where: { storeId: store.id, source: "scan", inStock: true, lastSeenAt: { lt: seenSince } }, data: { inStock: false } })).count;
     }
     const itemCount = await prisma.stItem.count({ where: { storeId: store.id, inStock: true } });
     await prisma.stStore.update({ where: { id: store.id }, data: { scanStatus: "ok", lastScanAt: new Date(), lockedBy: null, itemCount, scanNote: `В наличии ${itemCount}: новых ${fresh}, пропало ${gone}` } });
-    return { total: raw.length, fresh, gone };
+    return { total, fresh, gone };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    await prisma.stStore.update({ where: { id: store.id }, data: { scanStatus: "error", lockedBy: null, scanNote: `Сбор не удался: ${msg}`.slice(0, 1000) } }).catch(() => {});
+    // Собранное до сбоя уже в базе; следующая попытка (через час или кнопкой) продолжит с места остановки.
+    const itemCount = await prisma.stItem.count({ where: { storeId: store.id, inStock: true } }).catch(() => 0);
+    await prisma.stStore.update({ where: { id: store.id }, data: { scanStatus: "error", lockedBy: null, itemCount, scanNote: (saved ? `Сбор прервался: ${msg}. Сохранено за этот проход: ${saved}; следующая попытка продолжит с места остановки.` : `Сбор не удался: ${msg}`).slice(0, 1000) } }).catch(() => {});
     throw e;
   }
 }
