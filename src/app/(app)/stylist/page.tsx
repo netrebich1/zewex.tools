@@ -88,7 +88,7 @@ export default async function StylistCatalog({ searchParams }: { searchParams: P
             <SubmitButton className="btn-ghost btn-sm" pendingText="Проверяю… до минуты">Проверить наличие и цены избранного</SubmitButton>
           </ActionForm>
         )}
-        {f.fav && <span className="text-[13px] text-muted">Сердечко на фото кладёт вещь в избранное. Здесь видны и те вещи, которых уже нет в наличии.</span>}
+        <Link href={`${BASE_PATH}/favorites`} className="text-[13px] text-muted underline">открыть страницу избранного</Link>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
@@ -190,6 +190,7 @@ export default async function StylistCatalog({ searchParams }: { searchParams: P
             </div>
           </details>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <label className="flex items-center gap-1.5 text-[13px] font-medium"><input type="checkbox" name="fav" value="1" defaultChecked={f.fav} /> ♥ только избранное</label>
             <label className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" name="sale" value="1" defaultChecked={f.sale} /> только со скидкой</label>
             <label className="flex items-center gap-1.5 text-[13px]">
               скидка от

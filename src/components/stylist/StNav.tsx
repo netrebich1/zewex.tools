@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 
 const ITEMS = [
   { href: "/stylist", label: "Каталог", exact: true },
+  { href: "/stylist/favorites", label: "♥ Избранное" },
   { href: "/stylist/looks", label: "Образы" },
   { href: "/stylist/clients", label: "Клиенты" },
   { href: "/stylist/brands", label: "ДНК брендов" },
