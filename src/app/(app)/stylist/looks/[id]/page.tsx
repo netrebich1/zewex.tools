@@ -11,13 +11,41 @@ import { ColorDot, ItemPhoto, Price, SpiritChips } from "@/components/stylist/It
 import { activateLook, checkSpirit, checkStock, copyLook, deleteLook, lookPieceAction, saveLook } from "@/actions/stylist";
 import { AutoSubmitSelect } from "@/components/stylist/PrintButton";
 import { BASE_PATH, CATEGORY_LABELS, GEO_LABELS, SEGMENT_LABELS, money, seasonLabel, unpack } from "@/lib/stylist/consts";
-import { activeLook, canSee, getLook, listCollections, lookTotals, type LookPiece } from "@/lib/stylist/queries";
+import { activeLook, canSee, getLook, listClients, listCollections, lookTotals, type LookPiece } from "@/lib/stylist/queries";
+import { clientFit, type ClientSizes } from "@/lib/stylist/clients";
 import { fmtDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 function Sizes({ piece }: { piece: LookPiece }) {
-  return <span className="flex flex-wrap items-center gap-1.5">{piece.item.sizesAt ? "Размеры:" : ""} <SizeGrid item={piece.item} /></span>;
+  return <span className="flex flex-wrap items-center gap-1.5">{piece.item.sizesAt ? "В интернет-магазине:" : ""} <SizeGrid item={piece.item} /></span>;
+}
+
+/** Цена изменилась с момента, когда вещь положили в образ. */
+function PriceChange({ piece }: { piece: LookPiece }) {
+  const was = piece.addedPrice;
+  if (!was || Math.abs(was - piece.item.price) < 0.005) return null;
+  const down = piece.item.price < was;
+  return <span className={`text-[13px] font-medium ${down ? "text-ok" : "text-danger"}`}>{down ? "Подешевела" : "Подорожала"}: при добавлении в образ была {money(was, piece.item.currency)}</span>;
+}
+
+/** Есть ли вещь в размере клиента из карточки. */
+function Fit({ client, piece }: { client: ClientSizes; piece: LookPiece }) {
+  const f = clientFit(client, piece.item);
+  if (f.state === "unknown") return null;
+  if (f.state === "fit") return <span className="text-[13px] text-ok">Размер клиента {f.size} есть в наличии{piece.size && piece.size.toUpperCase() !== f.size ? ` (выбран другой: ${piece.size})` : ""}</span>;
+  return <span className="text-[13px] font-medium text-danger">{f.state === "out" ? `Размера клиента ${f.size} сейчас нет в наличии` : `В размерной сетке вещи нет размера клиента (${f.size})`}</span>;
+}
+
+/** Отметка стилиста: есть ли вещь в обычном магазине (после звонка, письма или проверки на сайте магазина). */
+function InStore({ piece }: { piece: LookPiece }) {
+  return (
+    <ActionForm action={lookPieceAction} className="flex flex-wrap items-center gap-2 text-[13px]" hidden={{ piece: piece.id, op: "store" }}>
+      <span className="font-medium">В магазине на острове:</span>
+      <AutoSubmitSelect name="inStore" defaultValue={piece.inStore} options={[{ value: "", label: "не проверяли" }, { value: "yes", label: "есть — проверено" }, { value: "no", label: "нет" }]} />
+      {piece.inStoreAt && <span className="text-muted">отмечено {fmtDate(piece.inStoreAt)}</span>}
+    </ActionForm>
+  );
 }
 
 /** Нужный клиенту размер: из сетки магазина; если магазин сетку не отдаёт — поле для ввода. */
@@ -70,9 +98,10 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
   const me = await requireUser();
   if (!(await canSee(me))) return <Empty title="Нет доступа" hint="«Стилист» открыт команде Zewex." />;
   const { id } = await params;
-  const [look, active, collections] = await Promise.all([getLook(me, id), activeLook(me), listCollections(me)]);
+  const [look, active, collections, clients] = await Promise.all([getLook(me, id), activeLook(me), listCollections(me), listClients(me)]);
   if (!look) notFound();
   const t = lookTotals(look);
+  const client = look.client ?? look.collection?.client ?? null;
   const main = look.items.filter((p) => !p.parentId);
   const analogsOf = (pid: string) => look.items.filter((p) => p.parentId === pid);
   const isActive = active?.id === look.id;
@@ -98,6 +127,14 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
           )}
         </>}
       />
+
+      {client && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-line bg-surface px-4 py-2.5 text-[14px]">
+          <span>Клиент: <Link href={`${BASE_PATH}/clients/${client.id}`} className="font-semibold underline">{client.name}</Link>{!look.client && look.collection ? <span className="text-muted"> (по коллекции)</span> : null}</span>
+          <span className="text-ink-2">{[client.height && `рост ${client.height}`, client.sizeTop && `верх ${client.sizeTop}`, client.sizeBottom && `низ ${client.sizeBottom}`, client.sizeShoes && `обувь ${client.sizeShoes}`].filter(Boolean).join(" · ") || "размеры в карточке не указаны"}</span>
+          {client.budget ? <span className={t.eur > client.budget ? "font-medium text-danger" : "text-ok"}>бюджет {money(client.budget, "EUR")}: {t.eur > client.budget ? `превышен на ${money(Math.round((t.eur - client.budget) * 100) / 100, "EUR")}` : "укладываемся"}</span> : null}
+        </div>
+      )}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <div className="kpi">
@@ -151,6 +188,7 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
                       </details>
                     )}
                     <Price item={p.item} />
+                    <PriceChange piece={p} />
                     <SpiritChips item={p.item} />
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
                       <span className="flex items-center gap-1.5"><ColorDot color={p.item.color} hex={p.item.colorHex} /> {p.item.colorName || "—"}</span>
@@ -158,6 +196,8 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
                       {!p.item.inStock && <span className="font-medium text-danger">нет в наличии</span>}
                     </div>
                     <WantedSize piece={p} />
+                    {client && <Fit client={client} piece={p} />}
+                    <InStore piece={p} />
                     <PieceActions piece={p} />
                     {branchCount(p.item.store.contacts) > 0 && (
                       <details className="rounded-lg border border-line px-3 py-2">
@@ -215,6 +255,10 @@ export default async function StylistLook({ params }: { params: Promise<{ id: st
           <select name="collection" defaultValue={look.collectionId ?? ""} className="input">
             <option value="">Без коллекции</option>
             {collections.map((c) => <option key={c.id} value={c.id}>Коллекция: {c.name}</option>)}
+          </select>
+          <select name="clientId" defaultValue={look.clientId ?? ""} className="input">
+            <option value="">Клиент: {look.collection?.client ? `как у коллекции (${look.collection.client.name})` : "не выбран"}</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>Клиент: {c.name}</option>)}
           </select>
           <textarea name="note" defaultValue={look.note ?? ""} rows={3} placeholder="Для кого образ, повод, что учесть" className="input" />
           <SubmitButton>Сохранить</SubmitButton>

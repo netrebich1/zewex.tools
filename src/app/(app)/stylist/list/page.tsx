@@ -84,6 +84,7 @@ function Row({ p, lookName, qr }: { p: LookPiece; lookName?: string; qr: Qr }) {
       <td className="py-2 pr-3 text-[13px]">
         <SizeRow p={p} />
         <div className={`mt-0.5 text-[12px] ${TONE[st.tone]}`}>{st.label}</div>
+        {p.inStore && <div className={`text-[12px] font-medium ${p.inStore === "yes" ? "text-ok" : "text-danger"}`}>в магазине: {p.inStore === "yes" ? "есть" : "нет"}{p.inStoreAt ? ` (${fmtDate(p.inStoreAt)})` : ""}</div>}
       </td>
       <td className="whitespace-nowrap py-2 pr-3 text-right font-semibold">{money(p.item.price, p.item.currency)}</td>
       <td className="w-[58px] py-2"><QrImg qr={qr} url={p.item.url} /></td>
@@ -113,18 +114,21 @@ export default async function StylistList({ searchParams }: { searchParams: Prom
   let title = "";
   let note: string | null = null;
   let looks: LookFull[] = [];
+  let clientName = "";
   if (lookId) {
     const look = await getLook(me, lookId);
     if (!look) notFound();
     looks = [look];
     title = look.name;
     note = look.note;
+    clientName = (look.client ?? look.collection?.client)?.name ?? "";
   } else if (colId) {
     const col = await prisma.stCollection.findUnique({ where: { id: colId } });
     if (!col) notFound();
     looks = (await listLooks(me)).filter((l) => l.collectionId === col.id).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     title = col.name;
     note = col.note;
+    clientName = looks[0]?.collection?.client?.name ?? "";
   } else notFound();
 
   const pieces = looks.flatMap((l) => l.items.filter((p) => !p.parentId).map((p) => ({ p, look: l })));
@@ -167,6 +171,7 @@ export default async function StylistList({ searchParams }: { searchParams: Prom
         <div className="mb-5 border-b border-line pb-4">
           <div className="text-[12px] uppercase tracking-wide text-muted">Шопинг-лист{colId ? " · коллекция" : " · образ"}</div>
           <h1 className="h1">{title}</h1>
+          {clientName && <p className="mt-1 text-[14px]">Клиент: <b>{clientName}</b></p>}
           {note && <p className="mt-1 text-[14px] text-ink-2">{note}</p>}
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[14px]">
             <span>Образов: <b>{looks.length}</b></span>
@@ -176,7 +181,7 @@ export default async function StylistList({ searchParams }: { searchParams: Prom
             {checked && <span className="text-muted">наличие на {fmtDate(checked)}</span>}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-2">
-            <span>Размеры:</span>
+            <span>Размеры в интернет-магазине:</span>
             <span className="rounded bg-[#1f9d55] px-1.5 py-0.5 font-bold text-white">M</span> нужный
             <span className="rounded bg-[#fde68a] px-1.5 py-0.5 text-[#5b4300]">L</span> есть в наличии
             <span className="rounded bg-[#e5e7eb] px-1.5 py-0.5 text-[#9aa0aa] line-through">XL</span> нет
@@ -248,7 +253,7 @@ export default async function StylistList({ searchParams }: { searchParams: Prom
                 </section>
               );
             })}
-            <p className="mt-6 text-[11.5px] text-muted">Цены и наличие — по данным интернет-магазинов на указанное время; наличие в конкретном магазине уточняйте по телефону или почте, называя артикул и размер. QR-код у вещи ведёт на её страницу в магазине, QR-код у адреса и ссылка «📍» — на Google Maps.</p>
+            <p className="mt-6 text-[11.5px] text-muted">Цены и размеры — по данным интернет-магазинов на указанное время (вещь можно заказать с доставкой). В обычном магазине на острове вещи может не быть: отметка «в магазине: есть / нет» ставится вручную после звонка, письма или проверки на сайте магазина. QR-код у вещи ведёт на её страницу в магазине, QR-код у адреса и ссылка «📍» — на Google Maps.</p>
           </>
         )}
       </div>

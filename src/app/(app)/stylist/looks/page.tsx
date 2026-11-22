@@ -7,7 +7,7 @@ import { StNav } from "@/components/stylist/StNav";
 import { ItemPhoto } from "@/components/stylist/ItemCard";
 import { checkStock, createLook, deleteCollection, renameLook, saveCollection } from "@/actions/stylist";
 import { BASE_PATH, money } from "@/lib/stylist/consts";
-import { activeLook, canSee, listCollections, listLooks, lookTotals, type LookFull } from "@/lib/stylist/queries";
+import { activeLook, canSee, listClients, listCollections, listLooks, lookTotals, type LookFull } from "@/lib/stylist/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +39,7 @@ function LookCard({ look, active }: { look: LookFull; active: boolean }) {
 export default async function StylistLooks() {
   const me = await requireUser();
   if (!(await canSee(me))) return <Empty title="Нет доступа" hint="«Стилист» открыт команде Zewex." />;
-  const [looks, collections, active] = await Promise.all([listLooks(me), listCollections(me), activeLook(me)]);
+  const [looks, collections, active, clients] = await Promise.all([listLooks(me), listCollections(me), activeLook(me), listClients(me)]);
   const loose = looks.filter((l) => !l.collectionId);
   const sum = (list: LookFull[]) => Math.round(list.reduce((s, l) => s + lookTotals(l).eur, 0) * 100) / 100;
 
@@ -87,7 +87,7 @@ export default async function StylistLooks() {
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-2">
               <div>
                 <h2 className="h2">{c.name}</h2>
-                <div className="text-[13px] text-muted">образов: {list.length}{list.length ? ` · все вместе ≈ ${money(sum(list), "EUR")}` : ""}{c.note ? ` · ${c.note}` : ""}</div>
+                <div className="text-[13px] text-muted">{c.client ? <>клиент: <b className="text-ink">{c.client.name}</b> · </> : null}образов: {list.length}{list.length ? ` · все вместе ≈ ${money(sum(list), "EUR")}` : ""}{c.note ? ` · ${c.note}` : ""}</div>
               </div>
               <div className="flex flex-wrap gap-2">
                 {list.length > 0 && <Link href={`${BASE_PATH}/list?collection=${c.id}`} className="btn-brand btn-sm">Шопинг-лист</Link>}
@@ -104,7 +104,11 @@ export default async function StylistLooks() {
                   <div className="absolute right-0 z-10 mt-1 w-[300px] rounded-xl border border-line bg-surface p-3 shadow-lg">
                     <ActionForm action={saveCollection} className="flex flex-col gap-2" hidden={{ collection: c.id }}>
                       <input name="name" defaultValue={c.name} required maxLength={200} className="input" />
-                      <input name="note" defaultValue={c.note ?? ""} maxLength={2000} placeholder="заметка: клиент, бюджет, повод" className="input" />
+                      <input name="note" defaultValue={c.note ?? ""} maxLength={2000} placeholder="заметка: повод, сезон" className="input" />
+                      <select name="clientId" defaultValue={c.clientId ?? ""} className="input">
+                        <option value="">Клиент не выбран</option>
+                        {clients.map((x) => <option key={x.id} value={x.id}>Клиент: {x.name}</option>)}
+                      </select>
                       <SubmitButton className="btn-primary btn-sm">Сохранить</SubmitButton>
                     </ActionForm>
                     <div className="mt-2 border-t border-line pt-2">

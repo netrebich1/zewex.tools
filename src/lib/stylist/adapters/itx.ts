@@ -9,7 +9,7 @@ import type { Getter } from "./zara";
 export type ItxConfig = { host: string; storeId: string; path: string; gender?: string };
 
 type ICat = { id: number; name?: string; nameEn?: string; type?: string | number; viewCategoryId?: number; subcategories?: ICat[] };
-type IMedia = { url?: string; extraInfo?: { deliveryUrl?: string; url?: string } };
+type IMedia = { url?: string; clazz?: number; extraInfo?: { deliveryUrl?: string; url?: string; originalName?: string; productionType?: string } };
 type ISize = { sku?: number; name?: string; isBuyable?: boolean; visibilityValue?: string; price?: string; oldPrice?: string | null; country?: string };
 type IComp = { composition?: Array<{ name?: string; percentage?: string }> };
 type IColor = { id?: string | number; name?: string; image?: { url?: string } | null; sizes?: ISize[] };
@@ -121,8 +121,17 @@ export function itxProducts(json: string, cfg: ItxConfig, hint: (id: number) => 
       const inStock = [...new Set(sizes.filter((z) => /^(in_stock|low_on_stock)$/.test(state(z))).map((z) => z.name!.trim()))];
       const low = [...new Set(sizes.filter((z) => state(z) === "low_on_stock").map((z) => z.name!.trim()))];
       const all = [...new Set(sizes.map((z) => z.name!.trim()))];
-      const medias = (detail.xmedia ?? []).find((x) => x.path === c.image?.url)?.xmediaItems?.flatMap((i) => i.medias ?? []) ?? [];
-      const imgs = [...new Set(medias.map((m) => m.extraInfo?.deliveryUrl || m.url || "").filter((u) => /^https:.*\.(jpe?g|png|webp)/i.test(u)))].map((u) => `${u}${u.includes("?") ? "&" : "?"}w=600`);
+      const refDigits = (detail.reference ?? "").split("-")[0];
+      const medias = ((detail.xmedia ?? []).find((x) => x.path === c.image?.url)?.xmediaItems?.[0]?.medias ?? [])
+        .map((m) => ({ url: m.extraInfo?.deliveryUrl || m.url || "", name: m.extraInfo?.originalName ?? "", swatch: m.clazz === 2, model: m.extraInfo?.productionType === "MODEL" }))
+        .filter((m) => /^https:.*\.(jpe?g|png|webp)/i.test(m.url))
+        // Чужие картинки в наборе (рекламный баннер коллекции) узнаются по чужому артикулу в адресе.
+        .filter((m) => !refDigits || m.url.includes(refDigits));
+      // Главное фото — сама вещь на чистом фоне (p, a1t…), потом остальные предметные, потом на модели; образец цвета — никогда.
+      const rank = (m: { name: string; swatch: boolean; model: boolean }) => (m.swatch ? 9 : /^p\d*$/.test(m.name) ? 0 : /^a1/.test(m.name) ? 1 : m.model ? 4 : /^(z|v|a\d+d)/.test(m.name) ? 3 : 2);
+      const sorted = [...medias].sort((a, b) => rank(a) - rank(b));
+      const usable = sorted.some((m) => !m.swatch) ? sorted.filter((m) => !m.swatch) : sorted;
+      const imgs = [...new Set(usable.map((m) => m.url))].map((u) => `${u}${u.includes("?") ? "&" : "?"}w=600`);
       if (!imgs.length) continue;
       const ref = detail.displayReference || (detail.reference ?? "").split("-")[0];
       const season = /-([IV]20\d\d)$/.exec(detail.reference ?? "")?.[1] ?? "";

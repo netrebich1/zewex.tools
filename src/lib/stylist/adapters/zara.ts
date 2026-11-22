@@ -89,7 +89,7 @@ export function zaraProducts(json: string, cfg: ZaraConfig, cat: { gender: strin
 }
 
 /** Размеры расцветки в наличии из карточки товара (url вещи + ajax). null — расцветка не найдена. */
-export function zaraSizes(json: string, extId: string): { sizes: string[]; all: string[]; low: string[]; inStock: boolean } | null {
+export function zaraSizes(json: string, extId: string): { sizes: string[]; all: string[]; low: string[]; inStock: boolean; price: number | null; oldPrice: number | null } | null {
   const data = JSON.parse(json) as { product?: { detail?: { colors?: ZColor[] } } };
   const colorId = extId.split("-")[1];
   const colors = data.product?.detail?.colors ?? [];
@@ -97,7 +97,7 @@ export function zaraSizes(json: string, extId: string): { sizes: string[]; all: 
   if (!c) return null;
   const sizes = (c.sizes ?? []).filter((s) => s.name && (s.availability === "in_stock" || s.availability === "low_on_stock")).map((s) => s.name!.trim());
   const named = (c.sizes ?? []).filter((s) => s.name);
-  return { sizes, all: [...new Set(named.map((s) => s.name!.trim()))], low: named.filter((s) => s.availability === "low_on_stock").map((s) => s.name!.trim()), inStock: sizes.length > 0 };
+  return { sizes, all: [...new Set(named.map((s) => s.name!.trim()))], low: named.filter((s) => s.availability === "low_on_stock").map((s) => s.name!.trim()), inStock: sizes.length > 0, price: c.price ? c.price / 100 : null, oldPrice: c.oldPrice && c.price && c.oldPrice > c.price ? c.oldPrice / 100 : null };
 }
 
 export async function scanZara(get: Getter, cfg: ZaraConfig, onProgress?: (done: number, total: number) => void): Promise<RawItem[]> {

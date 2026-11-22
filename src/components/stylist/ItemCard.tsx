@@ -3,6 +3,7 @@ import { COLOR_HEX, GEO_LABELS, TAG_LABELS, money, seasonLabel, unpack } from "@
 import type { CatalogItem } from "@/lib/stylist/queries";
 import { BRAND_NAMES, parseSpirits } from "@/lib/stylist/dna";
 import { SizeGrid } from "./Sizes";
+import { FavButton } from "./FavButton";
 
 /** Точка цвета: группа цвета или точный оттенок магазина. */
 export function ColorDot({ color, hex, title }: { color: string; hex?: string; title?: string }) {
@@ -54,15 +55,19 @@ export function SpiritChips({ item }: { item: { spiritData: unknown; spiritAt: D
 }
 
 /** Карточка вещи каталога. `action` — кнопка под карточкой. */
-export function ItemCard({ item, action, showGeo }: { item: CatalogItem; action?: ReactNode; showGeo?: boolean }) {
+export function ItemCard({ item, action, showGeo, fav }: { item: CatalogItem; action?: ReactNode; showGeo?: boolean; fav?: boolean }) {
   const tags = unpack(item.tags).slice(0, 3);
   return (
     <div className={`flex flex-col overflow-hidden rounded-xl border border-line bg-surface ${item.inStock ? "" : "opacity-60"}`}>
+      <div className="relative">
       <a href={item.url} target="_blank" rel="noreferrer noopener" className="relative block aspect-[3/4] bg-ink/5" title="Открыть на сайте магазина">
         <ItemPhoto item={item} />
         {!item.inStock && <span className="absolute left-2 top-2 rounded bg-ink px-1.5 py-0.5 text-[11px] font-medium text-bg">нет в наличии</span>}
+        {item.inStock && item.sizesAt && item.sizesCount === 1 && <span className="absolute right-2 top-2 rounded bg-warn-soft px-1.5 py-0.5 text-[11px] font-medium text-warn">последний размер</span>}
         {item.inStock && item.oldPrice && <span className="absolute left-2 top-2 rounded bg-danger px-1.5 py-0.5 text-[11px] font-medium text-white">−{Math.round((1 - item.price / item.oldPrice) * 100)}%</span>}
       </a>
+      {fav !== undefined && <FavButton itemId={item.id} fav={fav} />}
+      </div>
       <div className="flex flex-1 flex-col gap-1 p-2.5">
         <div className="flex items-center justify-between gap-2 text-[12px] text-muted">
           <span className="truncate font-semibold uppercase tracking-wide">{item.store.brand}{showGeo ? ` · ${GEO_LABELS[item.store.geo] ?? item.store.geo}` : ""}</span>

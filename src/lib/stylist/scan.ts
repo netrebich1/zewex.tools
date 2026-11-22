@@ -26,6 +26,9 @@ export const ADAPTERS: Record<string, { label: string; auto: boolean }> = {
   manual: { label: "Вручную и по ссылке", auto: false },
 };
 
+/** Скидка в процентах от старой цены. */
+export const discountOf = (price: number, oldPrice?: number | null) => (oldPrice && oldPrice > price && price > 0 ? Math.round((1 - price / oldPrice) * 100) : 0);
+
 export async function eurRate(currency: string): Promise<number> {
   if (currency === "EUR") return 1;
   return (await rateToEur(currency, todayYmd()).catch(() => null))?.rate ?? 0;
@@ -106,6 +109,7 @@ export async function scanStore(store: StStore): Promise<{ total: number; fresh:
       images: (it.images ?? []).filter((u) => u.length <= 700) as Prisma.InputJsonValue,
       price: it.price,
       oldPrice: it.oldPrice && it.oldPrice > it.price ? it.oldPrice : null,
+      discount: discountOf(it.price, it.oldPrice),
       currency: store.currency,
       priceEur: Math.round(it.price * rate * 100) / 100,
       gender: it.gender,
@@ -117,7 +121,7 @@ export async function scanStore(store: StStore): Promise<{ total: number; fresh:
       tags: pack(classifyTags(it.name)).slice(0, 400),
       inStock: it.inStock !== false,
       lastSeenAt: startedAt,
-      ...(it.sizes ? { sizes: pack(it.sizes).slice(0, 400), sizesAt: startedAt, sizesAll: pack(it.sizesAll ?? it.sizes).slice(0, 400), sizesLow: pack(it.sizesLow ?? []).slice(0, 400) } : {}),
+      ...(it.sizes ? { sizesCount: new Set(it.sizes).size, sizes: pack(it.sizes).slice(0, 400), sizesAt: startedAt, sizesAll: pack(it.sizesAll ?? it.sizes).slice(0, 400), sizesLow: pack(it.sizesLow ?? []).slice(0, 400) } : {}),
       };
     };
     for (let i = 0; i < raw.length; i += 50) {
@@ -151,12 +155,13 @@ export async function refreshSizes(itemId: string, force = false): Promise<boole
   if (item.store.adapter === "itx") {
     const fresh = (await fetchItxProduct((url) => shopGet(url, { proxy: true, accept: "application/json" }), item.store.config as unknown as ItxConfig, item.extId.split("-")[0])).find((x) => x.extId === item.extId);
     if (!fresh) return false;
-    await prisma.stItem.update({ where: { id: item.id }, data: { sizes: pack(fresh.sizes ?? []).slice(0, 400), sizesAll: pack(fresh.sizesAll ?? []).slice(0, 400), sizesLow: pack(fresh.sizesLow ?? []).slice(0, 400), sizesAt: new Date(), inStock: fresh.inStock !== false, price: fresh.price } });
+    const old = fresh.oldPrice && fresh.oldPrice > fresh.price ? fresh.oldPrice : null;
+    await prisma.stItem.update({ where: { id: item.id }, data: { sizes: pack(fresh.sizes ?? []).slice(0, 400), sizesCount: new Set(fresh.sizes ?? []).size, sizesAll: pack(fresh.sizesAll ?? []).slice(0, 400), sizesLow: pack(fresh.sizesLow ?? []).slice(0, 400), sizesAt: new Date(), inStock: fresh.inStock !== false, price: fresh.price, oldPrice: old, discount: discountOf(fresh.price, old), priceEur: Math.round(fresh.price * (await eurRate(item.currency)) * 100) / 100, ...(fresh.sku ? { sku: fresh.sku.slice(0, 60) } : {}) } });
     return true;
   }
   const json = await shopGet(`${item.url}${item.url.includes("?") ? "&" : "?"}ajax=true`, { proxy: true, accept: "application/json" });
   const got = zaraSizes(json, item.extId);
   if (!got) return false;
-  await prisma.stItem.update({ where: { id: item.id }, data: { sizes: pack(got.sizes).slice(0, 400), sizesAll: pack(got.all).slice(0, 400), sizesLow: pack(got.low).slice(0, 400), sizesAt: new Date(), inStock: got.inStock } });
+  await prisma.stItem.update({ where: { id: item.id }, data: { sizes: pack(got.sizes).slice(0, 400), sizesCount: got.sizes.length, sizesAll: pack(got.all).slice(0, 400), sizesLow: pack(got.low).slice(0, 400), sizesAt: new Date(), inStock: got.inStock, ...(got.price ? { price: got.price, oldPrice: got.oldPrice, discount: discountOf(got.price, got.oldPrice), priceEur: Math.round(got.price * (await eurRate(item.currency)) * 100) / 100 } : {}) } });
   return true;
 }

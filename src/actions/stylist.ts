@@ -47,7 +47,7 @@ export async function saveLook(_p: FormState, f: FormData): Promise<FormState> {
     const name = str(f, "name").slice(0, 200);
     if (!name) throw new Error("Дайте образу название");
     const col = str(f, "collection") ? await prisma.stCollection.findUnique({ where: { id: str(f, "collection") }, select: { id: true } }) : null;
-    await prisma.stLook.update({ where: { id: look.id }, data: { name, note: str(f, "note").slice(0, 5000) || null, collectionId: col?.id ?? null } });
+    await prisma.stLook.update({ where: { id: look.id }, data: { name, note: str(f, "note").slice(0, 5000) || null, collectionId: col?.id ?? null, ...(f.has("clientId") ? { clientId: (str(f, "clientId") ? await prisma.stClient.findUnique({ where: { id: str(f, "clientId") }, select: { id: true } }) : null)?.id ?? null } : {}) } });
     revalidatePath(BASE_PATH, "layout");
     return { ok: "Сохранено" };
   } catch (e) {
@@ -91,14 +91,14 @@ export async function addToLook(itemId: string, opts: { analog?: string; look?: 
   const me = await requireUser();
   try {
     await assertSee(me);
-    const item = await prisma.stItem.findUnique({ where: { id: itemId }, select: { id: true } });
+    const item = await prisma.stItem.findUnique({ where: { id: itemId }, select: { id: true, price: true } });
     if (!item) throw new Error("Вещь не найдена");
     if (opts.analog) {
       const parent = await prisma.stLookItem.findUnique({ where: { id: opts.analog }, select: { id: true, lookId: true, parentId: true, itemId: true } });
       const look = parent && !parent.parentId ? await getLook(me, parent.lookId) : null;
       if (!parent || !look) throw new Error("Основная вещь образа не найдена");
       if (parent.itemId === itemId || look.items.some((p) => p.parentId === parent.id && p.itemId === itemId)) return { ok: "Уже добавлено", lookId: look.id };
-      await prisma.stLookItem.create({ data: { lookId: look.id, itemId, parentId: parent.id, order: look.items.length } });
+      await prisma.stLookItem.create({ data: { lookId: look.id, itemId, parentId: parent.id, order: look.items.length, addedPrice: item.price } });
       await prisma.stLook.update({ where: { id: look.id }, data: { updatedAt: new Date() } });
       void refreshSizes(itemId).catch(() => {});
       revalidatePath(BASE_PATH, "layout");
@@ -119,7 +119,7 @@ export async function addToLook(itemId: string, opts: { analog?: string; look?: 
     }
     if (!picked) await setActive(look.id);
     if (look.items.some((p) => !p.parentId && p.itemId === itemId)) return { ok: "Уже в образе", lookId: look.id };
-    await prisma.stLookItem.create({ data: { lookId: look.id, itemId, order: look.items.length } });
+    await prisma.stLookItem.create({ data: { lookId: look.id, itemId, order: look.items.length, addedPrice: item.price } });
     await prisma.stLook.update({ where: { id: look.id }, data: { updatedAt: new Date() } });
     // Размеры в наличии подтягиваем в фоне: в списке каталога магазин их не отдаёт.
     void refreshSizes(itemId).catch(() => {});
@@ -182,6 +182,11 @@ export async function lookPieceAction(_p: FormState, f: FormData): Promise<FormS
         prisma.stLookItem.update({ where: { id: parent.id }, data: { itemId: piece.itemId } }),
         prisma.stLookItem.update({ where: { id: piece.id }, data: { itemId: parent.itemId } }),
       ]);
+    } else if (op === "store") {
+      const v = str(f, "inStore");
+      await prisma.stLookItem.update({ where: { id: piece.id }, data: { inStore: v === "yes" || v === "no" ? v : "", inStoreAt: v === "yes" || v === "no" ? new Date() : null } });
+      revalidatePath(BASE_PATH, "layout");
+      return {};
     } else if (op === "size") {
       await prisma.stLookItem.update({ where: { id: piece.id }, data: { size: str(f, "size").slice(0, 20) } });
       revalidatePath(BASE_PATH, "layout");
@@ -200,10 +205,66 @@ export async function lookPieceAction(_p: FormState, f: FormData): Promise<FormS
   }
 }
 
+/* ---------- Избранное ---------- */
+
+export async function toggleFav(itemId: string): Promise<{ fav?: boolean; error?: string }> {
+  const me = await requireUser();
+  try {
+    await assertSee(me);
+    const has = await prisma.stFav.findUnique({ where: { itemId }, select: { id: true } });
+    if (has) await prisma.stFav.delete({ where: { id: has.id } });
+    else await prisma.stFav.create({ data: { itemId, createdById: me.id } });
+    return { fav: !has };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/* ---------- Клиенты ---------- */
+
+export async function saveClient(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  let created = "";
+  try {
+    await assertSee(me);
+    const name = str(f, "name").slice(0, 200);
+    if (!name) throw new Error("Впишите имя клиента");
+    const id = str(f, "client");
+    const num = (k: string) => {
+      const n = Number(str(f, k).replace(",", "."));
+      return str(f, k) && Number.isFinite(n) && n > 0 ? n : null;
+    };
+    if (!id) created = (await prisma.stClient.create({ data: { name, teamId: await teamId(), createdById: me.id } })).id;
+    else {
+      const measures: Record<string, string> = {};
+      for (const [k, v] of f.entries()) if (k.startsWith("m_") && String(v).trim()) measures[k.slice(2)] = String(v).trim().slice(0, 10);
+      const height = num("height");
+      await prisma.stClient.update({ where: { id }, data: { name, note: str(f, "note").slice(0, 5000) || null, height: height ? Math.round(height) : null, weight: num("weight"), budget: num("budget"), sizeTop: str(f, "sizeTop").slice(0, 40), sizeBottom: str(f, "sizeBottom").slice(0, 40), sizeShoes: str(f, "sizeShoes").slice(0, 40), measures } });
+    }
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath(BASE_PATH, "layout");
+  if (created) redirect(`${BASE_PATH}/clients/${created}`);
+  return { ok: "Сохранено" };
+}
+
+export async function deleteClient(_p: FormState, f: FormData): Promise<FormState> {
+  const me = await requireUser();
+  try {
+    await assertSee(me);
+    await prisma.stClient.delete({ where: { id: str(f, "client") } });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath(BASE_PATH, "layout");
+  redirect(`${BASE_PATH}/clients`);
+}
+
 /* ---------- Проверка наличия ---------- */
 
 /**
- * «Проверить наличие» для образа или коллекции: по каждой вещи (и её аналогам) заново спрашиваем магазин
+ * «Проверить наличие и цены» для образа или коллекции: по каждой вещи (и её аналогам) заново спрашиваем магазин
  * тем способом, который он поддерживает (Zara — карточка товара, Inditex — остатки по размерам).
  * Магазины «по ссылке» и Parfois размеры не отдают — такие вещи перечисляются в итоге отдельно.
  */
@@ -213,10 +274,12 @@ export async function checkStock(_p: FormState, f: FormData): Promise<FormState>
     await assertSee(me);
     const lookId = str(f, "look");
     const colId = str(f, "collection");
+    if (f.get("fav") === "1") return await checkFavs();
     const looks = lookId ? [await getLook(me, lookId)] : colId ? await prisma.stLook.findMany({ where: { collectionId: colId }, select: { id: true } }).then((r) => Promise.all(r.map((x) => getLook(me, x.id)))) : [];
     const pieces = looks.flatMap((l) => l?.items ?? []);
     if (!pieces.length) throw new Error("В образах нет вещей");
     const ids = [...new Set(pieces.map((p) => p.itemId))].slice(0, 80);
+    const before = new Map(pieces.map((p) => [p.itemId, p.item.price]));
     let done = 0, manual = 0, failed = 0;
     // По четыре вещи разом: быстрее, чем по одной, и без всплеска запросов к магазину.
     for (let i = 0; i < ids.length; i += 4) {
@@ -233,10 +296,15 @@ export async function checkStock(_p: FormState, f: FormData): Promise<FormState>
     const fresh = (await Promise.all(looks.filter(Boolean).map((l) => getLook(me, l!.id)))).flatMap((l) => l?.items ?? []).filter((p) => !p.parentId);
     const gone = fresh.filter((p) => !p.item.inStock).length;
     const noSize = fresh.filter((p) => p.item.inStock && p.size && p.item.sizesAt && !p.item.sizes.includes(`|${p.size}|`)).length;
+    const cheaper = fresh.filter((p) => p.item.price < (before.get(p.itemId) ?? p.item.price) - 0.005).length;
+    const dearer = fresh.filter((p) => p.item.price > (before.get(p.itemId) ?? p.item.price) + 0.005).length;
     const parts = [`Проверено у магазинов: ${done}`];
+    if (cheaper) parts.push(`подешевело: ${cheaper}`);
+    if (dearer) parts.push(`подорожало: ${dearer}`);
     if (gone) parts.push(`нет в наличии: ${gone}`);
     if (noSize) parts.push(`нет нужного размера: ${noSize}`);
     if (!gone && !noSize && done) parts.push("всё в наличии");
+    if (!cheaper && !dearer && done) parts.push("цены не изменились");
     if (manual) parts.push(`без автоматической проверки (уточнять в магазине): ${manual}`);
     if (failed) parts.push(`магазин не ответил: ${failed} — попробуйте ещё раз позже`);
     if (pieces.length > 80) parts.push("проверены первые 80 вещей");
@@ -244,6 +312,30 @@ export async function checkStock(_p: FormState, f: FormData): Promise<FormState>
   } catch (e) {
     return fail(e);
   }
+}
+
+/** Проверка наличия и цен всего избранного (до 80 вещей за раз, сначала давно не проверявшиеся). */
+async function checkFavs(): Promise<FormState> {
+  const favs = await prisma.stFav.findMany({ orderBy: { item: { sizesAt: "asc" } }, take: 80, include: { item: { select: { id: true, price: true } } } });
+  if (!favs.length) return { error: "В избранном пока пусто" };
+  let done = 0, manual = 0, failed = 0;
+  for (let i = 0; i < favs.length; i += 4) {
+    await Promise.all(favs.slice(i, i + 4).map(async (x) => {
+      try {
+        if (await refreshSizes(x.itemId, true)) done++;
+        else manual++;
+      } catch {
+        failed++;
+      }
+    }));
+  }
+  const fresh = new Map((await prisma.stItem.findMany({ where: { id: { in: favs.map((x) => x.itemId) } }, select: { id: true, price: true, inStock: true } })).map((r) => [r.id, r]));
+  const cheaper = favs.filter((x) => (fresh.get(x.itemId)?.price ?? x.item.price) < x.item.price - 0.005).length;
+  const dearer = favs.filter((x) => (fresh.get(x.itemId)?.price ?? x.item.price) > x.item.price + 0.005).length;
+  const gone = favs.filter((x) => fresh.get(x.itemId)?.inStock === false).length;
+  revalidatePath(BASE_PATH, "layout");
+  const parts = [`Проверено у магазинов: ${done}`, cheaper ? `подешевело: ${cheaper}` : "", dearer ? `подорожало: ${dearer}` : "", gone ? `нет в наличии: ${gone}` : "", manual ? `без автоматической проверки: ${manual}` : "", failed ? `магазин не ответил: ${failed}` : ""].filter(Boolean);
+  return { ok: `${parts.join(" · ")}.` };
 }
 
 /* ---------- Коллекции образов ---------- */
@@ -256,7 +348,8 @@ export async function saveCollection(_p: FormState, f: FormData): Promise<FormSt
     if (!name) throw new Error("Дайте коллекции название");
     const note = str(f, "note").slice(0, 2000) || null;
     const id = str(f, "collection");
-    if (id) await prisma.stCollection.update({ where: { id }, data: { name, note } });
+    const client = str(f, "clientId") ? await prisma.stClient.findUnique({ where: { id: str(f, "clientId") }, select: { id: true } }) : null;
+    if (id) await prisma.stCollection.update({ where: { id }, data: { name, note, ...(f.has("clientId") ? { clientId: client?.id ?? null } : {}) } });
     else await prisma.stCollection.create({ data: { name, note, teamId: await teamId(), createdById: me.id } });
     revalidatePath(BASE_PATH, "layout");
     return { ok: id ? "Сохранено" : `Коллекция «${name}» создана` };
@@ -289,10 +382,10 @@ export async function copyLook(_p: FormState, f: FormData): Promise<FormState> {
     const made = await prisma.stLook.create({ data: { name: `${look.name} — копия`.slice(0, 200), note: look.note, teamId: look.teamId, collectionId: look.collectionId, createdById: me.id } });
     const map = new Map<string, string>();
     for (const p of look.items.filter((x) => !x.parentId)) {
-      map.set(p.id, (await prisma.stLookItem.create({ data: { lookId: made.id, itemId: p.itemId, order: p.order, size: p.size } })).id);
+      map.set(p.id, (await prisma.stLookItem.create({ data: { lookId: made.id, itemId: p.itemId, order: p.order, size: p.size, addedPrice: p.addedPrice } })).id);
     }
     for (const a of look.items.filter((x) => x.parentId && map.has(x.parentId))) {
-      await prisma.stLookItem.create({ data: { lookId: made.id, itemId: a.itemId, parentId: map.get(a.parentId!)!, order: a.order } });
+      await prisma.stLookItem.create({ data: { lookId: made.id, itemId: a.itemId, parentId: map.get(a.parentId!)!, order: a.order, addedPrice: a.addedPrice } });
     }
     id = made.id;
   } catch (e) {

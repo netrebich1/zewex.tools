@@ -11,7 +11,8 @@ import { queueSpirit } from "@/actions/stylist";
 import { BRANDS } from "@/lib/stylist/dna";
 import { ColorDot, ItemCard } from "@/components/stylist/ItemCard";
 import { BASE_PATH, CATEGORIES, COLORS, GEOS, SEGMENTS, SIZE_OPTIONS, TAGS, money } from "@/lib/stylist/consts";
-import { PAGE_SIZE, activeLook, canSee, filterQuery, listCollections, listItems, lookChoices, looksOfItems, lookTotals, parseFilter } from "@/lib/stylist/queries";
+import { PAGE_SIZE, activeLook, canSee, favSet, filterQuery, listCollections, listItems, lookChoices, looksOfItems, lookTotals, parseFilter } from "@/lib/stylist/queries";
+import { checkStock } from "@/actions/stylist";
 
 export const dynamic = "force-dynamic";
 
@@ -33,14 +34,14 @@ export default async function StylistCatalog({ searchParams }: { searchParams: P
   ]);
   const analog = analogPiece && !analogPiece.parentId ? analogPiece : null;
   const href = (patch: Parameters<typeof filterQuery>[1]) => `${BASE_PATH}${filterQuery(f, { page: 1, ...patch }, analog?.id ?? "")}`;
-  const inLooks = await looksOfItems(me, data.rows.map((r) => r.id));
+  const [inLooks, favs, favTotal] = await Promise.all([looksOfItems(me, data.rows.map((r) => r.id)), favSet(data.rows.map((r) => r.id)), prisma.stFav.count()]);
   const totals = look ? lookTotals(look) : null;
   const pages = Math.ceil(data.total / PAGE_SIZE);
   const catTotal = Object.values(data.byCat).reduce((a, b) => a + b, 0);
   const brandTotal = data.byBrand.reduce((a, b) => a + b.count, 0);
   const tagGroups = [...new Set(TAGS.map((t) => t.group))];
   const unchecked = data.rows.filter((r) => !r.spiritAt && !r.spiritAsked).map((r) => r.id);
-  const filtersOn = !!(f.spirit || f.seg || f.color || f.size || f.tags.length || f.q || f.pmin != null || f.pmax != null || f.sale || f.all || f.sort !== "new");
+  const filtersOn = !!(f.fav || f.disc || f.last || f.spirit || f.seg || f.color || f.size || f.tags.length || f.q || f.pmin != null || f.pmax != null || f.sale || f.all || f.sort !== "new");
 
   return (
     <>
@@ -78,6 +79,25 @@ export default async function StylistCatalog({ searchParams }: { searchParams: P
             <Link key={g.id} href={href({ gender: g.id })} className={`tab ${f.gender === g.id ? "active" : ""}`}>{g.label}</Link>
           ))}
         </div>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Link href={f.fav ? href({ fav: false }) : href({ fav: true, cat: "", store: "" })} className={`tab ${f.fav ? "active" : ""}`}>♥ Избранное <span className="text-muted">{favTotal}</span></Link>
+        {f.fav && favTotal > 0 && (
+          <ActionForm action={checkStock} className="flex flex-wrap items-center gap-2" hidden={{ fav: "1" }}>
+            <SubmitButton className="btn-ghost btn-sm" pendingText="Проверяю… до минуты">Проверить наличие и цены избранного</SubmitButton>
+          </ActionForm>
+        )}
+        {f.fav && <span className="text-[13px] text-muted">Сердечко на фото кладёт вещь в избранное. Здесь видны и те вещи, которых уже нет в наличии.</span>}
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-[13px] text-muted">Скидки:</span>
+        <Link href={href({ sale: true, sort: "discount", disc: 0, last: false })} className={`tab ${f.sale && f.sort === "discount" && !f.disc && !f.last ? "active" : ""}`}>🔥 Лучшие скидки</Link>
+        <Link href={href({ sale: true, sort: "discount", disc: 50, last: false })} className={`tab ${f.disc === 50 && !f.last ? "active" : ""}`}>от −50%</Link>
+        <Link href={href({ sale: true, sort: "discount", disc: 70, last: false })} className={`tab ${f.disc === 70 && !f.last ? "active" : ""}`}>от −70%</Link>
+        <Link href={href({ sale: true, sort: "discount", disc: 0, last: true })} className={`tab ${f.last ? "active" : ""}`}>последний размер со скидкой</Link>
+        {(f.sale || f.disc || f.last) && <Link href={href({ sale: false, disc: 0, last: false, sort: "new" })} className="text-[13px] text-muted underline">все вещи</Link>}
       </div>
 
       <div className="mb-3 flex flex-wrap gap-1.5">
@@ -148,6 +168,7 @@ export default async function StylistCatalog({ searchParams }: { searchParams: P
                 <option value="new">сначала новые</option>
                 <option value="price_asc">сначала дешёвые</option>
                 <option value="price_desc">сначала дорогие</option>
+                <option value="discount">сначала большая скидка</option>
               </select>
             </label>
           </div>
@@ -170,9 +191,19 @@ export default async function StylistCatalog({ searchParams }: { searchParams: P
           </details>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <label className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" name="sale" value="1" defaultChecked={f.sale} /> только со скидкой</label>
+            <label className="flex items-center gap-1.5 text-[13px]">
+              скидка от
+              <select name="disc" defaultValue={String(f.disc || "")} className="input !w-auto !py-1">
+                <option value="">любая</option>
+                <option value="30">30%</option>
+                <option value="50">50%</option>
+                <option value="70">70%</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" name="last" value="1" defaultChecked={f.last} /> остался последний размер</label>
             <label className="flex items-center gap-1.5 text-[13px]"><input type="checkbox" name="all" value="1" defaultChecked={f.all} /> показывать и те, которых нет в наличии</label>
             <button className="btn-primary btn-sm">Показать</button>
-            {filtersOn && <Link href={`${BASE_PATH}${filterQuery({ ...f, spirit: "", seg: "", color: "", size: "", tags: [], q: "", pmin: null, pmax: null, sale: false, all: false, sort: "new", page: 1 }, {}, analog?.id ?? "")}`} className="text-[13px] text-muted underline">сбросить фильтры</Link>}
+            {filtersOn && <Link href={`${BASE_PATH}${filterQuery({ ...f, fav: false, disc: 0, last: false, spirit: "", seg: "", color: "", size: "", tags: [], q: "", pmin: null, pmax: null, sale: false, all: false, sort: "new", page: 1 }, {}, analog?.id ?? "")}`} className="text-[13px] text-muted underline">сбросить фильтры</Link>}
           </div>
           {f.size && <p className="help">Размер ищется среди вещей, у которых размеры уже загружены. Zara отдаёт размеры только в карточке товара — они подтягиваются, когда вещь попадает в образ.</p>}
         </form>
@@ -197,7 +228,7 @@ export default async function StylistCatalog({ searchParams }: { searchParams: P
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {data.rows.map((it) => (
-            <ItemCard key={it.id} item={it} action={analog ? <AddButton itemId={it.id} analog={analog.id} /> : <LookPicker itemId={it.id} itemName={`${it.store.brand} · ${it.name}`} looks={choices} collections={collections} activeId={look?.id ?? null} inLooks={inLooks[it.id] ?? []} />} />
+            <ItemCard key={it.id} item={it} fav={favs.has(it.id)} showGeo={f.fav} action={analog ? <AddButton itemId={it.id} analog={analog.id} /> : <LookPicker itemId={it.id} itemName={`${it.store.brand} · ${it.name}`} looks={choices} collections={collections} activeId={look?.id ?? null} inLooks={inLooks[it.id] ?? []} />} />
           ))}
         </div>
       )}

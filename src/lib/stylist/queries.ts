@@ -28,7 +28,7 @@ export async function assertSee(me: CurrentUser): Promise<void> {
 
 export type Filter = {
   geo: string; gender: string; cat: string; store: string; seg: string; color: string; size: string; tags: string[];
-  spirit: string; q: string; pmin: number | null; pmax: number | null; sort: string; all: boolean; sale: boolean; page: number;
+  spirit: string; disc: number; last: boolean; fav: boolean; q: string; pmin: number | null; pmax: number | null; sort: string; all: boolean; sale: boolean; page: number;
 };
 
 const oneOf = (v: string | undefined, list: readonly string[], def: string) => (v && list.includes(v) ? v : def);
@@ -49,10 +49,13 @@ export function parseFilter(get: (k: string) => string | undefined, getAll: (k: 
     size: (get("size") ?? "").trim().toUpperCase().slice(0, 12).replace(/\|/g, ""),
     tags: [...new Set(getAll("tag").filter((t) => tagIds.includes(t)))].slice(0, 6),
     spirit: BRAND_NAMES[get("spirit") ?? ""] || get("spirit") === "any" ? (get("spirit") as string) : "",
+    disc: [30, 50, 70].includes(Number(get("disc"))) ? Number(get("disc")) : 0,
+    last: get("last") === "1",
+    fav: get("fav") === "1",
     q: (get("q") ?? "").trim().slice(0, 80),
     pmin: numOr(get("pmin")),
     pmax: numOr(get("pmax")),
-    sort: oneOf(get("sort"), ["new", "price_asc", "price_desc"], "new"),
+    sort: oneOf(get("sort"), ["new", "price_asc", "price_desc", "discount"], "new"),
     all: get("all") === "1",
     sale: get("sale") === "1",
     page: Math.max(1, Math.min(500, Math.floor(Number(get("page")) || 1))),
@@ -72,6 +75,9 @@ export function filterQuery(f: Filter, patch: Partial<Filter> & { analog?: strin
   if (v.sort !== "new") q.set("sort", v.sort);
   if (v.all) q.set("all", "1");
   if (v.sale) q.set("sale", "1");
+  if (v.disc) q.set("disc", String(v.disc));
+  if (v.last) q.set("last", "1");
+  if (v.fav) q.set("fav", "1");
   if (v.page > 1) q.set("page", String(v.page));
   const a = patch.analog ?? analog;
   if (a) q.set("analog", a);
@@ -92,8 +98,11 @@ export function filterWhere(f: Filter, skip: "store" | "cat" | "" = ""): Prisma.
   if (f.q) and.push({ OR: [{ name: { contains: f.q } }, { sku: { contains: f.q } }, { colorName: { contains: f.q } }, { rawCategory: { contains: f.q } }] });
   if (f.pmin != null) and.push({ priceEur: { gte: f.pmin } });
   if (f.pmax != null) and.push({ priceEur: { lte: f.pmax } });
-  if (!f.all) and.push({ inStock: true });
+  if (!f.all && !f.fav) and.push({ inStock: true });
   if (f.sale) and.push({ oldPrice: { not: null } });
+  if (f.disc) and.push({ discount: { gte: f.disc } });
+  if (f.last) and.push({ sizesAt: { not: null }, sizesCount: 1 });
+  if (f.fav) and.push({ favs: { some: {} } });
   return { AND: and };
 }
 
@@ -102,7 +111,7 @@ export type CatalogItem = Prisma.StItemGetPayload<{ include: typeof ITEM_INCLUDE
 
 export async function listItems(f: Filter): Promise<{ rows: CatalogItem[]; total: number; byBrand: Array<{ brand: string; count: number }>; byCat: Record<string, number> }> {
   const where = filterWhere(f);
-  const orderBy: Prisma.StItemOrderByWithRelationInput[] = f.sort === "price_asc" ? [{ priceEur: "asc" }, { id: "asc" }] : f.sort === "price_desc" ? [{ priceEur: "desc" }, { id: "asc" }] : [{ firstSeenAt: "desc" }, { id: "asc" }];
+  const orderBy: Prisma.StItemOrderByWithRelationInput[] = f.sort === "price_asc" ? [{ priceEur: "asc" }, { id: "asc" }] : f.sort === "price_desc" ? [{ priceEur: "desc" }, { id: "asc" }] : f.sort === "discount" ? [{ discount: "desc" }, { priceEur: "asc" }, { id: "asc" }] : [{ firstSeenAt: "desc" }, { id: "asc" }];
   const [rows, total, stores, cats] = await Promise.all([
     prisma.stItem.findMany({ where, orderBy, skip: (f.page - 1) * PAGE_SIZE, take: PAGE_SIZE, include: ITEM_INCLUDE }),
     prisma.stItem.count({ where }),
@@ -126,7 +135,8 @@ export async function listItems(f: Filter): Promise<{ rows: CatalogItem[]; total
 /* ---------- Образы ---------- */
 
 const LOOK_INCLUDE = {
-  collection: { select: { id: true, name: true } },
+  collection: { select: { id: true, name: true, client: true } },
+  client: true,
   items: { orderBy: [{ order: "asc" }, { createdAt: "asc" }], include: { item: { include: ITEM_INCLUDE } } },
 } satisfies Prisma.StLookInclude;
 export type LookFull = Prisma.StLookGetPayload<{ include: typeof LOOK_INCLUDE }>;
@@ -146,10 +156,10 @@ export async function listLooks(me: CurrentUser): Promise<LookFull[]> {
   return prisma.stLook.findMany({ where: await lookWhere(me), orderBy: { updatedAt: "desc" }, take: 300, include: LOOK_INCLUDE });
 }
 
-export type CollectionRow = { id: string; name: string; note: string | null };
+export type CollectionRow = { id: string; name: string; note: string | null; clientId: string | null; client: { name: string } | null };
 
 export async function listCollections(me: CurrentUser): Promise<CollectionRow[]> {
-  return prisma.stCollection.findMany({ where: me.role === "ADMIN" ? {} : { teamId: (await teamId()) ?? "-" }, orderBy: { createdAt: "desc" }, take: 200, select: { id: true, name: true, note: true } });
+  return prisma.stCollection.findMany({ where: me.role === "ADMIN" ? {} : { teamId: (await teamId()) ?? "-" }, orderBy: { createdAt: "desc" }, take: 200, select: { id: true, name: true, note: true, clientId: true, client: { select: { name: true } } } });
 }
 
 /** Список «коллекция → образы» для выбора, куда положить вещь (карточка каталога). */
@@ -158,6 +168,16 @@ export type LookChoice = { id: string; name: string; collectionId: string; colle
 export async function lookChoices(me: CurrentUser): Promise<LookChoice[]> {
   const rows = await prisma.stLook.findMany({ where: await lookWhere(me), orderBy: [{ updatedAt: "desc" }], take: 300, select: { id: true, name: true, collectionId: true, collection: { select: { name: true } } } });
   return rows.map((r) => ({ id: r.id, name: r.name, collectionId: r.collectionId ?? "", collection: r.collection?.name ?? "" }));
+}
+
+/** Какие из вещей лежат в избранном. */
+export async function favSet(itemIds: string[]): Promise<Set<string>> {
+  if (!itemIds.length) return new Set();
+  return new Set((await prisma.stFav.findMany({ where: { itemId: { in: itemIds } }, select: { itemId: true } })).map((r) => r.itemId));
+}
+
+export async function listClients(me: CurrentUser): Promise<Array<{ id: string; name: string }>> {
+  return prisma.stClient.findMany({ where: me.role === "ADMIN" ? {} : { teamId: (await teamId()) ?? "-" }, orderBy: { name: "asc" }, select: { id: true, name: true } });
 }
 
 /** В каких образах уже лежит каждая из вещей (основной вещью): itemId → id образов. */

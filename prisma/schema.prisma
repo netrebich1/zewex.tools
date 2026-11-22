@@ -4123,6 +4123,8 @@ model StItem {
   images      Json?
   price       Float
   oldPrice    Float?
+  /// Скидка в процентах от старой цены (0 — без скидки) — для сортировки и раздела «Лучшие скидки»
+  discount    Int          @default(0)
   currency    String       @db.VarChar(4)
   /// Цена в евро по курсу дня сбора — для сумм образов и фильтра цены
   priceEur    Float        @default(0)
@@ -4139,6 +4141,8 @@ model StItem {
   /// Размеры в наличии: «|S|M|L|» — поиск по вхождению «|M|»; пусто — ещё не загружены
   sizes       String       @default("") @db.VarChar(400)
   sizesAt     DateTime?
+  /// Сколько размеров в наличии (имеет смысл, когда sizesAt заполнен): 1 — «последний размер»
+  sizesCount  Int          @default(0)
   /// Вся размерная сетка вещи: «|XS|S|M|L|XL|» (в наличии — те, что в sizes)
   sizesAll    String       @default("") @db.VarChar(400)
   /// Размеры, которых осталось мало: «|XL|»
@@ -4172,6 +4176,7 @@ model StItem {
   updatedAt   DateTime     @updatedAt
   store       StStore      @relation(fields: [storeId], references: [id], onDelete: Cascade)
   lookItems   StLookItem[]
+  favs        StFav[]
 
   @@unique([storeId, extId])
   @@index([category, gender, inStock])
@@ -4179,6 +4184,43 @@ model StItem {
   @@index([color])
   @@index([priceEur])
   @@index([spiritAsked])
+  @@index([discount])
+}
+
+/// Избранное команды: вещи, отложенные «на потом» (из них потом собирают образы)
+model StFav {
+  id          String   @id @default(uuid()) @db.Char(36)
+  itemId      String   @unique @db.Char(36)
+  createdById String?
+  createdAt   DateTime @default(now())
+  item        StItem   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+/// Карточка клиента стилиста: размеры и замеры
+model StClient {
+  id          String         @id @default(uuid()) @db.Char(36)
+  teamId      String?
+  name        String         @db.VarChar(200)
+  note        String?        @db.Text
+  /// Рост, см
+  height      Int?
+  /// Вес, кг
+  weight      Float?
+  /// Бюджет на образ, EUR
+  budget      Float?
+  /// Размеры как у магазинов, через запятую: «S, 36»
+  sizeTop     String         @default("") @db.VarChar(40)
+  sizeBottom  String         @default("") @db.VarChar(40)
+  sizeShoes   String         @default("") @db.VarChar(40)
+  /// Замеры в см: { bust, waist, hips, shoulders, sleeve, inseam, foot } (src/lib/stylist/clients.ts)
+  measures    Json?
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  collections StCollection[]
+  looks       StLook[]
+
+  @@index([teamId, name])
 }
 
 /// Коллекция (подборка) образов: «Осень — Анна», «Капсула офис»
@@ -4187,6 +4229,9 @@ model StCollection {
   teamId      String?
   name        String   @db.VarChar(200)
   note        String?  @db.Text
+  /// Клиент, для которого коллекция (её образы считаются образами этого клиента)
+  clientId    String?  @db.Char(36)
+  client      StClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -4202,6 +4247,9 @@ model StLook {
   /// Коллекция образа; пусто — «Без коллекции»
   collectionId String?     @db.Char(36)
   collection  StCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  /// Клиент образа; пусто — клиент коллекции
+  clientId    String?      @db.Char(36)
+  client      StClient?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
   name        String       @db.VarChar(200)
   note        String?      @db.Text
   createdById String?
@@ -4219,6 +4267,11 @@ model StLookItem {
   lookId    String       @db.Char(36)
   itemId    String       @db.Char(36)
   parentId  String?      @db.Char(36)
+  /// Отметка стилиста после звонка или проверки на сайте: есть ли вещь в обычном магазине — yes | no | пусто (не проверяли)
+  inStore   String       @default("") @db.VarChar(4)
+  inStoreAt DateTime?
+  /// Цена вещи в момент, когда её положили в образ (в валюте магазина) — чтобы показать, что цена изменилась
+  addedPrice Float?
   /// Нужный клиенту размер этой вещи (как у магазина: «M», «38»)
   size      String       @default("") @db.VarChar(20)
   order     Int          @default(0)
