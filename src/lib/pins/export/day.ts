@@ -6,7 +6,7 @@
  */
 
 import { fixSchedule, type FixRow } from "@/lib/pins/schedule/fixer";
-import { startOfDay } from "@/lib/pins/schedule/math";
+import { dayKey, startOfDay } from "@/lib/pins/schedule/math";
 import { SCHEDULED_PER_DAY } from "@/lib/pins/types";
 import {
   buildPinterestCsv,
@@ -62,7 +62,16 @@ export function buildDayFiles(input: DayExportInput): DayExportResult {
   // 2) Сегодня — правка «до конца дня»; другие дни — даты не трогаем.
   let retimed = 0;
   const retimedAt = new Map<string, Date>();
-  if (input.isToday) {
+  // Поздний файл: запас (now + buffer) уже за полночью. Раньше пропущенные пины уезжали на завтра, и завтрашний
+  // файл их повторял (22.11: 96+95 = 191 у azureglam). Теперь они остаются в своём дне и в файле идут без даты —
+  // Pinterest публикует их сразу при загрузке; в базе даты не меняются.
+  const lateIds = new Set<string>();
+  const safeAt = new Date(now.getTime() + (input.bufferMinutes ?? 20) * 60_000);
+  if (input.isToday && dayKey(safeAt, tz) !== day) {
+    for (const it of items) if (it.scheduledAt && it.scheduledAt.getTime() < safeAt.getTime()) lateIds.add(it.id);
+    // для preflight — любая допустимая дата; в CSV у них всё равно будет пустая дата
+    items = items.map((it) => (lateIds.has(it.id) ? { ...it, scheduledAt: safeAt } : it));
+  } else if (input.isToday) {
     const rows: FixRow[] = items.map((it) => ({ id: it.id, scheduledAt: it.scheduledAt }));
     const fx = fixSchedule(rows, "today", { now, tz, bufferMinutes: input.bufferMinutes });
     retimed = fx.changed;
@@ -78,8 +87,10 @@ export function buildDayFiles(input: DayExportInput): DayExportResult {
   // 4) Уникальные заголовки. Сверх 100 пинов в дне Pinterest по времени не ставит: первые 100 (по времени)
   // идут с датой, остальные — с пустой датой и публикуются сразу при загрузке файла.
   const titled = dedupeTitles(report.rows);
-  const immediate = Math.max(0, titled.rows.length - SCHEDULED_PER_DAY);
-  if (immediate) titled.rows = titled.rows.map((r, i) => (i < SCHEDULED_PER_DAY ? r : { ...r, publishDate: null }));
+  // Время, которое preflight сдвинул за полночь (поздний вечер, плотные слоты), тоже без даты: иначе пин уйдёт в завтрашний день Pinterest.
+  const keep = (r: (typeof titled.rows)[number], i: number) => i < SCHEDULED_PER_DAY && !lateIds.has(r.id) && (!input.isToday || !r.publishDate || dayKey(r.publishDate, tz) === day);
+  titled.rows = titled.rows.map((r, i) => (keep(r, i) ? r : { ...r, publishDate: null }));
+  const immediate = titled.rows.filter((r) => !r.publishDate).length;
   const csv = buildPinterestCsv(titled.rows, tz);
 
   return {
