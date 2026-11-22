@@ -47,6 +47,28 @@ function sizeState(p: LookPiece): { label: string; tone: "ok" | "warn" | "danger
 }
 const TONE = { ok: "text-ok", warn: "text-warn", danger: "text-danger", muted: "text-muted" };
 
+/**
+ * Размерная сетка в выгрузке: выбранный размер — зелёный, остальные в наличии — жёлтые, которых нет — серые зачёркнутые.
+ * Выбранный размер, которого нет в наличии, — красный. Магазин сетку не отдаёт — показываем только выбранный.
+ */
+function SizeRow({ p }: { p: LookPiece }) {
+  const have = unpack(p.item.sizes);
+  const base = unpack(p.item.sizesAll).length ? unpack(p.item.sizesAll) : have;
+  const all = p.size && !base.includes(p.size) ? [...base, p.size] : base;
+  if (!all.length) return <b>{p.size || "—"}</b>;
+  const known = !!p.item.sizesAt;
+  return (
+    <span className="flex max-w-[190px] flex-wrap gap-1">
+      {all.map((s) => {
+        const ok = !known || have.includes(s);
+        const chosen = s === p.size;
+        const cls = chosen ? (ok ? "bg-[#1f9d55] text-white font-bold" : "bg-[#d1283a] text-white font-bold line-through") : ok ? "bg-[#fde68a] text-[#5b4300]" : "bg-[#e5e7eb] text-[#9aa0aa] line-through";
+        return <span key={s} className={`rounded px-1.5 py-0.5 text-[12px] ${cls}`}>{s}</span>;
+      })}
+    </span>
+  );
+}
+
 function Row({ p, lookName, qr }: { p: LookPiece; lookName?: string; qr: Qr }) {
   const st = sizeState(p);
   return (
@@ -58,8 +80,11 @@ function Row({ p, lookName, qr }: { p: LookPiece; lookName?: string; qr: Qr }) {
         <div className="text-[12px] text-muted">{p.item.store.brand}{lookName ? ` · ${lookName}` : ""} · {p.item.colorName || "—"}</div>
         <a href={p.item.url} target="_blank" rel="noreferrer noopener" className="break-all text-[11px] text-muted underline">{p.item.url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 80)}</a>
       </td>
-      <td className="whitespace-nowrap py-2 pr-3 font-mono text-[13px]">{p.item.sku || "—"}</td>
-      <td className="py-2 pr-3 text-[13px]"><b>{p.size || "—"}</b><div className={`text-[12px] ${TONE[st.tone]}`}>{st.label}</div></td>
+      <td className="whitespace-nowrap py-2 pr-3 font-mono text-[14px] font-semibold">{p.item.sku || "—"}</td>
+      <td className="py-2 pr-3 text-[13px]">
+        <SizeRow p={p} />
+        <div className={`mt-0.5 text-[12px] ${TONE[st.tone]}`}>{st.label}</div>
+      </td>
       <td className="whitespace-nowrap py-2 pr-3 text-right font-semibold">{money(p.item.price, p.item.currency)}</td>
       <td className="w-[58px] py-2"><QrImg qr={qr} url={p.item.url} /></td>
     </tr>
@@ -128,7 +153,7 @@ export default async function StylistList({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <style>{`@media print { .view-header, .no-print { display: none !important; } body { background: #fff !important; } .sheet { border: 0 !important; box-shadow: none !important; padding: 0 !important; max-width: none !important; } a { text-decoration: none !important; } }`}</style>
+      <style>{`* { -webkit-print-color-adjust: exact; print-color-adjust: exact; } @media print { .view-header, .no-print { display: none !important; } body { background: #fff !important; } .sheet { border: 0 !important; box-shadow: none !important; padding: 0 !important; max-width: none !important; } a { text-decoration: none !important; } }`}</style>
       <div className="no-print"><StNav /></div>
       <div className="no-print mb-4 flex flex-wrap items-center gap-2">
         <Link href={back} className="btn-ghost">← Назад</Link>
@@ -149,6 +174,13 @@ export default async function StylistList({ searchParams }: { searchParams: Prom
             <span>Итого по образам: <b>{money(totalEur, "EUR")}</b></span>
             {uniqueEur !== totalEur && <span>К покупке (без повторов): <b>{money(uniqueEur, "EUR")}</b></span>}
             {checked && <span className="text-muted">наличие на {fmtDate(checked)}</span>}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-2">
+            <span>Размеры:</span>
+            <span className="rounded bg-[#1f9d55] px-1.5 py-0.5 font-bold text-white">M</span> нужный
+            <span className="rounded bg-[#fde68a] px-1.5 py-0.5 text-[#5b4300]">L</span> есть в наличии
+            <span className="rounded bg-[#e5e7eb] px-1.5 py-0.5 text-[#9aa0aa] line-through">XL</span> нет
+            <span className="rounded bg-[#d1283a] px-1.5 py-0.5 font-bold text-white line-through">S</span> нужного нет
           </div>
           {(problems > 0 || noSize > 0) && (
             <div className="mt-2 text-[13px]">
@@ -195,6 +227,7 @@ export default async function StylistList({ searchParams }: { searchParams: Prom
                   <div className="mt-2 text-[12.5px]">
                     <span className="font-semibold">Артикулы для продавца:</span> {g.rows.map((r) => `${r.p.item.sku || r.p.item.name}${r.p.size ? ` (${r.p.size})` : ""}`).join(" · ")}
                   </div>
+                  {branches.length > 0 && <div className="mt-3 text-[12.5px] font-semibold">Магазины {g.brand} на острове — наличие в конкретном магазине уточняйте по телефону, называя артикул и размер:</div>}
                   {branches.length > 0 ? (
                     <ul className="mt-2 grid gap-x-6 gap-y-2 text-[12.5px] sm:grid-cols-2">
                       {branches.map((b, i) => (
