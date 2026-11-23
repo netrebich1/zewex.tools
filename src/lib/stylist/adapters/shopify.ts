@@ -57,10 +57,16 @@ export function shopifyProducts(json: string, cfg: ShopifyConfig): RawItem[] {
     const colors = colorIdx >= 0 ? [...new Set(variants.map((v) => opt(v, colorIdx)))] : [""];
     const tags = Array.isArray(p.tags) ? p.tags : String(p.tags ?? "").split(",").map((t) => t.trim());
     const started = p.published_at ? new Date(p.published_at) : null;
+    // Номер расцветки внутри товара: названия вроде «Rosso» и «ROSSO!» дают один ключ — тогда добавляем порядковый номер.
+    const usedKeys = new Set<string>();
     for (const color of colors) {
       const vs = colorIdx >= 0 ? variants.filter((v) => opt(v, colorIdx) === color) : variants;
       const prices = vs.map((v) => Number(v.price)).filter((n) => n > 0);
       if (!prices.length) continue;
+      const baseKey = color.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 22) || "0";
+      let colorKey = baseKey;
+      for (let n = 2; usedKeys.has(colorKey); n++) colorKey = `${baseKey}${n}`;
+      usedKeys.add(colorKey);
       const price = Math.min(...prices);
       const olds = vs.map((v) => Number(v.compare_at_price)).filter((n) => n > price);
       const ids = new Set(vs.map((v) => v.id));
@@ -75,7 +81,7 @@ export function shopifyProducts(json: string, cfg: ShopifyConfig): RawItem[] {
       const sizes = sized ? [...new Set(vs.filter((v) => v.available).map(size).filter(Boolean))] : vs.some((v) => v.available) ? ["ONE SIZE"] : [];
       const sku = String(vs[0].sku ?? "").trim().replace(/[_ ](?:XXS|XS|S|M|L|XL|XXL|3XL|\d{1,3}(?:[.,]5)?(?:_\d)?)$/i, "");
       out.push({
-        extId: `sf:${p.id}-${color.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24) || "0"}`,
+        extId: `sf:${p.id}-${colorKey}`,
         name: tidy(title),
         brand: cfg.multi ? tidy(p.vendor ?? "") : undefined,
         lang: cfg.lang,
