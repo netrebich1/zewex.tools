@@ -119,7 +119,7 @@ function conflicts(text: string, core: string, niche: string): boolean {
   }
   return false;
 }
-const REL_VISION_MODEL = "openrouter:google/gemini-3-flash-preview";
+const REL_VISION_MODEL = "openrouter:google/gemini-2.5-flash";
 /** Лимит проверок зрением на статью (≈ $0.0002 за кадр). */
 const MAX_REL_CHECKS = 60;
 
