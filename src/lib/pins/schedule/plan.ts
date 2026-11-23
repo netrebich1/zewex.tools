@@ -51,6 +51,8 @@ export type ScheduleInput = {
   windowDays?: number;
   /** Максимум пинов одной страницы в день (0 = без ограничения). */
   perPagePerDay?: number;
+  /** perPagePerDay и pageCaps жёсткие: проход «норма дня важнее» не ставит второй пин страницы в день. */
+  perPageStrict?: boolean;
   /** Свой максимум пинов в день для отдельных страниц (блоговые статьи — 1: одна ссылка не повторяется в дне). */
   pageCaps?: ReadonlyMap<string, number>;
   /** Первый пин страницы выходит в первые N дней окна. */
@@ -272,7 +274,8 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
         if (!floorOk(t)) continue;
         if (pass === 0 && (t.want > off || !pageFree(off, t.pageId))) continue;
         if (pass === 1 && !pageFree(off, t.pageId)) continue; // будущие даты подтягиваем вперёд, лимит статьи держим
-        // pass 2: ослабляем «со статьи в день» — норма дня важнее
+        // pass 2: ослабляем «со статьи в день» — норма дня важнее (кроме строгого режима)
+        if (input.perPageStrict && !pageFree(off, t.pageId)) continue;
         put(t, off);
         pending.splice(i, 1);
         i--;

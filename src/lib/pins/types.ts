@@ -164,6 +164,8 @@ export type Recipe = {
     moderationMode: ModerationMode; samplePercent: number;
     /** Мягкие предпочтения раскладки (норма дня важнее): окно (только старое поле), пинов статьи в день, первый пин, шаг. */
     windowDays: number; perPagePerDay: number; firstPinWindowDays: number; stepMinDays: number; stepMaxDays: number;
+    /** perPagePerDay — жёстко (владелец 23.11: «строго 1 пин на URL в день»): норма дня его не ломает, недобор уходит на следующие дни. */
+    perPageStrict?: boolean;
   };
   boards: { multiBoard: boolean };
 };

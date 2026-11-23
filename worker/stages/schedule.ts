@@ -36,6 +36,17 @@ export const schedule: StageHandler = async (ctx) => {
     for (const r of loadRows) if (r.scheduledAt) load.set(dayKey(r.scheduledAt), (load.get(dayKey(r.scheduledAt)) ?? 0) + 1);
     const sch = rc.recipe.schedule;
     const insert = sch.dailyMode === "insert";
+    // «Вклинить» с общим лимитом дня (23.11, thestylehack): новый прогон берёт N–M в день, пока есть чужие пины
+    // впереди — они после сдвига добирают день до insertTotal; когда чужие кончаются, прогон сам идёт по insertTotal.
+    let insertQuota: ((off: number) => number) | undefined;
+    if (insert && sch.insertTotal > 0) {
+      const range = sch.pinsPerDayMax > sch.pinsPerDay ? rangeQuota(sch.pinsPerDay, sch.pinsPerDayMax, rc.settings.seed) : () => sch.pinsPerDay;
+      let others = 0;
+      for (const [d, n] of load) if (d >= dayKey(new Date())) others += n;
+      const mixDays: number[] = [];
+      for (let off = 0, left = others; left > 0 && off < 800; off++) { const q = Math.min(sch.insertTotal, range(off)); mixDays.push(q); left -= sch.insertTotal - q; }
+      insertQuota = (off) => (off < mixDays.length ? mixDays[off] : sch.insertTotal);
+    }
     const res = scheduleItems({
       itemsByPage: byPage,
       existingLoad: load,
@@ -43,13 +54,14 @@ export const schedule: StageHandler = async (ctx) => {
       mode: sch.dailyMode === "dates" ? "dates" : "fixed",
       // «Плавный рост»: норма этого прогона по ступеням (15 → 20 → 30…), после последней — её норма.
       // «От N до M в день»: у каждого дня своя случайная норма из диапазона (повторяемо по сиду прогона).
-      quotaAt: sch.dailyMode === "growth" && sch.growth.length ? (off) => growthQuota(sch.growth, off)
+      quotaAt: insertQuota ? insertQuota : sch.dailyMode === "growth" && sch.growth.length ? (off) => growthQuota(sch.growth, off)
         : sch.dailyMode === "fixed" && sch.pinsPerDayMax > sch.pinsPerDay ? rangeQuota(sch.pinsPerDay, sch.pinsPerDayMax, rc.settings.seed) : undefined,
       // «Вклинить в график»: пины прогона встают поверх чужих, день может дойти до 200 (сверх 100 — публикация сразу).
       siteDayLimit: insert ? MAX_DAY_PINS : undefined,
       lastDate: rc.recipe.schedule.lastDate || undefined,
       windowDays: rc.recipe.schedule.windowDays,
       perPagePerDay: rc.recipe.schedule.perPagePerDay,
+      perPageStrict: !!sch.perPageStrict,
       // Блоговая статья — не больше 1 пина в день (мягко: норма дня важнее), пины статьи расходятся по дням.
       pageCaps: new Map(rc.pages.filter((p) => p.articleKind && p.articleKind !== "ideas").map((p) => [p.id, 1] as const)),
       firstPinWindowDays: rc.recipe.schedule.firstPinWindowDays,
@@ -70,7 +82,7 @@ export const schedule: StageHandler = async (ctx) => {
     // чтобы в дне было не больше insertTotal (пины этого прогона, закреплённые и залитые дни стоят на месте).
     let shifted = 0;
     if (insert && sch.insertTotal > 0 && res.assignments.size) {
-      const pv = await applyReschedule({ siteId: rc.site.id, from: res.firstDay, plan: { mode: "flat", perDay: sch.insertTotal }, keepRunId: rc.run.id, withUndated: false }, tx);
+      const pv = await applyReschedule({ siteId: rc.site.id, from: res.firstDay, plan: { mode: "flat", perDay: sch.insertTotal }, keepRunId: rc.run.id, withUndated: false, ...(sch.perPageStrict ? { perPagePerDay: sch.perPagePerDay, perPageStrict: true } : {}) }, tx);
       shifted = pv.changed;
     }
     // Дни сайта, где после раскладки больше 100: сверх 100 Pinterest публикует сразу (плашка у прогона).

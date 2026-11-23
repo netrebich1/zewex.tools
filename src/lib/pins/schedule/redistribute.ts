@@ -27,6 +27,8 @@ export type RedistributeInput = {
   /** Дни, куда ставить нельзя (файл дня уже залит в Pinterest). */
   blockedDays?: ReadonlySet<string>;
   perPagePerDay?: number;
+  /** perPagePerDay жёстко: второй проход «норма дня важнее» не ставит лишний пин статьи в день. */
+  perPageStrict?: boolean;
   now: Date;
   tz: string;
   seed: number;
@@ -78,8 +80,8 @@ export function redistribute(input: RedistributeInput): RedistributeOutput {
     const pageCount = new Map<string, number>();
     // проход 1: держим «не больше N пинов статьи в день», смотрим вперёд на LOOKAHEAD пинов;
     // проход 2: норма дня важнее — добираем по порядку.
-    for (let pass = 0; pass < 2 && room > 0; pass++) {
-      for (let i = 0; i < queue.length && room > 0 && (pass === 1 || i < LOOKAHEAD); i++) {
+    for (let pass = 0; pass < (input.perPageStrict ? 1 : 2) && room > 0; pass++) {
+      for (let i = 0; i < queue.length && room > 0 && (pass === 1 || input.perPageStrict || i < LOOKAHEAD); i++) {
         const it = queue[i];
         if (pass === 0 && perPage > 0 && (pageCount.get(it.pageId) ?? 0) >= perPage) continue;
         got.push(it);

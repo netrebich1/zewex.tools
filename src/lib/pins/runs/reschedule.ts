@@ -28,6 +28,9 @@ export type RescheduleOptions = {
   /** Брать ли готовые пины без даты (по умолчанию да). */
   withUndated?: boolean;
   now?: Date;
+  /** Пинов статьи в день при перераспределении и строго ли (по умолчанию SCHEDULE.perPagePerDay, мягко). */
+  perPagePerDay?: number;
+  perPageStrict?: boolean;
 };
 
 export type ReschedulePreview = {
@@ -82,7 +85,7 @@ async function compute(db: Db, o: RescheduleOptions) {
   for (const r of undated) movable.push({ id: r.id, pageId: r.pageId, scheduledAt: null });
   const res = redistribute({
     items: movable, fixedLoad, fixedMinutes, start: from, quotaAt: quotaOf(o.plan, hash32(`${o.siteId}|${from}|quota`)), blockedDays: uploaded,
-    perPagePerDay: SCHEDULE.perPagePerDay, now, tz: TZ, seed: hash32(`${o.siteId}|${from}`),
+    perPagePerDay: o.perPagePerDay ?? SCHEDULE.perPagePerDay, perPageStrict: o.perPageStrict, now, tz: TZ, seed: hash32(`${o.siteId}|${from}`),
   });
   const prev = new Map(movable.map((m) => [m.id, m.scheduledAt?.getTime() ?? null] as const));
   let changed = 0;
