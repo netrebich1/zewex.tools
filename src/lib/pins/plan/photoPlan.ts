@@ -13,6 +13,8 @@ export interface PhotoPlanInput {
   /** Доля публикуемых фото со ссылкой на статью, 0–100 (publishing.photoLinkPercent). */
   linkPercent: number;
   seed: number;
+  /** true — публикуются последние perPage фото статьи (владелец 24.11: «начинаем снизу статьи»). */
+  fromEnd?: boolean;
 }
 
 export interface PhotoPlanRow {
@@ -30,7 +32,7 @@ export function planPhotos(input: PhotoPlanInput): PhotoPlanRow[] {
   const rng = mulberry32(input.seed);
   const perPage = Math.max(0, Math.floor(Number(input.perPage) || 0));
   const take = Math.min(perPage, images.length);
-  const chosen = new Set(shuffleWith(images, rng).slice(0, take));
+  const chosen = new Set(input.fromEnd ? images.slice(images.length - take) : shuffleWith(images, rng).slice(0, take));
 
   const pct = Math.min(100, Math.max(0, Number(input.linkPercent) || 0));
   const linkCount = Math.round(take * (pct / 100));

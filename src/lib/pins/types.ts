@@ -118,6 +118,8 @@ export type Recipe = {
    * Старое значение "all" читается как auto.
    */
   photosMode: "auto" | "sections" | "featured_only";
+  /** Какие фото статьи идут фото-пинами: random — случайные по всей статье; bottom — с конца статьи (последние разделы). */
+  photosFrom?: "random" | "bottom";
   /** canvasStyleIds — утверждённые Canvas-стили каталога, выбранные напрямую; canvasSetIds — старые наборы (совместимость). */
   /** pinoraNiche — ниша Pinora: "auto" (по каждой статье) или id ниши (decor, nails, hair, outfit, cooking). */
   /** canvasPhotoCounts — допустимое число фото на Canvas-пине (1/2/3/4/6); пусто — любое, что умеет стиль. */
@@ -288,7 +290,7 @@ export function runDefaultsFrom(siteRecipe: unknown, lastRunSettings: unknown | 
   const last = lastRunSettings ? mergeRecipe(lastRunSettings) : DEFAULT_RECIPE;
   return {
     ...site,
-    pages: last.pages, mix: last.mix, blog: last.blog, photosMode: last.photosMode,
+    pages: last.pages, mix: last.mix, blog: last.blog, photosMode: last.photosMode, photosFrom: last.photosFrom,
     // Число фото на Canvas-пине задаётся только в прогоне — берём из прошлого прогона, остальные наборы — из сайта.
     sets: { ...site.sets, canvasPhotoCounts: last.sets.canvasPhotoCounts },
     text: { ...site.text, percents: last.text.percents, numberSource: last.text.numberSource, hashtags: last.text.hashtags, variety: last.text.variety, elements: last.text.elements, year: last.text.year, yearRules: last.text.yearRules, siteName: last.text.siteName },
@@ -320,6 +322,7 @@ export function mergeRecipe(partial: unknown): Recipe {
     mix: { ...d.mix, ...(p.mix ?? {}) },
     blog: ((b) => ({ mode: b.mode === "all" || b.mode === "none" ? b.mode : "auto", ai: clampInt(b.ai, 0, 20, DEFAULT_BLOG.ai), canvas: clampInt(b.canvas, 0, 20, DEFAULT_BLOG.canvas), photos: clampInt(b.photos, 0, 20, DEFAULT_BLOG.photos) }))({ ...DEFAULT_BLOG, ...((p.blog as Partial<BlogRecipe> | undefined) ?? {}) }),
     photosMode: p.photosMode === "featured_only" || p.photosMode === "sections" ? p.photosMode : "auto",
+    photosFrom: p.photosFrom === "bottom" ? "bottom" : "random",
     sets: {
       ...d.sets, ...(p.sets ?? {}),
       pinoraNiche: String((p.sets as Partial<Recipe["sets"]> | undefined)?.pinoraNiche || "auto"),

@@ -126,7 +126,7 @@ export const photos: StageHandler = async (ctx) => {
       await prisma.pinRunPage.update({ where: { id: p.id }, data: { photosAt: new Date(), imageCount: Math.max(p.imageCount, imgs.length) } });
       continue;
     }
-    const plan = planPhotos({ images: imgs.map((i) => i.url), perPage, linkPercent: rc.recipe.publishing.photoLinkPercent, seed: hash32(`${rc.settings.seed}|${p.id}|photos`) });
+    const plan = planPhotos({ images: imgs.map((i) => i.url), perPage, linkPercent: rc.recipe.publishing.photoLinkPercent, seed: hash32(`${rc.settings.seed}|${p.id}|photos`), fromEnd: rc.recipe.photosFrom === "bottom" });
     const rows = plan
       .filter((x) => !have.has(`${p.id}|${x.url}`))
       .filter((x) => x.publish || wantPool)
