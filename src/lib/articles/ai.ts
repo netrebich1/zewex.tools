@@ -76,6 +76,7 @@ const BRAKE_MIN = 8;
  */
 const BRAKE_HITS = 3;
 const BRAKE_WINDOW_MS = 60_000;
+const BURST_MS = 5_000;
 const brakeHits = new Map<string, number[]>();
 /**
  * Параллельность ключа в процессе воркера статей (2026-10-22): общий лимит портала CHAT=6 при 30 статьях и ИИ-модерации
@@ -93,6 +94,9 @@ function keyLimit(keyId: string): number {
 function brakeOn(keyId: string): void {
   const now = Date.now();
   const hits = (brakeHits.get(keyId) ?? []).filter((t) => now - t < BRAKE_WINDOW_MS);
+  // Пачка отказов в одну секунду (24.11: OpenRouter «Provider returned error» по 6–20 штук разом, между пачками —
+  // минуты без ошибок) — один сбой провайдера, а не перегрузка ключа: отказы в пределах BURST_MS считаются одним.
+  if (hits.length && now - hits[hits.length - 1] < BURST_MS) { brakeHits.set(keyId, hits); return; }
   hits.push(now);
   brakeHits.set(keyId, hits);
   if (hits.length < BRAKE_HITS) return;
