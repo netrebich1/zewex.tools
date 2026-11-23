@@ -307,11 +307,22 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
       if (opts.dry) return true;
       try {
         const r = await aiChat({ userId: createdById, teamId: site.teamId, siteId: site.id }, {
-          slot: SLOTS.vision, model: REL_VISION_MODEL, json: true, temperature: 0, maxTokens: 80,
-          system: `You check whether a photo fits a Pinterest article topic. Be strict about every specific in the topic: hair color shade (light vs dark, brown vs blonde vs black), length, texture, cut or style; nail shape, length, color or design; garment type and color; room type and style. Generic or ambiguous photos are "no". Return JSON {"fit":"yes"|"no","why":"<=12 words"}.`,
+          slot: SLOTS.vision, model: REL_VISION_MODEL, json: true, temperature: 0, maxTokens: 200,
+          system: [
+            "You check whether ONE photo can illustrate a Pinterest article with the given topic. Be strict: a wrong photo is worse than no photo.",
+            "First describe what you actually see, then decide.",
+            "Reject (fit=no) when: the image is a collage, grid, before/after or several photos in one frame; it has big text, captions or app screenshots;",
+            "the main subject is not what the topic is about; ANY specific in the topic differs from the photo:",
+            "- hair: the overall color family and shade must match (brown ≠ copper/auburn/red/blonde; dark ≠ light; balayage/highlights must be visible if named), length, texture, cut or style;",
+            "- nails: shape, length, color and design must match;",
+            "- outfits: the named garment/shoe must be clearly visible and central, color must match if named;",
+            "- interiors: the room type must match, style/color must match if named.",
+            'Return JSON {"seen":"<=20 words: subject, color, length/shape/style","collage":true|false,"fit":"yes"|"no"}.',
+          ].join("\n"),
           user: [{ type: "text", text: `Topic: "${core}" (${label})` }, imagePart(await readFile(absPath(s.path)), "image/jpeg", "low")],
         });
-        return (r.json as { fit?: string } | null)?.fit === "yes";
+        const j = r.json as { fit?: string; collage?: boolean } | null;
+        return j?.fit === "yes" && j.collage !== true;
       } catch { return false; }
     };
     let i = 0, checks = 0;
