@@ -11,7 +11,8 @@ import { checkDomains } from "./availability";
 import { DEFAULT_SETTINGS, getCountry, itemKey, LIMITS, type BrandItem, type BrandModifier, type BrandResearchSummary, RESEARCH_SOURCE_LABELS, type ResearchSourceKind, type CountryPreset, type DomainRunProgress, type DomainRunSettings, type LetterMode, type MinedSuffix, type SerpSnapshot } from "./types";
 import { rankDomainsWithAi, type AiPick } from "./ai";
 import { balancePicks } from "./selection";
-import { brandTop10, researchBrand, type BrandResearch } from "./research";
+import { brandTop10, keywordTop10, researchBrand, type BrandResearch } from "./research";
+import { EMD_DEFAULTS, emdCandidates, normalizeEmdCluster, type EmdSettings } from "./emd";
 import { keptModifiers, researchSummary } from "./researchSummary";
 import { domainsKeyTeamId } from "./keyTeam";
 import { domainsOfBrand } from "./mining";
@@ -72,7 +73,8 @@ function normalizeResearch(raw: unknown): BrandResearchSummary | undefined {
 function normalizeItem(it: Partial<BrandItem> | undefined, fallbackCountry: string): BrandItem {
   const research = normalizeResearch(it?.research);
   const tlds = Array.isArray(it?.tlds) ? Array.from(new Set(it.tlds.map((t) => normalizeTld(String(t))).filter(Boolean))).slice(0, 20) : [];
-  return { brand: String(it?.brand ?? ""), country: typeof it?.country === "string" && it.country ? it.country : fallbackCountry, modifiers: normalizeModifiers(it?.modifiers), ...(research ? { research } : {}), ...(tlds.length ? { tlds } : {}) };
+  const emd = normalizeEmdCluster(it?.emd);
+  return { brand: String(it?.brand ?? ""), country: typeof it?.country === "string" && it.country ? it.country : fallbackCountry, modifiers: normalizeModifiers(it?.modifiers), ...(research ? { research } : {}), ...(tlds.length ? { tlds } : {}), ...(emd ? { emd } : {}) };
 }
 
 /** Разбор сохранённых настроек с подстановкой значений по умолчанию (старые записи не ломаются). */
@@ -87,7 +89,10 @@ export function parseSettings(json: unknown): DomainRunSettings {
     : brands.map((brand) => ({ brand, country: countryCode, modifiers: [] }));
   const presets: Record<string, CountryPreset> = {};
   if (s.countryPresets && typeof s.countryPresets === "object") for (const [k, v] of Object.entries(s.countryPresets)) presets[k] = normalizePreset(v);
+  const emdRaw = s.emd as Partial<EmdSettings> | undefined;
   return {
+    mode: s.mode === "emd" ? "emd" : "brand",
+    ...(s.mode === "emd" && emdRaw ? { emd: { sourceUrl: String(emdRaw.sourceUrl ?? ""), fileName: String(emdRaw.fileName ?? ""), loadedAt: String(emdRaw.loadedAt ?? ""), minVolume: Number(emdRaw.minVolume) || EMD_DEFAULTS.minVolume, maxLen: Number(emdRaw.maxLen) || EMD_DEFAULTS.maxLen, matchPct: Number(emdRaw.matchPct) || EMD_DEFAULTS.matchPct } } : {}),
     brands: items.map((it) => it.brand),
     items,
     countryPresets: presets,
@@ -162,6 +167,7 @@ export function settingsFromInput(i: SettingsInput): DomainRunSettings {
   const countryPresets: Record<string, CountryPreset> = {};
   for (const c of new Set(items.map((it) => it.country))) countryPresets[c] = defaultCountryPreset(c, (i.countryPresets?.[c] as { tlds?: unknown } | undefined)?.tlds);
   return {
+    mode: "brand",
     brands: items.map((it) => it.brand),
     items,
     countryPresets,
@@ -431,8 +437,8 @@ export async function processDomainRun(run: DomainRun, workerId: string, shouldS
     return;
   }
 
-  if (settings.autoResearch || settings.useKeywords) {
-    const r = await researchStage(run, settings, touch);
+  if (settings.mode === "emd" ? settings.autoResearch : settings.autoResearch || settings.useKeywords) {
+    const r = settings.mode === "emd" ? await emdResearchStage(run, settings, touch) : await researchStage(run, settings, touch);
     if (r === "lost") return;
     if (r === "stop") { await stopped(); return; }
     if (r === "release") { await released(); return; }
@@ -446,7 +452,9 @@ export async function processDomainRun(run: DomainRun, workerId: string, shouldS
     if (state === "lost") return;
     if (state === "stop") { await stopped(); return; }
     if (state === "release") { await released(); return; }
-    const all = buildCandidatesForBrand(item.brand, brandTiers(item, settings, pool), brandTlds(item, settings), { allowHyphen: settings.allowHyphen, letterMode: settings.letterMode });
+    const all = settings.mode === "emd" && item.emd
+      ? emdCandidates(item.emd, item.country, { ...EMD_DEFAULTS, ...settings.emd, tlds: settings.tlds, autoZones: settings.autoZones, allowHyphen: settings.allowHyphen }).map((c) => ({ domain: c.domain, tld: c.tld, suffix: c.keyword.slice(0, 190), tier: c.tier, pattern: c.pattern }))
+      : buildCandidatesForBrand(item.brand, brandTiers(item, settings, pool), brandTlds(item, settings), { allowHyphen: settings.allowHyphen, letterMode: settings.letterMode });
     const candidates = (settings.checkAll ? all.slice(0, LIMITS.checkAllMax) : all).filter((c) => !known.has(c.domain));
     // «Все варианты» — проверяем всё; иначе останавливаемся, когда набралось perBrand + запас свободных
     const enough = (n: number) => !settings.checkAll && n >= target;
@@ -547,6 +555,38 @@ async function researchStage(run: DomainRun, settings: DomainRunSettings, touch:
       const modifiers = keptModifiers(r);
       items[i] = { ...items[i]!, modifiers, research: researchSummary(r, new Set(modifiers.map((m) => m.suffix)), "auto") };
     });
+    await prisma.domainRun.update({ where: { id: run.id }, data: { settings: settings as unknown as Prisma.InputJsonValue } });
+  }
+  return "go";
+}
+
+const EMD_SERP_PARALLEL = 5;
+
+/**
+ * Этап EMD перед проверкой: TOP-10 Google по каждому ключу кластера в его стране, у доменов — процент ключа в адресе.
+ * Кластеры, у которых выдача уже снята, пропускаются; итог сохраняется после каждого кластера.
+ */
+async function emdResearchStage(run: DomainRun, settings: DomainRunSettings, touch: (label: string, index: number) => Promise<"go" | "stop" | "release" | "lost">): Promise<"go" | "stop" | "release" | "lost"> {
+  const items = settings.items;
+  const matchPct = settings.emd?.matchPct ?? EMD_DEFAULTS.matchPct;
+  const todo = items.map((it, i) => (it.emd && !it.emd.serpAt ? i : -1)).filter((i) => i >= 0);
+  const ctx = { userId: run.createdById, teamId: await domainsKeyTeamId() };
+  for (let k = 0; k < todo.length; k++) {
+    const item = items[todo[k]!]!;
+    const c = item.emd!;
+    const st = await touch(`выдача по ключам: ${itemLabel(item)} (${k + 1} из ${todo.length})`, 0);
+    if (st !== "go") return st;
+    let cost = 0;
+    for (let j = 0; j < c.keywords.length; j += EMD_SERP_PARALLEL) {
+      await Promise.all(c.keywords.slice(j, j + EMD_SERP_PARALLEL).map(async (kw) => {
+        const r = await keywordTop10(ctx, kw.phrase, item.country, matchPct).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e), top10: [], cost: 0 }));
+        cost += r.cost;
+        if (r.ok) { kw.top10 = r.top10; delete kw.serpError; }
+        else kw.serpError = r.error ?? "выдача не снялась";
+      }));
+    }
+    c.serpAt = new Date().toISOString();
+    c.serpCostUsd = Math.round(((c.serpCostUsd ?? 0) + cost) * 10000) / 10000;
     await prisma.domainRun.update({ where: { id: run.id }, data: { settings: settings as unknown as Prisma.InputJsonValue } });
   }
   return "go";

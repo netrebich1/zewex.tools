@@ -5,6 +5,7 @@
  * Затем дешёвая модель (OpenRouter, слот text_main с заменой модели) решает, какие слова годятся аффилиату:
  * «вывод средств», «поддержка», «жалобы» и т.п. отбрасываются.
  */
+import { emdMatch } from "./emd";
 import { runSlot, type ResolvedSlot } from "@/lib/run";
 import { resolveDomainsSlot } from "./keyTeam";
 import { parseJsonLenient } from "@/lib/pins/ai/json";
@@ -133,6 +134,21 @@ export async function brandTop10(ctx: Ctx, brand: string, country: string): Prom
   if (!sp.ok) return { ok: false, error: sp.error, ...empty };
   const competitorDomains = sp.top10.filter((t) => t.brand).map((t) => t.domain);
   return { ok: true, top10: sp.top10, competitorDomains, tlds: countTlds(competitorDomains) };
+}
+
+/** TOP-10 по ключу (режим EMD): у каждого домена — процент ключа в адресе; brand — не меньше порога. */
+export async function keywordTop10(ctx: Ctx, keyword: string, country: string, matchPct: number): Promise<{ ok: boolean; error?: string; top10: Top10Entry[]; cost: number }> {
+  const c = getCountry(country);
+  if (!c) return { ok: false, error: `Страна «${country}» не найдена`, top10: [], cost: 0 };
+  const pre = await resolveDomainsSlot(ctx.userId, SLOT_SERP_DFS);
+  if (!pre.ok) return { ok: false, error: "DataForSEO не подключён к «Подбору доменов»", top10: [], cost: 0 };
+  const sp = await serp(ctx, pre.value, keyword, c.locationCode, c.languageCode);
+  if (!sp.ok) return { ok: false, error: sp.error, top10: [], cost: sp.cost };
+  const top10 = sp.top10.map((t) => {
+    const match = emdMatch(t.domain, keyword, country);
+    return { ...t, match, brand: match >= matchPct };
+  });
+  return { ok: true, top10, cost: sp.cost };
 }
 
 function countTlds(domains: string[]): Array<{ value: string; count: number }> {

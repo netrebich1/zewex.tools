@@ -7,6 +7,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { DomainsNav, STATUS_TONE } from "@/components/domains/DomainsNav";
 import { DomainRunView, type RunPayload } from "@/components/domains/DomainRunView";
+import { EmdRunView } from "@/components/domains/EmdRunView";
 import { RenameRun } from "@/components/domains/RenameRun";
 import { canAccessDomainRun, parseSettings, runDomains } from "@/lib/domains/runs";
 import { deleteDomainRunAction, restartDomainRunAction, stopDomainRun } from "@/actions/domains";
@@ -41,7 +42,18 @@ export default async function DomainRunPage({ params }: { params: Promise<{ id: 
   };
   const countries = Array.from(new Set(settings.items.map((it) => it.country)));
   const countryNames = countries.map((c) => getCountry(c)?.name ?? c.toUpperCase()).join(", ");
-  const settingsGrid = (
+  const isEmd = settings.mode === "emd";
+  const emdKeywords = settings.items.reduce((a, it) => a + (it.emd?.keywords.length ?? 0), 0);
+  const emdGrid = settings.emd ? (
+    <div className="grid gap-x-6 gap-y-2 text-[14px] sm:grid-cols-2">
+      <div className="sm:col-span-2"><span className="label">Таблица</span><a href={settings.emd.sourceUrl} target="_blank" rel="noreferrer" className="text-brand hover:underline">{settings.emd.fileName || settings.emd.sourceUrl}</a> <span className="help">· загружена {fmtDate(settings.emd.loadedAt)} · кластеров {settings.items.length} · ключей {emdKeywords}</span></div>
+      <div><span className="label">Ключи в домены</span>тема кластера + ключи с частотой от {settings.emd.minVolume} · метка до {settings.emd.maxLen} символов{settings.allowHyphen ? " · с дефисом" : ""}</div>
+      <div><span className="label">Зоны</span>зона страны{settings.tlds.length ? `, ${settings.tlds.join(", ")}` : ""}{settings.autoZones ? " · из таблицы и выдачи" : ""}</div>
+      <div><span className="label">Выдача Google</span>{settings.autoResearch ? `TOP-10 по каждому ключу · подсветка от ${settings.emd.matchPct}% ключа в домене` : "не снимали"}</div>
+      <div><span className="label">Доменов на кластер</span>{settings.perBrand}</div>
+    </div>
+  ) : null;
+  const settingsGrid = isEmd ? emdGrid : (
     <div className="grid gap-x-6 gap-y-2 text-[14px] sm:grid-cols-2">
       <div><span className="label">Общие приставки, уровень 1</span><span className="font-mono text-[13px]">{settings.suffixTiers[0].join(", ") || "—"}</span></div>
       <div><span className="label">Общие приставки, уровень 2</span><span className="font-mono text-[13px]">{settings.suffixTiers[1].join(", ") || "—"}</span></div>
@@ -69,7 +81,7 @@ export default async function DomainRunPage({ params }: { params: Promise<{ id: 
         subtitle={
           <>
             <Badge tone={STATUS_TONE[run.status] ?? "neutral"}>{RUN_STATUS_LABELS[run.status] ?? run.status}</Badge>
-            <span className="ml-2">{countryNames} · зоны: {settings.tlds.join(", ")} · {settings.perBrand} на бренд (+{settings.extraPerBrand} запас) · создан {fmtDate(run.createdAt)}{run.finishedAt ? ` · завершён ${fmtDate(run.finishedAt)}` : ""}</span>
+            <span className="ml-2">{isEmd ? "EMD по ключам · " : ""}{countryNames} · зоны: {settings.tlds.join(", ")} · {settings.perBrand} {isEmd ? "на кластер" : `на бренд (+${settings.extraPerBrand} запас)`} · создан {fmtDate(run.createdAt)}{run.finishedAt ? ` · завершён ${fmtDate(run.finishedAt)}` : ""}</span>
           </>
         }
         actions={
@@ -85,7 +97,7 @@ export default async function DomainRunPage({ params }: { params: Promise<{ id: 
                 <SubmitButton className="btn-ghost" pendingText="…" confirm="Запустить заново? Все проверенные домены и выбор будут стёрты.">Запустить заново</SubmitButton>
               </ActionForm>
             )}
-            <Link href={`/gambling/domains/new?from=${run.id}`} className="btn-ghost">Повторить с этими настройками</Link>
+            <Link href={isEmd ? `/gambling/domains/emd/new?from=${run.id}` : `/gambling/domains/new?from=${run.id}`} className="btn-ghost">Повторить с этими настройками</Link>
             {!live && (
               <ActionForm action={deleteDomainRunAction} className="inline" hidden={{ id: run.id }}>
                 <SubmitButton className="btn-ghost text-danger" pendingText="…" confirm="Удалить подбор вместе со всеми доменами?">Удалить</SubmitButton>
@@ -102,7 +114,7 @@ export default async function DomainRunPage({ params }: { params: Promise<{ id: 
           <div className="mt-3">{settingsGrid}</div>
         </details>
         <Card title="Настройки подбора" className="hidden sm:block">{settingsGrid}</Card>
-        <DomainRunView initial={payload} />
+        {isEmd ? <EmdRunView initial={payload} /> : <DomainRunView initial={payload} />}
       </div>
     </>
   );

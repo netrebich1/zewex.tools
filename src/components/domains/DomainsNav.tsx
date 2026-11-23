@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 const ITEMS = [
   { href: "/gambling/domains", label: "Подборы", exact: true },
   { href: "/gambling/domains/new", label: "Новый подбор" },
+  { href: "/gambling/domains/emd/new", label: "EMD по ключам" },
 ];
 
 /** Подменю инструмента «Подбор доменов» (пилюли под шапкой портала). */

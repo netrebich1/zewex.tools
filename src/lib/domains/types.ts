@@ -3,6 +3,7 @@
  * Тяжёлую проверку свободности выполняет воркер; Next.js ставит подбор в очередь и читает результаты.
  */
 
+import type { EmdCluster, EmdSettings } from "./emd";
 import { countryByCode, dfsLocationCode } from "./countries";
 import { geoWordsOf } from "./geo";
 
@@ -67,7 +68,7 @@ export const RESEARCH_SOURCE_LABELS: Record<ResearchSourceKind, string> = {
 };
 
 /** Итог сбора ключей и выдачи по бренду: что нашли, что взяли, что отбросили. */
-export type Top10Entry = { pos: number; domain: string; title: string; brand: boolean };
+export type Top10Entry = { pos: number; domain: string; title: string; brand: boolean; /** Режим EMD: сколько процентов ключа в домене */ match?: number };
 
 export type BrandResearchSummary = {
   /** auto — собрал подбор перед проверкой; form — собрали вручную в форме */
@@ -94,6 +95,8 @@ export type BrandItem = {
   research?: BrandResearchSummary;
   /** Свои зоны бренда из строки «бренд ; FR ; fr, bet» — к общим, без повторов */
   tlds?: string[];
+  /** Режим «EMD по ключам»: кластер вместо бренда (brand = тема кластера) */
+  emd?: EmdCluster;
 };
 
 /** Откуда приставка попала в уровни бренда. */
@@ -129,6 +132,10 @@ export type SerpSnapshot = {
 
 /** Настройки подбора: сохраняются в DomainRun.settings, «Повторить» подставляет их в форму. */
 export type DomainRunSettings = {
+  /** brand — домены под бренды; emd — EMD-домены по кластерам ключей из выгрузки */
+  mode: "brand" | "emd";
+  /** Настройки режима EMD */
+  emd?: EmdSettings;
   /** Имена брендов (для старых подборов и подписей); источник правды — items */
   brands: string[];
   /** Бренд + страна + модификаторы бренда */
@@ -174,6 +181,7 @@ export type DomainRunProgress = {
 };
 
 export const DEFAULT_SETTINGS: DomainRunSettings = {
+  mode: "brand",
   brands: [],
   items: [],
   countryPresets: {},
