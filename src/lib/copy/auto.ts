@@ -331,7 +331,7 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
       } catch { return false; }
     };
     let i = 0, checks = 0;
-    while (picked.length < n && i < relQ.length && checks < MAX_REL_CHECKS) {
+    while (picked.length < n && i < relQ.length && checks < MAX_REL_CHECKS && !(checks >= 24 && related === 0)) {
       const batch: Cand[] = [];
       while (batch.length < Math.min(BATCH, n - picked.length) && i < relQ.length) { const c = relQ[i++]; if (canTake(c)) { mark(c, 1); batch.push(c); } }
       if (!batch.length) break;
