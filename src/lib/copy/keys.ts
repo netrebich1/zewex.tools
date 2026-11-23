@@ -35,6 +35,17 @@ export const clusterWords = (core: string) => core.split(" ").filter((w) => w.le
 /** Кластер темы для сводки партии: первое содержательное слово ядра («almond nails» → almond). */
 export const clusterOf = (core: string) => clusterWords(core)[0] ?? core;
 
+/** Слова, которые не меняют тему, где бы они ни стояли (приставки, хвосты, служебные). */
+const SIG_SKIP = new Set([...LEAD, ...TAIL, ...EXTRA_FORMULATIONS, "for", "and", "the", "with", "to", "of", "a", "in", "on", "women", "woman"]);
+const singular = (w: string) => w.replace(/ies$/, "y").replace(/([^s])s$/, "$1");
+/**
+ * Подпись темы для проверки дублей: слова ключа без приставок/хвостов/года/служебных, в единственном числе, без порядка.
+ * «Cute Cute Almond Nails 2027» = «almond nails»; «bathroom colors» = «bathroom color»; «apartment balcony» = «balcony ideas apartment»;
+ * «nails and toes» = «toe nails». Партии сверяют темы по ней (23.11: точное сравнение ядер пропускало такие дубли).
+ */
+export const topicSig = (keyword: string) =>
+  [...new Set((keyword.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => !YEAR.test(w) && !SIG_SKIP.has(w)).map(singular))].sort().join(" ");
+
 /** Ключ с другой приставкой: «Classy Almond Nail Ideas 2027» + chic → «Chic Almond Nail Ideas 2027». */
 export function swapModifier(keyword: string, modifier: string): string {
   const words = keyword.trim().split(/\s+/);

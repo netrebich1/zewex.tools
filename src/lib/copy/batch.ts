@@ -6,7 +6,7 @@
 import { prisma } from "@/lib/db";
 import { copySettings } from "./build";
 import { buildCopyArticle, copySitesToday, siteNiches } from "./auto";
-import { SHARED_TEAM, VOL_CLASSES, VOL_LABEL, clusterWords, groupOf, isSeasonal, nicheLabel } from "./keys";
+import { SHARED_TEAM, VOL_CLASSES, VOL_LABEL, clusterWords, groupOf, isSeasonal, nicheLabel, topicSig } from "./keys";
 
 const ITEMS_PER_TICK = 15;
 let running = false;
@@ -61,6 +61,12 @@ export async function planBatch(input: BatchInput): Promise<{ id: string; planne
   if (only?.length) cores = only.map((c) => cores.find((r) => r.core === c)).filter((r): r is CoreRow => !!r);
   // Темы, уже собранные мешапом (карта может отставать на часы): ядро на сайте — больше не ставим.
   const done = new Set((await prisma.copyArticle.findMany({ select: { siteId: true, niche: true, core: true } })).map((a) => `${a.siteId}|${a.niche}|${a.core}`));
+  // Темы сайта по смыслу (topicSig): все его статьи, кроме сбойных, и пункты идущих партий — «Cute Cute Almond Nails»
+  // и «bathroom colors» не должны пропустить на сайт «almond nails» и «bathroom color».
+  const usableIds = usable.map((s) => s.id);
+  const siteSigs = new Map<string, Set<string>>(usableIds.map((id) => [id, new Set<string>()]));
+  for (const a of await prisma.article.findMany({ where: { siteId: { in: usableIds }, status: { not: "FAILED" } }, select: { siteId: true, keyword: true } })) siteSigs.get(a.siteId)?.add(topicSig(a.keyword));
+  for (const i of await prisma.copyBatchItem.findMany({ where: { siteId: { in: usableIds }, status: "pending", batch: { status: { in: ["running", "paused"] } } }, select: { siteId: true, core: true } })) siteSigs.get(i.siteId)?.add(topicSig(i.core));
 
   const items: Array<{ niche: string; core: string; volClass: string | null; volume: number | null; siteId: string }> = [];
   const usedCores = new Set<string>();
@@ -71,7 +77,7 @@ export async function planBatch(input: BatchInput): Promise<{ id: string; planne
   const takeWords = (core: string) => { for (const w of clusterWords(core)) wordCount.set(w, (wordCount.get(w) ?? 0) + 1); };
   const shortfalls: string[] = [];
   const fits = (s: (typeof usable)[number], c: CoreRow) =>
-    s.grp === groupOf(c.niche) && (!s.niches.size || s.niches.has(c.niche)) && !((c.siteIds as string[] | null) ?? []).includes(s.id) && !done.has(`${s.id}|${c.niche}|${c.core}`);
+    s.grp === groupOf(c.niche) && (!s.niches.size || s.niches.has(c.niche)) && !((c.siteIds as string[] | null) ?? []).includes(s.id) && !done.has(`${s.id}|${c.niche}|${c.core}`) && !siteSigs.get(s.id)?.has(topicSig(c.core));
 
   for (const [niche, q] of Object.entries(input.quotas)) {
     for (const cls of QUOTA_CLASSES) {
@@ -80,14 +86,16 @@ export async function planBatch(input: BatchInput): Promise<{ id: string; planne
       let got = 0;
       for (const c of cores) {
         if (got >= want) break;
-        if (c.niche !== niche || !c.core.includes(" ") || (input.noSeason && isSeasonal(c.core)) || usedCores.has(`${c.niche}|${c.core}`)) continue;
+        // Тема в партии один раз — по смыслу и во всех нишах (bantu knots бывает и в «Волосах», и в «Образах»).
+        if (c.niche !== niche || !c.core.includes(" ") || (input.noSeason && isSeasonal(c.core)) || usedCores.has(topicSig(c.core))) continue;
         if (cls !== "any" && c.volClass !== cls) continue;
         if (!diverse(c.core)) continue;
         // Сайт с наименьшим числом статей в партии, которому тема подходит, — раскладка получается ровной.
         const site = usable.filter((s) => fits(s, c)).sort((a, b) => a.count - b.count)[0];
         if (!site) continue;
         site.count++;
-        usedCores.add(`${c.niche}|${c.core}`);
+        usedCores.add(topicSig(c.core));
+        siteSigs.get(site.id)?.add(topicSig(c.core));
         takeWords(c.core);
         items.push({ niche: c.niche, core: c.core, volClass: c.volClass, volume: c.volume, siteId: site.id });
         got++;
