@@ -96,7 +96,7 @@ const CONFLICTS: Array<{ niches: string[] | null; words: string[] }> = [
   { niches: null, words: ["light", "dark"] },
   { niches: ["hair"], words: ["short", "long", "medium", "shoulder"] },
   { niches: ["hair"], words: ["straight", "curly", "wavy", "coily", "kinky"] },
-  { niches: ["hair"], words: ["blonde", "blond", "brunette", "brown", "black", "red", "auburn", "copper", "ginger", "gray", "grey", "silver", "platinum", "pink", "purple", "blue"] },
+  { niches: ["hair"], words: ["blonde", "blond", "brunette", "brown", "black", "red", "auburn", "copper", "ginger", "strawberry", "burgundy", "gray", "grey", "silver", "platinum", "pink", "purple", "blue"] },
   { niches: ["nails"], words: ["short", "long"] },
   { niches: ["nails"], words: ["almond", "coffin", "square", "stiletto", "oval", "round", "squoval", "ballerina"] },
 ];
@@ -107,13 +107,17 @@ function relTextOk(c: Cand, core: string, niche: string): boolean {
   if (!words.length) return false;
   const t = candText(c);
   if (!words.every((w) => wordRe(w).test(t))) return false;
+  return !conflicts(t, core, niche);
+}
+/** В тексте (описание кадра или то, что увидела модель) есть признак, противоречащий теме: «copper» при «brown hair». */
+function conflicts(text: string, core: string, niche: string): boolean {
   const coreSet = new Set(core.split(" "));
   for (const g of CONFLICTS) {
     if (g.niches && !g.niches.includes(niche)) continue;
     if (!g.words.some((w) => coreSet.has(w))) continue;
-    if (g.words.some((w) => !coreSet.has(w) && wordRe(w).test(t))) return false;
+    if (g.words.some((w) => !coreSet.has(w) && wordRe(w).test(text))) return true;
   }
-  return true;
+  return false;
 }
 const REL_VISION_MODEL = "openrouter:google/gemini-3-flash-preview";
 /** Лимит проверок зрением на статью (≈ $0.0002 за кадр). */
@@ -317,12 +321,13 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
             "- nails: shape, length, color and design must match;",
             "- outfits: the named garment/shoe must be clearly visible and central, color must match if named;",
             "- interiors: the room type must match, style/color must match if named.",
-            'Return JSON {"seen":"<=20 words: subject, color, length/shape/style","collage":true|false,"fit":"yes"|"no"}.',
+            'Return JSON {"seen":"<=20 words: subject, color, length/shape/style","main":"base color of the main subject in 1-2 words, e.g. dark brown, copper, light blonde (for hair: the base/root color, not highlights)","collage":true|false,"fit":"yes"|"no"}.',
           ].join("\n"),
           user: [{ type: "text", text: `Topic: "${core}" (${label})` }, imagePart(await readFile(absPath(s.path)), "image/jpeg", "low")],
         });
-        const j = r.json as { fit?: string; collage?: boolean } | null;
-        return j?.fit === "yes" && j.collage !== true;
+        const j = r.json as { fit?: string; collage?: boolean; main?: string } | null;
+        // Основной цвет, названный моделью, сверяется с темой кодом: «copper» не пройдёт в «brown hair color».
+        return j?.fit === "yes" && j.collage !== true && !conflicts(String(j.main ?? "").toLowerCase(), core, niche);
       } catch { return false; }
     };
     let i = 0, checks = 0;
