@@ -25,7 +25,11 @@ import { mergeSiteSettings, type ArtRunSettings, type PhotoSearchConfig } from "
 import { loadTeamAutostart, teamAutostart } from "@/lib/articles/teamQueue";
 import type { CopySettings } from "@prisma/client";
 import { copySettings, type CoreForm } from "./build";
-import { SHARED_TEAM, clusterWords, groupOf, pickModifier, splitKeyword, swapModifier } from "./keys";
+import { SHARED_TEAM, clusterWords, groupOf, nicheLabel, pickModifier, splitKeyword, swapModifier } from "./keys";
+import { readFile } from "node:fs/promises";
+import { absPath } from "@/lib/articles/storage";
+import { aiChat, imagePart } from "@/lib/articles/ai";
+import { SLOTS } from "@/lib/articles/types";
 
 const SKIP_MS = 6 * 60 * 60_000;
 const MAX_PER_TICK = 2;
@@ -40,14 +44,14 @@ let running = false;
 
 type Site = { id: string; teamId: string; name: string; nicheCode: string | null };
 type Cand = {
-  sha: string; phash: string | null; kind: "pub" | "res"; donorId: string; urls: string[]; used: number; score: number;
+  sha: string; phash: string | null; kind: "pub" | "res" | "rel"; donorId: string; urls: string[]; used: number; score: number;
   sourceUrl: string; sourcePageUrl: string; sourceDomain: string; altText: string; caption: string | null;
   facts: unknown; description: string | null;
 };
 type Stored = { c: Cand; photoId: string; path: string; thumbPath: string; width: number | null; height: number | null };
 
 export type CopyPlanResult =
-  | { ok: true; articleId: string | null; keyword: string; core: string; niche: string; modifier: string; site: string; photos: number; fromReserve: number; fromPublished: number; donors: number; lost: number; /** Кадров без слова темы в описании (добраны до минимума). */ offTopic: number }
+  | { ok: true; articleId: string | null; keyword: string; core: string; niche: string; modifier: string; site: string; photos: number; fromReserve: number; fromPublished: number; donors: number; lost: number; /** Кадров без слова темы в описании (добраны до минимума). */ offTopic: number; /** Кадров из похожих тем (прошли проверку зрением). */ related: number; /** Кадров похожих тем, отклонённых проверкой. */ relRejected: number }
   | { ok: false; core: string; reason: string };
 
 const yearOf = (k: string) => Math.max(0, ...(k.match(/20\d\d/g) ?? []).map(Number));
@@ -79,6 +83,41 @@ const topicRe = (core: string): RegExp | null => {
 };
 /** Кадр подходит к теме: слово темы встречается в его описании, фактах, alt или подписи. */
 const onTopic = (c: Cand, re: RegExp) => re.test(`${c.description ?? ""} ${c.altText} ${c.caption ?? ""} ${c.facts ? JSON.stringify(c.facts) : ""}`);
+
+/**
+ * Кадры из похожих тем (владелец 24.11): когда своих кадров темы не хватает, берём из статей с общими словами темы,
+ * но только кадры, которые сами подходят: (1) в описании/фактах есть ВСЕ слова темы и нет противоречащих
+ * («dark brown» не берёт кадр с «light brown»), (2) модель зрения смотрит на сам кадр и подтверждает тему.
+ */
+const REL_GENERIC = new Set(["color", "colors", "colour", "haircolor", "ideas", "idea", "inspo", "aesthetic", "trendy", "cute", "classy", "simple", "easy"]);
+const relWords = (core: string) => clusterWords(core).filter((w) => !REL_GENERIC.has(w));
+/** Группы взаимоисключающих признаков: если в теме есть одно слово группы, кадр с другим словом группы не подходит. */
+const CONFLICTS: Array<{ niches: string[] | null; words: string[] }> = [
+  { niches: null, words: ["light", "dark"] },
+  { niches: ["hair"], words: ["short", "long", "medium", "shoulder"] },
+  { niches: ["hair"], words: ["straight", "curly", "wavy", "coily", "kinky"] },
+  { niches: ["hair"], words: ["blonde", "blond", "brunette", "brown", "black", "red", "auburn", "copper", "ginger", "gray", "grey", "silver", "platinum", "pink", "purple", "blue"] },
+  { niches: ["nails"], words: ["short", "long"] },
+  { niches: ["nails"], words: ["almond", "coffin", "square", "stiletto", "oval", "round", "squoval", "ballerina"] },
+];
+const wordRe = (w: string) => new RegExp(`\\b${w.replace(/s$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:s|es)?\\b`, "i");
+const candText = (c: Cand) => `${c.description ?? ""} ${c.altText} ${c.caption ?? ""} ${c.facts ? JSON.stringify(c.facts) : ""}`.toLowerCase();
+function relTextOk(c: Cand, core: string, niche: string): boolean {
+  const words = relWords(core);
+  if (!words.length) return false;
+  const t = candText(c);
+  if (!words.every((w) => wordRe(w).test(t))) return false;
+  const coreSet = new Set(core.split(" "));
+  for (const g of CONFLICTS) {
+    if (g.niches && !g.niches.includes(niche)) continue;
+    if (!g.words.some((w) => coreSet.has(w))) continue;
+    if (g.words.some((w) => !coreSet.has(w) && wordRe(w).test(t))) return false;
+  }
+  return true;
+}
+const REL_VISION_MODEL = "openrouter:google/gemini-3-flash-preview";
+/** Лимит проверок зрением на статью (≈ $0.0002 за кадр). */
+const MAX_REL_CHECKS = 60;
 
 export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { niche: string; core: string; formulations: unknown }, opts: BuildOpts = {}): Promise<CopyPlanResult> {
   const { niche, core } = coreRow;
@@ -230,6 +269,67 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
   await fill(resOn, Math.round((n * st.reservePct) / 100));
   await fill(pubOn, n);
   await fill(resOn, n);
+
+  // ── Своих кадров темы не хватило: кадры похожих тем, каждый проверяется по описанию и зрением ──
+  let related = 0, relRejected = 0;
+  const words = relWords(core);
+  if (picked.length < n && words.length) {
+    const relArts = (await prisma.article.findMany({
+      where: { status: "COMPLETED", publishedAt: { not: null }, wpUrl: { not: null }, id: { notIn: [...coreIds] }, OR: words.map((w) => ({ keyword: { contains: w } })) },
+      select: { id: true, teamId: true, siteId: true, keyword: true, recipeRef: { select: { nicheCode: true } }, site: { select: { nicheCode: true } } },
+      take: 1500,
+    })).filter((a) => (a.recipeRef?.nicheCode || a.site.nicheCode || "other") === niche && !notDonor.has(a.siteId) && (st.sharedBank || a.teamId === site.teamId) && splitKeyword(a.keyword).core !== core);
+    const relMash = new Set((await prisma.copyArticle.findMany({ where: { articleId: { in: relArts.map((a) => a.id) } }, select: { articleId: true } })).map((m) => m.articleId));
+    const shared = (k: string) => { const t = splitKeyword(k).core.split(" "); return words.filter((w) => t.some((x) => x.replace(/s$/, "") === w.replace(/s$/, ""))).length; };
+    const relIds = relArts.filter((a) => !relMash.has(a.id)).sort((a, b) => shared(b.keyword) - shared(a.keyword)).slice(0, 80).map((a) => a.id);
+    const [rPub, rRes] = await Promise.all([
+      prisma.artPhoto.findMany({ where: { articleId: { in: relIds }, excluded: false, sha256: { not: null }, wpUrl: { not: null } }, select: { articleId: true, sha256: true, phash: true, wpUrl: true, sourceUrl: true, sourcePageUrl: true, sourceDomain: true, altText: true, caption: true, facts: true, description: true, aiScore: true } }),
+      prisma.artPhotoCandidate.findMany({ where: { articleId: { in: relIds }, status: { in: ["reserve", "keep"] }, sha256: { not: null }, aiScore: { gte: st.minReserveScore } }, orderBy: { aiScore: "desc" }, take: 3000, select: { articleId: true, sha256: true, phash: true, url: true, pageUrl: true, domain: true, title: true, aiFacts: true, aiDescription: true, aiScore: true } }),
+    ]);
+    const relBy = new Map<string, Cand>();
+    for (const p of rPub) if (!bySha.has(p.sha256!) && !relBy.has(p.sha256!)) relBy.set(p.sha256!, { sha: p.sha256!, phash: p.phash, kind: "rel", donorId: p.articleId, urls: [p.wpUrl!, p.sourceUrl], used: 0, score: p.aiScore ?? 0, sourceUrl: p.sourceUrl, sourcePageUrl: p.sourcePageUrl, sourceDomain: p.sourceDomain, altText: p.altText, caption: p.caption, facts: p.facts, description: p.description });
+    for (const c of rRes) if (!bySha.has(c.sha256!) && !relBy.has(c.sha256!)) relBy.set(c.sha256!, { sha: c.sha256!, phash: c.phash, kind: "rel", donorId: c.articleId, urls: [c.url], used: 0, score: c.aiScore ?? 0, sourceUrl: c.url.slice(0, 2000), sourcePageUrl: (c.pageUrl || "").slice(0, 2000), sourceDomain: c.domain || "", altText: c.title || "", caption: null, facts: c.aiFacts, description: c.aiDescription });
+    const relCands = [...relBy.values()].filter((c) => !bad.has(c.sha) && relTextOk(c, core, niche));
+    const rShas = relCands.map((c) => c.sha);
+    for (let i = 0; i < rShas.length; i += 500) {
+      const rows = await prisma.artPhoto.findMany({ where: { sha256: { in: rShas.slice(i, i + 500) }, excluded: false }, select: { sha256: true, articleId: true, article: { select: { siteId: true } } } });
+      for (const r of rows) {
+        let s = articlesOf.get(r.sha256!);
+        if (!s) articlesOf.set(r.sha256!, (s = new Set()));
+        s.add(r.articleId);
+        if (r.article.siteId === site.id) onSite.set(r.sha256!, (onSite.get(r.sha256!) ?? 0) + 1);
+      }
+    }
+    for (const c of relCands) c.used = articlesOf.get(c.sha)?.size ?? 0;
+    const relQ = relCands.sort(order);
+    const label = nicheLabel(niche);
+    const fits = async (s: Stored): Promise<boolean> => {
+      if (opts.dry) return true;
+      try {
+        const r = await aiChat({ userId: createdById, teamId: site.teamId, siteId: site.id }, {
+          slot: SLOTS.vision, model: REL_VISION_MODEL, json: true, temperature: 0, maxTokens: 80,
+          system: `You check whether a photo fits a Pinterest article topic. Be strict about every specific in the topic: hair color shade (light vs dark, brown vs blonde vs black), length, texture, cut or style; nail shape, length, color or design; garment type and color; room type and style. Generic or ambiguous photos are "no". Return JSON {"fit":"yes"|"no","why":"<=12 words"}.`,
+          user: [{ type: "text", text: `Topic: "${core}" (${label})` }, imagePart(await readFile(absPath(s.path)), "image/jpeg", "low")],
+        });
+        return (r.json as { fit?: string } | null)?.fit === "yes";
+      } catch { return false; }
+    };
+    let i = 0, checks = 0;
+    while (picked.length < n && i < relQ.length && checks < MAX_REL_CHECKS) {
+      const batch: Cand[] = [];
+      while (batch.length < Math.min(BATCH, n - picked.length) && i < relQ.length) { const c = relQ[i++]; if (canTake(c)) { mark(c, 1); batch.push(c); } }
+      if (!batch.length) break;
+      checks += batch.length;
+      const got = await Promise.all(batch.map(async (c) => { const s = await store(c); return { c, s, ok: s ? await fits(s) : false }; }));
+      for (const g of got) {
+        if (g.s && g.ok && picked.length < n) { picked.push(g.s); related++; continue; }
+        mark(g.c, -1);
+        if (!g.s) { lost++; continue; }
+        relRejected++;
+        if (!opts.dry) { await removePath(g.s.path).catch(() => {}); await removePath(g.s.thumbPath).catch(() => {}); }
+      }
+    }
+  }
   const onTopicCount = picked.length;
   if (picked.length < Math.min(n, st.minPhotos)) {
     await fill(pubOff, Math.min(n, st.minPhotos));
@@ -237,13 +337,13 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
   }
   const offTopic = picked.length - onTopicCount;
 
-  const fromReserve = picked.filter((p) => p.c.kind === "res").length;
+  const fromReserve = picked.filter((p) => p.c.kind !== "pub").length;
   const usedDonors = new Set(picked.map((p) => p.c.donorId)).size;
   if (picked.length < Math.min(n, st.minPhotos)) {
     if (!opts.dry) await removePath(articleDir(articleId)).catch(() => {});
     return fail(`набралось ${picked.length} кадров из ${n} (минимум ${st.minPhotos}; не скачалось ${lost})`);
   }
-  const summary = { keyword, core, niche, modifier, site: site.name, photos: picked.length, fromReserve, fromPublished: picked.length - fromReserve, donors: usedDonors, lost, offTopic };
+  const summary = { keyword, core, niche, modifier, site: site.name, photos: picked.length, fromReserve, fromPublished: picked.length - fromReserve, donors: usedDonors, lost, offTopic, related, relRejected };
   if (opts.dry) return { ok: true, articleId: null, ...summary };
 
   // ── Статья: снимок сценария, факты темы без вызова ИИ, старт с этапа «План по фото» ──
@@ -288,7 +388,7 @@ export async function buildCopyArticle(site: Site, st: CopySettings, coreRow: { 
         data: {
           id: articleId, teamId: site.teamId, siteId: site.id, runId: run.id, recipeId: shape.id, createdById, keyword, format: "REAL_PHOTO", photoCount: picked.length,
           photoReview: false, publishMode: "auto", recipe: snapshot as unknown as Prisma.InputJsonValue, status: "PENDING", stage: "plan",
-          cursor: { ...(review ? {} : { reviewApproved: true }), copy: { core, modifier, donors: [...new Set(picked.map((p) => p.c.donorId))] } } as Prisma.InputJsonValue,
+          cursor: { ...(review ? {} : { reviewApproved: true }), copy: { core, modifier, donors: [...new Set(picked.map((p) => p.c.donorId))], related, relRejected, relatedShas: picked.filter((p) => p.c.kind === "rel").map((p) => p.c.sha) } } as Prisma.InputJsonValue,
           facts: facts as unknown as Prisma.InputJsonValue, note: "Article Copy: собрана из готовых фото",
         },
       }),

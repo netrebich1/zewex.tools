@@ -86,7 +86,7 @@ export default async function CopyBatchPage({ params }: { params: Promise<{ id: 
                     <td className="min-w-[200px]">
                       {it.articleId ? <Link href={`/pinterest/articles/articles/${it.articleId}`} className="font-medium hover:underline">{it.keyword ?? it.core}</Link> : <span className="font-medium">{it.core}</span>}
                       {it.keyword && <div className="help">{it.core}</div>}
-                      {it.reason && <div className="help text-danger">{it.reason}</div>}
+                      {it.reason && <div className={`help ${it.reason.startsWith("дубль темы") || it.reason.includes("→ заменена") ? "text-muted" : "text-danger"}`}>{it.reason}</div>}
                     </td>
                     <td className="hidden md:table-cell text-muted">{nicheLabel(it.niche)}</td>
                     <td className="text-right tabular-nums">{fmtVolume(it.volume)}</td>
@@ -94,6 +94,8 @@ export default async function CopyBatchPage({ params }: { params: Promise<{ id: 
                     <td>{it.site}</td>
                     <td className="text-[13px]">
                       {it.status === "pending" ? <span className="text-muted">ждёт сборки</span>
+                        : it.status === "failed" && it.reason?.startsWith("дубль темы") ? <span className="text-muted">снята: дубль</span>
+                        : it.status === "failed" && it.reason?.includes("→ заменена") ? <span className="text-muted">заменена другой темой</span>
                         : it.status === "failed" ? <span className="text-danger">не собралась</span>
                         : !it.art ? <span className="text-muted">статья удалена</span>
                         : it.art.wpUrl && it.art.status === "COMPLETED" ? <a href={it.art.wpUrl} target="_blank" rel="noreferrer" className="text-ok hover:underline">Опубликована</a>

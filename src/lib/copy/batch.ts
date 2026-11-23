@@ -122,10 +122,31 @@ export async function planBatch(input: BatchInput): Promise<{ id: string; planne
   return { id: batch.id, planned: items.length, note: note ?? "" };
 }
 
+/** Причины, при которых тему стоит заменить другой (не сбой сайта/ключей): мало кадров, нет формулировок, тема уже есть. */
+const REPLACEABLE = /^(набралось|свободных формулировок|тема уже есть|нет опубликованных)/;
+
+/**
+ * Замена несобравшейся темы (владелец 24.11: «всё дособрать»): следующее ядро той же ниши для того же сайта,
+ * сначала того же класса частотности и с большим резервом кадров; по смыслу (topicSig) его нет ни на сайте,
+ * ни в идущих партиях, ни в этой партии (включая уже снятые и несобравшиеся темы).
+ */
+async function pickReplacement(b: { id: string; noSeason: boolean }, it: { siteId: string; niche: string; volClass: string | null }, teamId: string) {
+  const taken = new Set<string>();
+  for (const a of await prisma.article.findMany({ where: { siteId: it.siteId, status: { not: "FAILED" } }, select: { keyword: true } })) taken.add(topicSig(a.keyword));
+  for (const i of await prisma.copyBatchItem.findMany({ where: { OR: [{ batchId: b.id }, { siteId: it.siteId, status: "pending", batch: { status: { in: ["running", "paused"] } } }] }, select: { core: true } })) taken.add(topicSig(i.core));
+  const cores = await prisma.copyCore.findMany({
+    where: { teamId, niche: it.niche, byPhotos: { gt: 0 }, core: { contains: " " } },
+    orderBy: [{ photosReserve: "desc" }, { photosPublished: "desc" }],
+    select: { niche: true, core: true, volClass: true, volume: true, siteIds: true },
+  });
+  const ok = cores.filter((c) => !(b.noSeason && isSeasonal(c.core)) && !((c.siteIds as string[] | null) ?? []).includes(it.siteId) && !taken.has(topicSig(c.core)));
+  return ok.find((c) => c.volClass === it.volClass) ?? ok[0] ?? null;
+}
+
 /** Тик воркера (раз в минуту): собирает до ITEMS_PER_TICK пунктов идущих партий, старшие партии раньше. */
 export async function copyBatchTick(): Promise<{ built: number; failed: number }> {
   if (running) return { built: 0, failed: 0 };
-  const batches = await prisma.copyBatch.findMany({ where: { status: "running" }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, photos: true, photosMax: true, review: true, year: true, writerModel: true, planModel: true } });
+  const batches = await prisma.copyBatch.findMany({ where: { status: "running" }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, photos: true, photosMax: true, review: true, year: true, writerModel: true, planModel: true, noSeason: true } });
   if (!batches.length) return { built: 0, failed: 0 };
   running = true;
   let built = 0, failed = 0;
@@ -153,10 +174,16 @@ export async function copyBatchTick(): Promise<{ built: number; failed: number }
           ]);
         } else {
           failed++;
-          await prisma.$transaction([
-            prisma.copyBatchItem.update({ where: { id: it.id }, data: { status: "failed", reason: result.reason.slice(0, 2000), doneAt: new Date() } }),
-            prisma.copyBatch.update({ where: { id: b.id }, data: { failed: { increment: 1 } } }),
-          ]);
+          const repl = site && REPLACEABLE.test(result.reason) ? await pickReplacement(b, it, st.sharedBank ? SHARED_TEAM : site.teamId) : null;
+          const reason = `${result.reason}${repl ? ` → заменена: «${repl.core}»` : ""}`.slice(0, 2000);
+          await prisma.$transaction(async (tx) => {
+            await tx.copyBatchItem.update({ where: { id: it.id }, data: { status: "failed", reason, doneAt: new Date() } });
+            await tx.copyBatch.update({ where: { id: b.id }, data: { failed: { increment: 1 }, ...(repl ? { planned: { increment: 1 } } : {}) } });
+            if (repl) {
+              const last = await tx.copyBatchItem.aggregate({ where: { batchId: b.id }, _max: { position: true } });
+              await tx.copyBatchItem.create({ data: { batchId: b.id, siteId: it.siteId, niche: repl.niche, core: repl.core, volClass: repl.volClass, volume: repl.volume, position: (last._max.position ?? 0) + 1 } });
+            }
+          });
         }
         // Партию могли поставить на паузу с экрана.
         const fresh = await prisma.copyBatch.findUnique({ where: { id: b.id }, select: { status: true } });
