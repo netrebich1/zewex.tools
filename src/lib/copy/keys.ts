@@ -37,7 +37,9 @@ export const clusterOf = (core: string) => clusterWords(core)[0] ?? core;
 
 /** Слова, которые не меняют тему, где бы они ни стояли (приставки, хвосты, служебные). */
 const SIG_SKIP = new Set([...LEAD, ...TAIL, ...EXTRA_FORMULATIONS, "for", "and", "the", "with", "to", "of", "a", "in", "on", "women", "woman"]);
-const singular = (w: string) => w.replace(/ies$/, "y").replace(/([^s])s$/, "$1");
+/** Синонимы головного слова: «short haircuts» = «short hairstyles» = «short hair». */
+const SIG_SYN: Record<string, string> = { haircut: "hair", hairstyle: "hair", hairdo: "hair", look: "outfit" };
+const singular = (w: string) => { const s = w.replace(/ies$/, "y").replace(/([^s])s$/, "$1"); return SIG_SYN[s] ?? s; };
 /**
  * Подпись темы для проверки дублей: слова ключа без приставок/хвостов/года/служебных, в единственном числе, без порядка.
  * «Cute Cute Almond Nails 2027» = «almond nails»; «bathroom colors» = «bathroom color»; «apartment balcony» = «balcony ideas apartment»;
