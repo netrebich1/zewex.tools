@@ -13,6 +13,7 @@ import { shopGet } from "./net";
 import { scanZara, zaraSizes, type ZaraConfig } from "./adapters/zara";
 import { scanParfois, type ParfoisConfig } from "./adapters/parfois";
 import { fetchItxProduct, fetchItxStores, scanItx, type ItxConfig } from "./adapters/itx";
+import { scanShopify, type ShopifyConfig } from "./adapters/shopify";
 
 /** Автообновление магазина — раз в сутки. */
 export const SCAN_EVERY_MS = 24 * 3600_000;
@@ -23,6 +24,8 @@ export const ADAPTERS: Record<string, { label: string; auto: boolean }> = {
   zara: { label: "Zara — каталог сайта", auto: true },
   itx: { label: "Inditex — каталог сайта", auto: true },
   parfois: { label: "Parfois — каталог сайта", auto: true },
+  shopify: { label: "Лента товаров сайта", auto: true },
+  feed: { label: "Из ленты общего магазина", auto: false },
   manual: { label: "Вручную и по ссылке", auto: false },
 };
 
@@ -44,6 +47,10 @@ async function collect(store: StStore, onProgress: (d: number, t: number) => voi
     const contacts = await fetchItxStores((url) => shopGet(url, { proxy: true, accept: "application/json" }), cfg as unknown as ItxConfig, store.geo);
     if (contacts) await prisma.stStore.update({ where: { id: store.id }, data: { contacts: contacts as unknown as Prisma.InputJsonValue } }).catch(() => {});
     return scanItx((url) => shopGet(url, { proxy: true, accept: "application/json" }), cfg as unknown as ItxConfig, onProgress, Infinity, itx);
+  }
+  if (store.adapter === "shopify") {
+    await scanShopify((url) => shopGet(url, { proxy: true, accept: "application/json" }), cfg as unknown as ShopifyConfig, onProgress, itx.onBatch);
+    return [];
   }
   if (store.adapter === "parfois") {
     return scanParfois((url) => shopGet(url, { accept: "text/html,*/*;q=0.8" }), cfg as ParfoisConfig, onProgress);
@@ -81,20 +88,52 @@ export async function requeueStale(hostPrefix: string): Promise<number> {
 /** Сбор Inditex можно продолжить: товары, собранные за последние часы, повторно не запрашиваются. */
 const RESUME_MS = 12 * 3600_000;
 
+/** Как бренд записан в ленте → как он называется у нас (одна вкладка каталога на бренд). */
+const BRAND_ALIAS: Record<string, string> = {
+  "tommy jeans": "Tommy Hilfiger", "calvin klein jeans": "Calvin Klein", "north face": "The North Face", "geox outlet": "Geox", "aldo outlet": "Aldo",
+  "marks and spencer": "Marks & Spencer", "m&s": "Marks & Spencer", "ax": "Armani Exchange", "hudson": "Hudson Store", "lc waikiki": "LC Waikiki",
+};
+const brandKey = (b: string) => b.toLowerCase().replace(/[^a-z0-9а-я]+/g, "");
+
 export async function scanStore(store: StStore): Promise<{ total: number; fresh: number; gone: number }> {
   const startedAt = new Date();
   let saved = 0;
   let fresh = 0;
+  // Многобрендовая лента: вещи уходят в магазины своих брендов (adapter «feed», config.via = slug этого магазина).
+  const multi = store.adapter === "shopify" && !!(store.config as { multi?: boolean } | null)?.multi;
+  const fed = async () => (multi ? (await prisma.stStore.findMany({ where: { adapter: "feed", geo: store.geo, config: { path: "$.via", equals: store.slug } }, select: { id: true } })).map((r) => r.id) : []);
   try {
     const rate = await eurRate(store.currency);
-    const rows = await prisma.stItem.findMany({ where: { storeId: store.id }, select: { id: true, extId: true, spiritAt: true, spiritData: true, lastSeenAt: true, source: true } });
+    const rows = await prisma.stItem.findMany({ where: { storeId: { in: [store.id, ...(await fed())] } }, select: { id: true, extId: true, spiritAt: true, spiritData: true, lastSeenAt: true, source: true } });
     const known = new Map(rows.map((r) => [r.extId, r]));
     const resumable = store.adapter === "itx";
+    const streamed = resumable || store.adapter === "shopify";
     // Что уже собрано недавно (прошлый проход оборвался) — пропускаем.
     const skip = new Set(resumable ? rows.filter((r) => r.source === "scan" && startedAt.getTime() - r.lastSeenAt.getTime() < RESUME_MS).map((r) => r.extId.split("-")[0]) : []);
+    // Магазин бренда для вещи из многобрендовой ленты: существующий (в нём уже есть адреса) или новый.
+    const brandStores = new Map<string, string>();
+    const storeIdFor = async (brand?: string): Promise<string> => {
+      if (!multi || !brand) return store.id;
+      const name = BRAND_ALIAS[brand.toLowerCase()] ?? brand;
+      const key = brandKey(name);
+      if (key === brandKey(store.brand)) return store.id;
+      const hit = brandStores.get(key);
+      if (hit) return hit;
+      const all = await prisma.stStore.findMany({ where: { geo: store.geo }, select: { id: true, brand: true, adapter: true } });
+      let target = all.find((x) => brandKey(x.brand) === key && (x.adapter === "feed" || x.adapter === "manual"));
+      const via = { via: store.slug } as Prisma.InputJsonValue;
+      if (target && target.adapter === "manual") await prisma.stStore.update({ where: { id: target.id }, data: { adapter: "feed", config: via } });
+      if (!target) {
+        const slug = `${name.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${store.geo.toLowerCase()}`.slice(0, 60);
+        target = await prisma.stStore.upsert({ where: { slug }, update: { adapter: "feed", config: via }, create: { slug, name, brand: name, segment: store.segment, geo: store.geo, adapter: "feed", config: via, baseUrl: store.baseUrl, currency: store.currency, isActive: false }, select: { id: true, brand: true, adapter: true } });
+      }
+      brandStores.set(key, target.id);
+      return target.id;
+    };
     const fields = (it: RawItem) => {
-      const category = classifyCategory(it.name, it.rawCategory);
-      const color = classifyColor(it.colorName ?? "", it.colorHex ?? "");
+      const category = classifyCategory(it.name, it.rawCategory, it.lang === "it");
+      // Магазин не назвал цвет — пробуем найти его в названии вещи («Black leather belt»).
+      const color = classifyColor(it.colorName || it.name, it.colorHex ?? "");
       const old = known.get(it.extId);
       return {
       ...mergeSpirits(ruleSpirit(it.name, category, color), old?.spiritData, !!old?.spiritAt),
@@ -128,10 +167,13 @@ export async function scanStore(store: StStore): Promise<{ total: number; fresh:
     // Запись в базу сразу, пачками: обрыв сбора (перезапуск, отказ магазина) не теряет уже собранное.
     const save = async (items: RawItem[]) => {
       for (let i = 0; i < items.length; i += 50) {
-        const made = await prisma.$transaction(items.slice(i, i + 50).map((it) => {
+        const part = items.slice(i, i + 50);
+        const targets = new Map<string, string>();
+        for (const it of part) if (!known.has(it.extId)) targets.set(it.extId, await storeIdFor(it.brand));
+        const made = await prisma.$transaction(part.map((it) => {
           const id = known.get(it.extId)?.id;
           if (!id) fresh++;
-          return id ? prisma.stItem.update({ where: { id }, data: fields(it), select: { id: true, extId: true } }) : prisma.stItem.create({ data: { storeId: store.id, extId: it.extId.slice(0, 120), source: "scan", ...fields(it) }, select: { id: true, extId: true } });
+          return id ? prisma.stItem.update({ where: { id }, data: fields(it), select: { id: true, extId: true } }) : prisma.stItem.create({ data: { storeId: targets.get(it.extId) ?? store.id, extId: it.extId.slice(0, 120), source: "scan", ...fields(it) }, select: { id: true, extId: true } });
         }));
         for (const m of made) if (!known.has(m.extId)) known.set(m.extId, { id: m.id, extId: m.extId, spiritAt: null, spiritData: null, lastSeenAt: startedAt, source: "scan" });
       }
@@ -141,24 +183,31 @@ export async function scanStore(store: StStore): Promise<{ total: number; fresh:
     const raw = await collect(store, (d, t) => {
       if (Date.now() - lastNote < 10_000) return;
       lastNote = Date.now();
-      void prisma.stStore.update({ where: { id: store.id }, data: { scanNote: `Собираю каталог: ${d} из ${t}${saved ? ` · сохранено вещей: ${saved}` : ""}` } }).catch(() => {});
-    }, resumable ? { skip, onBatch: save } : {});
-    if (!resumable) {
+      void prisma.stStore.update({ where: { id: store.id }, data: { scanNote: streamed && d === t ? `Собираю каталог: сохранено вещей ${saved}` : `Собираю каталог: ${d} из ${t}${saved ? ` · сохранено вещей: ${saved}` : ""}` } }).catch(() => {});
+    }, streamed ? { skip, onBatch: save } : {});
+    if (!streamed) {
       if (!raw.length) throw new Error("магазин не отдал ни одной вещи");
       await save(raw);
     }
     if (!saved && !skip.size) throw new Error("магазин не отдал ни одной вещи");
+    const scope = [store.id, ...(await fed())];
     // Граница «не видели в этом сборе»: при продолжении сбора недавно собранное не запрашивалось заново.
     const seenSince = resumable ? new Date(startedAt.getTime() - RESUME_MS) : startedAt;
-    const total = resumable ? await prisma.stItem.count({ where: { storeId: store.id, source: "scan", lastSeenAt: { gte: seenSince } } }) : raw.length;
+    const total = resumable ? await prisma.stItem.count({ where: { storeId: store.id, source: "scan", lastSeenAt: { gte: seenSince } } }) : streamed ? saved : raw.length;
     // Пропала из каталога — «нет в наличии». Если сбор принёс подозрительно мало (меньше половины прошлого), не трогаем: вероятно, сайт отдал не всё.
     let gone = 0;
-    const before = await prisma.stItem.count({ where: { storeId: store.id, source: "scan", inStock: true, lastSeenAt: { lt: seenSince } } });
+    const before = await prisma.stItem.count({ where: { storeId: { in: scope }, source: "scan", inStock: true, lastSeenAt: { lt: seenSince } } });
     if (total >= (before + total) / 2 || before < 50) {
-      gone = (await prisma.stItem.updateMany({ where: { storeId: store.id, source: "scan", inStock: true, lastSeenAt: { lt: seenSince } }, data: { inStock: false } })).count;
+      gone = (await prisma.stItem.updateMany({ where: { storeId: { in: scope }, source: "scan", inStock: true, lastSeenAt: { lt: seenSince } }, data: { inStock: false } })).count;
+    }
+    // Счётчики у магазинов брендов, которые питаются этой лентой.
+    for (const id of scope.slice(1)) {
+      const n = await prisma.stItem.count({ where: { storeId: id, inStock: true } });
+      await prisma.stStore.update({ where: { id }, data: { itemCount: n, lastScanAt: new Date(), scanStatus: "ok", scanNote: `В наличии ${n} · собирается вместе с «${store.name}»` } });
     }
     const itemCount = await prisma.stItem.count({ where: { storeId: store.id, inStock: true } });
-    await prisma.stStore.update({ where: { id: store.id }, data: { scanStatus: "ok", lastScanAt: new Date(), lockedBy: null, itemCount, scanNote: `В наличии ${itemCount}: новых ${fresh}, пропало ${gone}` } });
+    const inAll = scope.length > 1 ? await prisma.stItem.count({ where: { storeId: { in: scope }, inStock: true } }) : itemCount;
+    await prisma.stStore.update({ where: { id: store.id }, data: { scanStatus: "ok", lastScanAt: new Date(), lockedBy: null, itemCount, scanNote: scope.length > 1 ? `В ленте ${inAll} вещей в наличии по ${scope.length - 1} брендам: новых ${fresh}, пропало ${gone}` : `В наличии ${itemCount}: новых ${fresh}, пропало ${gone}` } });
     return { total, fresh, gone };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

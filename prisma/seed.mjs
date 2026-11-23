@@ -547,10 +547,13 @@ if (stylistSection) {
   // Адреса, телефоны, почты и часы обычных магазинов (ресерч) — обновляются из файла при каждом сиде.
   let stContacts = {};
   try { stContacts = JSON.parse(readFileSync(new URL("./seed-data/stylist-locations.json", import.meta.url), "utf8")); } catch { /* файла ещё нет */ }
+  // Комментарии к магазинам: откуда каталог или почему не собирается (обновляются при каждом сиде).
+  let stNotes = {};
+  try { stNotes = JSON.parse(readFileSync(new URL("./seed-data/stylist-store-notes.json", import.meta.url), "utf8")); } catch { /* файла ещё нет */ }
   for (const s of stStores) {
     const auto = s.adapter && s.adapter !== "manual";
     const was = await prisma.stStore.findUnique({ where: { slug: s.slug }, select: { adapter: true } });
-    if (was && auto && was.adapter === "manual") {
+    if (was && auto && (was.adapter === "manual" || was.adapter === "feed")) {
       await prisma.stStore.update({ where: { slug: s.slug }, data: { adapter: s.adapter, config: s.config ?? undefined, baseUrl: s.baseUrl ?? "", isActive: true } });
       console.log(`stylist: ${s.slug} → автосбор (${s.adapter})`);
     }
@@ -559,6 +562,7 @@ if (stylistSection) {
       update: {},
       create: { slug: s.slug, name: s.name, brand: s.brand ?? s.name, segment: s.segment, geo: s.geo, adapter: s.adapter ?? "manual", baseUrl: s.baseUrl ?? "", currency: s.currency ?? (s.geo === "UA" ? "UAH" : "EUR"), config: s.config ?? undefined, isActive: !!auto },
     });
+    if (stNotes[s.slug]) await prisma.stStore.update({ where: { slug: s.slug }, data: { comment: stNotes[s.slug] } });
     if (stContacts[s.slug] && s.adapter !== "itx") await prisma.stStore.update({ where: { slug: s.slug }, data: { contacts: stContacts[s.slug] } });
   }
 }

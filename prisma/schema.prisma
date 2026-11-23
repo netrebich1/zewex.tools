@@ -4081,7 +4081,8 @@ model StStore {
   segment       String    @default("mid") @db.VarChar(12)
   /// Страна: MT | UA
   geo           String    @db.VarChar(4)
-  /// zara | itx (Massimo Dutti, Bershka, Pull&Bear, Stradivarius, Oysho) | parfois | manual (вещи добавляются по ссылке или вручную)
+  /// zara | itx (Massimo Dutti, Bershka, Pull&Bear, Stradivarius, Oysho) | parfois | shopify (лента товаров сайта) |
+  /// feed (вещи приходят из ленты другого магазина: config.via = его slug) | manual (по ссылке или вручную)
   adapter       String    @db.VarChar(20)
   baseUrl       String    @default("") @db.VarChar(300)
   currency      String    @default("EUR") @db.VarChar(4)
@@ -4098,6 +4099,8 @@ model StStore {
   lastScanAt    DateTime?
   lockedBy      String?   @db.VarChar(100)
   itemCount     Int       @default(0)
+  /// Комментарий к магазину: откуда берётся каталог или почему автоматически не собирается (prisma/seed-data/stylist-store-notes.json)
+  comment       String?   @db.Text
   /// Обычные магазины бренда в стране: { customerService: {phone, email, note}, branches: [{name, address, phone, email, hours, note, source}] }
   contacts      Json?
   createdAt     DateTime  @default(now())

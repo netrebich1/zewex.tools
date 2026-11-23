@@ -11,6 +11,18 @@ AUTO = [
     {"slug": "pullandbear-mt", "name": "Pull&Bear", "brand": "Pull&Bear", "segment": "mid", "geo": "MT", "adapter": "itx", "baseUrl": "https://www.pullandbear.com/mt/", "currency": "EUR", "config": {"host": "pullandbear.com", "storeId": "25009539", "path": "mt"}},
     {"slug": "stradivarius-mt", "name": "Stradivarius", "brand": "Stradivarius", "segment": "mid", "geo": "MT", "adapter": "itx", "baseUrl": "https://www.stradivarius.com/mt/", "currency": "EUR", "config": {"host": "stradivarius.com", "storeId": "55009589", "path": "mt", "gender": "woman"}},
     {"slug": "oysho-mt", "name": "Oysho", "brand": "Oysho", "segment": "mid", "geo": "MT", "adapter": "itx", "baseUrl": "https://www.oysho.com/mt/", "currency": "EUR", "config": {"host": "oysho.com", "storeId": "65009639", "path": "mt", "gender": "woman"}},
+    {"slug": "retail-mt", "name": "Retail (M&S, Aldo, LC Waikiki)", "brand": "Retail", "segment": "mid", "geo": "MT", "adapter": "shopify", "baseUrl": "https://retail.com.mt/", "currency": "EUR", "config": {"host": "retail.com.mt", "multi": True}},
+    {"slug": "hudson-store-mt", "name": "Hudson Store", "brand": "Hudson Store", "segment": "mid", "geo": "MT", "adapter": "shopify", "baseUrl": "https://hudsonstore.com/", "currency": "EUR", "config": {"host": "hudsonstore.com", "multi": True}},
+    {"slug": "kiabi-mt", "name": "Kiabi", "brand": "Kiabi", "segment": "budget", "geo": "MT", "adapter": "shopify", "baseUrl": "https://www.kiabi.com.mt/", "currency": "EUR", "config": {"host": "www.kiabi.com.mt"}},
+    {"slug": "tezenis-mt", "name": "Tezenis", "brand": "Tezenis", "segment": "mid", "geo": "MT", "adapter": "shopify", "baseUrl": "https://tezenismalta.com/", "currency": "EUR", "config": {"host": "tezenismalta.com"}},
+    {"slug": "springfield-mt", "name": "Springfield", "brand": "Springfield", "segment": "mid", "geo": "MT", "adapter": "shopify", "baseUrl": "https://myspringfield.com.mt/", "currency": "EUR", "config": {"host": "myspringfield.com.mt"}},
+    {"slug": "womensecret-mt", "name": "Women'secret", "brand": "Women'secret", "segment": "mid", "geo": "MT", "adapter": "shopify", "baseUrl": "https://womensecret.com.mt/", "currency": "EUR", "config": {"host": "womensecret.com.mt", "gender": "woman"}},
+    {"slug": "mvintage-mt", "name": "MVintage", "brand": "MVintage", "segment": "mid", "geo": "MT", "adapter": "shopify", "baseUrl": "https://www.mvintage.com/", "currency": "EUR", "config": {"host": "www.mvintage.com"}},
+    {"slug": "bortex-mt", "name": "Bortex", "brand": "Bortex", "segment": "premium", "geo": "MT", "adapter": "shopify", "baseUrl": "https://www.bortex.com.mt/", "currency": "EUR", "config": {"host": "www.bortex.com.mt", "gender": "man"}},
+    {"slug": "urban-jungle-mt", "name": "Urban Jungle", "brand": "Urban Jungle", "segment": "mid", "geo": "MT", "adapter": "shopify", "baseUrl": "https://urbanjunglestore.com/", "currency": "EUR", "config": {"host": "urbanjunglestore.com"}},
+    {"slug": "dan-john-mt", "name": "Dan John", "brand": "Dan John", "segment": "mid", "geo": "MT", "adapter": "shopify", "baseUrl": "https://www.danjohn.com/", "currency": "EUR", "config": {"host": "www.danjohn.com", "lang": "it", "gender": "man"}},
+    {"slug": "terranova-mt", "name": "Terranova", "brand": "Terranova", "segment": "budget", "geo": "MT", "adapter": "shopify", "baseUrl": "https://www.terranovastyle.com/", "currency": "EUR", "config": {"host": "www.terranovastyle.com", "lang": "it"}},
+    {"slug": "calliope-mt", "name": "Calliope", "brand": "Calliope", "segment": "budget", "geo": "MT", "adapter": "shopify", "baseUrl": "https://www.calliope.style/", "currency": "EUR", "config": {"host": "www.calliope.style", "lang": "it"}},
     {"slug": "zara-ua", "name": "Zara Украина", "brand": "Zara", "segment": "mid", "geo": "UA", "adapter": "zara", "baseUrl": "https://www.zara.com/ua/uk/", "currency": "UAH", "config": {"path": "ua/uk"}},
 ]
 
@@ -80,11 +92,8 @@ Ruslan Baginskiy | luxury | https://ruslanbaginskiy.com/
 
 # Сайт пуст — у бренда на Мальте только обычные магазины (или интернет-магазин не подтверждён).
 MT = """
-Kiabi | budget | https://www.kiabi.com.mt/
-Terranova | budget |
 LC Waikiki | budget | https://retail.com.mt/
 New Yorker | budget |
-Calliope | budget |
 Piazza Italia | budget |
 Matalan | budget |
 Sports Direct | budget | https://www.sportsdirect.mt/
@@ -93,30 +102,23 @@ H&M | mid | https://www2.hm.com/en_mt/
 Next | mid | https://www.next.com.mt/en
 Marks & Spencer | mid | https://retail.com.mt/
 ASOS | mid | https://www.asos.com/
-Hudson Store | mid | https://hudsonstore.com/
 Nike | mid | https://hudsonstore.com/
 adidas | mid |
-Urban Jungle | mid | https://urbanjunglestore.com/
 Skechers | mid |
-Springfield | mid | https://myspringfield.com.mt/
-Women'secret | mid | https://womensecret.com.mt/
 Cortefiel | mid |
 Lindex | mid |
 United Colors of Benetton | mid |
 Celio | mid |
-Dan John | mid |
 Punt Roma | mid | https://retail.com.mt/
 Aldo | mid | https://retail.com.mt/
 Accessorize | mid |
 Bata | mid |
 Darmanin Footwear | mid |
-Tezenis | mid | https://tezenismalta.com/
 Intimissimi | mid | https://www.intimissimi.com/mt/
 Calzedonia | mid |
 Desigual | mid | https://www.desigual.com/en_MT/
 Levi's | mid |
 Victoria's Secret | mid |
-MVintage | mid |
 Tommy Hilfiger | premium | https://hudsonstore.com/
 Calvin Klein | premium | https://hudsonstore.com/
 Guess | premium | https://www.guess.com/en-mt/
@@ -127,7 +129,6 @@ BOSS | premium | https://www.hugoboss.com/mt/en/home
 Gant | premium |
 Liu Jo | premium |
 Harmont & Blaine | premium |
-Bortex | premium |
 Charles & Ron | premium |
 Dune London | premium |
 Sarto | luxury |

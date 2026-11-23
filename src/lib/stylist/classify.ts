@@ -52,14 +52,33 @@ const CATEGORY_RULES: Array<[CategoryId, RegExp]> = [
   ["tshirts", stem("футболк|поло|майк|лонгслів|лонгслив")],
   ["tops", word("tops?|bodysuits?|bodies|bustiers?|corsets?|camisoles?|camis?|bandeaus?|crop top")],
   ["tops", stem("топ(?![а-я]*сайд)|боді|боди|бюстьє|бюстье|корсет")],
+  // Итальянские названия (сайты Terranova, Calliope, Dan John): главное слово стоит первым.
+  ["swimwear", stem("costum[ei] da bagno|bikini")],
+  ["lingerie", stem("reggiseno|slip|pigiam|intimo|calzin|collant|boxer|vestaglia|pantofol")],
+  ["jewellery", stem("orecchin|collan|braccial|anell[oi]")],
+  ["bags", stem("bors[ae]|zain|pochette|portafogli|tracolla|marsupio")],
+  ["shoes", stem("scarp|stival|sandal|mocassin|ballerin|decollet|ciabatt|anfib|polacchin")],
+  ["accessories", stem("cintur|sciarp|cappell|berrett|guant|occhial|cravatt|ombrell|foulard|bandana|fascia per capelli")],
+  ["suits", stem("completo|tailleur")],
+  ["dresses", stem("abit[oi]|vestit|tuta|salopette")],
+  ["skirts", stem("gonn")],
+  ["shorts", stem("pantalone corto|pantaloncin|bermuda")],
+  ["trousers", stem("pantalon")],
+  ["blazers", stem("giacca sartorial|gilet(?! imbottit)")],
+  ["coats", stem("cappott|impermeabil|mantell|pellicci|montgomery")],
+  ["jackets", stem("giacc|giubbott|giubbin|piumin|chiodo|capospalla|gilet imbottit|smanicat")],
+  ["sweatshirts", stem("felp")],
+  ["knitwear", stem("maglion|maglia|dolcevita|lupetto|maglieria|coprispalle")],
+  ["shirts", stem("camici|camicett|blus")],
+  ["tshirts", stem("canott")],
 ];
 
 /** «t-shirt» не должно читаться как «shirt», «polo shirt» — как рубашка, «shirt dress» — как рубашка. */
-function categoryIn(text: string): CategoryId | null {
+function categoryIn(text: string, headFirst = false): CategoryId | null {
   const t = text.toLowerCase().replace(/t-shirts?|tee shirts?/g, "tshirt").replace(/polo shirts?/g, "polo").replace(/sweat-?shirts?/g, "sweatshirt").replace(/over-?shirts?/g, "overshirt");
-  const cyr = CYR.test(t);
+  const cyr = headFirst || CYR.test(t);
   // Хвост после «with / з / с» описывает детали, а не саму вещь.
-  const head = t.split(cyr ? /\s(?:з|із|зі|с|со|на|для|в|у)\s/ : /\s(?:with|in|and|for|featuring)\s/)[0] || t;
+  const head = t.split(cyr ? /\s(?:з|із|зі|с|со|на|для|в|у|con|in|a|di|effetto)\s/ : /\s(?:with|in|and|for|featuring)\s/)[0] || t;
   for (const src of [head, t]) {
     let best: { cat: CategoryId; at: number } | null = null;
     for (const [cat, re] of CATEGORY_RULES) {
@@ -77,28 +96,28 @@ function categoryIn(text: string): CategoryId | null {
 }
 
 /** Тип вещи: сначала по названию, затем по подсказке магазина (раздел, семейство товара). */
-export function classifyCategory(name: string, hint: string): CategoryId {
-  return categoryIn(name) ?? categoryIn(hint.replace(/[-_/|]+/g, " ")) ?? "other";
+export function classifyCategory(name: string, hint: string, headFirst = false): CategoryId {
+  return categoryIn(name, headFirst) ?? categoryIn(hint.replace(/[-_/|]+/g, " "), headFirst) ?? "other";
 }
 
 const COLOR_RULES: Array<[string, RegExp]> = [
   ["multi", stem("multi|print|floral|stripe|check|leopard|animal|zebra|snake|tie[- ]dye|різнокольор|разноцвет|мульти|принт|смуг|полоск|клітин|клетк|леопард")],
   ["metallic", stem("gold|silver|metallic|bronze|copper|золот|срібн|серебр|металік|металлик|бронз")],
-  ["navy", stem("navy|ink blue|midnight|dark blue|dark indigo|темно-син|тёмно-син|темно син")],
-  ["burgundy", stem("burgundy|maroon|wine|bordeaux|marsala|aubergine|plum|oxblood|бордо|марсал|винн|баклажан|сливов")],
-  ["khaki", stem("khaki|olive|military|army|moss|хакі|хаки|оливк|мілітарі")],
-  ["beige", stem("beige|sand|camel|nude|taupe|stone|tan(?![a-z])|oatmeal|mink|straw|toffee|caramel|biscuit|greige|vanilla|бежев|пісочн|песочн|кемел|нюд|тауп|карамел")],
-  ["white", stem("white|ecru|cream|ivory|off-white|oyster|bone|chalk|pearl(?! grey)|milk|біл|бел|молочн|екрю|экрю|кремов|айворі|айвори")],
-  ["black", stem("black|чорн|черн|чёрн")],
-  ["grey", stem("grey|gray|anthracite|charcoal|graphite|lead|сір|сер(?:ый|ая|ое|ые|о-)|антрацит|графіт|графит")],
-  ["brown", stem("brown|chocolate|tobacco|coffee|mocha|cognac|chestnut|leather|earth|rust|brick|terracotta|коричн|шоколад|кавов|кофейн|терракот|цегл")],
-  ["red", stem("red(?![a-z])|scarlet|cherry|coral|tomato|червон|красн|вишн|корал|алый")],
-  ["pink", stem("pink|rose|fuchsia|blush|mauve|magenta|salmon|рожев|розов|фукс|пудр")],
-  ["orange", stem("orange|apricot|peach|tangerine|помаранч|оранж|персик|абрикос")],
-  ["yellow", stem("yellow|mustard|lemon|lime|жовт|желт|жёлт|гірчич|горчич|лимон")],
-  ["green", stem("green|mint|emerald|sage|bottle|pistachio|teal|turquoise|aqua|зелен|зелён|м'ят|мят|смарагд|изумруд|фісташ|фисташ|бірюз|бирюз")],
-  ["purple", stem("purple|violet|lilac|lavender|фіолет|фиолет|бузков|сирен|лаванд|лілов|лилов")],
-  ["blue", stem("blue|indigo|cobalt|denim|azure|sky|bluish|синій|синя|синє|сині|синий|синяя|синее|синие|голуб|блакит|індиго|индиго|кобальт|денім|деним")],
+  ["navy", stem("blu scuro|blu notte|navy|ink blue|midnight|dark blue|dark indigo|темно-син|тёмно-син|темно син")],
+  ["burgundy", stem("bordeaux|vinaccia|burgundy|maroon|wine|bordeaux|marsala|aubergine|plum|oxblood|бордо|марсал|винн|баклажан|сливов")],
+  ["khaki", stem("militare|khaki|olive|military|army|moss|хакі|хаки|оливк|мілітарі")],
+  ["beige", stem("sabbia|cammello|beige|sand|camel|nude|taupe|stone|tan(?![a-z])|oatmeal|mink|straw|toffee|caramel|biscuit|greige|vanilla|бежев|пісочн|песочн|кемел|нюд|тауп|карамел")],
+  ["white", stem("bianc|panna|latte|white|ecru|cream|ivory|off-white|oyster|bone|chalk|pearl(?! grey)|milk|біл|бел|молочн|екрю|экрю|кремов|айворі|айвори")],
+  ["black", stem("nero|nera|black|чорн|черн|чёрн")],
+  ["grey", stem("grigi|antracite|grey|gray|anthracite|charcoal|graphite|lead|сір|сер(?:ый|ая|ое|ые|о-)|антрацит|графіт|графит")],
+  ["brown", stem("marron|cuoio|cioccolat|brown|chocolate|tobacco|coffee|mocha|cognac|chestnut|leather|earth|rust|brick|terracotta|коричн|шоколад|кавов|кофейн|терракот|цегл")],
+  ["red", stem("ross[oa]|red(?![a-z])|scarlet|cherry|coral|tomato|червон|красн|вишн|корал|алый")],
+  ["pink", stem("rosa|cipria|fucsia|pink|rose|fuchsia|blush|mauve|magenta|salmon|рожев|розов|фукс|пудр")],
+  ["orange", stem("arancio|pesca|orange|apricot|peach|tangerine|помаранч|оранж|персик|абрикос")],
+  ["yellow", stem("giall|senape|yellow|mustard|lemon|lime|жовт|желт|жёлт|гірчич|горчич|лимон")],
+  ["green", stem("verde|salvia|green|mint|emerald|sage|bottle|pistachio|teal|turquoise|aqua|зелен|зелён|м'ят|мят|смарагд|изумруд|фісташ|фисташ|бірюз|бирюз")],
+  ["purple", stem("viola|lilla|purple|violet|lilac|lavender|фіолет|фиолет|бузков|сирен|лаванд|лілов|лилов")],
+  ["blue", stem("blu|azzurr|celeste|blue|indigo|cobalt|denim|azure|sky|bluish|синій|синя|синє|сині|синий|синяя|синее|синие|голуб|блакит|індиго|индиго|кобальт|денім|деним")],
 ];
 
 function colorByHex(hex: string): string {

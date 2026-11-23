@@ -33,7 +33,7 @@ export default async function StylistStores() {
         <div className="mb-4"><Alert tone="ok">Сейчас сбор не идёт: все автоматические магазины собраны. Следующее обновление — через сутки после предыдущего или по кнопке «Обновить сейчас».</Alert></div>
       )}
       {GEOS.map((g) => {
-        const list = stores.filter((s) => s.geo === g.id).sort((a, b) => Number(ADAPTERS[b.adapter]?.auto ?? false) - Number(ADAPTERS[a.adapter]?.auto ?? false) || segOrder.indexOf(a.segment) - segOrder.indexOf(b.segment) || a.name.localeCompare(b.name));
+        const list = stores.filter((s) => s.geo === g.id).sort((a, b) => Number((ADAPTERS[b.adapter]?.auto ?? false) || b.adapter === "feed") - Number((ADAPTERS[a.adapter]?.auto ?? false) || a.adapter === "feed") || segOrder.indexOf(a.segment) - segOrder.indexOf(b.segment) || a.name.localeCompare(b.name));
         return (
           <Card key={g.id} className="mb-5" title={`${g.label} — ${list.length}`}>
             {list.length === 0 ? <p className="help">Магазинов пока нет.</p> : (
@@ -48,6 +48,7 @@ export default async function StylistStores() {
                           <td>
                             <div className="font-medium">{s.name}</div>
                             {s.baseUrl && <a href={s.baseUrl} target="_blank" rel="noreferrer noopener" className="text-[12px] text-muted underline">{s.baseUrl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}</a>}
+                            {s.comment && <div className="mt-1 max-w-[420px] !whitespace-normal text-[12px] leading-snug text-ink-2">{s.comment}</div>}
                             {branchCount(s.contacts) > 0 && (
                               <details className="mt-1 max-w-[420px] !whitespace-normal">
                                 <summary className="cursor-pointer text-[12px] font-medium">Адреса и телефоны: {branchCount(s.contacts)}</summary>
@@ -56,7 +57,7 @@ export default async function StylistStores() {
                             )}
                           </td>
                           <td>{SEGMENT_LABELS[s.segment] ?? s.segment}</td>
-                          <td>{auto ? <Badge tone="ok">собирается сам</Badge> : <Badge>по ссылке</Badge>}</td>
+                          <td>{auto || s.adapter === "feed" ? <Badge tone="ok">собирается сам</Badge> : <Badge>по ссылке</Badge>}</td>
                           <td>{s.itemCount.toLocaleString("ru-RU")}</td>
                           <td className="!whitespace-normal text-[13px]">
                             {s.scanStatus === "running" ? <Badge tone="brand">идёт сбор</Badge> : s.scanStatus === "error" ? <Badge tone="danger">ошибка</Badge> : null}
