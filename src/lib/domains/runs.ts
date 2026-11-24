@@ -333,6 +333,18 @@ type Row = Omit<DomainCandidate, "id" | "createdAt" | "aiScore" | "aiReason" | "
  * Все проверенные (в т.ч. занятые) сохраняются. При перезапуске готовые бренды пропускаются.
  */
 export async function processDomainRun(run: DomainRun, workerId: string, shouldStop: () => boolean): Promise<void> {
+  // Аренда продлевается по таймеру: долгая пачка (реестр с лимитом) не должна выглядеть как умерший воркер
+  const lease = setInterval(() => {
+    prisma.$executeRaw`UPDATE DomainRun SET leaseUntil = DATE_ADD(NOW(3), INTERVAL ${RUN_LEASE_SECONDS} SECOND) WHERE id = ${run.id} AND workerId = ${workerId} AND status = 'RUNNING'`.catch(() => {});
+  }, 30_000);
+  try {
+    await processDomainRunInner(run, workerId, shouldStop);
+  } finally {
+    clearInterval(lease);
+  }
+}
+
+async function processDomainRunInner(run: DomainRun, workerId: string, shouldStop: () => boolean): Promise<void> {
   const settings = parseSettings(run.settings);
   const items = settings.items;
   const target = settings.perBrand + settings.extraPerBrand;

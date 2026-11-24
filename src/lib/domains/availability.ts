@@ -23,7 +23,11 @@ const RDAP_TIMEOUT_MS = 8000;
 const DNS_TIMEOUT_MS = 6000;
 const BOOTSTRAP_URL = "https://data.iana.org/rdap/dns.json";
 const BOOTSTRAP_TTL_MS = 24 * 3600_000;
-const MAX_429_RETRIES = 3;
+const MAX_429_RETRIES = 1;
+/** Реестр отвечает 429 подряд: перестаём к нему ходить на это время (растёт до часа), зона идёт по DNS. */
+const THROTTLE_FIRST_MS = 10 * 60_000;
+const THROTTLE_MAX_MS = 60 * 60_000;
+const THROTTLE_AFTER_429 = 3;
 export const CHECK_CONCURRENCY = 8;
 
 /** Запасная таблица на случай, если справочник IANA недоступен. */
@@ -79,12 +83,42 @@ async function rdapBase(tld: string): Promise<string | null> {
   return bootstrap?.map.get(tld) ?? RDAP_SERVERS[tld] ?? null;
 }
 
-async function endpointsFor(domain: string): Promise<string[]> {
+/** Эндпоинты RDAP домена без мёртвых и «задушенных» хостов; throttled — живые есть, но все задушены лимитом. */
+async function endpointsFor(domain: string): Promise<{ urls: string[]; throttled: boolean }> {
   const tld = domain.split(".").pop() ?? "";
   const known = await rdapBase(tld);
   const generic = `https://rdap.org/domain/${domain}`;
   const list = known && !known.includes("rdap.org/") ? [`${known}${domain}`, generic] : [generic];
-  return list.filter((u) => !isHostDead(new URL(u).hostname));
+  const alive = list.filter((u) => !isHostDead(new URL(u).hostname));
+  const urls = alive.filter((u) => !isThrottled(new URL(u).hostname));
+  return { urls, throttled: alive.length > 0 && urls.length === 0 };
+}
+
+/* ---------- Лимит реестра (429) ---------- */
+
+const throttled = new Map<string, { until: number; backoff: number }>();
+const host429 = new Map<string, number>();
+
+function isThrottled(host: string): boolean {
+  const t = throttled.get(host);
+  return !!t && Date.now() < t.until;
+}
+
+/** 429 подряд или долгий Retry-After: хост «задушен» — не ждём его, а решаем по DNS, пока лимит не снимут. */
+function noteThrottle(host: string, retryAfterSec: number | null): boolean {
+  const n = (host429.get(host) ?? 0) + 1;
+  host429.set(host, n);
+  if (n < THROTTLE_AFTER_429 && !(retryAfterSec != null && retryAfterSec >= 60)) return false;
+  const prev = throttled.get(host);
+  const backoff = prev ? Math.min(THROTTLE_MAX_MS, prev.backoff * 2) : THROTTLE_FIRST_MS;
+  throttled.set(host, { until: Date.now() + Math.max(backoff, Math.min(THROTTLE_MAX_MS, (retryAfterSec ?? 0) * 1000)), backoff });
+  host429.delete(host);
+  return true;
+}
+
+/** Хосты RDAP, которые сейчас задушены лимитом: для логов и подсказки в карточке. */
+export function throttledRdapHosts(): Array<{ host: string; until: number }> {
+  return Array.from(throttled.entries()).filter(([, t]) => Date.now() < t.until).map(([host, t]) => ({ host, until: t.until }));
 }
 
 /* ---------- Зоны без RDAP и мёртвые хосты ---------- */
@@ -192,12 +226,14 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /* ---------- Запросы ---------- */
 
-/** Ответ RDAP с учётом очереди хоста и повторов на 429. null — сеть/таймаут. */
-async function rdapFetch(url: string, tld: string): Promise<Response | null> {
+/** Ответ RDAP с учётом очереди хоста и повторов на 429. null — сеть/таймаут; "throttled" — реестр задушил лимитом. */
+async function rdapFetch(url: string, tld: string): Promise<Response | null | "throttled"> {
   const host = new URL(url).hostname;
   for (let attempt = 0; attempt <= MAX_429_RETRIES; attempt++) {
+    if (isThrottled(host)) return "throttled";
     await acquireHost(host);
     if (isNoRdap(tld)) return null;
+    if (isThrottled(host)) return "throttled";
     let res: Response | null = null;
     const started = Date.now();
     try {
@@ -215,12 +251,16 @@ async function rdapFetch(url: string, tld: string): Promise<Response | null> {
     }
     hostFailures.delete(host);
     if (res.status === 429) {
-      const ra = Number(res.headers.get("retry-after"));
-      const wait = note429(host, Number.isFinite(ra) && ra > 0 ? ra : null);
-      if (attempt < MAX_429_RETRIES) await sleep(wait);
+      await res.body?.cancel().catch(() => {});
+      const raRaw = Number(res.headers.get("retry-after"));
+      const ra = Number.isFinite(raRaw) && raRaw > 0 ? raRaw : null;
+      if (noteThrottle(host, ra)) return "throttled";
+      const wait = note429(host, ra);
+      if (attempt < MAX_429_RETRIES) await sleep(Math.min(wait, 5000));
       continue;
     }
     if (res.status === 200 || res.status === 404) {
+      host429.delete(host);
       noteOk(host);
       noteRdapTime(tld, Date.now() - started);
     }
@@ -264,11 +304,18 @@ export async function checkDomain(domain: string): Promise<AvailabilityResult> {
   if (pre === true) return { domain, status: "taken", source: "dns" };
   const tld = domain.split(".").pop() ?? "";
   if (isNoRdap(tld)) return byDnsOnly(domain, pre);
-  for (const url of await endpointsFor(domain)) {
+  const ep = await endpointsFor(domain);
+  // Реестр задушил нас лимитом: не ждём, решаем по DNS (NS есть — занят, NXDOMAIN — свободен «по DNS»)
+  if (ep.throttled) return byDnsOnly(domain, pre);
+  let sawThrottle = false;
+  let answered = false;
+  for (const url of ep.urls) {
     const res = await rdapFetch(url, tld);
     // Пока ждали очереди, другой запрос выяснил, что у зоны нет RDAP
     if (isNoRdap(tld)) return byDnsOnly(domain, pre);
+    if (res === "throttled") { sawThrottle = true; continue; }
     if (!res) continue;
+    answered = true;
     if (res.status === 404 && new URL(url).hostname === "rdap.org") {
       // rdap.org отвечает 404 и на «нет такого домена», и на «у зоны нет RDAP» — второе не значит «свободен»
       const body = await res.text().catch(() => "");
@@ -286,6 +333,7 @@ export async function checkDomain(domain: string): Promise<AvailabilityResult> {
     if (res.status === 200) return { domain, status: "taken", source: "rdap" };
     // 5xx / неожиданный ответ — пробуем следующий эндпоинт
   }
+  if (sawThrottle && !answered) return byDnsOnly(domain, pre);
   const dns = pre === null ? await hasDnsRecords(domain) : pre;
   if (dns === true) return { domain, status: "taken", source: "dns" };
   // Своего RDAP у зоны нет (по справочнику IANA), а rdap.org не ответил: как и для других таких зон, решает DNS
