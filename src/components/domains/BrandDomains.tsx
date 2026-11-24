@@ -1,5 +1,6 @@
 "use client";
 import { mineSuffixes, tldOf } from "@/lib/domains/mining";
+import { CASINO_GEO_BASES, casinoGeoCodes } from "@/lib/domains/generator";
 import type { Top10Entry } from "@/lib/domains/types";
 import { useMemo } from "react";
 import type { RunDomainRow } from "@/lib/domains/runs";
@@ -7,11 +8,11 @@ import { PATTERN_LABELS, SUFFIX_SOURCE_TAGS, TLD_SOURCE_TAGS, type CandidatePatt
 import { SourceTag } from "./RunAnalysis";
 
 /** Фильтр доменов бренда: источник приставки, уровень, зона и вид (список / по зонам / по приставкам / зона × приставка). */
-export type DomainFilter = { src: "all" | "none" | SuffixSourceKind; tier: "all" | "0" | "1" | "2" | "3" | "4"; zone: string; mode: "list" | "zones" | "suffixes" | "matrix"; /** Только рекомендованные */ recOnly?: boolean };
+export type DomainFilter = { src: "all" | "none" | "casinogeo" | SuffixSourceKind; tier: "all" | "0" | "1" | "2" | "3" | "4"; zone: string; mode: "list" | "zones" | "suffixes" | "matrix"; /** Только рекомендованные */ recOnly?: boolean };
 
 export const DEFAULT_FILTER: DomainFilter = { src: "all", tier: "all", zone: "all", mode: "list" };
 
-export const SRC_OPTIONS: Array<[DomainFilter["src"], string]> = [["all", "Все"], ["geo", "Гео"], ["brand", "Ключи"], ["common", "Мои приставки"], ["pool", "Запас"], ["none", "Без приставки"]];
+export const SRC_OPTIONS: Array<[DomainFilter["src"], string]> = [["all", "Все"], ["geo", "Гео"], ["brand", "Ключи"], ["common", "Мои приставки"], ["casinogeo", "Казино+гео"], ["pool", "Запас"], ["none", "Без приставки"]];
 export const TIER_OPTIONS: Array<[DomainFilter["tier"], string]> = [["all", "Все уровни"], ["0", "Бренд"], ["1", "Тир 1"], ["2", "Тир 2"], ["3", "Тир 3"], ["4", "Тир 4–6"]];
 export const MODE_OPTIONS: Array<[DomainFilter["mode"], string]> = [["list", "Список"], ["zones", "По зонам"], ["suffixes", "По приставкам"], ["matrix", "Зона × приставка"]];
 
@@ -79,7 +80,14 @@ function Top10Block({ brand, entries }: { brand: string; entries: Top10Entry[] }
   );
 }
 
-export const kindOf = (d: RunDomainRow, sources: Props["sources"]): DomainFilter["src"] => (d.suffix ? sources?.get(d.suffix)?.kind ?? "common" : "none");
+/** Приставка по правилу «casino/casinos + гео»: casinonl, casino-nld, casinosnl… */
+export function isCasinoGeo(d: Pick<RunDomainRow, "suffix" | "country">): boolean {
+  if (!d.suffix) return false;
+  const codes = casinoGeoCodes(d.country);
+  return CASINO_GEO_BASES.some((b) => codes.some((g) => d.suffix === `${b}${g}` || d.suffix === `${b}-${g}`));
+}
+
+export const kindOf = (d: RunDomainRow, sources: Props["sources"]): DomainFilter["src"] => (d.suffix ? (isCasinoGeo(d) ? "casinogeo" : sources?.get(d.suffix)?.kind ?? "common") : "none");
 const tierOf = (d: RunDomainRow): DomainFilter["tier"] => (d.tier >= 4 ? "4" : (String(d.tier) as DomainFilter["tier"]));
 
 /** Домены одного бренда с вкладками: источник, уровень, зона и вид. */
@@ -110,7 +118,7 @@ export function BrandDomains({ rows, sources, zoneSources, filter, setFilter, on
       <span className="font-mono min-w-0 flex-1 truncate">{d.domain}</span>
       {rec.has(d.id) && <span className="shrink-0 text-[12px] text-warn" title={`Рекомендован к покупке: ${rec.get(d.id)}`}>★</span>}
       {d.pattern === "brand-letter" && <span className="shrink-0 rounded-md bg-warn-soft px-1.5 text-[11px] text-warn" title="бренд + буква: риск жалобы владельца бренда (UDRP)">буква</span>}
-      {d.tier > 0 && d.suffix && <SourceTag source={sources?.get(d.suffix)} suffix={d.suffix} />}
+      {d.tier > 0 && d.suffix && (isCasinoGeo(d) ? <span className="shrink-0 rounded-md bg-brand-soft px-1.5 text-[11px] text-brand" title="правило «casino/casinos + гео»">казино+гео {d.tier}</span> : <SourceTag source={sources?.get(d.suffix)} suffix={d.suffix} />)}
       {d.aiScore != null && <span className="shrink-0 rounded-md bg-ok-soft px-1.5 text-[11px] font-semibold text-ok" title={d.aiReason ?? "оценка ИИ"}>{d.aiScore}</span>}
     </li>
   );
