@@ -224,6 +224,10 @@ async function aiChatOnce(ctx: AiCtx, req: ChatRequest): Promise<ChatResult> {
     // Поле `reasoning` понимает только OpenRouter; OpenAI отвечает 400 «Unrecognized request argument supplied: reasoning»
     // (2026-10-21: у OpenRouter-ключа кончились деньги, правило команды переключилось на OpenAI — вся ИИ-модерация падала).
     if (req.noReasoning !== false && isOpenRouter(resolved.binding.provider)) payload.reasoning = { effort: "none" };
+    // DeepSeek на OpenRouter (24.11): у модели 13 провайдеров с входом $0.05–0.21/M; без настройки запросы уходили и к Azure,
+    // и к Mancer — вызов письма подорожал с ~$0.0003 до ~$0.00053. Берём только дешёвых, самый дешёвый первым.
+    const effModel = parseModelSpec(req.model)?.model ?? resolved.binding.model?.modelId ?? "";
+    if (isOpenRouter(resolved.binding.provider) && /deepseek/i.test(effModel)) payload.provider = { sort: "price", max_price: { prompt: 0.1, completion: 0.2 } };
     const res = await runSlot({
       userId: ctx.userId,
       projectSlug: PROJECT_SLUG,
