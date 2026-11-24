@@ -454,7 +454,7 @@ export async function processDomainRun(run: DomainRun, workerId: string, shouldS
     if (state === "release") { await released(); return; }
     const all = settings.mode === "emd" && item.emd
       ? emdCandidates(item.emd, item.country, { ...EMD_DEFAULTS, ...settings.emd, tlds: settings.tlds, autoZones: settings.autoZones, allowHyphen: settings.allowHyphen }).map((c) => ({ domain: c.domain, tld: c.tld, suffix: c.keyword.slice(0, 190), tier: c.tier, pattern: c.pattern }))
-      : buildCandidatesForBrand(item.brand, brandTiers(item, settings, pool), brandTlds(item, settings), { allowHyphen: settings.allowHyphen, letterMode: settings.letterMode });
+      : buildCandidatesForBrand(item.brand, brandTiers(item, settings, pool), brandTlds(item, settings), { allowHyphen: settings.allowHyphen, letterMode: settings.letterMode, country: item.country });
     const candidates = (settings.checkAll ? all.slice(0, LIMITS.checkAllMax) : all).filter((c) => !known.has(c.domain));
     // «Все варианты» — проверяем всё; иначе останавливаемся, когда набралось perBrand + запас свободных
     const enough = (n: number) => !settings.checkAll && n >= target;

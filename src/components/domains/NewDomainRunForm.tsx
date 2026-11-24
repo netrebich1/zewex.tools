@@ -18,7 +18,7 @@ type Analysis = { snapshot: SerpSnapshot; suffixes: SuffixRow[]; failed: Array<{
 
 const TIER_HINTS = [
   "Перебираются первыми вместе с гео-набором страны.",
-  "Второй круг: тематика (casino, play). Бренду со словом casino эти слова не добавляются — только casino → casinos.",
+  "Второй круг: тематика (casino, play). К casino и casinos добавляется гео страны: brandcasinonl, brandcasinonld, brand-casino-nl. Бренду со словом casino эти слова не добавляются — только casino → casinos.",
   "Если не хватило: общие слова (app, online, 365).",
 ];
 
@@ -88,7 +88,7 @@ export function NewDomainRunForm({ defaults, initialName, savedPresets }: { defa
     if (!previewItem) return null;
     const t = brandTiers(previewItem, plan, pool);
     const zones = brandTlds(previewItem, plan);
-    const list = buildCandidatesForBrand(previewItem.brand, t, zones, { allowHyphen, letterMode });
+    const list = buildCandidatesForBrand(previewItem.brand, t, zones, { allowHyphen, letterMode, country: previewItem.country });
     return { tiers: t, zones, list };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewItem, JSON.stringify(plan), pool, allowHyphen, letterMode]);

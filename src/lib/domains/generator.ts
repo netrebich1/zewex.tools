@@ -5,7 +5,7 @@
  * каждая метка × каждая зона.
  */
 import { RESEARCH_SOURCE_LABELS, type BrandItem, type CandidatePattern, type CountryPreset, type LetterMode, type SuffixSource, type TldSource } from "./types";
-import { countryTld } from "./geo";
+import { alpha3, countryTld } from "./geo";
 import { countryByCode } from "./countries";
 
 export type DomainCandidateInput = {
@@ -193,7 +193,17 @@ export function letterVariants(brand: string, max = LETTER_VARIANTS_MAX): string
 
 /* ---------- Кандидаты ---------- */
 
-export type BuildOptions = { allowHyphen: boolean; letterMode?: LetterMode };
+export type BuildOptions = { allowHyphen: boolean; letterMode?: LetterMode; /** Страна бренда: для правила «casino/casinos + гео» */ country?: string };
+
+/** Приставки, к которым по правилу добавляется короткое гео страны: casino + nl / nld. */
+export const CASINO_GEO_BASES = ["casino", "casinos"];
+
+/** Коды страны для правила «casino + гео»: alpha-2 и alpha-3 (nl, nld). */
+export function casinoGeoCodes(country: string | undefined): string[] {
+  const c = (country ?? "").trim().toLowerCase();
+  if (!/^[a-z]{2}$/.test(c)) return [];
+  return Array.from(new Set([c, alpha3(c) ?? ""].filter(Boolean)));
+}
 
 /** Кандидаты одного бренда в порядке приоритета (дубли доменов и метки длиннее 63 символов отброшены). */
 export function buildCandidatesForBrand(brand: string, suffixTiers: string[][], tlds: string[], options: BuildOptions): DomainCandidateInput[] {
@@ -223,9 +233,21 @@ export function buildCandidatesForBrand(brand: string, suffixTiers: string[][], 
   const letters = letterMode === "off" ? [] : letterVariants(brand);
   const plural = pluralThemeVariant(brand);
 
+  const geoCodes = casinoGeoCodes(options.country);
   tiers.forEach((tier, index) => {
     if (index === 1 && plural) pushWords([plural], "brand-plural", 2);
     pushGroup(tier, index + 1);
+    // Правило «casino/casinos + гео»: brandcasinonl, brand-casinonl, brandcasino-nl, brand-casino-nl (и с nld)
+    for (const base of tier.filter((s) => CASINO_GEO_BASES.includes(s))) {
+      for (const g of geoCodes) {
+        labels.push({ label: `${joined}${base}${g}`, suffix: `${base}${g}`, tier: index + 1, pattern: "brand+suffix" });
+        if (options.allowHyphen) {
+          labels.push({ label: `${joined}-${base}${g}`, suffix: `${base}${g}`, tier: index + 1, pattern: "brand-suffix" });
+          labels.push({ label: `${joined}${base}-${g}`, suffix: `${base}-${g}`, tier: index + 1, pattern: "brand+suffix" });
+          labels.push({ label: `${joined}-${base}-${g}`, suffix: `${base}-${g}`, tier: index + 1, pattern: "brand-suffix" });
+        }
+      }
+    }
     if (index === 0) {
       if (options.allowHyphen && split) labels.push({ label: split, suffix: null, tier: 0, pattern: "brand-split" });
       if (letterMode === "after1") pushWords(letters, "brand-letter", 0);
