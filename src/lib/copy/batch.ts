@@ -152,14 +152,21 @@ export async function copyBatchTick(): Promise<{ built: number; failed: number }
   let built = 0, failed = 0;
   try {
     const st = await copySettings();
+    // Партии идут поочерёдно (24.11: новые партии стояли, пока старая не соберётся целиком): по пункту от каждой по кругу.
+    const per = Math.max(1, Math.ceil(ITEMS_PER_TICK / batches.length));
+    const queues: { b: (typeof batches)[number]; items: Awaited<ReturnType<typeof prisma.copyBatchItem.findMany>> }[] = [];
     for (const b of batches) {
+      const items = await prisma.copyBatchItem.findMany({ where: { batchId: b.id, status: "pending" }, orderBy: { position: "asc" }, take: per });
+      if (!items.length) await prisma.copyBatch.update({ where: { id: b.id }, data: { status: "done", finishedAt: new Date() } });
+      else queues.push({ b, items });
+    }
+    const order: { b: (typeof batches)[number]; it: (typeof queues)[number]["items"][number] }[] = [];
+    for (let k = 0; k < per; k++) for (const q of queues) if (q.items[k]) order.push({ b: q.b, it: q.items[k] });
+    const stopped = new Set<string>();
+    for (const { b, it } of order) {
       if (built + failed >= ITEMS_PER_TICK) break;
-      const items = await prisma.copyBatchItem.findMany({ where: { batchId: b.id, status: "pending" }, orderBy: { position: "asc" }, take: ITEMS_PER_TICK - built - failed });
-      if (!items.length) {
-        await prisma.copyBatch.update({ where: { id: b.id }, data: { status: "done", finishedAt: new Date() } });
-        continue;
-      }
-      for (const it of items) {
+      if (stopped.has(b.id)) continue;
+      {
         const site = await prisma.artSite.findUnique({ where: { id: it.siteId }, select: { id: true, teamId: true, name: true, nicheCode: true } });
         const row = site && (await prisma.copyCore.findFirst({ where: { teamId: st.sharedBank ? SHARED_TEAM : site.teamId, niche: it.niche, core: it.core }, select: { niche: true, core: true, formulations: true } }));
         let result: Awaited<ReturnType<typeof buildCopyArticle>>;
@@ -187,7 +194,7 @@ export async function copyBatchTick(): Promise<{ built: number; failed: number }
         }
         // Партию могли поставить на паузу с экрана.
         const fresh = await prisma.copyBatch.findUnique({ where: { id: b.id }, select: { status: true } });
-        if (fresh?.status !== "running") break;
+        if (fresh?.status !== "running") stopped.add(b.id);
       }
     }
     return { built, failed };

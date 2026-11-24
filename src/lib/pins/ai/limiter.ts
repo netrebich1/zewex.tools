@@ -11,7 +11,8 @@
  */
 
 type Waiter = { owner: string; resolve: () => void; signal?: AbortSignal; onAbort?: () => void };
-type Slot = { active: number; queue: Waiter[]; rr: number; pausedUntil: number; rateHits: number };
+/** granted — разбуженные, но ещё не занявшие место; limit — последний лимит ключа (он меняется: автотормоз статей). */
+type Slot = { active: number; granted: number; limit: number; queue: Waiter[]; rr: number; pausedUntil: number; rateHits: number };
 const slots = new Map<string, Slot>();
 
 export const DEFAULT_LIMITS = { IMAGE: 15, CHAT: 6 } as const;
@@ -22,7 +23,7 @@ export const PAUSE_MAX_MS = 5 * 60_000;
 function slot(key: string): Slot {
   let s = slots.get(key);
   if (!s) {
-    s = { active: 0, queue: [], rr: 0, pausedUntil: 0, rateHits: 0 };
+    s = { active: 0, granted: 0, limit: 1, queue: [], rr: 0, pausedUntil: 0, rateHits: 0 };
     slots.set(key, s);
   }
   return s;
@@ -65,16 +66,25 @@ function takeNext(s: Slot): Waiter | undefined {
   return w;
 }
 
-/** Освободившееся место отдать следующему ожидающему (он сам сделает `active++`). */
+/**
+ * Свободные места отдать ожидающим (каждый сам сделает `active++`). Раздаём до лимита, а не по одному на освободившееся
+ * место: 24.11 после автотормоза (16 → 8) ключ статей так и остался на 8 — каждое освобождение будило ровно одного,
+ * а новые запросы вставали в очередь, и поднятый обратно лимит не использовался никогда.
+ */
 function grantNext(s: Slot): void {
-  const w = takeNext(s);
-  if (w) w.resolve();
+  while (s.queue.length && s.active + s.granted < s.limit) {
+    const w = takeNext(s);
+    if (!w) break;
+    s.granted++;
+    w.resolve();
+  }
 }
 
 export async function acquire(key: string, limit: number, opts: AcquireOptions = {}): Promise<() => void> {
   const s = slot(key);
   const owner = opts.owner ?? "";
-  if (s.active >= limit || s.queue.length) {
+  s.limit = limit;
+  if (s.active + s.granted >= limit || s.queue.length) {
     await new Promise<void>((resolve, reject) => {
       const w: Waiter = { owner, resolve, signal: opts.signal };
       if (opts.signal) {
@@ -88,7 +98,9 @@ export async function acquire(key: string, limit: number, opts: AcquireOptions =
         sig.addEventListener("abort", w.onAbort, { once: true });
       }
       s.queue.push(w);
+      grantNext(s); // лимит мог вырасти — свободные места раздаются сразу
     });
+    s.granted--; // место выдано (после пробуждения снять с ожидающих нельзя — takeNext снял обработчик отмены)
   }
   // Место занято; паузу ключа пережидаем уже с ним, чтобы после паузы не вышло больше `limit` запросов разом.
   s.active++;
