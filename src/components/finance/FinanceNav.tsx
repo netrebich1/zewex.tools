@@ -5,6 +5,7 @@ import { DISPLAY, DISPLAY_COOKIE, type DisplayCur } from "@/lib/finance/currency
 
 const ITEMS = [
   { href: "/finance", label: "Обзор", exact: true },
+  { href: "/finance/expenses", label: "Расходы" },
   { href: "/finance/income", label: "Доходы" },
   { href: "/finance/ops", label: "Операции" },
   { href: "/finance/settings", label: "Настройки" },
