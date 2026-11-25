@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { balances, breakdown, settlePlan, type BalPartner } from "./balance";
+import { balances, breakdown, ledger, settlePlan, type BalPartner } from "./balance";
 import { PNL_LINES } from "./pnl";
 
 /* ---------- Период ---------- */
@@ -65,10 +65,10 @@ export async function loadRefs() {
 /* ---------- Долги ---------- */
 
 export async function debtState(partners: BalPartner[]) {
-  const ops = await prisma.finOp.findMany({ where: { deletedAt: null }, select: { type: true, amountEur: true, partnerId: true, toPartnerId: true } });
-  const list = ops.map((o) => ({ ...o, amountEur: Number(o.amountEur) }));
+  const ops = await prisma.finOp.findMany({ where: { deletedAt: null }, select: { type: true, amountEur: true, partnerId: true, toPartnerId: true, date: true, createdAt: true } });
+  const list = ops.map((o) => ({ type: o.type, partnerId: o.partnerId, toPartnerId: o.toPartnerId, amountEur: Number(o.amountEur), date: o.date.toISOString().slice(0, 10), at: o.createdAt.getTime() }));
   const bal = balances(partners, list);
-  return { bal, plan: settlePlan(partners, bal), detail: breakdown(partners, list) };
+  return { bal, plan: settlePlan(partners, bal), detail: breakdown(partners, list), ledger: ledger(partners, list) };
 }
 
 /* ---------- Доходы ---------- */

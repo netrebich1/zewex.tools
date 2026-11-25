@@ -48,6 +48,62 @@ export function breakdown(partners: BalPartner[], ops: BalOp[]): { lines: BalLin
   return { lines, expense: round2(expense), income: round2(income) };
 }
 
+/** Операция с датой — для разбивки по месяцам и истории возвратов. `at` — порядок внутри одного дня. */
+export type DatedOp = BalOp & { date: string; at?: number };
+export type MonthLine = {
+  month: string; // 2026-11
+  paid: Record<string, number>; received: Record<string, number>;
+  settled: Transfer[];
+  /** Кто кому должен только за операции этого месяца (возвраты не считаются). */
+  own: Transfer[];
+  /** Долг на конец месяца нарастающим итогом, с возвратами. */
+  end: Transfer[];
+};
+export type SettleLine = { date: string; fromId: string; from: string; toId: string; to: string; amount: number; /** Долг сразу после этого возврата; пусто — в расчёте. */ after: Transfer[] };
+
+/**
+ * Расчёт по месяцам и история возвратов. Долг «за всё время» = сумма месячных итогов минус возвраты,
+ * поэтому большой перекос одного месяца может гаситься перекосом другого.
+ */
+export function ledger(partners: BalPartner[], ops: DatedOp[]): { months: MonthLine[]; settlements: SettleLine[]; closedAt: string | null; firstDate: string | null } {
+  const name = new Map(partners.map((p) => [p.id, p.name]));
+  const sorted = [...ops].sort((a, b) => a.date.localeCompare(b.date) || (a.at ?? 0) - (b.at ?? 0));
+  const months: MonthLine[] = [];
+  const settlements: SettleLine[] = [];
+  let closedAt: string | null = null;
+  const upTo: DatedOp[] = [];
+  let cur: MonthLine | null = null;
+  let own: DatedOp[] = [];
+  const close = () => {
+    if (!cur) return;
+    cur.own = settlePlan(partners, balances(partners, own));
+    cur.end = settlePlan(partners, balances(partners, upTo));
+    for (const k in cur.paid) { cur.paid[k] = round2(cur.paid[k]); cur.received[k] = round2(cur.received[k]); }
+  };
+  for (const o of sorted) {
+    const m = o.date.slice(0, 7);
+    if (!cur || cur.month !== m) {
+      close();
+      cur = { month: m, paid: Object.fromEntries(partners.map((p) => [p.id, 0])), received: Object.fromEntries(partners.map((p) => [p.id, 0])), settled: [], own: [], end: [] };
+      own = [];
+      months.push(cur);
+    }
+    upTo.push(o);
+    if (o.type === "SETTLEMENT") {
+      const t = { fromId: o.partnerId, from: name.get(o.partnerId) ?? "?", toId: o.toPartnerId ?? "", to: name.get(o.toPartnerId ?? "") ?? "?", amount: round2(o.amountEur) };
+      cur.settled.push(t);
+      const after = settlePlan(partners, balances(partners, upTo));
+      settlements.push({ date: o.date, ...t, after });
+      if (!after.length) closedAt = o.date;
+    } else {
+      own.push(o);
+      if (o.partnerId in cur.paid) cur[o.type === "EXPENSE" ? "paid" : "received"][o.partnerId] += o.amountEur;
+    }
+  }
+  close();
+  return { months, settlements, closedAt, firstDate: sorted[0]?.date ?? null };
+}
+
 /** Как выйти в ноль минимальным числом переводов (для двух партнёров — одна строка). */
 export function settlePlan(partners: BalPartner[], bal: Map<string, number>): Transfer[] {
   const name = new Map(partners.map((p) => [p.id, p.name]));

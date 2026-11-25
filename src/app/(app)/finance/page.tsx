@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireFinance } from "@/lib/finance/access";
 import { financeContext } from "@/lib/finance/page";
 import { asPeriod, debtState, dirFamily, monthly, PERIODS, periodRange, periodSummary, pnlOf, type DirRow } from "@/lib/finance/report";
+import { balances, settlePlan, type BalOp, type Transfer } from "@/lib/finance/balance";
 import { fmtAmount } from "@/lib/finance/currency";
 import { FinanceNav } from "@/components/finance/FinanceNav";
 import { DirTabs } from "@/components/finance/DirTabs";
@@ -53,6 +54,11 @@ export default async function FinanceHome({ searchParams }: { searchParams: Prom
     const s = new URLSearchParams(Object.entries({ d: dir?.id, p: period === "month" ? undefined : period, ...q }).filter(([, v]) => v) as [string, string][]).toString();
     return s ? `/finance?${s}` : "/finance";
   };
+  // Итог только выбранного периода: кто кому должен за его операции, без прошлых периодов и возвратов.
+  const periodPlan = settlePlan(refs.partners, balances(refs.partners, refs.partners.flatMap((p): BalOp[] => {
+    const pp = sum.perPartner.get(p.id) ?? { paid: 0, received: 0 };
+    return [{ type: "EXPENSE", amountEur: pp.paid, partnerId: p.id, toPartnerId: null }, { type: "INCOME", amountEur: pp.received, partnerId: p.id, toPartnerId: null }];
+  })));
   const subs = sum.tree[0]?.children ?? [];
   const pnl = pnlOf(sum.perCat, refs.cats);
   const catName = new Map(refs.cats.map((c) => [c.id, c.name]));
@@ -85,6 +91,7 @@ export default async function FinanceHome({ searchParams }: { searchParams: Prom
                 <p className="mt-2 text-[22px] sm:text-[28px] font-bold tracking-tight text-ok">Все в расчёте</p>
               )}
               <DebtDetail detail={debt.detail} f={f} />
+              <DebtLedger ledger={debt.ledger} partners={refs.partners} f={f} />
               <p className="help mt-3">Плюс — человек вложил больше своей доли, ему должны. Доходы, полученные на свой кошелёк, считаются деньгами компании у этого человека: они уменьшают его вклад.</p>
             </section>
           )}
@@ -153,6 +160,12 @@ export default async function FinanceHome({ searchParams }: { searchParams: Prom
                 );
               })}
             </div>
+            {!dir && (
+              <p className="mt-3 text-[14px]">
+                Итог только этого периода: <b>{periodPlan.length ? periodPlan.map((t) => `${t.from} должен ${t.to} ${f(t.amount)}`).join(", ") : "поровну, никто никому не должен"}</b>.{" "}
+                <span className="help">Это половина разницы между вкладами. Общий долг вверху страницы — сумма таких итогов за все месяцы минус возвраты.</span>
+              </p>
+            )}
           </Card>
 
           <Months months={months} f={f} />
@@ -200,6 +213,72 @@ function DebtDetail({ detail, f }: { detail: Awaited<ReturnType<typeof debtState
           <tr className="font-semibold"><td>Итог</td>{lines.map((l) => <td key={l.id} className={`${cell} ${l.balance < -0.005 ? "text-warn" : l.balance > 0.005 ? "text-ok" : ""}`}>{Math.abs(l.balance) < 0.005 ? "в расчёте" : `${l.balance > 0 ? "ему должны" : "должен"} ${f(Math.abs(l.balance))}`}</td>)}</tr>
         </tbody>
       </table></div>
+    </div>
+  );
+}
+
+const ruDate = (ymd: string) => ymd.split("-").reverse().join(".");
+const ruMonth = (ym: string) => new Date(`${ym}-01T00:00:00Z`).toLocaleString("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" }).replace(" г.", "");
+const owes = (plan: Transfer[], f: Fmt) => (plan.length ? plan.map((t) => `${t.from} → ${t.to} ${f(t.amount)}`).join(", ") : "в расчёте");
+
+/** Долг по месяцам (итог месяца и нарастающим) и история возвратов с датой последнего закрытия. */
+function DebtLedger({ ledger, partners, f }: { ledger: Awaited<ReturnType<typeof debtState>>["ledger"]; partners: { id: string; name: string }[]; f: Fmt }) {
+  const { months, settlements, closedAt } = ledger;
+  if (!months.length) return null;
+  const cell = "text-right tabular-nums whitespace-nowrap";
+  const last = settlements.at(-1);
+  const anyIncome = months.some((m) => partners.some((p) => m.received[p.id]));
+  const anySettle = settlements.length > 0;
+  return (
+    <div className="mt-4 border-t border-line pt-3 space-y-4">
+      <div>
+        <p className="text-[13.5px] font-semibold">Как сложился долг: по месяцам</p>
+        <p className="help">«Долг за месяц» — половина разницы вкладов только этого месяца. «Долг на конец» — всё накопленное с начала учёта, с возвратами. Стрелка: кто должен → кому.</p>
+        <div className="table-wrap mt-2"><table className="table">
+          <thead><tr>
+            <th>Месяц</th>
+            {partners.map((p) => <th key={p.id} className="text-right">{p.name} оплатил</th>)}
+            {anyIncome && <th className="text-right">Доходы на счёт</th>}
+            <th className="text-right">Долг за месяц</th>
+            {anySettle && <th className="text-right">Возвраты</th>}
+            <th className="text-right">Долг на конец</th>
+          </tr></thead>
+          <tbody>
+            {[...months].reverse().map((m) => (
+              <tr key={m.month}>
+                <td className="font-medium whitespace-nowrap">{ruMonth(m.month)}</td>
+                {partners.map((p) => <td key={p.id} className={cell}>{f(m.paid[p.id] ?? 0)}</td>)}
+                {anyIncome && <td className={cell}>{partners.filter((p) => m.received[p.id]).map((p) => `${p.name} ${f(m.received[p.id])}`).join(", ") || "—"}</td>}
+                <td className={cell}>{owes(m.own, f)}</td>
+                {anySettle && <td className={cell}>{m.settled.length ? owes(m.settled, f) : "—"}</td>}
+                <td className={`${cell} font-semibold`}>{owes(m.end, f)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </div>
+      <div>
+        <p className="text-[13.5px] font-semibold">Возвраты долга</p>
+        {!last ? (
+          <p className="help mt-1">Возвратов ещё не записано — долг копится с первой операции ({ruDate(ledger.firstDate ?? "")}). Если деньги друг другу уже переводили, запишите это кнопкой «Записать возврат», иначе расчёт их не видит.</p>
+        ) : (
+          <>
+            <p className="mt-1 text-[14px]">
+              Последний возврат: <b>{ruDate(last.date)}</b>, {last.from} → {last.to} {f(last.amount)}.{" "}
+              {closedAt ? <>Долг полностью закрывался <b>{ruDate(closedAt)}</b>.</> : "Полностью долг ещё ни разу не закрывался."}
+            </p>
+            <div className="table-wrap mt-2"><table className="table">
+              <thead><tr><th>Дата</th><th>Кто → кому</th><th className="text-right">Сумма</th><th className="text-right">Долг после возврата</th></tr></thead>
+              <tbody>
+                {[...settlements].reverse().map((s, i) => (
+                  <tr key={`${s.date}-${i}`}><td className="whitespace-nowrap tabular-nums">{ruDate(s.date)}</td><td>{s.from} → {s.to}</td><td className={cell}>{f(s.amount)}</td><td className={cell}>{owes(s.after, f)}</td></tr>
+                ))}
+              </tbody>
+            </table></div>
+            <Link href="/finance/ops?type=SETTLEMENT" className="help underline hover:text-ink">Все возвраты в журнале</Link>
+          </>
+        )}
+      </div>
     </div>
   );
 }
