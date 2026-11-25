@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Zewex Collector</title>
+  <style>
+    :root { color-scheme: light dark; --ok: #2e9d5b; --bad: #d64545; --muted: #888; }
+    body { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; width: 340px; margin: 0; padding: 14px; }
+    h1 { font-size: 15px; margin: 0 0 10px; }
+    label { display: block; margin: 8px 0 3px; font-weight: 600; font-size: 12px; }
+    input[type=text], input[type=password] { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #8884; border-radius: 6px; font: inherit; background: transparent; }
+    .row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+    button { padding: 6px 10px; border-radius: 6px; border: 1px solid #8886; background: transparent; cursor: pointer; font: inherit; }
+    button.main { background: #e60023; color: #fff; border-color: #e60023; }
+    .msg { margin-top: 8px; padding: 6px 8px; border-radius: 6px; display: none; }
+    .msg.ok { display: block; background: #2e9d5b22; }
+    .msg.bad { display: block; background: #d6454522; }
+    #update:empty { display: none; }
+    .card { margin-top: 12px; padding: 8px 10px; border: 1px solid #8883; border-radius: 8px; }
+    .card b { display: block; font-size: 12px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #8886; margin-right: 6px; }
+    .dot.run { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.wait { background: #e0a800; }
+    details { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Zewex Collector <span id="ver" class="muted" style="font-weight:400"></span></h1>
+  <div id="update" class="msg bad"></div>
+  <label for="token">Токен с вкладки «Сбор»</label>
+  <input id="token" type="password" placeholder="zxc_…" autocomplete="off" />
+  <details>
+    <summary class="muted">Адрес портала</summary>
+    <input id="server" type="text" placeholder="https://zewex.tools" />
+  </details>
+  <div class="row">
+    <label style="margin:0;font-weight:400"><input id="enabled" type="checkbox" /> Сбор включён</label>
+    <span style="flex:1"></span>
+    <button id="save" class="main">Сохранить и проверить</button>
+  </div>
+  <div id="msg" class="msg"></div>
+
+  <div class="card">
+    <b><span id="d_serp" class="dot"></span>Выдача (вкладка www.pinterest.com)</b>
+    <div id="s_serp" class="muted">Откройте вкладку Pinterest.</div>
+  </div>
+  <div class="card">
+    <b><span id="d_volume" class="dot"></span>Частотность (вкладка Ads Manager)</b>
+    <div id="s_volume" class="muted">Откройте черновик кампании в Ads Manager, если в очереди есть частотность.</div>
+  </div>
+  <div class="row">
+    <button id="openPin">Открыть Pinterest</button>
+    <button id="openAds">Открыть Ads Manager</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

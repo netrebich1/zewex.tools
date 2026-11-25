@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Zewex Collector",
+  "version": "1.0.0",
+  "description": "Снимает выдачу Pinterest и частотность Ads Manager для инструмента «Подбор ключей» на zewex.tools.",
+  "minimum_chrome_version": "111",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://zewex.tools/*",
+    "https://www.pinterest.com/*",
+    "https://ads.pinterest.com/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Zewex Collector", "default_popup": "popup.html" },
+  "content_scripts": [
+    {
+      "matches": ["https://www.pinterest.com/*"],
+      "js": ["common.js", "pinterest.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://ads.pinterest.com/*"],
+      "js": ["ads-main.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://ads.pinterest.com/*"],
+      "js": ["common.js", "ads.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

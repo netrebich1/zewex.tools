@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Zewex Стилист</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; width: 330px; margin: 0; padding: 14px; }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    label { display: block; margin: 8px 0 3px; font-weight: 600; font-size: 12px; }
+    input { width: 100%; box-sizing: border-box; padding: 7px 8px; border: 1px solid #8884; border-radius: 6px; font: inherit; background: transparent; }
+    button { margin-top: 10px; padding: 7px 12px; border-radius: 6px; border: 0; background: #111; color: #fff; cursor: pointer; font: inherit; }
+    .msg { margin-top: 10px; padding: 7px 9px; border-radius: 6px; display: none; }
+    .msg.ok { display: block; background: #2e9d5b22; }
+    .msg.bad { display: block; background: #d6454522; }
+    .muted { color: #888; font-size: 12px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Zewex Стилист <span id="ver" class="muted" style="font-weight:400"></span></h1>
+  <label for="token">Токен со страницы «Расширение»</label>
+  <input id="token" type="password" placeholder="zxs_…" autocomplete="off" />
+  <label for="city">Город, где проверять наличие в магазинах</label>
+  <input id="city" type="text" placeholder="например, Sliema, Одеса или Milano" autocomplete="off" />
+  <button id="save">Сохранить и проверить</button>
+  <div id="msg" class="msg"></div>
+  <p class="muted">Откройте страницу вещи на сайте магазина — слева внизу появится кнопка «Z». Через неё вещь попадает в каталог, избранное или образ. На сайте Zara после проверки «Check in-store availability» результат запишется в образ сам.</p>
+  <script src="popup.js"></script>
+</body>
+</html>

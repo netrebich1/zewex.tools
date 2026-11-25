@@ -1,0 +1,124 @@
+import { prisma } from "@/lib/db";
+import { checkRedirects } from "@/lib/pins/stages/redirects";
+import { extractMeta } from "@/lib/pins/stages/meta";
+import { detectKeywords, fallbackKeyword, type KeywordResult } from "@/lib/pins/stages/keywords";
+import { AiError } from "@/lib/pins/ai/errors";
+import type { StageHandler } from "./index";
+import { loadRunCtx } from "./_shared";
+import { detectArticleKinds } from "@/lib/pins/articleKind";
+import { bestBoard, boardsFor } from "@/lib/pins/boards";
+import type { PageStructure } from "@/lib/pins/articleAnalyzer";
+import type { Prisma } from "@prisma/client";
+
+/**
+ * Этап meta: конечные адреса (редиректы), title/H1/число фото, ключевое слово,
+ * доски, тема, ниша, сезон. Делает только для страниц без ключа или досок.
+ */
+export const meta: StageHandler = async (ctx) => {
+  const rc = await loadRunCtx(ctx);
+  const boards = await prisma.pinBoard.findMany({ where: { siteId: rc.site.id }, orderBy: { sortOrder: "asc" } });
+  const boardNames = boards.map((b) => b.name);
+  // Блоговые статьи выбирают из досок «для блога» и «для всех», подборки — из «для идей» и «для всех» (PinBoard.purpose).
+  const blogBoards = boardsFor(boards, "blog"), ideaBoards = boardsFor(boards, "ideas");
+  if (!boardNames.length) return { fatal: "У сайта нет досок Pinterest. Добавьте доски в настройках сайта и нажмите «Продолжить»." };
+
+  const todo = rc.pages.filter((p) => (!p.keyword || !(Array.isArray(p.boards) && (p.boards as unknown[]).length)) && p.metaAttempts < 3);
+  await ctx.tick({ done: 0, total: todo.length, label: "Ключи и доски" });
+  if (!todo.length) return { summary: "все страницы уже с ключами" };
+
+  // 1. редиректы
+  const needRedirect = todo.filter((p) => !p.finalUrl);
+  if (needRedirect.length) {
+    const red = await checkRedirects(needRedirect.map((p) => p.url), { signal: ctx.signal });
+    for (const p of needRedirect) {
+      const r = red.get(p.url);
+      await prisma.pinRunPage.update({ where: { id: p.id }, data: { finalUrl: r?.finalUrl || p.url } });
+      p.finalUrl = r?.finalUrl || p.url;
+    }
+    await ctx.tick({ label: "Редиректы проверены" });
+  }
+
+  // 2. мета
+  const metaMap = await extractMeta(todo.map((p) => p.finalUrl || p.url), { signal: ctx.signal });
+  for (const p of todo) {
+    const m = metaMap.get(p.finalUrl || p.url);
+    if (!m) continue;
+    const data = { pageTitle: m.title || p.pageTitle, h1: m.h1 || p.h1, imageCount: m.imageCount, sectionImageCount: m.sectionImageCount, featuredImage: m.ogImage ?? p.featuredImage, error: m.error ?? null };
+    await prisma.pinRunPage.update({ where: { id: p.id }, data });
+    Object.assign(p, data);
+  }
+  await ctx.tick({ label: "Заголовки прочитаны" });
+
+  // 2б. Тип статьи: наш блог → устройство страницы → заголовок (ручная отметка не трогается). Хранится в странице.
+  const structures = new Map<string, PageStructure | undefined>(todo.map((p) => [p.id, metaMap.get(p.finalUrl || p.url)?.structure]));
+  const kinds = await detectArticleKinds(rc.site.wpConnectionId || rc.recipe.publishing.wpConnectionId, todo, structures, rc.recipe.blog.mode);
+  for (const p of todo) {
+    const k = kinds.get(p.id);
+    if (!k) continue;
+    await prisma.pinRunPage.update({ where: { id: p.id }, data: { articleKind: k.articleKind, kindSource: k.kindSource, kindInfo: (k.kindInfo ?? undefined) as Prisma.InputJsonValue | undefined } });
+    Object.assign(p, { articleKind: k.articleKind, kindSource: k.kindSource, kindInfo: k.kindInfo });
+  }
+  const isBlogPage = (p: (typeof todo)[number]) => !!p.articleKind && p.articleKind !== "ideas";
+  const blogCount = todo.filter(isBlogPage).length;
+  if (blogCount) await ctx.tick({ label: `Блоговых статей: ${blogCount} из ${todo.length}` });
+
+  // 3. ключи и доски пачками (внутри detectKeywords), прогресс через onBatch
+  let done = 0;
+  const kw = new Map<string, KeywordResult>();
+  try {
+    const groups = [{ pages: todo.filter((p) => !isBlogPage(p)), boards: ideaBoards }, { pages: todo.filter(isBlogPage), boards: blogBoards }].filter((g) => g.pages.length);
+    let base = 0;
+    for (const g of groups) {
+      const res = await detectKeywords(
+        rc.ai,
+        {
+          pages: g.pages.map((p) => ({ url: p.finalUrl || p.url, title: p.pageTitle, h1: p.h1 })),
+          siteNiche: rc.site.niche,
+          language: rc.recipe.text.language,
+          boards: g.boards,
+          multiBoard: rc.recipe.boards.multiBoard,
+        },
+        {
+          signal: ctx.signal,
+          onBatch: async (d) => {
+            done = base + d;
+            await ctx.tick({ done, total: todo.length, label: `Ключи и доски ${done}/${todo.length}` });
+          },
+        },
+      );
+      for (const [u, r] of res) kw.set(u, r);
+      base += g.pages.length;
+    }
+  } catch (e) {
+    if (e instanceof AiError && e.cls.kind === "fatal_run") return { fatal: e.cls.message };
+    throw e;
+  }
+
+  let withoutKeyword = 0;
+  for (const p of todo) {
+    const r = kw.get(p.finalUrl || p.url);
+    const keyword = (r?.keyword || "").trim() || fallbackKeyword({ title: p.pageTitle, h1: p.h1, url: p.url });
+    const allowed = isBlogPage(p) ? blogBoards : ideaBoards;
+    const pageBoards = (r?.boards || []).filter((b) => allowed.includes(b));
+    if (!pageBoards.length) pageBoards.push(bestBoard(allowed.length ? allowed : boardNames, keyword, p.h1 || p.pageTitle) ?? boardNames[0]);
+    if (!keyword) withoutKeyword++;
+    await prisma.pinRunPage.update({
+      where: { id: p.id },
+      data: {
+        keyword,
+        boards: pageBoards,
+        topic: r?.topic || p.topic,
+        niche: r?.niche || p.niche,
+        season: r?.season || p.season,
+        seasonWord: r?.seasonWord || p.seasonWord,
+        metaAttempts: { increment: keyword ? 0 : 1 },
+        status: keyword ? "ready" : "error",
+        error: keyword ? null : "Не удалось определить ключевое слово",
+      },
+    });
+  }
+  await ctx.tick({ done: todo.length, total: todo.length, label: "Ключи и доски готовы" });
+  const ready = await prisma.pinRunPage.count({ where: { runId: rc.run.id, keyword: { not: "" } } });
+  if (!ready) return { fatal: "Ни у одной страницы не удалось определить ключевое слово. Проверьте ссылки." };
+  return { summary: `${todo.length - withoutKeyword} страниц с ключами, ${withoutKeyword} без`, retryLater: withoutKeyword && done < todo.length ? withoutKeyword : 0 };
+};

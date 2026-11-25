@@ -1,0 +1,1920 @@
+{
+  "zara-mt": {
+    "customerService": {
+      "phone": "8006 2612",
+      "email": "",
+      "note": "Бесплатный номер, указанный в локаторе Zara для магазина на Мальте; отдельного телефона магазина в локаторе нет. В локаторе Zara на Мальте числится один магазин."
+    },
+    "branches": [
+      {
+        "name": "Zara Sliema, Tower Road",
+        "address": "Tower Road, Sliema SLM 1711",
+        "phone": "8006 2612",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:30, Sun 11:00–19:00",
+        "note": "Телефон — бесплатная линия из локатора Zara (8006 2612), набирать с мальтийского номера.",
+        "source": "https://www.zara.com/mt/en/stores-locator/zara-sliema-tower-road-s3134"
+      }
+    ]
+  },
+  "massimo-dutti-mt": {
+    "customerService": {
+      "phone": "+356 2133 6328",
+      "email": "",
+      "note": "Один и тот же номер указан в локаторе для обоих магазинов — это общая линия франчайзи Inditex на Мальте."
+    },
+    "branches": [
+      {
+        "name": "Massimo Dutti The Point",
+        "address": "The Point Shopping Mall (Level 0), Tigné Point, TP 01, Sliema SLM 1711",
+        "phone": "+356 2133 6328",
+        "email": "",
+        "hours": "Mon–Sun 10:00–20:00",
+        "note": "В локаторе на пятницу указаны особые часы (похоже, Black Friday) — перед визитом уточнить.",
+        "source": "https://www.massimodutti.com/mt/store-locator/sliema-the-point-s4571"
+      },
+      {
+        "name": "Massimo Dutti The Shoreline",
+        "address": "The Shoreline Mall, SmartCity, Kalkara SCM 1001",
+        "phone": "+356 2133 6328",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "В локаторе на пятницу указаны особые часы (похоже, Black Friday) — перед визитом уточнить.",
+        "source": "https://www.massimodutti.com/mt/store-locator/kalkara-the-shoreline-s16245"
+      }
+    ]
+  },
+  "bershka-mt": {
+    "customerService": {
+      "phone": "+356 2133 6328",
+      "email": "",
+      "note": "Общая линия франчайзи Inditex на Мальте — указана в локаторе для обоих магазинов."
+    },
+    "branches": [
+      {
+        "name": "Bershka The Point",
+        "address": "The Point Shopping Mall (Level -2), Tigné Point, TP 01, Sliema SLM 1711",
+        "phone": "+356 2133 6328",
+        "email": "",
+        "hours": "Mon–Sun 10:00–20:00",
+        "note": "В локаторе на пятницу указаны особые часы (похоже, Black Friday) — перед визитом уточнить.",
+        "source": "https://www.bershka.com/mt/store-locator.html"
+      },
+      {
+        "name": "Bershka The Shoreline",
+        "address": "The Shoreline Mall, SmartCity, Kalkara SCM 1001",
+        "phone": "+356 2133 6328",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "В локаторе на пятницу указаны особые часы (похоже, Black Friday) — перед визитом уточнить.",
+        "source": "https://www.bershka.com/mt/store-locator.html"
+      }
+    ]
+  },
+  "pullandbear-mt": {
+    "customerService": {
+      "phone": "+356 2133 6328",
+      "email": "",
+      "note": "Общая линия франчайзи Inditex на Мальте. Сайт Main Street Complex (Паола) упоминает Pull & Bear, но в официальном локаторе бренда этого магазина нет."
+    },
+    "branches": [
+      {
+        "name": "Pull&Bear The Point",
+        "address": "The Point Shopping Mall, Tigné Point, TP 01, Sliema SLM 1711",
+        "phone": "+356 2133 6328",
+        "email": "",
+        "hours": "Mon–Sun 10:00–20:00",
+        "note": "В локаторе на пятницу указаны особые часы (похоже, Black Friday) — перед визитом уточнить.",
+        "source": "https://www.pullandbear.com/mt/"
+      },
+      {
+        "name": "Pull&Bear Valletta, Brittania Centre",
+        "address": "Brittania Centre, St Lucia Street, Valletta VLT 1185",
+        "phone": "+356 2133 6328",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "В локаторе на пятницу указаны особые часы (похоже, Black Friday) — перед визитом уточнить.",
+        "source": "https://www.pullandbear.com/mt/"
+      },
+      {
+        "name": "Pull&Bear The Shoreline",
+        "address": "The Shoreline Mall, SmartCity, Kalkara SCM 1001",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "Телефон магазина в локаторе не указан — звонить на общую линию франчайзи. В локаторе на пятницу указаны особые часы (похоже, Black Friday) — перед визитом уточнить.",
+        "source": "https://www.pullandbear.com/mt/"
+      }
+    ]
+  },
+  "stradivarius-mt": {
+    "customerService": {
+      "phone": "+356 2133 6328",
+      "email": "",
+      "note": "Общая линия франчайзи Inditex на Мальте (в локаторе указана для магазина в Shoreline)."
+    },
+    "branches": [
+      {
+        "name": "Stradivarius The Point",
+        "address": "The Point Shopping Mall (Level -1), Tigné Point, TP 01, Sliema SLM 1711",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Sun 10:00–20:00",
+        "note": "Телефон магазина в локаторе не указан — звонить на общую линию франчайзи. В локаторе на пятницу указаны особые часы (похоже, Black Friday) — перед визитом уточнить.",
+        "source": "https://www.stradivarius.com/mt/"
+      },
+      {
+        "name": "Stradivarius The Shoreline",
+        "address": "The Shoreline Mall, SmartCity, Kalkara SCM 1001",
+        "phone": "+356 2133 6328",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "В локаторе на пятницу указаны особые часы (похоже, Black Friday) — перед визитом уточнить.",
+        "source": "https://www.stradivarius.com/mt/"
+      }
+    ]
+  },
+  "oysho-mt": {
+    "customerService": {
+      "phone": "+356 2133 6328",
+      "email": "",
+      "note": "Общая линия франчайзи Inditex на Мальте (в локаторе указана для магазина в Shoreline)."
+    },
+    "branches": [
+      {
+        "name": "Oysho The Point",
+        "address": "The Point Shopping Mall (Level -1), Tigné Point, TP 01, Sliema SLM 1711",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Sun 10:00–20:00",
+        "note": "Телефон магазина в локаторе не указан — звонить на общую линию франчайзи. В локаторе на пятницу указаны особые часы (похоже, Black Friday) — перед визитом уточнить.",
+        "source": "https://www.oysho.com/mt/store-locator/sliema/tigne-point-tp-01-s17404.html"
+      },
+      {
+        "name": "Oysho The Shoreline",
+        "address": "The Shoreline Mall, SmartCity, Kalkara SCM 1001",
+        "phone": "+356 2133 6328",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "В локаторе на пятницу указаны особые часы (похоже, Black Friday) — перед визитом уточнить.",
+        "source": "https://www.oysho.com/mt/store-locator/kalkara/smart-city-s/n-s16194.html"
+      }
+    ]
+  },
+  "parfois-mt": {
+    "customerService": {
+      "phone": "",
+      "email": "",
+      "note": "Онлайн-магазин Parfois на Мальте не работает — только магазины. Франчайзи — Arkadia; общий телефон центра Arkadia (Гозо): +356 2210 3000."
+    },
+    "branches": [
+      {
+        "name": "Parfois The Point",
+        "address": "The Point Shopping Mall (Level -1), Tigné Point, Sliema TP 01",
+        "phone": "+356 2210 3241",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/parfois/"
+      },
+      {
+        "name": "Parfois Mercury",
+        "address": "Mercury Towers (Mercury Mall), St George's Street, Paceville, St Julian's STJ 3202 (Lower Ground)",
+        "phone": "+356 2210 3243",
+        "email": "parfstjpos@arkadia.com.mt",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина",
+        "source": "https://mercury.com.mt/shops/parfois/"
+      },
+      {
+        "name": "Parfois Valletta, Republic Street",
+        "address": "Republic Street, Valletta",
+        "phone": "+356 2210 3240",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://www.parfois.com/en/mt/stores/"
+      },
+      {
+        "name": "Parfois Arkadia Gozo",
+        "address": "Arkadia Commercial Centre, Fortunato Mizzi Street, Victoria, Gozo",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "Телефон магазина не найден; общий номер центра Arkadia: +356 2210 3000.",
+        "source": "https://www.parfois.com/en/mt/stores/"
+      },
+      {
+        "name": "Parfois Malta Airport",
+        "address": "Malta International Airport (MLA), Luqa",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://www.parfois.com/en/mt/stores/"
+      }
+    ]
+  },
+  "mango-mt": {
+    "customerService": {
+      "phone": "+356 2345 9000",
+      "email": "info@hudson.com.mt",
+      "note": "Головной офис франчайзи Hudson. В списке Hudson (июль 2025) был ещё Mango в PAMA, но в локаторе Mango его сейчас нет."
+    },
+    "branches": [
+      {
+        "name": "Mango Mercury Towers",
+        "address": "Mercury House, Mercury Towers (Lower Ground), St Julian's STJ 3202",
+        "phone": "+356 2345 9014",
+        "email": "info@hudson.com.mt",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "Часы по локатору Mango; сайт Mercury даёт Вс–Чт до 20:00. В локаторе Mango указан номер офиса Hudson +356 2345 9000, номер магазина — с сайта Mercury.",
+        "source": "https://shop.mango.com/mt/en/stores/st-julians/mercury-towers/2713"
+      },
+      {
+        "name": "Mango The Point",
+        "address": "The Point Shopping Mall (Level 0), Tigné Point, Sliema TP 01",
+        "phone": "+356 2345 9003",
+        "email": "info@hudson.com.mt",
+        "hours": "Mon–Sat 09:30–19:30, Sun 11:00–18:00",
+        "note": "Часы по локатору Mango; сам ТЦ указывает Пн–Вс 10:00–19:30. Доп. мобильный с сайта ТЦ: +356 7983 8453. Только женская коллекция.",
+        "source": "https://shop.mango.com/mt/en/stores/sliema/the-point/9948"
+      }
+    ]
+  },
+  "handm-mt": {
+    "branches": [
+      {
+        "name": "H&M Regina, Sliema",
+        "address": "Tower Road 50-68, Sliema SLM 1606",
+        "phone": "+356 2345 9301",
+        "email": "",
+        "hours": "Mon–Sat 09:00–21:00, Sun 09:00–20:00",
+        "note": "Единственный H&M на Мальте (флагман, открыт в ноябре 2026; франчайзи Hudson).",
+        "source": "https://api.storelocator.hmgroup.tech/v2/brand/hm/stores/locale/en_gb/country/MT?_type=json&openinghours=true"
+      }
+    ]
+  },
+  "next-mt": {
+    "customerService": {
+      "phone": "+44 116 360 8100",
+      "email": "",
+      "note": "Это линия интернет-магазина next.com.mt (британский колл-центр), наличие в магазинах Мальты там не проверяют. Официального локатора магазинов Мальты нет — данные из справочников."
+    },
+    "branches": [
+      {
+        "name": "Next Sliema, Tower Road",
+        "address": "Triq it-Torri (Tower Road), Sliema SLM 1607",
+        "phone": "+356 2132 2841",
+        "email": "info@nextmalta.com.mt",
+        "hours": "Mon–Sat 09:00–19:00, Sun closed",
+        "note": "Данные справочника Yellow, часы могли измениться — уточнить.",
+        "source": "https://www.yellow.com.mt/next_clothing-women+sliema/"
+      },
+      {
+        "name": "Next Valletta",
+        "address": "53, St Zachary Street, Valletta VLT 1130",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "В справочниках встречается и №54; телефон магазина не найден (общий номер Next в каталоге One4all — +356 2132 2841).",
+        "source": "https://one4all.mt/directories/next/"
+      },
+      {
+        "name": "Next PAMA",
+        "address": "PAMA Shopping Village (Level 2), Valletta Road, Mosta MST 9017",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "Телефон магазина не найден.",
+        "source": "https://one4all.mt/directories/next/"
+      },
+      {
+        "name": "Next St George's Mall",
+        "address": "St George's Mall, Ix-Xatt ta' San Ġorġ, St Julian's STJ 3301",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "Новый магазин 2026 года по данным карт и соцсетей; официально не подтверждено, контактов нет.",
+        "source": "https://mapcarta.com/N14066362029"
+      }
+    ]
+  },
+  "marks-and-spencer-mt": {
+    "customerService": {
+      "phone": "+356 2557 0000",
+      "email": "talktous@retail.com.mt",
+      "note": "Головной офис франчайзи Retail International Group (Валлетта). Официального локатора нет — адреса из справочников. В The Point (Level -1) работает только M&S Food Hall: +356 2557 0245 / 0246."
+    },
+    "branches": [
+      {
+        "name": "M&S Valletta",
+        "address": "Palace Square / Strait Street, Valletta",
+        "phone": "+356 2557 0000",
+        "email": "",
+        "hours": "",
+        "note": "В справочниках адрес указан по-разному (Palace Square, Strait Street, Old Theatre Street) — это один магазин. Номер общий.",
+        "source": "https://one4all.mt/directories/marks-spencer/"
+      },
+      {
+        "name": "M&S Sliema, The Strand",
+        "address": "The Strand (Triq ix-Xatt), Sliema",
+        "phone": "+356 2557 0000",
+        "email": "",
+        "hours": "",
+        "note": "Номер общий, по данным справочников.",
+        "source": "https://one4all.mt/directories/marks-spencer/"
+      },
+      {
+        "name": "M&S Shoreline",
+        "address": "The Shoreline Mall, Triq Santu Rokku, SmartCity, Kalkara SCM 1001",
+        "phone": "+356 2557 0261",
+        "email": "",
+        "hours": "",
+        "note": "Телефон по справочнику MaltaList.",
+        "source": "https://maltalist.mt/business/kalkara/marks-and-spencer"
+      },
+      {
+        "name": "M&S Naxxar",
+        "address": "St Paul's Street, Naxxar",
+        "phone": "+356 2557 0256",
+        "email": "",
+        "hours": "",
+        "note": "По данным страницы магазина в Facebook; не подтверждено, есть ли одежда или только продукты.",
+        "source": "https://www.facebook.com/p/Marks-and-Spencer-100089992785366/"
+      }
+    ]
+  },
+  "kiabi-mt": {
+    "customerService": {
+      "phone": "+356 2345 9000",
+      "email": "info@hudson.com.mt",
+      "note": "Головной офис франчайзи Hudson."
+    },
+    "branches": [
+      {
+        "name": "Kiabi Qormi",
+        "address": "The Landmark, Triq l-Iljun, Qormi QRM 3800",
+        "phone": "+356 9931 6388",
+        "email": "",
+        "hours": "Mon–Sat 09:00–19:30, Sun 09:00–19:00",
+        "note": "",
+        "source": "https://kiabi.com.mt/pages/stores"
+      },
+      {
+        "name": "Kiabi Burmarrad",
+        "address": "Triq Burmarrad, Burmarrad SPB 9061",
+        "phone": "+356 9996 8917",
+        "email": "",
+        "hours": "Mon–Sat 09:00–19:00, Sun 10:00–19:00",
+        "note": "",
+        "source": "https://kiabi.com.mt/pages/stores"
+      },
+      {
+        "name": "Kiabi The Point",
+        "address": "The Point Shopping Mall (Level -1), Tigné Point, Sliema TP 01",
+        "phone": "+356 9934 8897",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "Второй номер с сайта ТЦ: +356 2345 9812.",
+        "source": "https://kiabi.com.mt/pages/stores"
+      },
+      {
+        "name": "Kiabi Gozo",
+        "address": "Arkadia Commercial Centre (Level 2), Fortunato Mizzi Street, Victoria, Gozo",
+        "phone": "+356 2345 9813",
+        "email": "",
+        "hours": "Mon–Sun 09:00–19:00",
+        "note": "",
+        "source": "https://kiabi.com.mt/pages/stores"
+      }
+    ]
+  },
+  "terranova-mt": {
+    "customerService": {
+      "phone": "+356 2247 4676",
+      "email": "dizzfashion@dizz.com.mt",
+      "note": "Служба поддержки Terranova Malta (Dizz Group), Пн–Пт 09:00–17:00."
+    },
+    "branches": [
+      {
+        "name": "Terranova Bay Street",
+        "address": "Bay Street Shopping Complex, St George's Bay, St Julian's STJ 3311 (Level 1)",
+        "phone": "+356 2247 4631",
+        "email": "terranova.baystreet@dizz.com.mt",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "",
+        "source": "https://terranova.com.mt/stores/"
+      },
+      {
+        "name": "Terranova Centerparc, Qormi",
+        "address": "Centerparc, Triq it-Tigrija, Qormi",
+        "phone": "+356 2247 4625",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:00, Sun 10:00–18:00",
+        "note": "",
+        "source": "https://terranova.com.mt/stores/"
+      },
+      {
+        "name": "Terranova Iklin",
+        "address": "Iklin",
+        "phone": "+356 2247 4637",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:00, Sun 10:00–18:00",
+        "note": "Точный адрес на сайте не указан.",
+        "source": "https://terranova.com.mt/stores/"
+      },
+      {
+        "name": "Terranova Shoreline",
+        "address": "The Shoreline Mall, Triq Santu Rokku, SmartCity, Kalkara SCM 1001",
+        "phone": "+356 2247 4656",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "",
+        "source": "https://terranova.com.mt/stores/"
+      },
+      {
+        "name": "Terranova The Point",
+        "address": "The Point Shopping Mall (Level -1), Tigné Point, Sliema TP 01",
+        "phone": "+356 2247 4623",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "Есть на сайте The Point, но отсутствует в списке магазинов terranova.com.mt — перед визитом уточнить. часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/terranova/"
+      }
+    ]
+  },
+  "calliope-mt": {
+    "customerService": {
+      "phone": "+356 2247 4643",
+      "email": "dizzfashion@dizz.com.mt",
+      "note": "Служба поддержки Dizz Fashion, Пн–Пт 09:00–17:00."
+    },
+    "branches": [
+      {
+        "name": "Calliope Bay Street",
+        "address": "Bay Street Shopping Complex, St George's Bay, St Julian's STJ 3311 (Level 1)",
+        "phone": "+356 2247 4681",
+        "email": "calliope.baystreet@dizz.com.mt",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "часы комплекса Bay Street, не магазина",
+        "source": "https://baystreet.com.mt/outlet-category/shopping/"
+      },
+      {
+        "name": "Calliope Centerparc, Qormi",
+        "address": "Centerparc, Triq it-Tigrija, Qormi",
+        "phone": "+356 2247 4682",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:00, Sun 10:00–18:00",
+        "note": "часы торгового центра Centerparc, не магазина",
+        "source": "https://dizz.com.mt/stores/calliope/"
+      },
+      {
+        "name": "Calliope Sliema",
+        "address": "The Point Shopping Mall, Tigné Point, Sliema",
+        "phone": "+356 2247 4663",
+        "email": "",
+        "hours": "",
+        "note": "Сайт Dizz указывает The Point, каталог One4all — D Mall в Слиме; расположение уточнить по телефону.",
+        "source": "https://dizz.com.mt/stores/calliope/"
+      },
+      {
+        "name": "Calliope Shoreline",
+        "address": "The Shoreline Mall, Triq Santu Rokku, SmartCity, Kalkara SCM 1001",
+        "phone": "+356 2247 4654",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://dizz.com.mt/stores/calliope/"
+      }
+    ]
+  },
+  "lc-waikiki-mt": {
+    "customerService": {
+      "phone": "+356 2557 0412",
+      "email": "talktous@retail.com.mt",
+      "note": "Общий номер LC Waikiki из каталога One4all (не привязан к конкретному магазину); e-mail — офис франчайзи Retail International Group."
+    },
+    "branches": [
+      {
+        "name": "LC Waikiki Centerparc, Qormi",
+        "address": "Centerparc, Triq it-Tigrija, Qormi",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:00, Sun 10:00–18:00",
+        "note": "Часы со страницы магазина на сайте Centerparc (Вс и праздники 10:00–18:00).",
+        "source": "https://centerparc.com.mt/index.php/lcwaikiki-2/"
+      },
+      {
+        "name": "LC Waikiki Iklin",
+        "address": "Main Street, Iklin",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://one4all.mt/directories/lc-waikiki/"
+      },
+      {
+        "name": "LC Waikiki Shoreline",
+        "address": "The Shoreline Mall, Triq Santu Rokku, SmartCity, Kalkara SCM 1001",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://one4all.mt/directories/lc-waikiki/"
+      }
+    ]
+  },
+  "new-yorker-mt": {
+    "branches": [
+      {
+        "name": "New Yorker St. George's Mall",
+        "address": "St George's Mall, Ix-Xatt ta' San Ġorġ, St Julian's STJ 3301",
+        "phone": "+356 2157 2148",
+        "email": "",
+        "hours": "Mon–Thu 09:30–20:00, Fri–Sun 09:30–21:00",
+        "note": "Открыт в июле 2026.",
+        "source": "https://api.newyorker.de/csp/stores/store/query?limit=2000"
+      },
+      {
+        "name": "New Yorker Shoreline Mall",
+        "address": "The Shoreline Mall, Triq Santu Rokku, SmartCity, Kalkara SCM 1001",
+        "phone": "+356 2148 4293",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "",
+        "source": "https://api.newyorker.de/csp/stores/store/query?limit=2000"
+      }
+    ]
+  },
+  "piazza-italia-mt": {
+    "customerService": {
+      "phone": "+356 2210 3207",
+      "email": "",
+      "note": "Общие номера Piazza Italia из каталога One4all: +356 2210 3207 / +356 2210 3220 (франчайзи — Arkadia)."
+    },
+    "branches": [
+      {
+        "name": "Piazza Italia The Point",
+        "address": "The Point Shopping Mall (Level -1), Tigné Point, Sliema TP 01",
+        "phone": "+356 2210 3238",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/piazza-italia/"
+      },
+      {
+        "name": "Piazza Italia Centerparc, Qormi",
+        "address": "Centerparc, Triq it-Tigrija, Qormi",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:00, Sun 10:00–18:00",
+        "note": "часы торгового центра Centerparc, не магазина",
+        "source": "https://one4all.mt/directories/piazza-italia/"
+      },
+      {
+        "name": "Piazza Italia Valletta",
+        "address": "Republic Street, Valletta",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://one4all.mt/directories/piazza-italia/"
+      },
+      {
+        "name": "Piazza Italia Arkadia Gozo",
+        "address": "Arkadia Commercial Centre, Fortunato Mizzi Street, Victoria, Gozo",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "Общий номер центра Arkadia: +356 2210 3000.",
+        "source": "https://one4all.mt/directories/piazza-italia/"
+      }
+    ]
+  },
+  "matalan-mt": {
+    "customerService": {
+      "phone": "+356 2147 2255",
+      "email": "",
+      "note": "Общий номер Matalan Malta из каталога One4all (франчайзи Camilleri Group). Сайт matalan.com.mt недоступен, телефоны отдельных магазинов почти не найдены."
+    },
+    "branches": [
+      {
+        "name": "Matalan Sliema",
+        "address": "The Strand, Sliema",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://one4all.mt/directories/matalan/"
+      },
+      {
+        "name": "Matalan Fgura",
+        "address": "Zabbar Road, Fgura FGR 1011",
+        "phone": "+356 2180 2004",
+        "email": "",
+        "hours": "Mon–Sat 09:00–19:30, Sun closed",
+        "note": "Телефон и часы по справочнику Cybo — уточнить.",
+        "source": "https://www.cybo.com/MT-biz/matalan-fgura"
+      },
+      {
+        "name": "Matalan Birkirkara",
+        "address": "Smart Shopping Complex (Level 1), Naxxar Road, Birkirkara",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://one4all.mt/directories/matalan/"
+      },
+      {
+        "name": "Matalan Valletta",
+        "address": "30, Republic Street, Valletta",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://one4all.mt/directories/matalan/"
+      },
+      {
+        "name": "Matalan Centerparc, Qormi",
+        "address": "Centerparc, Triq it-Tigrija, Qormi",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:00, Sun 10:00–18:00",
+        "note": "часы торгового центра Centerparc, не магазина",
+        "source": "https://one4all.mt/directories/matalan/"
+      },
+      {
+        "name": "Matalan Ħamrun",
+        "address": "Daniels Shopping Complex (Level 2), St Joseph High Street, Ħamrun",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://one4all.mt/directories/matalan/"
+      },
+      {
+        "name": "Matalan Paola",
+        "address": "Main Street Shopping Complex (Level 1), Antoine De Paule Square, Paola",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "Общий номер комплекса Main Street: +356 2122 7436.",
+        "source": "https://one4all.mt/directories/matalan/"
+      },
+      {
+        "name": "Matalan Gozo",
+        "address": "The Duke Shopping Mall, Republic Street, Victoria, Gozo",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://one4all.mt/directories/matalan/"
+      }
+    ]
+  },
+  "sports-direct-mt": {
+    "customerService": {
+      "phone": "+356 2345 9000",
+      "email": "info@hudson.com.mt",
+      "note": "Головной офис франчайзи Hudson."
+    },
+    "branches": [
+      {
+        "name": "Sports Direct Qormi",
+        "address": "The Landmark, Triq l-Iljun, Qormi",
+        "phone": "+356 2345 9400",
+        "email": "",
+        "hours": "",
+        "note": "В локаторе видны только часы Пн–Вт 09:00–19:00, полное расписание получить не удалось.",
+        "source": "https://us.sportsdirect.com/qormi-store-3888"
+      },
+      {
+        "name": "Sports Direct Sliema, Piazzetta",
+        "address": "Piazzetta Business Plaza, Għar id-Dud Promenade, Tower Road, Sliema",
+        "phone": "+356 2345 9402",
+        "email": "",
+        "hours": "",
+        "note": "Часы получить не удалось.",
+        "source": "https://us.sportsdirect.com/piazzetta-sd-mt-store-4101"
+      }
+    ]
+  },
+  "springfield-mt": {
+    "branches": [
+      {
+        "name": "Springfield Bay Street",
+        "address": "Bay Street Shopping Complex, St George's Bay, St Julian's STJ 3311 (Level 1)",
+        "phone": "+356 2371 9350",
+        "email": "springfield@ifl.com.mt",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "часы комплекса Bay Street, не магазина. Каталоги One4all упоминают ещё Springfield в The Point, но с противоречивыми телефонами, и на сайте ТЦ его нет — не включён.",
+        "source": "https://baystreet.com.mt/outlet-category/shopping/"
+      }
+    ]
+  },
+  "womensecret-mt": {
+    "customerService": {
+      "phone": "",
+      "email": "contact@theonaretail.mt",
+      "note": "E-mail интернет-магазина womensecret.com.mt; ещё один адрес с сайта: womensecretmalta@gmail.com."
+    },
+    "branches": [
+      {
+        "name": "Women'secret Bay Street",
+        "address": "Bay Street Shopping Complex, St George's Bay, St Julian's STJ 3311 (Level 0)",
+        "phone": "+356 2143 6250",
+        "email": "womensecretmalta@gmail.com",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "часы комплекса Bay Street, не магазина. Сайт Bay Street даёт другой номер: +356 2371 9312.",
+        "source": "https://www.womensecret.com.mt/pages/contact-us"
+      },
+      {
+        "name": "Women'secret PAMA",
+        "address": "PAMA Shopping Village (Level 1), Valletta Road, Mosta MST 9017",
+        "phone": "+356 2143 6256",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://www.womensecret.com.mt/pages/contact-us"
+      },
+      {
+        "name": "Women'secret Centerparc, Qormi",
+        "address": "Centerparc (Level 0), Triq it-Tigrija, Qormi",
+        "phone": "+356 2131 8999",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:00, Sun 10:00–18:00",
+        "note": "часы торгового центра Centerparc, не магазина",
+        "source": "https://www.womensecret.com.mt/pages/contact-us"
+      },
+      {
+        "name": "Women'secret The Duke, Gozo",
+        "address": "The Duke Shopping Mall (Level 1), Republic Street, Victoria, Gozo",
+        "phone": "+356 2156 0091",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://www.womensecret.com.mt/pages/contact-us"
+      }
+    ]
+  },
+  "cortefiel-mt": {
+    "branches": [
+      {
+        "name": "Cortefiel Bay Street",
+        "address": "Bay Street Shopping Complex, St George's Bay, St Julian's STJ 3311 (Level 2)",
+        "phone": "+356 2371 9311",
+        "email": "cortefiel@ifl.com.mt",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "часы комплекса Bay Street, не магазина. Там же Pedro del Hierro.",
+        "source": "https://baystreet.com.mt/outlet-category/shopping/"
+      },
+      {
+        "name": "Cortefiel St George's Mall",
+        "address": "St George's Mall (Level -2), St George's Road, St Julian's",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "Телефон магазина не найден; общие номера Cortefiel в каталоге One4all: +356 2371 9426 / +356 7945 8675.",
+        "source": "https://one4all.mt/directories/cortefiel/"
+      }
+    ]
+  },
+  "lindex-mt": {
+    "branches": [
+      {
+        "name": "Lindex Baystreet",
+        "address": "Bay Street Shopping Complex, St George's Bay, St Julian's STJ 3311 (Level 0)",
+        "phone": "+356 2795 5474",
+        "email": "baystreet@lindex.mt",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "",
+        "source": "https://lindex.mt/stores/"
+      },
+      {
+        "name": "Lindex Paola",
+        "address": "Main Street Shopping Complex, Pjazza Antoine De Paule, Paola",
+        "phone": "+356 2798 8437",
+        "email": "paola@lindex.mt",
+        "hours": "Mon–Sun 09:30–19:00",
+        "note": "",
+        "source": "https://lindex.mt/stores/"
+      }
+    ]
+  },
+  "united-colors-of-benetton-mt": {
+    "branches": [
+      {
+        "name": "United Colors of Benetton The Point",
+        "address": "The Point Shopping Mall (Level -1), Tigné Point, Sliema TP 01",
+        "phone": "+356 2060 1076",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/united-colors-of-benetton/"
+      },
+      {
+        "name": "United Colors of Benetton Gozo",
+        "address": "The Duke Shopping Mall, Republic Street, Victoria, Gozo",
+        "phone": "+356 2155 8189",
+        "email": "",
+        "hours": "",
+        "note": "По каталогу One4all 2024 года — уточнить.",
+        "source": "https://one4all.mt/wp-content/uploads/2024/11/One4all-Web-Directory-Issue-32.pdf"
+      }
+    ]
+  },
+  "celio-mt": {
+    "branches": [
+      {
+        "name": "Celio The Point",
+        "address": "The Point Shopping Mall, Tigné Point, Sliema TP 01",
+        "phone": "+356 2722 9295",
+        "email": "celiopoint@squaredeal.com.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/celio/"
+      },
+      {
+        "name": "Celio Shoreline",
+        "address": "The Shoreline Mall, Triq Santu Rokku, SmartCity, Kalkara SCM 1001",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "Упомянут среди арендаторов при открытии ТЦ (2024); контактов не найдено.",
+        "source": "https://www.guidememalta.com/en/ready-steady-shop-kalkara-s-shoreline-mall-to-open-its-doors-tomorrow"
+      }
+    ]
+  },
+  "dan-john-mt": {
+    "branches": [
+      {
+        "name": "Dan John The Point",
+        "address": "The Point Shopping Mall (Level 0), Tigné Point, Sliema TP 01",
+        "phone": "+356 2132 0545",
+        "email": "hello@danjohn.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/dan-john/"
+      }
+    ]
+  },
+  "punt-roma-mt": {
+    "customerService": {
+      "phone": "+356 2557 0000",
+      "email": "talktous@retail.com.mt",
+      "note": "Головной офис франчайзи Retail International Group."
+    },
+    "branches": [
+      {
+        "name": "Punt Roma The Point",
+        "address": "The Point Shopping Mall (Level -2), Tigné Point, Sliema TP 01",
+        "phone": "+356 2557 0501",
+        "email": "puntroma.tigne@retail.com.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина. Франчайзи анонсировал ещё магазин в St George's Mall — контактов не найдено, не включён.",
+        "source": "https://thepointmalta.com/punt-roma/"
+      }
+    ]
+  },
+  "aldo-mt": {
+    "customerService": {
+      "phone": "+356 2557 0000",
+      "email": "talktous@retail.com.mt",
+      "note": "Головной офис франчайзи Retail International Group; интернет-магазин retail.com.mt."
+    },
+    "branches": [
+      {
+        "name": "ALDO The Point",
+        "address": "The Point Shopping Mall (Level -2), Tigné Point, Sliema TP 01",
+        "phone": "+356 2557 0311",
+        "email": "aldo.tigne@retail.com.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/aldo/"
+      },
+      {
+        "name": "ALDO Bay Street",
+        "address": "Bay Street Shopping Complex, St George's Bay, St Julian's STJ 3311 (Level 1)",
+        "phone": "+356 2557 0321",
+        "email": "info@retail.com.mt",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "часы комплекса Bay Street, не магазина",
+        "source": "https://baystreet.com.mt/outlet-category/shopping/"
+      },
+      {
+        "name": "ALDO PAMA",
+        "address": "PAMA Shopping Village (Level 1), Valletta Road, Mosta MST 9017",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://one4all.mt/directories/aldo/"
+      },
+      {
+        "name": "ALDO Valletta",
+        "address": "Palace Square, Valletta",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://one4all.mt/directories/aldo/"
+      },
+      {
+        "name": "ALDO Shoreline",
+        "address": "The Shoreline Mall (Level 1), SmartCity, Kalkara SCM 1001",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://one4all.mt/directories/aldo/"
+      },
+      {
+        "name": "ALDO St George's Mall",
+        "address": "St George's Mall, St George's Road, St Julian's",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "По сообщению франчайзи здесь формат ALDO Accessories.",
+        "source": "https://one4all.mt/directories/aldo/"
+      },
+      {
+        "name": "ALDO Gozo",
+        "address": "Fortunato Mizzi Street, Victoria, Gozo",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "",
+        "source": "https://one4all.mt/directories/aldo/"
+      }
+    ]
+  },
+  "accessorize-mt": {
+    "customerService": {
+      "phone": "+356 2134 6080",
+      "email": "",
+      "note": "Телефон из раздела Contact Us сайта monsoonaccessorize.com.mt. Адреса магазинов на сайте не расписаны — только названия и часы."
+    },
+    "branches": [
+      {
+        "name": "Accessorize Bay Street",
+        "address": "Bay Street Shopping Complex, St George's Bay, St Julian's STJ 3311 (Level 0)",
+        "phone": "+356 2711 0635",
+        "email": "baystreet@monsoon.com.mt",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "",
+        "source": "https://monsoonaccessorize.com.mt/stores-and-opening-hours/"
+      },
+      {
+        "name": "Accessorize St George's Mall",
+        "address": "St George's Mall, St Julian's",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Thu 09:30–20:00, Fri 09:30–21:00",
+        "note": "Часы на Сб–Вс на сайте не указаны.",
+        "source": "https://monsoonaccessorize.com.mt/stores-and-opening-hours/"
+      },
+      {
+        "name": "Accessorize Valletta",
+        "address": "Valletta",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Sat 09:00–19:00, Sun 09:30–18:00",
+        "note": "Точный адрес на сайте не указан.",
+        "source": "https://monsoonaccessorize.com.mt/stores-and-opening-hours/"
+      },
+      {
+        "name": "Accessorize PAMA",
+        "address": "PAMA Shopping Village, Valletta Road, Mosta MST 9017",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Sun 09:00–19:00",
+        "note": "",
+        "source": "https://monsoonaccessorize.com.mt/stores-and-opening-hours/"
+      },
+      {
+        "name": "Accessorize Pavi, Qormi",
+        "address": "PAVI Shopping Complex, Qormi",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Sat 09:00–19:00, Sun 09:00–18:00",
+        "note": "",
+        "source": "https://monsoonaccessorize.com.mt/stores-and-opening-hours/"
+      },
+      {
+        "name": "Accessorize The Duke, Gozo",
+        "address": "The Duke Shopping Mall, Republic Street, Victoria, Gozo",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Sun 09:00–19:00",
+        "note": "",
+        "source": "https://monsoonaccessorize.com.mt/stores-and-opening-hours/"
+      }
+    ]
+  },
+  "bata-mt": {
+    "customerService": {
+      "phone": "+356 2385 9200",
+      "email": "",
+      "note": "Общий номер из каталога One4all (офис Eurosport / Michele Peresso в Биркиркаре)."
+    },
+    "branches": [
+      {
+        "name": "Bata The Point",
+        "address": "The Point Shopping Mall (Level -2), Tigné Point, Sliema TP 01",
+        "phone": "+356 2385 9385",
+        "email": "bata.thepoint@micheleperesso.com.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/bata/"
+      },
+      {
+        "name": "Bata Valletta",
+        "address": "Old Theatre Street, Valletta",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "По каталогу One4all; телефон не найден.",
+        "source": "https://one4all.mt/directories/bata/"
+      },
+      {
+        "name": "Bata Pavi, Qormi",
+        "address": "PAVI Shopping Complex, Qormi",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "По каталогу One4all; телефон не найден.",
+        "source": "https://one4all.mt/directories/bata/"
+      },
+      {
+        "name": "Bata The Duke, Gozo",
+        "address": "The Duke Shopping Mall, Republic Street, Victoria, Gozo",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "По каталогу One4all; телефон не найден.",
+        "source": "https://one4all.mt/directories/bata/"
+      },
+      {
+        "name": "Bata at Eurosport Birkirkara",
+        "address": "Catalunya Buildings, Psaila Street, Birkirkara BKR 9076",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "По каталогу One4all — отдел в магазине Eurosport; телефон не найден.",
+        "source": "https://one4all.mt/directories/bata/"
+      }
+    ]
+  },
+  "darmanin-footwear-mt": {
+    "customerService": {
+      "phone": "",
+      "email": "info@darmaningroup.com",
+      "note": "Сайт darmaninfootwear.com недоступен (ошибка сертификата); список магазинов собран по сайтам ТЦ и прессе."
+    },
+    "branches": [
+      {
+        "name": "Darmanin Footwear The Point",
+        "address": "The Point Shopping Mall (Level -2), Tigné Point, Sliema TP 01",
+        "phone": "+356 2060 1148",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/damanin-footwear/"
+      },
+      {
+        "name": "Darmanin Footwear Mercury",
+        "address": "Mercury Towers (Mercury Mall), St George's Street, Paceville, St Julian's STJ 3202 (Ground Level)",
+        "phone": "+356 2093 9670",
+        "email": "info@darmaningroup.com",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина",
+        "source": "https://mercury.com.mt/shops/darmanin-footwear/"
+      },
+      {
+        "name": "Gallarija Darmanin Centerparc, Qormi",
+        "address": "Centerparc, Triq it-Tigrija, Qormi",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:00, Sun 10:00–18:00",
+        "note": "часы торгового центра Centerparc, не магазина",
+        "source": "https://centerparc.com.mt/"
+      },
+      {
+        "name": "Darmanin Footwear Sliema, Tower Road",
+        "address": "Tower Road, Sliema",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "По статье WhosWho; контактов не найдено.",
+        "source": "https://whoswho.mt/en/paola-s-darmanin-store-to-close-down-by-end-of-april"
+      },
+      {
+        "name": "Darmanin Footwear Valletta, Zachary Street",
+        "address": "St Zachary Street, Valletta",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "По статье WhosWho; контактов не найдено. Магазин на Republic Street, по той же статье, был закрыт на ремонт.",
+        "source": "https://whoswho.mt/en/paola-s-darmanin-store-to-close-down-by-end-of-april"
+      },
+      {
+        "name": "Darmanin Iklin",
+        "address": "Iklin",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "По статье WhosWho; контактов не найдено.",
+        "source": "https://whoswho.mt/en/paola-s-darmanin-store-to-close-down-by-end-of-april"
+      }
+    ]
+  },
+  "tezenis-mt": {
+    "branches": [
+      {
+        "name": "Tezenis Mercury",
+        "address": "Mercury Towers (Mercury Mall), St George's Street, Paceville, St Julian's STJ 3202 (Lower Ground)",
+        "phone": "+356 7710 8273",
+        "email": "info@rubiconmalta.com",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина. Другие магазины бренда на Мальте быстрым поиском не найдены.",
+        "source": "https://mercury.com.mt/shops/tezenis/"
+      }
+    ]
+  },
+  "intimissimi-mt": {
+    "branches": [
+      {
+        "name": "Intimissimi Mercury",
+        "address": "Mercury Towers (Mercury Mall), St George's Street, Paceville, St Julian's STJ 3202 (Lower Ground)",
+        "phone": "+356 7710 8401",
+        "email": "info@rubiconmalta.com",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина. Другие магазины бренда на Мальте быстрым поиском не найдены.",
+        "source": "https://mercury.com.mt/shops/intimissimi/"
+      }
+    ]
+  },
+  "calzedonia-mt": {
+    "branches": [
+      {
+        "name": "Calzedonia Mercury",
+        "address": "Mercury Towers (Mercury Mall), St George's Street, Paceville, St Julian's STJ 3202 (Lower Ground)",
+        "phone": "+356 7705 1590",
+        "email": "info@rubiconmalta.com",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина. Другие магазины бренда на Мальте быстрым поиском не найдены.",
+        "source": "https://mercury.com.mt/shops/calzedonia/"
+      }
+    ]
+  },
+  "levis-mt": {
+    "branches": [
+      {
+        "name": "Levi's The Point",
+        "address": "The Point Shopping Mall (Level -2), Tigné Point, Sliema TP 01",
+        "phone": "+356 2134 4264",
+        "email": "levis@denimandlion.com",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/levis/"
+      },
+      {
+        "name": "Levi's Mercury",
+        "address": "Mercury Towers (Mercury Mall), St George's Street, Paceville, St Julian's STJ 3202 (Lower Ground)",
+        "phone": "+356 2124 4866",
+        "email": "ls-mercury@denimandlion.com",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина",
+        "source": "https://mercury.com.mt/shops/levis/"
+      }
+    ]
+  },
+  "victorias-secret-mt": {
+    "branches": [
+      {
+        "name": "Victoria's Secret Bay Street",
+        "address": "Bay Street Shopping Complex, St George's Bay, St Julian's STJ 3311 (Level 0)",
+        "phone": "",
+        "email": "vs.baystreet@sf1group.com",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "часы комплекса Bay Street, не магазина. Телефон на сайте комплекса не указан.",
+        "source": "https://baystreet.com.mt/outlet-category/shopping/"
+      }
+    ]
+  },
+  "mvintage-mt": {
+    "customerService": {
+      "phone": "",
+      "email": "support@mvintage.com",
+      "note": "E-mail поддержки (указан на сайте Mercury)."
+    },
+    "branches": [
+      {
+        "name": "MVintage Iklin",
+        "address": "1, Triq Dun Karm, Iklin IKL 9030",
+        "phone": "+356 2764 7086",
+        "email": "iklin@mvintage.com",
+        "hours": "Mon–Sat 08:30–19:30, Sun 08:30–17:00",
+        "note": "",
+        "source": "https://mvintage.com/pages/stores"
+      },
+      {
+        "name": "MVintage Naxxar",
+        "address": "Triq San Pawl, Naxxar",
+        "phone": "+356 2141 8766",
+        "email": "naxxar@mvintage.com",
+        "hours": "Mon–Sat 09:00–19:00, Sun closed",
+        "note": "",
+        "source": "https://mvintage.com/pages/stores"
+      },
+      {
+        "name": "MVintage Valletta",
+        "address": "146, St Lucia Street, Valletta",
+        "phone": "+356 2124 2172",
+        "email": "valletta@mvintage.com",
+        "hours": "Mon–Sat 09:00–19:00, Sun 09:00–17:00",
+        "note": "",
+        "source": "https://mvintage.com/pages/stores"
+      },
+      {
+        "name": "MVintage Paola",
+        "address": "38, Pjazza Antoine de Paule, Paola",
+        "phone": "+356 2182 0299",
+        "email": "paola@mvintage.com",
+        "hours": "Mon–Sat 09:00–19:00, Sun closed",
+        "note": "",
+        "source": "https://mvintage.com/pages/stores"
+      },
+      {
+        "name": "MVintage Sliema, The Point",
+        "address": "The Point Shopping Mall (Level 0), Tigné Point, Sliema",
+        "phone": "+356 2134 0732",
+        "email": "thepoint@mvintage.com",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "",
+        "source": "https://mvintage.com/pages/stores"
+      },
+      {
+        "name": "MVintage Qormi, Centerparc",
+        "address": "Centerparc Shopping Complex, Triq it-Tigrija, Qormi",
+        "phone": "+356 2147 2330",
+        "email": "centerparc@mvintage.com",
+        "hours": "Mon–Sat 09:30–19:00, Sun 10:00–18:00",
+        "note": "",
+        "source": "https://mvintage.com/pages/stores"
+      },
+      {
+        "name": "MVintage St Julian's, Mercury",
+        "address": "Mercury Shopping District, Paceville, St Julian's",
+        "phone": "+356 2134 3336",
+        "email": "mercury@mvintage.com",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "",
+        "source": "https://mvintage.com/pages/stores"
+      },
+      {
+        "name": "MVintage Gozo, The Duke",
+        "address": "The Duke Shopping Mall, Victoria, Gozo",
+        "phone": "+356 2155 3009",
+        "email": "theduke@mvintage.com",
+        "hours": "Mon–Sun 09:00–19:00",
+        "note": "",
+        "source": "https://mvintage.com/pages/stores"
+      },
+      {
+        "name": "MVintage Kalkara, Shoreline",
+        "address": "The Shoreline Shopping Mall, SmartCity, Kalkara",
+        "phone": "+356 2180 6770",
+        "email": "shoreline@mvintage.com",
+        "hours": "Sun–Thu 10:00–19:30, Fri–Sat 10:00–20:00",
+        "note": "",
+        "source": "https://mvintage.com/pages/stores"
+      }
+    ]
+  },
+  "nike-mt": {
+    "customerService": {
+      "phone": "+356 2345 9000",
+      "email": "info@hudson.com.mt",
+      "note": "Головной офис франчайзи Hudson (Burmarrad)."
+    },
+    "branches": [
+      {
+        "name": "Nike Store The Point",
+        "address": "The Point Shopping Mall (Level -2), Tigné Point, Sliema TP 01",
+        "phone": "+356 2345 9806",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина. Мобильный: +356 9934 8889.",
+        "source": "https://thepointmalta.com/nike/"
+      },
+      {
+        "name": "Nike Store Mercury",
+        "address": "Mercury Towers (Mercury Mall), St George's Street, Paceville, St Julian's STJ 3202 (Lower Ground)",
+        "phone": "+356 2345 9000",
+        "email": "info@hudson.com.mt",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина. Указан номер головного офиса Hudson, прямого телефона магазина нет.",
+        "source": "https://mercury.com.mt/shops/nike/"
+      }
+    ]
+  },
+  "urban-jungle-mt": {
+    "customerService": {
+      "phone": "+356 2345 9000",
+      "email": "info@hudson.com.mt",
+      "note": "Головной офис франчайзи Hudson (Burmarrad)."
+    },
+    "branches": [
+      {
+        "name": "Urban Jungle The Point",
+        "address": "The Point Shopping Mall (Level -2), Tigné Point, Sliema TP 01",
+        "phone": "+356 2345 9828",
+        "email": "ujthepoint@urbanjunglestore.com.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина. Мобильный: +356 9934 8890.",
+        "source": "https://thepointmalta.com/urban-jungle/"
+      },
+      {
+        "name": "Urban Jungle Mercury",
+        "address": "Mercury Towers (Mercury Mall), St George's Street, Paceville, St Julian's STJ 3202 (Lower Ground)",
+        "phone": "+356 2345 9000",
+        "email": "info@hudson.com.mt",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина. Указан номер головного офиса Hudson.",
+        "source": "https://mercury.com.mt/shops/urban-jungle/"
+      },
+      {
+        "name": "Urban Jungle PAMA",
+        "address": "PAMA Shopping Village (Level 1), Valletta Road, Mosta MST 9017",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "По списку магазинов Hudson (обновлён 03.07.2025); телефон не указан.",
+        "source": "https://hudson.com.mt/hudson-stores-in-malta/"
+      }
+    ]
+  },
+  "hudson-store-mt": {
+    "customerService": {
+      "phone": "+356 2345 9000",
+      "email": "info@hudson.com.mt",
+      "note": "Головной офис франчайзи Hudson (Burmarrad)."
+    },
+    "branches": [
+      {
+        "name": "Hudson Store The Point",
+        "address": "The Point Shopping Mall (Level 0), Tigné Point, Sliema TP 01",
+        "phone": "+356 2345 9841",
+        "email": "info@hudson.com.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/hudson-store/"
+      },
+      {
+        "name": "Hudson Store Campus Hub",
+        "address": "Campus Hub, University of Malta, Tal-Qroqq Street, Msida",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "По списку магазинов Hudson (03.07.2025); телефон не указан.",
+        "source": "https://hudson.com.mt/hudson-stores-in-malta/"
+      },
+      {
+        "name": "Hudson Arkadia, Gozo",
+        "address": "Arkadia Commercial Centre, Fortunato Mizzi Street, Victoria, Gozo",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "По списку магазинов Hudson (03.07.2025); телефон не указан. Общий номер центра Arkadia: +356 2210 3000.",
+        "source": "https://hudson.com.mt/hudson-stores-in-malta/"
+      }
+    ]
+  },
+  "tommy-hilfiger-mt": {
+    "customerService": {
+      "phone": "+356 2345 9000",
+      "email": "info@hudson.com.mt",
+      "note": "Головной офис франчайзи Hudson (Burmarrad)."
+    },
+    "branches": [
+      {
+        "name": "Tommy Hilfiger The Point",
+        "address": "The Point Shopping Mall (Level 0), Tigné Point, Sliema TP 01",
+        "phone": "+356 2345 9004",
+        "email": "info@hudson.com.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина. Tommy Jeans там же, Level 0: +356 2345 9007 / +356 7983 8476.",
+        "source": "https://thepointmalta.com/tommy-hilfiger/"
+      },
+      {
+        "name": "Tommy Hilfiger Mercury",
+        "address": "Mercury Towers (Mercury Mall), St George's Street, Paceville, St Julian's STJ 3202 (Ground Level)",
+        "phone": "+356 2345 9008",
+        "email": "info@hudson.com.mt",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина",
+        "source": "https://mercury.com.mt/shops/tommy-hilfiger/"
+      },
+      {
+        "name": "Tommy Hilfiger & Tommy Jeans Valletta",
+        "address": "302, Ferreria Palace, Republic Street, Valletta",
+        "phone": "+356 2345 9010",
+        "email": "",
+        "hours": "",
+        "note": "Адрес — по списку Hudson; телефон — по каталогу One4all 2024 года, уточнить.",
+        "source": "https://hudson.com.mt/hudson-stores-in-malta/"
+      }
+    ]
+  },
+  "calvin-klein-mt": {
+    "customerService": {
+      "phone": "+356 2345 9000",
+      "email": "info@hudson.com.mt",
+      "note": "Головной офис франчайзи Hudson (Burmarrad)."
+    },
+    "branches": [
+      {
+        "name": "Calvin Klein The Point",
+        "address": "The Point Shopping Mall, Tigné Point, Sliema TP 01",
+        "phone": "+356 2345 9005",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина. На сайте ТЦ — Calvin Klein Jeans, Level 0 (в списке Hudson — Level 1). Мобильный: +356 7983 8457.",
+        "source": "https://thepointmalta.com/calvin-klein-jeans/"
+      },
+      {
+        "name": "Calvin Klein Mercury",
+        "address": "Mercury Towers (Mercury Mall), St George's Street, Paceville, St Julian's STJ 3202 (Ground Level)",
+        "phone": "+356 2345 9022",
+        "email": "info@hudson.com.mt",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина",
+        "source": "https://mercury.com.mt/shops/calvin-klein/"
+      }
+    ]
+  },
+  "armani-exchange-mt": {
+    "customerService": {
+      "phone": "+356 2345 9000",
+      "email": "info@hudson.com.mt",
+      "note": "Головной офис франчайзи Hudson (Burmarrad)."
+    },
+    "branches": [
+      {
+        "name": "A|X Armani Exchange The Point",
+        "address": "The Point Shopping Mall (Level 0, Shop 13), Tigné Point, Sliema TP 01",
+        "phone": "+356 2345 9006",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина. Мобильный: +356 7983 8479.",
+        "source": "https://thepointmalta.com/armani-exchange/"
+      }
+    ]
+  },
+  "adidas-mt": {
+    "customerService": {
+      "phone": "+356 2385 9200",
+      "email": "customercare@eurosport.com.mt",
+      "note": "Служба поддержки Eurosport (франчайзи adidas и Skechers на Мальте)."
+    },
+    "branches": [
+      {
+        "name": "adidas Bay Street",
+        "address": "Bay Street Shopping Complex, St George's Bay, St Julian's STJ 3311 (Level 0)",
+        "phone": "+356 2385 9315",
+        "email": "adidas.baystreet@eurosport.com.mt",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "",
+        "source": "https://www.eurosport.com.mt/AllShops"
+      },
+      {
+        "name": "adidas The Point",
+        "address": "The Point Shopping Mall (Level -2), Tigné Point, Sliema TP 01",
+        "phone": "+356 2385 9387",
+        "email": "customercare@eurosport.com.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "",
+        "source": "https://www.eurosport.com.mt/AllShops"
+      },
+      {
+        "name": "adidas Birkirkara",
+        "address": "Catalunya Buildings, Psaila Street, Birkirkara BKR 9076",
+        "phone": "+356 2385 9200",
+        "email": "customercare@eurosport.com.mt",
+        "hours": "Mon–Sat 09:00–19:30, Sun 10:00–18:00",
+        "note": "Общий адрес и телефон с магазином Eurosport.",
+        "source": "https://www.eurosport.com.mt/AllShops"
+      }
+    ]
+  },
+  "skechers-mt": {
+    "customerService": {
+      "phone": "+356 2385 9200",
+      "email": "customercare@eurosport.com.mt",
+      "note": "Служба поддержки Eurosport (франчайзи adidas и Skechers на Мальте)."
+    },
+    "branches": [
+      {
+        "name": "Skechers Bay Street",
+        "address": "Bay Street Shopping Complex, St George's Bay, St Julian's STJ 3311 (Level 0)",
+        "phone": "+356 2385 9320",
+        "email": "skechers.baystreet@eurosport.com.mt",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "",
+        "source": "https://www.eurosport.com.mt/AllShops"
+      },
+      {
+        "name": "Skechers The Point",
+        "address": "The Point Shopping Mall (Level -2), Tigné Point, Sliema TP 01",
+        "phone": "+356 2385 9388",
+        "email": "customercare@eurosport.com.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "",
+        "source": "https://www.eurosport.com.mt/AllShops"
+      },
+      {
+        "name": "Skechers Birkirkara",
+        "address": "Catalunya Buildings, Psaila Street, Birkirkara BKR 9076",
+        "phone": "+356 2385 9200",
+        "email": "customercare@eurosport.com.mt",
+        "hours": "Mon–Sat 09:00–19:30, Sun 10:00–18:00",
+        "note": "Общий адрес и телефон с магазином Eurosport.",
+        "source": "https://www.eurosport.com.mt/AllShops"
+      },
+      {
+        "name": "Skechers Gozo",
+        "address": "The Duke Shopping Mall, Republic Street, Victoria, Gozo",
+        "phone": "+356 2385 9366",
+        "email": "customercare@eurosport.com.mt",
+        "hours": "Mon–Sun 09:00–19:00",
+        "note": "",
+        "source": "https://www.eurosport.com.mt/AllShops"
+      }
+    ]
+  },
+  "guess-mt": {
+    "customerService": {
+      "phone": "+356 2247 4643",
+      "email": "dizzfashion@dizz.com.mt",
+      "note": "Служба поддержки Dizz Fashion, Пн–Пт 09:00–17:00."
+    },
+    "branches": [
+      {
+        "name": "Guess The Point",
+        "address": "The Point Shopping Mall (Level 0), Tigné Point, Sliema TP 01",
+        "phone": "+356 2247 4661",
+        "email": "info@dizz.com.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/guess/"
+      },
+      {
+        "name": "Guess Mercury",
+        "address": "Mercury Towers (Mercury Mall), St George's Street, Paceville, St Julian's STJ 3202 (Lower Ground)",
+        "phone": "+356 2247 4684",
+        "email": "guess.mercury@dizz.com.mt",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина",
+        "source": "https://mercury.com.mt/shops/guess/"
+      },
+      {
+        "name": "Guess Centerparc, Qormi",
+        "address": "Centerparc, Triq it-Tigrija, Qormi",
+        "phone": "",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:00, Sun 10:00–18:00",
+        "note": "часы торгового центра Centerparc, не магазина. Телефон не найден.",
+        "source": "https://centerparc.com.mt/"
+      }
+    ]
+  },
+  "liu-jo-mt": {
+    "customerService": {
+      "phone": "+356 2247 4643",
+      "email": "dizzfashion@dizz.com.mt",
+      "note": "Служба поддержки Dizz Fashion, Пн–Пт 09:00–17:00. Старые источники упоминают ещё Bay Street, Valletta и аэропорт — актуальность не подтверждена."
+    },
+    "branches": [
+      {
+        "name": "Liu Jo The Point",
+        "address": "The Point Shopping Mall (Level 0), Tigné Point, Sliema TP 01",
+        "phone": "+356 2247 4634",
+        "email": "info@dizz.com.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/liu-jo/"
+      }
+    ]
+  },
+  "harmont-and-blaine-mt": {
+    "customerService": {
+      "phone": "+356 2247 4643",
+      "email": "dizzfashion@dizz.com.mt",
+      "note": "Служба поддержки Dizz Fashion, Пн–Пт 09:00–17:00."
+    },
+    "branches": [
+      {
+        "name": "Harmont & Blaine The Point",
+        "address": "The Point Shopping Mall (Level 0), Tigné Point, Sliema TP 01",
+        "phone": "+356 2247 4652",
+        "email": "info@dizz.com.mt",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/harmont-blaine/"
+      },
+      {
+        "name": "Harmont & Blaine Bay Street",
+        "address": "Bay Street Shopping Complex, St George's Bay, St Julian's STJ 3311 (Level 0)",
+        "phone": "+356 2247 4607",
+        "email": "",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "часы комплекса Bay Street, не магазина",
+        "source": "https://baystreet.com.mt/outlet-category/shopping/"
+      }
+    ]
+  },
+  "lacoste-mt": {
+    "customerService": {
+      "phone": "+356 2123 9566",
+      "email": "webshop@bortex.com.mt",
+      "note": "Общие контакты Bortex Group (франчайзи)."
+    },
+    "branches": [
+      {
+        "name": "Lacoste The Point",
+        "address": "The Point Shopping Mall (Level 0), Tigné Point, Sliema",
+        "phone": "+356 2060 1031",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Lacoste St George's Mall",
+        "address": "St George's Mall (Level -1), Triq ix-Xatt ta' San Ġorġ, St Julian's",
+        "phone": "+356 2122 1076",
+        "email": "",
+        "hours": "Mon–Thu 09:30–20:00, Fri–Sun 09:30–22:00",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      }
+    ]
+  },
+  "polo-ralph-lauren-mt": {
+    "customerService": {
+      "phone": "+356 2123 9566",
+      "email": "webshop@bortex.com.mt",
+      "note": "Общие контакты Bortex Group (франчайзи)."
+    },
+    "branches": [
+      {
+        "name": "Polo Ralph Lauren The Point",
+        "address": "The Point Shopping Mall (Level 0), Tigné Point, Sliema",
+        "phone": "+356 2133 6876",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Polo Ralph Lauren Valletta",
+        "address": "54-55 Merchants Street, Valletta",
+        "phone": "+356 2125 0401",
+        "email": "",
+        "hours": "Mon–Sat 09:00–19:00, Sun 10:00–16:00",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Polo Ralph Lauren at Barlowes, Mercury",
+        "address": "Mercury Tower (Level 1), St George's Street, Paceville, St Julian's",
+        "phone": "+356 2182 5068",
+        "email": "info@barlowes.com.mt",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "Мультибрендовый магазин Barlowes (Bortex), где представлен Polo Ralph Lauren; телефон и часы Barlowes.",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      }
+    ]
+  },
+  "gant-mt": {
+    "customerService": {
+      "phone": "+356 2123 9566",
+      "email": "webshop@bortex.com.mt",
+      "note": "Общие контакты Bortex Group (франчайзи)."
+    },
+    "branches": [
+      {
+        "name": "Gant Bay Street",
+        "address": "Bay Street Shopping Complex (Level 1), St Julian's STJ 3311",
+        "phone": "+356 2137 4583",
+        "email": "gantbaystreet@bortexgroup.com",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Gant at Barlowes, Mercury",
+        "address": "Mercury Tower (Level 1), St George's Street, Paceville, St Julian's",
+        "phone": "+356 2182 5068",
+        "email": "info@barlowes.com.mt",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "Мультибрендовый магазин Barlowes (Bortex), где представлен Gant; телефон и часы Barlowes.",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      }
+    ]
+  },
+  "bortex-mt": {
+    "customerService": {
+      "phone": "+356 2123 9566",
+      "email": "webshop@bortex.com.mt",
+      "note": "Интернет-магазин bortex.com.mt; общий e-mail для всех магазинов. Ещё один адрес с сайта Bay Street: info@bortexgroup.com."
+    },
+    "branches": [
+      {
+        "name": "Bortex Bay Street (Bortex & Friends)",
+        "address": "Bay Street (Level 2), Triq Sqaq Lourdes, St Julian's",
+        "phone": "+356 2137 0804",
+        "email": "info@bortexgroup.com",
+        "hours": "Mon–Sun 10:00–22:00",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Bortex Pjazza Tigné",
+        "address": "Pjazza Tigné, Tigné Point, Censu Xerri Street, Sliema",
+        "phone": "+356 2131 0947",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Bortex Plaza Shopping Centre",
+        "address": "Plaza Shopping Centre (Level 2), Bisazza Street, Sliema SLM 1640",
+        "phone": "+356 2134 1466",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:30, Sun 11:00–19:00",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Bortex St George's Mall",
+        "address": "St George's Mall (Level -1), Triq ix-Xatt ta' San Ġorġ, St Julian's",
+        "phone": "+356 2125 0741",
+        "email": "",
+        "hours": "Mon–Thu 09:30–20:00, Fri–Sun 09:30–22:00",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Bortex Valletta",
+        "address": "28 Merchants Street, Valletta",
+        "phone": "+356 2122 8419",
+        "email": "",
+        "hours": "Mon–Sat 09:00–19:00, Sun 10:00–18:00",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Bortex Mosta",
+        "address": "14 Constitution Street, Mosta",
+        "phone": "+356 2142 0524",
+        "email": "",
+        "hours": "Mon–Sat 09:00–19:00",
+        "note": "Часы на воскресенье на сайте не указаны.",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Bortex PAMA Shopping Village",
+        "address": "PAMA Shopping Village, Valletta Road, Mosta",
+        "phone": "+356 2143 6857",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:00, Sun 09:00–19:00",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Bortex Marsa",
+        "address": "A11, Industrial Estate, Marsa",
+        "phone": "+356 2125 2184",
+        "email": "",
+        "hours": "Mon–Sat 09:00–19:00, Sun 09:00–17:00",
+        "note": "Там же отдел проката и корпоративных заказов: +356 2122 1312 (Пн–Пт 09:00–19:00, Сб 09:00–14:00).",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Bortex Shoreline",
+        "address": "The Shoreline Mall (Level 1, SU-05), SmartCity, Kalkara",
+        "phone": "+356 2167 3454",
+        "email": "",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Bortex Gozo",
+        "address": "The Duke Shopping Mall, Republic Street, Victoria, Gozo",
+        "phone": "+356 2155 6260",
+        "email": "",
+        "hours": "Mon–Sun 09:00–19:00",
+        "note": "",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Bortex Clearance Outlet Mriehel",
+        "address": "Mirabilis Building, Triq l-Intornjatur, Mriehel",
+        "phone": "+356 2144 7767",
+        "email": "",
+        "hours": "Mon–Sat 09:30–19:00, Sun 09:30–18:00",
+        "note": "Аутлет.",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      },
+      {
+        "name": "Bortex Gozo Luxury Outlet",
+        "address": "Marmar Buildings, Gorg Borg Olivier Street, Victoria (Rabat), Gozo",
+        "phone": "+356 2155 7171",
+        "email": "",
+        "hours": "Mon–Sat 09:00–19:00, Sun 10:00–14:00",
+        "note": "Аутлет.",
+        "source": "https://bortex.com.mt/pages/store-locator"
+      }
+    ]
+  },
+  "boss-mt": {
+    "branches": [
+      {
+        "name": "BOSS Mercury, St Julian's",
+        "address": "Mercury Towers (Mercury Mall), St George's Street, Paceville, St Julian's STJ 3202 (Ground Level)",
+        "phone": "+356 2202 1001",
+        "email": "bossstjulians@vfgroup.mt",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина",
+        "source": "https://mercury.com.mt/shops/boss/"
+      }
+    ]
+  },
+  "charles-and-ron-mt": {
+    "branches": [
+      {
+        "name": "Charles & Ron The Point (MINUSTHREE)",
+        "address": "The Point Shopping Mall, Tigné Point, Sliema TP 01",
+        "phone": "+356 2015 1706",
+        "email": "info@charlesandron.com",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина. Флагман в Валлетте в этом поиске подтвердить не удалось — не включён.",
+        "source": "https://thepointmalta.com/charles-ron/"
+      }
+    ]
+  },
+  "dune-london-mt": {
+    "customerService": {
+      "phone": "",
+      "email": "info@dunelondonmalta.com",
+      "note": ""
+    },
+    "branches": [
+      {
+        "name": "Dune London The Point (MINUSTHREE)",
+        "address": "The Point Shopping Mall, Tigné Point, Sliema TP 01",
+        "phone": "+356 2015 1711",
+        "email": "info@dunelondonmalta.com",
+        "hours": "Mon–Sun 10:00–19:30",
+        "note": "часы торгового центра The Point, не магазина",
+        "source": "https://thepointmalta.com/dune-london/"
+      },
+      {
+        "name": "Dune London Fgura",
+        "address": "Fgura",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "Магазин виден в сервисе доставки Wolt; адрес и телефон не найдены.",
+        "source": "https://wolt.com/en/mlt/malta/venue/dune-london-fgura"
+      },
+      {
+        "name": "Dune London Mosta",
+        "address": "Mosta",
+        "phone": "",
+        "email": "",
+        "hours": "",
+        "note": "Магазин виден в сервисе доставки Wolt; адрес и телефон не найдены.",
+        "source": "https://wolt.com/en/mlt/malta/venue/dune-london-mosta"
+      }
+    ]
+  },
+  "sarto-mt": {
+    "branches": [
+      {
+        "name": "Sarto x Super F#, Mercury",
+        "address": "Mercury Towers (Upper Piazza), St George's Street, Paceville, St Julian's STJ 3202",
+        "phone": "",
+        "email": "",
+        "hours": "Sun–Thu 10:00–20:00, Fri–Sat 10:00–22:00",
+        "note": "часы торгового центра Mercury, не магазина. Прямой телефон магазина на сайте не указан — только инфо-стойка Mercury: +356 7710 3272, infodesk@mercury.com.mt.",
+        "source": "https://mercury.com.mt/shops/sarto-superf/"
+      }
+    ]
+  }
+}

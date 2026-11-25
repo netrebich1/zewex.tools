@@ -1,0 +1,286 @@
+/**
+ * Тексты для Canvas-пинов («хуки»): порт supabase/functions/canvas-generate-hooks.
+ *
+ * Что сохранено из легаси: смысловое правило (заголовок = тот же запрос страницы,
+ * расширенный LSI-словами), запрет цифр и годов (их подставляет шаблон, кроме цифр
+ * из ключа/H1), пачки по 3 страницы, 4 параллельных запроса, 3 попытки, второй проход
+ * по одной странице для «недобранных», фолбэк из заголовка страницы.
+ * Что изменилось: заголовок ≤ 44 знаков (цель — 2–3 строки), без эмодзи, язык из входа,
+ * обрезанные посреди фразы хуки («Styles For 4th Of») не допускаются: лишние слова снимаются
+ * целиком вместе с повисшим предлогом, а хуки, которые пришлось резать, идут последними,
+ * вызов идёт через aiChat (слот text_main), ключ выбирает портал — ротация на повторе
+ * происходит сама, если предыдущий ключ отключён.
+ */
+
+import { aiChat, type AiCtx } from "@/lib/pins/ai/client";
+import { AiError } from "@/lib/pins/ai/errors";
+import { SLOT_TEXT_MAIN } from "@/lib/pins/types";
+
+export interface HookPageInput {
+  id: string;
+  keyword: string;
+  title: string;
+  topic: string;
+  niche: string;
+  season?: string;
+  ideaCount?: number;
+}
+
+export interface GenerateHooksInput {
+  pages: HookPageInput[];
+  language: string;
+  audience: string;
+  perPage: number;
+}
+
+export interface CanvasHook {
+  title: string;
+  kicker?: string;
+  cta?: string;
+}
+
+export interface GenerateHooksOptions {
+  signal?: AbortSignal;
+}
+
+export const HOOK_TITLE_MAX = 44;
+export const HOOK_KICKER_MAX = 22;
+export const HOOK_CTA_MAX = 18;
+
+const BATCH = 3;
+const CONCURRENCY = 4;
+const ATTEMPTS = 3;
+const CALL_TIMEOUT_MS = 30_000;
+
+/* ---------- чистка текста ---------- */
+
+const EMOJI_RE = /\p{Extended_Pictographic}|️|‍|[\u{1F1E6}-\u{1F1FF}]/gu;
+
+/** Служебные слова, на которые заголовок заканчиваться не должен (en/ru/uk/de/fr/es). */
+const DANGLING_RE = /\s+(?:for|of|and|or|with|to|the|a|an|in|on|at|by|from|your|that|this|into|и|в|во|на|с|со|для|из|к|ко|по|от|о|об|у|за|до|при|про|та|і|й|з|із|зі|до|для|під|над|при|und|mit|für|von|zu|der|die|das|et|de|du|des|pour|avec|y|con|para|el|la|los|las)$/iu;
+
+function stripDangling(s: string): string {
+  let out = s;
+  for (let i = 0; i < 3; i++) {
+    const next = out.replace(DANGLING_RE, "").replace(/[\s,:;—–-]+$/, "").trim();
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+function clean(s: unknown, max: number): string {
+  const base = String(s ?? "")
+    .replace(EMOJI_RE, "")
+    .replace(/[«»"“”]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/[.!]+$/, "")
+    .trim();
+  if (base.length <= max) return stripDangling(base);
+  // Режем по границе слова и снимаем повисший предлог, чтобы не оставлять обрубков фразы.
+  const cut = base.slice(0, max + 1);
+  const sp = cut.lastIndexOf(" ");
+  return stripDangling((sp > max * 0.5 ? cut.slice(0, sp) : base.slice(0, max)).replace(/[\s,:;—–-]+$/, "").trim());
+}
+
+/** Слова сезонов на языках пинов. Сезон на пине — только если он есть в ключе страницы. */
+const SEASON_RE = /(?<!\p{L})(?:winter|spring|summer|fall|autumn(?:al)?|зим\p{L}*|весн\p{L}*|весен\p{L}*|весін\p{L}*|лето|летн\p{L}*|літо|літн\p{L}*|осен\p{L}*|осін\p{L}*|frühling|sommer|herbst|hiver|printemps|été|automne|invierno|primavera|verano|otoño|inverno|estate|autunno|verão|outono|zim[aoyę]\p{L}*|wiosn\p{L}*|lato|letni\p{L}*|jesie\p{L}*)(?!\p{L})/giu;
+
+function stripSeason(s: string): string {
+  return stripDangling(s.replace(SEASON_RE, " ").replace(/\s{2,}/g, " ").replace(/^[\s,:;—–-]+|[\s,:;—–-]+$/g, "").trim());
+}
+
+/** Есть ли сезон в ключе страницы (поле season или сезонное слово в ключе/заголовке). */
+export function pageHasSeason(p: { season?: string | null; keyword?: string | null; title?: string | null }): boolean {
+  return !!p.season || new RegExp(SEASON_RE.source, "iu").test(`${p.keyword ?? ""} ${p.title ?? ""}`);
+}
+
+/** Хук без сезонных слов, если у страницы сезона нет (и для уже сохранённых хуков). */
+export function seasonSafeHook(h: CanvasHook, keepSeason: boolean): CanvasHook {
+  if (keepSeason) return h;
+  const title = stripSeason(h.title);
+  const kicker = h.kicker ? stripSeason(h.kicker) : "";
+  const cta = h.cta ? stripSeason(h.cta) : "";
+  return { title: title.split(" ").length >= 2 ? title : h.title, ...(kicker ? { kicker } : {}), ...(cta ? { cta } : {}) };
+}
+
+/** Пришлось ли резать текст (длиннее лимита). */
+function wasCut(s: unknown, max: number): boolean {
+  return String(s ?? "").replace(EMOJI_RE, "").replace(/[«»"“”]/g, "").replace(/\s{2,}/g, " ").replace(/[.!]+$/, "").trim().length > max;
+}
+
+/** Цифры в текст не пускаем: число идей и год подставляет движок шаблона.
+ *  Исключение: цифры из ключевого слова/заголовка (возраст «Over 40», размер) сохраняем. */
+function stripDigits(s: string, allowed: readonly string[]): string {
+  const keep = new Set(allowed);
+  return s
+    .replace(/\d+/g, (digit) => (keep.has(digit) ? digit : " "))
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s:—–-]+|[\s:—–-]+$/g, "")
+    .trim();
+}
+
+/** Цифры, встречающиеся в ключевом слове или заголовке страницы. */
+function keywordDigits(...parts: Array<string | undefined>): string[] {
+  const found = new Set<string>();
+  for (const p of parts) for (const m of String(p ?? "").matchAll(/\d+/g)) found.add(m[0]);
+  return Array.from(found).sort((a, b) => b.length - a.length);
+}
+
+/* ---------- промт ---------- */
+
+function systemPrompt(language: string, audience: string, perPage: number): string {
+  return [
+    `Ти — копірайтер Pinterest-пінів. Пишеш ТІЛЬКИ мовою: ${language}.`,
+    audience ? `Аудиторія сайту: ${audience}.` : "",
+    `Для кожної сторінки дай ${perPage} варіантів тексту для картинки піна.`,
+    "Тематика сайту і ніша вказані у кожній сторінці (поля topic, niche).",
+    "ГОЛОВНЕ ПРАВИЛО СМИСЛУ: кожен заголовок — це той самий запит сторінки, лише трохи розширений",
+    "LSI-словами і тематичними ключами (синоніми, уточнення, аудиторія, привід, довжина/тип).",
+    "СЕЗОН: згадуй сезон (осінь, зима, весна, літо) ТІЛЬКИ якщо поле season сторінки непорожнє — і тільки цей сезон.",
+    "Якщо season порожнє — жодних сезонів ні в title, ні в kicker, ні в cta.",
+    "Заборонено підміняти тему або звужувати її до іншого підвиду: якщо стаття про «короткі стрижки»,",
+    "не можна писати «стрижка піксі», «каре» чи будь-який інший конкретний підвид, якого немає в keyword/title.",
+    "Ключове слово (або його очевидний синонім/словоформа) має бути присутнє в кожному title.",
+    "Не додавай фактів, яких немає в keyword/title (бренди, імена, конкретні техніки, ціни, локації).",
+    "Варіанти різняться формулюванням і акцентом, а не темою.",
+    "Правила форми:",
+    `- title: 3-6 слів, СУВОРО до ${HOOK_TITLE_MAX - 4} знаків разом із пробілами (читається у 2-3 короткі рядки), закінчена фраза, чіпляючий хук; БЕЗ крапки в кінці, без лапок. Довші за ліміт варіанти будуть відкинуті — краще коротше.`,
+    "- Жодних емодзі та спецсимволів у жодному полі.",
+    "- СУВОРО ЗАБОРОНЕНО використовувати будь-які цифри та роки в title, kicker, cta",
+    "  (кількість ідей і рік підставляє шаблон автоматично). Не пиши «7 ідей», «2025» тощо.",
+    "- ВИНЯТОК: цифри, що вже є в keyword/title сторінки (вік «Over 40», розмір, номер моделі),",
+    "  ЗБЕРІГАЙ у title обов'язково — це частина теми, а не лічильник ідей.",
+    `- kicker: коротка плашка до ${HOOK_KICKER_MAX} знаків (рубрика; сезон — лише якщо season непорожнє), теж у межах теми, без цифр.`,
+    `- cta: до ${HOOK_CTA_MAX} знаків, дієслово-заклик.`,
+    "- Не повторювати назву бренду або домен у тексті.",
+    "- Не дублювати однакові заголовки між варіантами.",
+    'Формат відповіді — суворо JSON: {"results":[{"id":"<id сторінки>","hooks":[{"title":"","kicker":"","cta":""}]}]}',
+  ].filter(Boolean).join("\n");
+}
+
+function userPayload(chunk: HookPageInput[]): string {
+  return JSON.stringify(chunk.map((p) => ({
+    id: p.id,
+    title: p.title || "",
+    keyword: p.keyword || "",
+    topic: p.topic || "",
+    niche: p.niche || "",
+    season: p.season || "",
+    ideas: p.ideaCount ?? null,
+  })));
+}
+
+/* ---------- разбор ответа ---------- */
+
+type RawHook = { title?: unknown; kicker?: unknown; cta?: unknown };
+type RawRow = { id?: unknown; hooks?: unknown };
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function parseResults(json: unknown): RawRow[] {
+  if (!isRecord(json)) return [];
+  const arr = json.results;
+  return Array.isArray(arr) ? arr.filter(isRecord) : [];
+}
+
+function toHooks(row: RawRow, src: HookPageInput): CanvasHook[] {
+  const allow = keywordDigits(src.keyword, src.title);
+  // Сезона нет в ключе — сезонные слова модели снимаем (кроме тех, что есть в самом ключе/заголовке).
+  const keepSeason = pageHasSeason(src);
+  const noSeason = (s: string) => (keepSeason ? s : stripSeason(s));
+  const list = Array.isArray(row.hooks) ? row.hooks.filter(isRecord) : [];
+  const out: Array<CanvasHook & { cut: boolean }> = [];
+  const seen = new Set<string>();
+  for (const h of list as RawHook[]) {
+    const title = noSeason(stripDigits(clean(h.title, HOOK_TITLE_MAX), allow));
+    if (!title || title.split(" ").length < 2 || seen.has(title.toLowerCase())) continue;
+    seen.add(title.toLowerCase());
+    const kicker = noSeason(stripDigits(clean(h.kicker, HOOK_KICKER_MAX), allow));
+    const cta = stripDigits(clean(h.cta, HOOK_CTA_MAX), allow);
+    out.push({ title, ...(kicker ? { kicker } : {}), ...(cta ? { cta } : {}), cut: wasCut(h.title, HOOK_TITLE_MAX) });
+  }
+  // Целые хуки вперёд, резаные — в хвост (их возьмут, только если целых не хватило).
+  return out.sort((a, b) => Number(a.cut) - Number(b.cut)).map(({ cut: _c, ...h }) => h);
+}
+
+const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve) => {
+  const t = setTimeout(resolve, ms);
+  signal?.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true });
+});
+
+/* ---------- основной вызов ---------- */
+
+export async function generateHooks(
+  ctx: AiCtx,
+  input: GenerateHooksInput,
+  opts: GenerateHooksOptions = {},
+): Promise<Map<string, CanvasHook[]>> {
+  const signal = opts.signal ?? ctx.signal;
+  const aiCtx: AiCtx = { ...ctx, signal };
+  const perPage = Math.max(1, Math.min(5, Math.floor(input.perPage) || 1));
+  const system = systemPrompt(input.language || "українська", input.audience || "", perPage);
+  const results = new Map<string, CanvasHook[]>();
+  const errors: string[] = [];
+
+  async function runChunk(chunk: HookPageInput[]): Promise<void> {
+    const user = userPayload(chunk);
+    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+      if (signal?.aborted) return;
+      try {
+        const res = await aiChat(aiCtx, SLOT_TEXT_MAIN, {
+          system, user, json: true, temperature: 0.8, maxTokens: 4000, timeoutMs: CALL_TIMEOUT_MS,
+        });
+        for (const row of parseResults(res.json)) {
+          const id = String(row.id ?? "");
+          const src = chunk.find((p) => p.id === id);
+          if (!src) continue;
+          const hooks = toHooks(row, src);
+          if (hooks.length && hooks.length >= (results.get(id)?.length ?? 0)) results.set(id, hooks.slice(0, perPage));
+        }
+        return;
+      } catch (e) {
+        if (e instanceof AiError && e.cls.kind === "fatal_run") throw e;
+        if (e instanceof AiError && e.cls.kind === "permanent") { errors.push(e.message); return; }
+        if (attempt === ATTEMPTS - 1) errors.push(e instanceof Error ? e.message : String(e));
+        else await sleep(1200 * (attempt + 1), signal);
+      }
+    }
+  }
+
+  async function runPool(list: HookPageInput[], size: number): Promise<void> {
+    const chunks: HookPageInput[][] = [];
+    for (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));
+    let cursor = 0;
+    const workers = Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, async () => {
+      while (cursor < chunks.length && !signal?.aborted) {
+        const chunk = chunks[cursor++];
+        await runChunk(chunk);
+      }
+    });
+    await Promise.all(workers);
+  }
+
+  // 1-й проход — пачками, параллельно.
+  await runPool(input.pages, BATCH);
+  // 2-й проход — добираем страницы, где вариантов меньше запрошенного.
+  const incomplete = input.pages.filter((p) => (results.get(p.id)?.length ?? 0) < perPage);
+  if (incomplete.length && !signal?.aborted) await runPool(incomplete, 1);
+
+  // Прервано пользователем или перезапуском: не подменять хуки заглушками.
+  if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("aborted");
+  // Фолбэк: страницы без хуков получают заголовок/ключ страницы.
+  for (const p of input.pages) {
+    if (results.get(p.id)?.length) continue;
+    const base = (p.title || p.keyword || "").trim();
+    if (!base) continue;
+    const allow = keywordDigits(p.keyword, p.title);
+    const kicker = stripDigits(clean(p.season || p.topic || "", HOOK_KICKER_MAX), allow);
+    results.set(p.id, [{ title: stripDigits(clean(base, HOOK_TITLE_MAX), allow), ...(kicker ? { kicker } : {}) }]);
+  }
+
+  if (errors.length && results.size === 0) throw new Error(`Хуки не сгенерированы: ${errors[0]}`);
+  return results;
+}

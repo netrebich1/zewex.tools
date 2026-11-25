@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { runSlot } from "@/lib/run";
+import { canUseTool } from "@/lib/permissions";
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Тело запроса должно быть JSON" }, { status: 400 });
   }
   if (!body.project || !body.slot) return NextResponse.json({ ok: false, error: "Укажите project и slot" }, { status: 400 });
+  if (!canUseTool(me, body.project)) return NextResponse.json({ ok: false, error: "Этот инструмент вам не открыт" }, { status: 403 });
   const r = await runSlot({ userId: me.id, projectSlug: body.project, slotKey: body.slot, payload: body.payload ?? {} });
   return NextResponse.json(r, { status: r.status });
 }
