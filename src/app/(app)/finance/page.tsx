@@ -303,11 +303,56 @@ function DebtLedger({ ledger, partners, f: f0 }: { ledger: Awaited<ReturnType<ty
                   <li>Возвраты за месяц: {m.settled.length ? <b>{m.settled.map(ret).join("; ")}</b> : "не было"}</li>
                   {!(first && !m.settled.length) && <li>{first ? "Долг на конец месяца" : "Долг на конец месяца, вместе с прошлыми месяцами и возвратами"}: <b>{owes(m.end, f)}</b></li>}
                 </ul>
+                <MonthMath m={m} prev={months[months.length - 2 - i]?.end ?? []} partners={partners} f={f} />
               </li>
             );
           })}
         </ul>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Расчёт месяца короткими формулами — только для двух партнёров с равными долями (там долг = половина разницы вкладов):
+ * вклад каждого, разница, пополам, и как из итога месяца, прошлого долга и возвратов получился долг на конец.
+ */
+function MonthMath({ m, prev, partners, f }: { m: Awaited<ReturnType<typeof debtState>>["ledger"]["months"][number]; prev: Transfer[]; partners: { id: string; name: string; sharePct: number }[]; f: Fmt }) {
+  if (partners.length !== 2 || partners[0].sharePct !== partners[1].sharePct) return null;
+  const c = (p: { id: string }) => (m.paid[p.id] ?? 0) - (m.received[p.id] ?? 0);
+  const [hi, lo] = c(partners[0]) >= c(partners[1]) ? partners : [partners[1], partners[0]];
+  const gap = c(hi) - c(lo);
+  // Долг на конец: слагаемые со знаком относительно того, кто должен в итоге.
+  const debtor = (m.end[0] ?? m.own[0] ?? prev[0])?.fromId;
+  const terms = [
+    ...m.own.map((t) => ({ label: `${t.from} должен за этот месяц`, v: t.fromId === debtor ? t.amount : -t.amount })),
+    ...prev.map((t) => ({ label: `${t.from} должен с прошлых месяцев`, v: t.fromId === debtor ? t.amount : -t.amount })),
+    ...m.settled.map((t) => ({ label: `${t.from} вернул`, v: t.fromId === debtor ? -t.amount : t.amount })),
+  ].sort((a, b) => b.v - a.v);
+  const num = "tabular-nums whitespace-nowrap";
+  return (
+    <div className="mt-2 rounded-lg border border-dashed border-line px-3 py-2 text-[13.5px]">
+      <p className="font-semibold">Расчёт</p>
+      <ol className="mt-1 list-decimal space-y-0.5 pl-5">
+        {partners.map((p) => (
+          <li key={p.id}>
+            Вклад {p.name}:{" "}
+            {m.received[p.id] ? <span className={num}>{f(m.paid[p.id] ?? 0)} − {f(m.received[p.id])} <span className="help">(общий доход у него на счету)</span> = <b>{f(c(p))}</b></span> : <b className={num}>{f(c(p))}</b>}
+          </li>
+        ))}
+        <li>Разница вкладов: <span className={num}>{f(c(hi))} − {f(c(lo))} = <b>{f(gap)}</b></span></li>
+        <li>
+          Пополам <span className="help">(доли {partners[0].sharePct}/{partners[1].sharePct})</span>: <span className={num}>{f(gap)} ÷ 2 = <b>{f(gap / 2)}</b></span>
+          {gap / 2 >= 0.01 ? <> — столько {lo.name} должен {dative(hi.name)} за этот месяц</> : <> — за этот месяц никто никому не должен</>}
+        </li>
+        {(prev.length > 0 || m.settled.length > 0) && terms.length > 0 && (
+          <li>
+            Долг на конец:{" "}
+            {terms.map((t, i) => <span key={i}>{i ? (t.v < 0 ? " − " : " + ") : t.v < 0 ? "−" : ""}<span className={num}>{f(Math.abs(t.v))}</span> <span className="help">({t.label})</span></span>)}
+            {" = "}<b>{m.end.length ? owes(m.end, f) : "0 — долг закрыт"}</b>
+          </li>
+        )}
+      </ol>
     </div>
   );
 }
