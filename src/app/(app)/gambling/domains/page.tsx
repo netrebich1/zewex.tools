@@ -22,7 +22,7 @@ export default async function DomainsHome() {
       <PageHeader
         title="Подбор доменов"
         subtitle="Бренды × приставки трёх уровней × зоны. Свободные домены проверяются по RDAP, выдача Google подсказывает приставки конкурентов, ИИ выбирает лучшие."
-        actions={<Link href="/gambling/domains/new" className="btn-brand">Новый подбор</Link>}
+        actions={<><Link href="/gambling/domains/emd/new" className="btn-ghost">EMD по таблице ключей</Link><Link href="/gambling/domains/new" className="btn-brand">Новый подбор</Link></>}
       />
 
       <div className="grid grid-cols-1 gap-3 mb-6 sm:grid-cols-3">
@@ -71,7 +71,7 @@ export default async function DomainsHome() {
                         <Badge tone={STATUS_TONE[r.status] ?? "neutral"}>{RUN_STATUS_LABELS[r.status] ?? r.status}</Badge>
                         {r.status === "RUNNING" && pct != null && <span className="help ml-2">{pct}% · {r.progress?.brand}</span>}
                       </td>
-                      <td className="col-sm">{r.brands} <span className="help">· {r.perBrand} на бренд · зон: {r.tlds}</span></td>
+                      <td className="col-sm">{r.mode === "emd" ? <><Badge tone="brand">EMD</Badge> {r.brands} <span className="help">кластеров · {r.perBrand} на кластер</span></> : <>{r.brands} <span className="help">· {r.perBrand} на бренд · зон: {r.tlds}</span></>}</td>
                       <td className="col-sm uppercase">{r.countries.join(", ")}</td>
                       <td className="col-sm">{r.totalChecked}</td>
                       <td className="font-medium">{r.totalAvailable}</td>

@@ -701,7 +701,7 @@ export async function aiSelectBrands(me: CurrentUser, runId: string, keys: strin
 }
 
 /** Сводка для списка подборов. */
-export type RunListRow = { id: string; name: string; status: string; countries: string[]; brands: number; tlds: number; perBrand: number; totalChecked: number; totalAvailable: number; selected: number; createdAt: Date; finishedAt: Date | null; progress: DomainRunProgress | null; error: string | null; countryCode: string };
+export type RunListRow = { id: string; name: string; status: string; mode: "brand" | "emd"; countries: string[]; brands: number; tlds: number; perBrand: number; totalChecked: number; totalAvailable: number; selected: number; createdAt: Date; finishedAt: Date | null; progress: DomainRunProgress | null; error: string | null; countryCode: string };
 
 export async function listRuns(me: CurrentUser, limit = 50): Promise<RunListRow[]> {
   const runs = await prisma.domainRun.findMany({ where: domainRunWhere(me), orderBy: { createdAt: "desc" }, take: limit });
@@ -709,6 +709,6 @@ export async function listRuns(me: CurrentUser, limit = 50): Promise<RunListRow[
   const selMap = new Map(selected.map((s) => [s.runId, s._count._all]));
   return runs.map((r) => {
     const s = parseSettings(r.settings);
-    return { id: r.id, name: r.name, status: r.status, countries: Array.from(new Set(s.items.map((it) => it.country))), brands: s.items.length, tlds: s.tlds.length, perBrand: s.perBrand, totalChecked: r.totalChecked, totalAvailable: r.totalAvailable, selected: selMap.get(r.id) ?? 0, createdAt: r.createdAt, finishedAt: r.finishedAt, progress: (r.progress ?? null) as DomainRunProgress | null, error: r.error, countryCode: s.countryCode };
+    return { id: r.id, name: r.name, status: r.status, mode: s.mode, countries: Array.from(new Set(s.items.map((it) => it.country))), brands: s.items.length, tlds: s.tlds.length, perBrand: s.perBrand, totalChecked: r.totalChecked, totalAvailable: r.totalAvailable, selected: selMap.get(r.id) ?? 0, createdAt: r.createdAt, finishedAt: r.finishedAt, progress: (r.progress ?? null) as DomainRunProgress | null, error: r.error, countryCode: s.countryCode };
   });
 }

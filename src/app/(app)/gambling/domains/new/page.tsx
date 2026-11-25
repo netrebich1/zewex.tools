@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { PageHeader, sp, type SearchParams } from "@/components/ui";
 import { DomainsNav } from "@/components/domains/DomainsNav";
 import { NewDomainRunForm } from "@/components/domains/NewDomainRunForm";
+import { RunTypeSwitch } from "@/components/domains/RunTypeSwitch";
 import { canAccessDomainRun, domainRunWhere, parseSettings } from "@/lib/domains/runs";
 import { DEFAULT_SETTINGS, type CountryPreset, type DomainRunSettings } from "@/lib/domains/types";
 import { defaultCountryPreset } from "@/lib/domains/presets";
@@ -43,6 +44,7 @@ export default async function NewDomainRunPage({ searchParams }: { searchParams:
     <>
       <DomainsNav />
       <PageHeader back={{ href: "/gambling/domains", label: "Подборы" }} title="Новый подбор" subtitle="Добавьте бренды с кодами стран (можно пачками по странам) — гео-приставки каждой страны система подставит сама. При желании соберите ключевые слова брендов и снимите выдачу Google — они подскажут модификаторы и зоны." />
+      <RunTypeSwitch active="brand" />
       <NewDomainRunForm defaults={defaults} initialName={name} savedPresets={savedPresets} />
     </>
   );

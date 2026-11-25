@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { PageHeader, sp, type SearchParams } from "@/components/ui";
 import { DomainsNav } from "@/components/domains/DomainsNav";
+import { RunTypeSwitch } from "@/components/domains/RunTypeSwitch";
 import { EmdRunForm, EMD_FORM_DEFAULTS, type EmdFormDefaults } from "@/components/domains/EmdRunForm";
 import { canAccessDomainRun, parseSettings } from "@/lib/domains/runs";
 
@@ -25,6 +26,7 @@ export default async function NewEmdRunPage({ searchParams }: { searchParams: Pr
     <>
       <DomainsNav />
       <PageHeader back={{ href: "/gambling/domains", label: "Подборы" }} title="EMD по ключам" subtitle="Домены точного вхождения под кластеры ключей: тема и ключи темы из выгрузки «Наблюдение кластеры», выдача Google по каждому ключу, проверка свободности." />
+      <RunTypeSwitch active="emd" />
       <EmdRunForm defaults={defaults} />
     </>
   );
