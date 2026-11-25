@@ -177,6 +177,11 @@ export async function runProvider(p: ProviderLike, secret: string, input: RunInp
       if (input.kind !== "image") body.stream = false;
       // OpenRouter отдаёт точную стоимость ответа, если попросить usage в теле
       if (isOpenRouter(p)) body.usage = { include: true };
+      // Gemini через OpenRouter — по умолчанию тариф Google flex (вдвое дешевле, та же модель). Если flex отказал,
+      // OpenRouter в том же запросе уходит на обычный тариф; следующий запрос снова пробует flex первым.
+      if (isOpenRouter(p) && input.kind === "chat" && /^google\/gemini/i.test(input.model) && body.provider == null && body.service_tier == null) {
+        body.provider = { order: ["google-ai-studio/flex", "google-ai-studio"], allow_fallbacks: true };
+      }
       const extraHeaders: Record<string, string> = isOpenRouter(p) ? { "HTTP-Referer": "https://zewex.tools", "X-Title": "Zewex Tools" } : {};
       const res = await fetch(joinUrl(p.baseUrl, path), {
         method: "POST",
