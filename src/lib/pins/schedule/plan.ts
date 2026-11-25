@@ -266,7 +266,12 @@ export function scheduleItems(input: ScheduleInput): ScheduleOutput {
     const target = Number.isFinite(quota) ? quota + carry : Number.POSITIVE_INFINITY;
     let want = Math.min(dayFree(off), target);
     const initialWant = want;
-    const floorOk = (t: Task) => (lastByPage.get(t.pageId) ?? 0) <= off;
+    // Строгий режим (25.11, владелец: «шаг 2–3 дня между пинами статьи»): следующий пин статьи не раньше чем через stepMin дней.
+    const floorOk = (t: Task) => {
+      const last = lastByPage.get(t.pageId);
+      if (last === undefined) return true;
+      return input.perPageStrict ? off - last >= stepMin : last <= off;
+    };
     // проход 1: желаемая дата уже наступила и предпочтения статьи соблюдены
     for (let pass = 0; pass < 3 && want > 0; pass++) {
       for (let i = 0; i < pending.length && want > 0; i++) {
