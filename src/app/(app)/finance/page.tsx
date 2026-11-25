@@ -13,7 +13,7 @@ import { Card, Empty, sp, type SearchParams } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
-type Fmt = (v: number, o?: { sign?: boolean }) => string;
+type Fmt = (v: number, o?: { sign?: boolean; digits?: number }) => string;
 // На телефоне плитка — строка «подпись … сумма». `!` нужен: .kpi/.kpi-value вне слоёв и перебивают утилиты.
 const KPI = "kpi min-w-0 !flex-row items-baseline justify-between gap-3 sm:!flex-col sm:items-stretch sm:justify-start sm:gap-1";
 const KPI_VALUE = "kpi-value tabular-nums !text-[22px] sm:!text-[30px]";
@@ -192,8 +192,14 @@ export default async function FinanceHome({ searchParams }: { searchParams: Prom
 }
 
 /** Из чего сложился долг: оплаченные расходы, полученные доходы, возвраты и доля каждого — за всё время. */
-function DebtDetail({ detail, f }: { detail: Awaited<ReturnType<typeof debtState>>["detail"]; f: Fmt }) {
+function DebtDetail({ detail, f: f0 }: { detail: Awaited<ReturnType<typeof debtState>>["detail"]; f: Fmt }) {
+  // До копеек: по округлённым до евро числам строки таблицы не складываются в итог.
+  const f: Fmt = (v, o = {}) => f0(v, { digits: 2, ...o });
   const { lines, expense, income } = detail;
+  // Вклад = оплатил − получил доходов ± возвраты. Для двоих с равными долями долг — ровно половина разницы вкладов.
+  const contrib = (l: (typeof lines)[number]) => l.paid - l.received + l.gave - l.got;
+  const [a, b] = lines.length === 2 && lines[0].sharePct === lines[1].sharePct ? [...lines].sort((x, y) => contrib(y) - contrib(x)) : [];
+  const gap = a && b ? contrib(a) - contrib(b) : 0;
   const settled = lines.some((l) => l.gave || l.got);
   const net = expense - income;
   const cell = "text-right tabular-nums whitespace-nowrap";
@@ -209,10 +215,17 @@ function DebtDetail({ detail, f }: { detail: Awaited<ReturnType<typeof debtState
           <tr><td>Оплатил расходов</td>{lines.map((l) => <td key={l.id} className={cell}>{f(l.paid)}</td>)}</tr>
           <tr><td>Получил доходов на свой счёт</td>{lines.map((l) => <td key={l.id} className={cell}>{l.received ? `−${f(l.received)}` : "—"}</td>)}</tr>
           {settled && <tr><td>Возвраты: отдал − получил</td>{lines.map((l) => <td key={l.id} className={cell}>{f(l.gave - l.got, { sign: true })}</td>)}</tr>}
+          <tr className="font-medium"><td>Вклад своими деньгами <span className="help">· оплатил − доходы у него{settled ? " ± возвраты" : ""}</span></td>{lines.map((l) => <td key={l.id} className={cell}>{f(contrib(l))}</td>)}</tr>
           <tr><td>{net >= 0 ? "Его доля убытка" : "Его доля прибыли"} <span className="help">· {lines.map((l) => `${l.sharePct}%`).join(" / ")}</span></td>{lines.map((l) => <td key={l.id} className={cell}>{f(-l.lossShare, { sign: true })}</td>)}</tr>
           <tr className="font-semibold"><td>Итог</td>{lines.map((l) => <td key={l.id} className={`${cell} ${l.balance < -0.005 ? "text-warn" : l.balance > 0.005 ? "text-ok" : ""}`}>{Math.abs(l.balance) < 0.005 ? "в расчёте" : `${l.balance > 0 ? "ему должны" : "должен"} ${f(Math.abs(l.balance))}`}</td>)}</tr>
         </tbody>
       </table></div>
+      {a && b && gap > 0.01 && (
+        <p className="mt-2 text-[14px]">
+          Проще: {a.name} вложил своими деньгами на <b className="tabular-nums">{f(gap)}</b> больше, чем {b.name} ({f(contrib(a))} против {f(contrib(b))}). Чтобы стало поровну, {b.name} отдаёт половину разницы: <b className="tabular-nums">{f(gap)} ÷ 2 = {f(gap / 2)}</b>.
+          {lines.some((l) => l.received > 0) && <span className="help"> Доход, который лежит у человека на счету, — общие деньги: на эту сумму его вклад меньше, чем он оплатил расходов.</span>}
+        </p>
+      )}
     </div>
   );
 }
