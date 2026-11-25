@@ -2,7 +2,8 @@
  * «Старые URL» → отдельная Google-таблица (OLD_SHEET): работа со старыми страницами, которые приносят трафик, а новых пинов на них нет.
  *
  * Источник — недельная история трафика страниц `PrjUrlHist` (Метрика, визиты людей по страницам входа, только страницы с 10+ визитами
- * в неделю; собирает ночной `metrikaSync`). «Старая» страница — та, которой нет среди статей и блог-постов портала (Article/BlogPost).
+ * в неделю; собирает ночной `metrikaSync`). «Старая» страница — опубликована в WordPress OLD_DAYS и больше дней назад (дата из открытого
+ * REST сайта, кэш `PrjPostDate`); если сайт дату не отдал — та, которой нет среди статей и блог-постов портала (Article/BlogPost).
  *
  * Вкладки:
  *  - «Сводка»    — сайт: трафик старых и новых страниц за 4 недели к предыдущим 4, сколько страниц в работе и сколько свободных кандидатов;
@@ -27,6 +28,8 @@ const LEGEND_TAB = "Как читать";
 const WEEKS = 8;
 /** Кандидат в работу: не меньше стольких визитов за 4 недели. */
 const MIN_CAND = 40;
+/** «Старая» страница: опубликована в WordPress не меньше стольких дней назад. */
+const OLD_DAYS = 90;
 
 const dom = (s: string | null | undefined) => (s || "").toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "").trim();
 const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -58,14 +61,43 @@ export const nicheOf = (path: string): string => { const p = path.toLowerCase();
 
 type Color = "g" | "r" | "y" | "x";
 type OTab = { title: string; values: (string | number)[][]; colors: [number, number, Color][]; widths: number[]; frozenCols: number; left: number[]; bold: number[] };
+const pct = (a: number, b: number) => (b ? `'${Math.round((a / b) * 100)}%` : "—");
 const delta = (cur: number, prev: number): { text: string; color: Color | null } => {
-  if (!prev) return cur ? { text: "новое", color: "g" } : { text: "—", color: null };
+  if (prev < 20) return cur >= 20 ? { text: "новое", color: "g" } : { text: "—", color: null };
   const p = Math.round(((cur - prev) / prev) * 100);
   return { text: `${p > 0 ? "▲" : p < 0 ? "▼" : ""}${Math.abs(p)}%`, color: p >= 15 ? "g" : p <= -15 ? "r" : null };
 };
 const median = (a: number[]) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 
-type Page = { site: string; path: string; niche: string; old: boolean; w: number[]; cur: number; prev: number; pinTo: string | null };
+type Page = { site: string; path: string; niche: string; old: boolean; pub: string; w: number[]; cur: number; prev: number; pinTo: string | null };
+
+/**
+ * Даты публикации страниц из открытого REST WordPress (`/wp-json/wp/v2/posts?slug[]=…`), с кэшем в `PrjPostDate`.
+ * Спрашиваем только страницы, которых в кэше ещё нет; не найденные запоминаем с пустой датой, чтобы не спрашивать снова.
+ */
+async function postDates(keys: string[]): Promise<Map<string, string>> {
+  const sites = [...new Set(keys.map((k) => k.slice(0, k.indexOf("|"))))];
+  const known = await prisma.prjPostDate.findMany({ where: { site: { in: sites } }, select: { site: true, path: true, published: true } });
+  const out = new Map(known.map((r) => [r.site + "|" + r.path, r.published]));
+  const need = new Map<string, string[]>();
+  for (const k of keys) if (!out.has(k)) { const i = k.indexOf("|"), s = k.slice(0, i); (need.get(s) ?? need.set(s, []).get(s)!).push(k.slice(i + 1)); }
+  const slugOf = (p: string) => (p.replace(/\/+$/, "").split("/").pop() ?? "").replace(/\.html?$/i, "");
+  for (const [site, paths] of need) {
+    for (let i = 0; i < paths.length; i += 40) {
+      const part = paths.slice(i, i + 40), q = part.map((p) => "slug[]=" + encodeURIComponent(slugOf(p))).join("&");
+      try {
+        const r = await fetch(`https://${site}/wp-json/wp/v2/posts?per_page=100&_fields=date,link&${q}`, { headers: { "User-Agent": "Mozilla/5.0 (compatible; zewex-tools)" }, signal: AbortSignal.timeout(30_000) });
+        if (!r.ok) break;
+        const found = new Map(((await r.json()) as Array<{ date: string; link: string }>).map((x) => [urlPath(x.link), x.date.slice(0, 10)]));
+        const data = part.map((path) => ({ site, path, published: found.get(path) ?? "" }));
+        await prisma.prjPostDate.createMany({ data });
+        for (const x of data) out.set(site + "|" + x.path, x.published);
+      } catch { break; }
+      await new Promise((res) => setTimeout(res, 150));
+    }
+  }
+  return out;
+}
 type BatchPage = { site: string; path: string; niche: string; role: string; base: number };
 type Batch = { id: string; name: string; createdAt: Date; pages: BatchPage[] };
 type Data = { today: string; weeks: string[]; pages: Page[]; pinSites: Set<string>; batches: Batch[]; hist: Map<string, Map<string, number>>; pinFrom: Map<string, Array<{ from: string; to: string }>> };
@@ -118,8 +150,11 @@ async function load(): Promise<Data | null> {
     const cur = w.slice(4).reduce((a, b) => a + b, 0), prev = w.slice(0, 4).reduce((a, b) => a + b, 0);
     if (!cur && !prev) continue;
     const to = (pinFrom.get(k) ?? []).map((s) => s.to).sort().pop() ?? null;
-    pages.push({ site, path, niche: nicheOf(path), old: !fresh.has(k), w, cur, prev, pinTo: to });
+    pages.push({ site, path, niche: nicheOf(path), old: !fresh.has(k), pub: "", w, cur, prev, pinTo: to });
   }
+  // Возраст — по дате публикации в WordPress; если сайт её не отдал, старой считаем страницу не из портала.
+  const dates = await postDates(pages.map((p) => p.site + "|" + p.path)), border = addDays(today, -OLD_DAYS);
+  for (const p of pages) { p.pub = dates.get(p.site + "|" + p.path) ?? ""; if (p.pub) p.old = p.pub <= border; }
   return { today, weeks, pages, pinSites: new Set(pinDom.values()), batches, hist, pinFrom };
 }
 
@@ -129,7 +164,7 @@ function summaryTab(d: Data): OTab {
   const colors: OTab["colors"] = [];
   const values = HEAD(
     ["САЙТ", "СТАРЫЕ СТРАНИЦЫ", "СТАРЫЕ: ВИЗИТЫ, 4 НЕД", "К ПРЕД. 4 НЕД", "ДОЛЯ СТАРЫХ", "НОВЫЕ: ВИЗИТЫ, 4 НЕД", "К ПРЕД. 4 НЕД", "РАСТЁТ НИША", "ПАДАЕТ НИША", "В РАБОТЕ", "СВОБОДНЫХ КАНДИДАТОВ"],
-    ["домен", "с трафиком 10+ в нед.", "страницы не из портала", "", "от трафика статей", "статьи и блог портала", "", "больше всего прибавила", "больше всего потеряла", "страниц в пачках", `старые без пинов, ${MIN_CAND}+ визитов`],
+    ["домен", "с трафиком 10+ в нед.", `опубликованы ${OLD_DAYS}+ дней назад`, "", "от трафика статей", `моложе ${OLD_DAYS} дней`, "", "больше всего прибавила", "больше всего потеряла", "страниц в пачках", `старые без пинов, ${MIN_CAND}+ визитов`],
   ) as OTab["values"];
   const inBatch = new Map<string, number>();
   for (const b of d.batches) for (const p of b.pages) if (p.role === "test") inBatch.set(p.site, (inBatch.get(p.site) ?? 0) + 1);
@@ -147,12 +182,12 @@ function summaryTab(d: Data): OTab {
   }).sort((a, b) => b.oc - a.oc);
   for (const r of rows) {
     const i = values.length, d1 = delta(r.oc, r.op), d2 = delta(r.nc, r.np);
-    values.push([r.site, r.oldN, r.oc, d1.text, r.oc + r.nc ? `${Math.round((r.oc / (r.oc + r.nc)) * 100)}%` : "—", r.nc, d2.text, r.up, r.down, r.work || "—", r.free || "—"]);
+    values.push([r.site, r.oldN, r.oc, d1.text, pct(r.oc, r.oc + r.nc), r.nc, d2.text, r.up, r.down, r.work || "—", r.free || "—"]);
     if (d1.color) colors.push([i, 3, d1.color]); if (d2.color) colors.push([i, 6, d2.color]);
     if (r.free >= 20 && !r.work) colors.push([i, 10, "y"]);
   }
   const t = rows.reduce((a, r) => ({ oc: a.oc + r.oc, op: a.op + r.op, nc: a.nc + r.nc, np: a.np + r.np, n: a.n + r.oldN, w: a.w + r.work, f: a.f + r.free }), { oc: 0, op: 0, nc: 0, np: 0, n: 0, w: 0, f: 0 });
-  values.push(["ИТОГО", t.n, t.oc, delta(t.oc, t.op).text, t.oc + t.nc ? `${Math.round((t.oc / (t.oc + t.nc)) * 100)}%` : "—", t.nc, delta(t.nc, t.np).text, "", "", t.w, t.f]);
+  values.push(["ИТОГО", t.n, t.oc, delta(t.oc, t.op).text, pct(t.oc, t.oc + t.nc), t.nc, delta(t.nc, t.np).text, "", "", t.w, t.f]);
   return { title: "Сводка", values, colors, widths: [210, 110, 120, 90, 90, 120, 90, 200, 200, 90, 120], frozenCols: 1, left: [0, 7, 8], bold: [values.length - 1] };
 }
 
@@ -160,7 +195,7 @@ function nichesTab(d: Data): OTab {
   const colors: OTab["colors"] = [];
   const values = HEAD(
     ["САЙТ", "НИША", "СТРАНИЦ С ТРАФИКОМ", "ИЗ НИХ СТАРЫХ", "ВИЗИТЫ, 4 НЕД", "ПРЕД. 4 НЕД", "ИЗМЕНЕНИЕ", "ДОЛЯ ТОП-СТРАНИЦЫ", "МЕДИАНА НА СТРАНИЦУ", "ВЫВОД", "ТОП-СТРАНИЦА"],
-    ["домен", "по словам в адресе", "10+ визитов в неделю", "не из портала", "люди, без роботов", "", "", "сколько трафика ниши даёт одна страница", "визитов за 4 нед", "", "самая трафиковая в нише"],
+    ["домен", "по словам в адресе", "10+ визитов в неделю", `старше ${OLD_DAYS} дней`, "люди, без роботов", "", "", "сколько трафика ниши даёт одна страница", "визитов за 4 нед", "", "самая трафиковая в нише"],
   ) as OTab["values"];
   const bold: number[] = [];
   const block = (label: string, ps: Page[]) => {
@@ -175,7 +210,7 @@ function nichesTab(d: Data): OTab {
       const i = values.length, dl = delta(r.cur, r.prev), top = r.live[0], share = top && r.cur ? Math.round((top.cur / r.cur) * 100) : 0;
       const single = r.live.length < 3 || share >= 50;
       const verdict = single ? "держится на 1–2 страницах" : dl.color === "g" ? "растёт" : dl.color === "r" ? "падает" : "ровно";
-      values.push([j === 0 ? label : "", r.n, r.live.length, r.oldN, r.cur, r.prev, dl.text, `${share}%`, median(r.live.map((p) => p.cur)), verdict, top ? `https://${top.site}${top.path}` : ""]);
+      values.push([j === 0 ? label : "", r.n, r.live.length, r.oldN, r.cur, r.prev, dl.text, `'${share}%`, median(r.live.map((p) => p.cur)), verdict, top ? `https://${top.site}${top.path}` : ""]);
       if (dl.color) colors.push([i, 6, dl.color]);
       colors.push([i, 9, single ? "y" : dl.color === "g" ? "g" : dl.color === "r" ? "r" : "x"]);
       if (share >= 50) colors.push([i, 7, "y"]);
@@ -192,8 +227,8 @@ function nichesTab(d: Data): OTab {
 function candidatesTab(d: Data): OTab {
   const colors: OTab["colors"] = [];
   const values = HEAD(
-    ["САЙТ", "СТРАНИЦА", "НИША", "ГОД В АДРЕСЕ", "ВИЗИТЫ, 4 НЕД", "ПРЕД. 4 НЕД", "ИЗМЕНЕНИЕ", "СТАТУС"],
-    ["домен", "старые страницы по убыванию трафика", "", "", "люди, без роботов", "", "", "свободна / в пачке / уже есть пины"],
+    ["САЙТ", "СТРАНИЦА", "НИША", "ОПУБЛИКОВАНА", "ГОД В АДРЕСЕ", "ВИЗИТЫ, 4 НЕД", "ПРЕД. 4 НЕД", "ИЗМЕНЕНИЕ", "СТАТУС"],
+    ["домен", "старые страницы по убыванию трафика", "", "дата в WordPress", "", "люди, без роботов", "", "", "свободна / в пачке / уже есть пины"],
   ) as OTab["values"];
   const where = new Map<string, string>();
   for (const b of d.batches) for (const p of b.pages) where.set(p.site + "|" + p.path, `${p.role === "test" ? "в работе" : "контроль"}: ${b.name}`);
@@ -201,11 +236,11 @@ function candidatesTab(d: Data): OTab {
     const i = values.length, dl = delta(p.cur, p.prev), k = p.site + "|" + p.path;
     const year = Math.max(0, ...(p.path.match(/20\d\d/g) ?? []).map(Number));
     const st = where.get(k) ?? (p.pinTo && p.pinTo >= d.today ? `пины до ${dmy(p.pinTo)}` : !d.pinSites.has(p.site) ? "сайта нет в «Пинах»" : "свободна");
-    values.push([p.site, `https://${p.site}${p.path}`, p.niche, year || "—", p.cur, p.prev, dl.text, st]);
-    if (dl.color) colors.push([i, 6, dl.color]);
-    colors.push([i, 7, st === "свободна" ? "y" : st.startsWith("сайта нет") ? "r" : st.startsWith("контроль") ? "x" : "g"]);
+    values.push([p.site, `https://${p.site}${p.path}`, p.niche, p.pub ? `'${p.pub.slice(5, 7)}.${p.pub.slice(0, 4)}` : "—", year || "—", p.cur, p.prev, dl.text, st]);
+    if (dl.color) colors.push([i, 7, dl.color]);
+    colors.push([i, 8, st === "свободна" ? "y" : st.startsWith("сайта нет") ? "r" : st.startsWith("контроль") ? "x" : "g"]);
   }
-  return { title: "Кандидаты", values, colors, widths: [200, 560, 160, 90, 100, 100, 90, 260], frozenCols: 1, left: [0, 1, 2, 7], bold: [] };
+  return { title: "Кандидаты", values, colors, widths: [200, 560, 160, 110, 90, 100, 100, 90, 260], frozenCols: 1, left: [0, 1, 2, 8], bold: [] };
 }
 
 function batchTab(d: Data, b: Batch, notes: Map<string, string>): OTab {
@@ -249,7 +284,7 @@ const LEGEND: string[][] = [
   ["Старые URL: как читать", ""],
   ["Зачем", "Большую часть трафика дают старые страницы, на которые новые пины не делаются. Здесь видно, какие это страницы, какие ниши на каком сайте реально растут, и что меняется, когда на старую страницу выходят свежие пины."],
   ["Откуда цифры", "Яндекс Метрика: визиты людей (без роботов) на страницу как на страницу входа, по полным неделям (пн–вс). Метрика отдаёт только страницы с 10+ визитами за неделю: неделя, когда у страницы меньше 10 визитов, считается нулём."],
-  ["«Сводка»", "По сайту: трафик старых страниц (не из портала) и новых статей портала за последние 4 полные недели к предыдущим 4. «Свободных кандидатов» — старые страницы с трафиком, на которые пинов в расписании нет и которые ещё не взяты в пачку."],
+  ["«Сводка»", "По сайту: трафик старых страниц (опубликованы в WordPress 90 и больше дней назад) и новых (моложе 90 дней) за последние 4 полные недели к предыдущим 4. «Свободных кандидатов» — старые страницы с трафиком, на которые пинов в расписании нет и которые ещё не взяты в пачку."],
   ["«Ниши»", "Сайт × ниша. Смотрите не только на рост, но и на число страниц и долю топ-страницы: если ниша «держится на 1–2 страницах», это успех одной статьи, а не ниши. Медиана показывает, сколько приносит обычная страница ниши."],
   ["«Кандидаты»", "Самые трафиковые старые страницы всех сайтов. Жёлтый «свободна» — можно брать в следующую пачку."],
   ["Вкладка пачки", "Страницы «в работу» — на них делается прогон пинов в «Пинах» (адреса копируются из столбца «СТРАНИЦА»). «Контроль» — такие же по трафику страницы того же сайта, которые не трогаем: без них не понять, пины ли дали рост или весь сайт вырос/упал."],

@@ -4,6 +4,7 @@
  *   tsx scripts/projects/old-batch.ts sync                  — досбор недельной истории Метрики (команда Zewex) и пересборка
  *   tsx scripts/projects/old-batch.ts dry "Название" [20]   — посчитать, что попало бы в пачку (по N страниц «в работу» на сайт)
  *   tsx scripts/projects/old-batch.ts new "Название" [20]   — создать пачку (с контрольной группой) и пересобрать таблицу
+ *   tsx scripts/projects/old-batch.ts del "Название"        — удалить пачку (страницы снова свободны)
  */
 import { prisma } from "@/lib/db";
 import { metrikaSync } from "@/lib/projects/stats";
@@ -16,6 +17,11 @@ import { createOldBatch, oldUrlsTick } from "@/lib/projects/oldurls";
     console.log("metrika:", JSON.stringify(await metrikaSync(team!.id)));
     const g = await prisma.prjUrlHist.groupBy({ by: ["week"], where: { NOT: { path: "*" } }, _count: { _all: true }, _sum: { visits: true }, orderBy: { week: "asc" } });
     for (const r of g) console.log(`  ${r.week}: страниц ${r._count._all}, визитов ${r._sum.visits}`);
+  }
+  if (mode === "del") {
+    if (!name) throw new Error("нужно название пачки");
+    const r = await prisma.prjOldBatch.deleteMany({ where: { name } });
+    console.log(`удалено пачек: ${r.count} (вкладку в таблице убрать руками)`);
   }
   if (mode === "dry" || mode === "new") {
     if (!name) throw new Error("нужно название пачки");

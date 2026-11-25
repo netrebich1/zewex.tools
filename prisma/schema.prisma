@@ -4388,3 +4388,13 @@ model PrjOldPage {
   @@index([batchId])
   @@index([site])
 }
+
+/// «Старые URL»: дата публикации страницы в WordPress (открытый REST сайта). published = "" — записи с таким адресом на сайте нет (не пост).
+model PrjPostDate {
+  id        String @id @default(uuid()) @db.Char(36)
+  site      String @db.VarChar(190)
+  path      String @db.VarChar(700)
+  published String @db.VarChar(10)
+
+  @@index([site])
+}
