@@ -40,19 +40,56 @@ function SelectedRows({ rows, setRowsSelected, className = "" }: { rows: RunDoma
   );
 }
 
-/** Выбранные домены одного бренда внутри его карточки. */
+/** Чем заменить домен: свободные невыбранные из той же группы — тот же ключ/приставка, затем та же группа и шаблон. */
+function alternativesFor(d: RunDomainRow, rows: RunDomainRow[]): RunDomainRow[] {
+  const free = rows.filter((x) => x.status === "available" && !x.selected && x.id !== d.id);
+  const same = free.filter((x) => (x.suffix ?? "") === (d.suffix ?? ""));
+  const near = free.filter((x) => (x.suffix ?? "") !== (d.suffix ?? "") && x.tier === d.tier && x.pattern === d.pattern);
+  return [...same, ...near].sort((a, b) => a.sortOrder - b.sortOrder).slice(0, 12);
+}
+
+/** Выбранные домены одного бренда (кластера) внутри его карточки: убрать, вернуть или заменить на другой свободный. */
 export function BrandSelected({ rows, onToggle }: { rows: RunDomainRow[]; onToggle: Toggle }) {
   const { pick, setRowsSelected } = useRemovable(onToggle);
+  const [swap, setSwap] = useState<string | null>(null);
   const shown = pick(rows);
   const active = shown.filter((d) => d.selected);
-  if (!shown.length) return <p className="help px-3 py-3">У этого бренда ничего не выбрано</p>;
+  if (!shown.length) return <p className="help px-3 py-3">В этой пачке ничего не выбрано — отметь домены в других вкладках</p>;
   return (
     <>
       <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-line">
-        <span className="text-[12.5px] font-semibold">Выбрано: {active.length}</span>
+        <span className="text-[12.5px] font-semibold">Выбрано в этой пачке: {active.length}</span>
         {active.length > 0 && <button type="button" className="btn-ghost btn-sm !px-2 !py-0.5 text-[12px]" onClick={() => setRowsSelected(active, false)}>Убрать все</button>}
       </div>
-      <SelectedRows rows={shown} setRowsSelected={setRowsSelected} className="max-h-96 overflow-auto" />
+      <ul className="divide-y divide-line max-h-[30rem] overflow-auto">
+        {shown.map((d) => {
+          const alts = swap === d.id ? alternativesFor(d, rows) : [];
+          return (
+            <li key={d.id} className="text-[13.5px]" title={d.aiReason ?? undefined}>
+              <div className="flex items-center gap-2 pl-3 pr-1">
+                <span className={`min-w-0 flex-1 truncate font-mono ${d.selected ? "" : "text-muted line-through"}`}>{d.domain}</span>
+                {d.suffix && <span className="hidden sm:inline shrink-0 max-w-[40%] truncate text-[11px] text-muted" title={d.suffix}>{d.suffix}</span>}
+                {d.selected ? (
+                  <>
+                    <button type="button" className="shrink-0 px-2 py-1.5 text-[12.5px] text-brand hover:underline" onClick={() => setSwap(swap === d.id ? null : d.id)}>{swap === d.id ? "Закрыть" : "Заменить"}</button>
+                    <button type="button" className="shrink-0 px-2.5 py-1.5 text-muted hover:text-danger" aria-label={`Убрать ${d.domain}`} title="Убрать из выбранных" onClick={() => setRowsSelected([d], false)}>✕</button>
+                  </>
+                ) : (
+                  <button type="button" className="shrink-0 px-2.5 py-1.5 text-[12.5px] text-brand hover:underline" onClick={() => setRowsSelected([d], true)}>Вернуть</button>
+                )}
+              </div>
+              {swap === d.id && (
+                <div className="flex flex-wrap gap-1 bg-ink/[0.03] px-3 py-2">
+                  {alts.length ? alts.map((a) => (
+                    <button key={a.id} type="button" className="rounded-md border border-line bg-surface px-1.5 py-0.5 font-mono text-[12px] hover:border-brand hover:text-brand" title={a.suffix ?? undefined}
+                      onClick={() => { setRowsSelected([d], false); setRowsSelected([a], true); setSwap(null); }}>{a.domain}</button>
+                  )) : <span className="help">Свободных из той же группы нет — выбери в других вкладках</span>}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </>
   );
 }

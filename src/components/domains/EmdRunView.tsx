@@ -11,7 +11,7 @@ import type { RunPayload } from "./DomainRunView";
 import { computeStats } from "@/lib/domains/selection";
 import { itemKey, RUN_STATUS_LABELS, type BrandItem } from "@/lib/domains/types";
 import type { RunDomainRow } from "@/lib/domains/runs";
-import { EMD_DEFAULTS, EMD_LEVEL_LABELS, EMD_MOD_SOURCE_LABELS, EMD_PATTERN_LABELS, eligibleKeywords, emdGeo, emdModifiers, emdSourceKeyword, emdZoneSuggestions, emdRegionalZones, isGeoPattern, usableFound, isModPattern, phraseWords, type EmdFound, type EmdKeyword, type EmdPattern } from "@/lib/domains/emd";
+import { EMD_DEFAULTS, EMD_LEVEL_LABELS, EMD_MOD_SOURCE_LABELS, EMD_PATTERN_LABELS, emdGeo, emdModifiers, emdSourceKeyword, emdZoneSuggestions, emdRegionalZones, isGeoPattern, usableFound, isModPattern, type EmdKeyword, type EmdPattern } from "@/lib/domains/emd";
 import { addEmdZonesAction } from "@/actions/domainsEmd";
 import { buyableTld } from "@/lib/domains/generator";
 import { tldOf } from "@/lib/domains/mining";
@@ -36,6 +36,8 @@ const kindBy = (extra: Set<string>, exactZones: Set<string>) => (d: RunDomainRow
 /** Приписка/гео домена: «ключ + beste» → beste */
 const modOf = (d: RunDomainRow) => (d.suffix?.includes(" + ") ? d.suffix.split(" + ").pop() ?? "" : "");
 type CardFilter = { kind: Kind | "all"; add: string; zone: string };
+/** Вкладка карточки кластера */
+type CardTab = "main" | "all" | "serp" | "picked";
 const NO_FILTER: CardFilter = { kind: "all", add: "all", zone: "all" };
 
 function Chip({ active, label, n, onClick, title }: { active: boolean; label: string; n: number; onClick: () => void; title?: string }) {
@@ -57,7 +59,7 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
   const [copied, setCopied] = useState<string | null>(null);
   const keys = (items: BrandItem[]) => items.map((it) => itemKey(it.brand, it.country));
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.run.settings.items.length <= 30 ? keys(initial.run.settings.items) : []));
-  const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
+  const [cardTabs, setCardTabs] = useState<Record<string, CardTab>>({});
   const pending = useRef(new Map<string, boolean>());
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -94,6 +96,16 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
     return map;
   }, [domains, items]);
   const overall = useMemo(() => computeStats(domains), [domains]);
+  // В скольких кластерах подбора домен есть в TOP-10: порталы и агрегаторы встречаются везде, малостраничники — в 1–2
+  const serpFreq = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const it of items) {
+      const seen = new Set<string>();
+      for (const k of it.emd?.keywords ?? []) for (const e of k.top10 ?? []) seen.add(e.domain);
+      for (const d of seen) m.set(d, (m.get(d) ?? 0) + 1);
+    }
+    return m;
+  }, [items]);
   const q = query.trim().toLowerCase();
 
   function toggle(id: string, selected: boolean) {
@@ -233,12 +245,16 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
             const volOf = (d: RunDomainRow) => c?.keywords.find((k) => k.phrase === emdSourceKeyword(d.suffix))?.volume;
             const best = new Set(bestOf(rows).map((d) => d.id));
             const open = expanded.has(key);
-            const showSelected = selectedCards.has(key);
+            const tab: CardTab = cardTabs[key] ?? "main";
+            const setTab = (t: CardTab) => setCardTabs((prev) => ({ ...prev, [key]: t }));
+            const geoTier1 = new Set(emdGeo(item.country).filter((g) => g.tier === 1).map((g) => g.mod));
+            const mainRows = rows.filter((d) => isMain(d, geoTier1));
+            const mainFree = mainRows.filter((d) => d.status === "available").length;
             const toggleOpen = () => setExpanded((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
             const inProgress = live && run.progress?.brand === `${item.brand} · ${item.country.toUpperCase()}`;
             const incomplete = run.incompleteBrands.includes(`${item.brand} · ${item.country.toUpperCase()}`);
             return (
-              <section key={key} className="card flex flex-col min-w-0">
+              <section key={key} className={`card flex flex-col min-w-0 ${open ? "lg:col-span-2" : ""}`}>
                 <div className="flex items-center gap-2 px-3 py-2.5">
                   <button type="button" className="min-w-0 flex-1 text-left" onClick={toggleOpen}>
                     <span className="block truncate font-semibold text-[15px] hover:underline" title={item.brand}>{item.brand} · {item.country.toUpperCase()}</span>
@@ -256,9 +272,20 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
                 </div>
                 {open && (
                   <div className="border-t border-line flex flex-col min-h-0">
-                    {c && <KeywordsBlock keywords={c.keywords} found={c.found ? usableFound(c, item.country) : undefined} foundError={c.foundError} minVolume={emd.minVolume} matchPct={emd.matchPct} serpDone={!!c.serpAt} serpOn={s.autoResearch} eligible={new Set(eligibleKeywords(c, emd.minVolume).map((k) => k.phrase))} />}
-                    {c && <ThemeStatus theme={c.theme} rows={rows} />}
-                    {!showSelected && rows.length > 0 && (
+                    <div className="flex flex-wrap gap-1 border-b border-line px-3 py-2">
+                      {([
+                        ["main", `★ Главное · ${mainFree}`, "Точное совпадение: тема, ключи таблицы, найденные ключи — и они же с гео 1-го уровня. Свободные первыми"],
+                        ["all", `Все варианты · ${rows.length}`, "Вариации, приписки, гео, зоны — с фильтрами"],
+                        ["serp", `Выдача · ${c?.keywords.filter((k) => k.top10).length ?? 0}`, "TOP-10 Google по каждому ключу: сайты с ключом в домене и малостраничники"],
+                        ["picked", `✓ Выбрано · ${stats.counts.selected}`, "Только выбранные в этом кластере: убрать или заменить"],
+                      ] as Array<[CardTab, string, string]>).map(([t, label, title]) => (
+                        <button key={t} type="button" title={title} className={`tab ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>{label}</button>
+                      ))}
+                    </div>
+                    {tab === "main" && (rows.length ? <MainView rows={mainRows} keywords={c?.keywords ?? []} country={item.country} theme={c?.theme ?? item.brand} geoTier1={geoTier1} exactZones={exactZones} best={best} onToggle={toggle} /> : <p className="help px-3 py-3">{live ? "Ещё не проверялся" : "Ни одного домена"}</p>)}
+                    {tab === "serp" && c && <SerpView c={c} country={item.country} matchPct={emd.matchPct} minVolume={emd.minVolume} serpOn={s.autoResearch} freq={serpFreq} />}
+                    {tab === "picked" && <BrandSelected rows={rows} onToggle={toggle} />}
+                    {tab === "all" && rows.length > 0 && (
                       <div className="space-y-1.5 border-b border-line px-3 py-2">
                         <div className="flex flex-wrap gap-1">
                           <Chip active={f.kind === "all"} label="Все" n={count("kind", () => true)} onClick={() => setF({ kind: "all" })} />
@@ -280,9 +307,7 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
                         </div>
                       </div>
                     )}
-                    {showSelected ? (
-                      <BrandSelected rows={rows} onToggle={toggle} />
-                    ) : rows.length === 0 ? (
+                    {tab !== "all" ? null : rows.length === 0 ? (
                       <p className="help px-3 py-3">{live ? "Ещё не проверялся" : "Ни одного домена: ключи длиннее лимита или ниже порога частоты"}</p>
                     ) : (
                       <div className="max-h-[30rem] overflow-auto">
@@ -301,13 +326,9 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
                     )}
                     {!live && rows.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 px-3 py-2 border-t border-line">
-                        {!showSelected && (
-                          <>
-                            <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => setRows(bestOf(rows), true)} title="Отметить лучшие свободные по весу">★ Выбрать {s.perBrand} лучших</button>
-                            <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => setRows(rows, false)}>Снять все</button>
-                          </>
-                        )}
-                        <button type="button" className={`${showSelected ? "btn-primary" : "btn-ghost"} btn-sm !px-2.5 !py-1 text-[12.5px] ml-auto`} onClick={() => setSelectedCards((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; })}>{showSelected ? "← Все домены" : `✓ Выбранные · ${stats.counts.selected}`}</button>
+                        <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => setRows(bestOf(rows), true)} title="Отметить лучшие свободные по весу">★ Выбрать {s.perBrand} лучших</button>
+                        <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px]" onClick={() => setRows(rows, false)}>Снять все</button>
+                        {tab !== "picked" && stats.counts.selected > 0 && <button type="button" className="btn-ghost btn-sm !px-2.5 !py-1 text-[12.5px] ml-auto" onClick={() => setTab("picked")}>✓ Выбрано · {stats.counts.selected} →</button>}
                       </div>
                     )}
                   </div>
@@ -338,115 +359,163 @@ function DomainLine({ d, best, volume, onToggle }: { d: RunDomainRow; best: bool
   );
 }
 
-/** Ключи кластера: частота, маленькие сайты в топе и TOP-10 Google с подсветкой доменов, где есть ключ. */
-function KeywordsBlock({ keywords, found, foundError, minVolume, matchPct, serpDone, serpOn, eligible }: { keywords: EmdKeyword[]; found?: EmdFound[]; foundError?: string; minVolume: number; matchPct: number; serpDone: boolean; serpOn: boolean; eligible: Set<string> }) {
-  const [openKw, setOpenKw] = useState<string | null>(null);
-  const [showAll, setShowAll] = useState(false);
-  const [showFound, setShowFound] = useState(false);
-  // Сводка по кластеру: домены с ключом во всех TOP-10 и их зоны
-  const matched = new Map<string, { domain: string; match: number; pos: number; kw: string }>();
-  for (const k of keywords) for (const e of k.top10 ?? []) if ((e.match ?? 0) >= matchPct) {
-    const prev = matched.get(e.domain);
-    if (!prev || (e.match ?? 0) > prev.match) matched.set(e.domain, { domain: e.domain, match: e.match ?? 0, pos: e.pos, kw: k.phrase });
-  }
-  const zones = new Map<string, number>();
-  for (const m of matched.values()) zones.set(tldOf(m.domain), (zones.get(tldOf(m.domain)) ?? 0) + 1);
+/** «Главное»: точный ключ без перестановок — тема, ключи таблицы, найденные; плюс они же с гео 1-го уровня. */
+function isMain(d: RunDomainRow, geoTier1: Set<string>): boolean {
+  const exactLevel = d.tier === 1 || d.tier === 3 || d.tier === 5;
+  if (!exactLevel) return false;
+  if (isGeoPattern(d.pattern)) return geoTier1.has(modOf(d));
+  return !isModPattern(d.pattern);
+}
+
+const MAIN_GROUPS: Array<{ id: string; label: string; test: (d: RunDomainRow) => boolean }> = [
+  { id: "theme", label: "Тема — точное совпадение", test: (d) => d.tier === 1 && !isGeoPattern(d.pattern) },
+  { id: "kw", label: "Ключи таблицы — точное совпадение", test: (d) => d.tier === 3 && !isGeoPattern(d.pattern) },
+  { id: "found", label: "Найденные ключи — точное совпадение", test: (d) => d.tier === 5 && !isGeoPattern(d.pattern) },
+  { id: "geo", label: "Точный ключ + гео (уровень 1)", test: (d) => isGeoPattern(d.pattern) },
+];
+
+function MainView({ rows, keywords, country, theme, geoTier1, exactZones, best, onToggle }: { rows: RunDomainRow[]; keywords: EmdKeyword[]; country: string; theme: string; geoTier1: Set<string>; exactZones: Set<string>; best: Set<string>; onToggle: (id: string, selected: boolean) => void }) {
+  const [showTaken, setShowTaken] = useState(false);
+  const regional = emdRegionalZones(country);
+  // Порядок зон: своя/региональные → .com → io/co → остальные; слитно раньше дефиса
+  const zoneRank = (tld: string) => { const r = regional.indexOf(tld); return r >= 0 ? r : tld === "com" ? 10 : exactZones.has(tld) ? 20 : 30; };
+  const vol = (kw: string) => keywords.find((k) => k.phrase === kw)?.volume ?? 0;
+  const order = (a: RunDomainRow, b: RunDomainRow) => Number(a.status !== "available") - Number(b.status !== "available") || zoneRank(a.tld) - zoneRank(b.tld) || Number(a.domain.includes("-")) - Number(b.domain.includes("-")) || a.domain.localeCompare(b.domain);
+  const taken = rows.filter((d) => d.status !== "available").length;
+  const used = new Set<string>();
+  const groups = MAIN_GROUPS.map((g) => {
+    const list = rows.filter((d) => !used.has(d.id) && g.test(d));
+    for (const d of list) used.add(d.id);
+    const byKw = new Map<string, RunDomainRow[]>();
+    for (const d of list) { const k = g.id === "geo" ? emdSourceKeyword(d.suffix) : emdSourceKeyword(d.suffix) || theme; byKw.set(k, [...(byKw.get(k) ?? []), d]); }
+    const kws = [...byKw.entries()].map(([kw, l]) => ({ kw, rows: l.sort(order), free: l.filter((d) => d.status === "available").length })).sort((a, b) => vol(b.kw) - vol(a.kw));
+    return { ...g, kws, free: list.filter((d) => d.status === "available").length, total: list.length };
+  }).filter((g) => g.total);
+  if (!groups.length) return <p className="help px-3 py-3">Точных совпадений в этом кластере не проверялось</p>;
   return (
-    <div className="border-b border-line px-3 py-2 space-y-2">
-      <ul className="space-y-0.5">
-        {keywords.map((k) => {
-          const inUse = eligible.has(k.phrase);
-          const hits = (k.top10 ?? []).filter((e) => (e.match ?? 0) >= matchPct).length;
-          const isOpen = openKw === k.phrase;
-          return (
-            <li key={k.phrase}>
-              <button type="button" className={`flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-[13px] hover:bg-ink/5 ${inUse ? "" : "opacity-55"}`} onClick={() => setOpenKw(isOpen ? null : k.phrase)} title={[k.ru, k.trend, k.kd !== null ? `сложность ${k.kd}` : "", k.officialInTop ? "официальный сайт в топе" : ""].filter(Boolean).join(" · ")}>
-                <span className="w-3 shrink-0 text-muted">{k.top10 ? (isOpen ? "▾" : "▸") : ""}</span>
-                <span className="min-w-0 flex-1 truncate">{k.phrase}{k.theme && <span className="ml-1.5 rounded bg-brand-soft px-1 text-[10.5px] text-brand">тема</span>}</span>
-                {!inUse && <span className="shrink-0 text-[11px] text-muted">ниже {minVolume}</span>}
-                {k.smallSites > 0 && <span className="shrink-0 text-[11px] text-ok" title={`Маленьких сайтов в топе: ${k.smallSites}${k.smallTlds.length ? ` (${k.smallTlds.map(([t, n]) => `${t} ×${n}`).join(", ")})` : ""}`}>мал. {k.smallSites}</span>}
-                {k.top10 && <span className={`shrink-0 text-[11px] ${hits ? "font-semibold text-ok" : "text-muted"}`} title="Доменов с ключом в TOP-10">с ключом {hits}</span>}
-                {k.serpError && <span className="shrink-0 text-[11px] text-danger" title={k.serpError}>выдача ✕</span>}
-                <span className="w-14 shrink-0 text-right tabular-nums">{fmt(k.volume)}</span>
-              </button>
-              {isOpen && k.top10 && (
-                <ol className="ml-4 mt-1 mb-1.5 rounded-lg border border-line divide-y divide-line">
-                  {k.top10.filter((e) => showAll || (e.match ?? 0) >= matchPct).map((e) => {
-                    const hit = (e.match ?? 0) >= matchPct;
-                    return (
-                      <li key={e.domain} className={`flex items-center gap-2 px-2 py-1 text-[12.5px] ${hit ? "bg-ok-soft/50" : "opacity-55"}`} title={e.title}>
-                        <span className="w-4 shrink-0 text-right tabular-nums text-muted">{e.pos}</span>
-                        <a href={`https://${e.domain}`} target="_blank" rel="noreferrer" className={`min-w-0 flex-1 truncate font-mono hover:underline ${hit ? "font-semibold" : ""}`}>{e.domain}</a>
-                        <span className={`shrink-0 text-[11px] tabular-nums ${hit ? "text-ok font-semibold" : "text-muted"}`}>{e.match ?? 0}%</span>
-                      </li>
-                    );
-                  })}
-                  {!k.top10.some((e) => (e.match ?? 0) >= matchPct) && !showAll && <li className="help px-2 py-1">Доменов с ключом от {matchPct}% нет</li>}
-                  <li className="px-2 py-1">
-                    <button type="button" className="text-[12px] text-brand hover:underline" onClick={() => setShowAll(!showAll)}>{showAll ? "Только с ключом" : `Показать всю выдачу (${k.top10.length})`}</button>
-                  </li>
-                </ol>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      {found && (
-        <div className="text-[12.5px]">
-          <button type="button" className="text-brand hover:underline" onClick={() => setShowFound(!showFound)}>
-            {showFound ? "▾" : "▸"} Найденные ключи темы · {found.length}
-          </button>
-          {foundError && !/no search results/i.test(foundError) && <span className="ml-2 text-[11px] text-danger" title={foundError}>частично: {foundError.slice(0, 60)}</span>}
-          {showFound && (
-            <ul className="mt-1 space-y-0.5">
-              {found.map((f) => (
-                <li key={f.phrase} className="flex items-center gap-2 px-1">
-                  <span className="min-w-0 flex-1 truncate">{f.phrase}</span>
-                  <span className="shrink-0 text-[11px] text-muted">{f.source === "keywords" ? "запросы" : f.source === "autocomplete" ? "подсказки" : "похожие"}</span>
-                  <span className="w-14 shrink-0 text-right tabular-nums">{f.volume ? fmt(f.volume) : "—"}</span>
-                </li>
-              ))}
-              {!found.length && <li className="help px-1">Ничего сверх таблицы не нашлось</li>}
-            </ul>
-          )}
-        </div>
-      )}
-      {serpDone ? (
-        <div className="space-y-1 text-[11.5px]">
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="help mr-0.5">С ключом в TOP-10:</span>
-            {matched.size ? [...matched.values()].sort((a, b) => b.match - a.match || a.pos - b.pos).slice(0, 12).map((m) => (
-              <a key={m.domain} href={`https://${m.domain}`} target="_blank" rel="noreferrer" className="rounded-md bg-ok-soft px-1.5 py-0.5 font-mono text-ok hover:underline" title={`«${m.kw}» · позиция ${m.pos} · ключа ${m.match}%`}>{m.domain}</a>
-            )) : <span className="help">нет — EMD-сайтов в выдаче не видно</span>}
+    <div className="max-h-[36rem] overflow-auto">
+      <div className="flex items-center gap-2 px-3 py-1.5 text-[12px]">
+        <span className="help flex-1">Свободные — с галочкой; занятые {showTaken ? "зачёркнуты" : "скрыты"}. Зоны: {regional.map((z) => `.${z}`).join(", ") || "—"} → .com → {[...exactZones].map((z) => `.${z}`).join(", ")} → другие.</span>
+        {taken > 0 && <button type="button" className="text-brand hover:underline" onClick={() => setShowTaken(!showTaken)}>{showTaken ? "Скрыть занятые" : `Показать занятые · ${taken}`}</button>}
+      </div>
+      {groups.map((g) => (
+        <div key={g.id} className="border-t border-line">
+          <div className="sticky top-0 z-[1] flex items-center gap-2 bg-surface px-3 py-1 text-[11.5px] font-semibold uppercase tracking-wide text-muted">
+            <span>{g.label}</span><span className="font-normal normal-case tabular-nums">· свободно {g.free} из {g.total}</span>
           </div>
-          {zones.size > 0 && (
-            <div className="flex flex-wrap items-center gap-1">
-              <span className="help mr-0.5">Их зоны:</span>
-              {[...zones.entries()].sort((a, b) => b[1] - a[1]).map(([t, n]) => <span key={t} className="rounded-md bg-ink/5 px-1.5 py-0.5">.{t} · {n}</span>)}
-            </div>
-          )}
+          <div className="space-y-1.5 px-3 pb-2">
+            {g.kws.map(({ kw, rows: list, free }) => {
+              const shown = showTaken ? list : list.filter((d) => d.status === "available");
+              return (
+                <div key={kw} className="text-[13px]">
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 truncate font-medium">{kw}</span>
+                    {vol(kw) > 0 && <span className="text-[11.5px] tabular-nums text-muted">{fmt(vol(kw))}/мес</span>}
+                    {!free && <span className="text-[11.5px] text-danger">всё занято ({list.length})</span>}
+                  </div>
+                  {shown.length > 0 && (
+                    <div className="mt-0.5 flex flex-wrap gap-1">
+                      {shown.map((d) => d.status === "available" ? (
+                        <label key={d.id} className={`inline-flex cursor-pointer items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[12.5px] ${d.selected ? "border-brand bg-brand-soft/60" : "border-line hover:border-ink/40"}`}>
+                          <input type="checkbox" className="h-3.5 w-3.5" checked={d.selected} onChange={(e) => onToggle(d.id, e.target.checked)} />
+                          {d.domain}{best.has(d.id) && <span className="text-warn">★</span>}
+                        </label>
+                      ) : (
+                        <span key={d.id} className="rounded-md bg-ink/5 px-1.5 py-0.5 font-mono text-[12px] text-muted line-through" title={d.status === "taken" ? "занят" : "не проверен"}>{d.domain}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      ) : (
-        <p className="help text-[11.5px]">{serpOn ? "Выдача Google по ключам ещё снимается" : "Выдачу Google в этом подборе не снимали"}</p>
-      )}
+      ))}
     </div>
   );
 }
 
-/** Точная тема во всех зонах — с занятыми: видно, что тема проверена, даже если всё занято. */
-function ThemeStatus({ theme, rows }: { theme: string; rows: RunDomainRow[] }) {
-  const words = phraseWords(theme);
-  const labels = new Set([words.join(""), words.join("-")]);
-  const list = rows.filter((d) => labels.has(d.domain.slice(0, d.domain.length - d.tld.length - 1)) && !isModPattern(d.pattern));
-  if (!list.length) return null;
-  const free = list.filter((d) => d.status === "available").length;
+/** Крупные сайты и агрегаторы — не малостраничники */
+const BIG_SITE = /(^|\.)(reddit|wikipedia|youtube|facebook|twitter|x|instagram|linkedin|trustpilot|quora|medium|google|apple|amazon|casino|askgamblers|gambling|bonus|casinoguru|casino-guru|bettingexpert|oddschecker|covers|lcb|gamblinginsider|sportsbookreview|nytimes|theguardian|bbc|forbes|telegraph|independent|dailymail|mirror|thesun|express|aftonbladet|expressen|svd|dn|nu|telegraaf|ad|bild|spiegel|vg|dagbladet|hs|is|iltalehti|politiken|ekstrabladet)\.[a-z.]+$/;
+
+/** «Выдача»: TOP-10 Google по каждому ключу — домены с ключом и вероятные малостраничники (МС) отдельно. */
+function SerpView({ c, country, matchPct, minVolume, serpOn, freq }: { c: NonNullable<BrandItem["emd"]>; country: string; matchPct: number; minVolume: number; serpOn: boolean; freq: Map<string, number> }) {
+  const withSerp = c.keywords.filter((k) => k.top10);
+  const [open, setOpen] = useState<Set<string>>(() => new Set([...c.keywords].sort((a, b) => Number(b.theme) - Number(a.theme) || b.volume - a.volume).slice(0, 3).map((k) => k.phrase)));
+  const [filter, setFilter] = useState<"all" | "key" | "ms">("all");
+  const found = usableFound(c, country);
+  const [showFound, setShowFound] = useState(false);
+  const smallZones = (k: EmdKeyword) => new Set(k.smallTlds.map(([t]) => String(t).replace(/^\./, "").toLowerCase()));
+  // МС: не крупный сайт, встречается в выдаче не больше чем 2 кластеров, и у ключа в таблице есть маленькие сайты в этой зоне
+  const isMs = (k: EmdKeyword, domain: string) => k.smallSites > 0 && !BIG_SITE.test(domain) && (freq.get(domain) ?? 0) <= 2 && smallZones(k).has(tldOf(domain));
+  const hit = (e: { match?: number }) => (e.match ?? 0) >= matchPct;
+  const all = withSerp.flatMap((k) => (k.top10 ?? []).map((e) => ({ k, e })));
+  const nKey = new Set(all.filter((x) => hit(x.e)).map((x) => x.e.domain)).size;
+  const nMs = new Set(all.filter((x) => isMs(x.k, x.e.domain)).map((x) => x.e.domain)).size;
+  if (!withSerp.length) return <p className="help px-3 py-3">{serpOn ? "Выдача Google по ключам ещё снимается" : "Выдачу Google в этом подборе не снимали"}</p>;
   return (
-    <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 py-2 text-[11.5px]">
-      <span className="help mr-0.5">Тема точно:</span>
-      {list.map((d) => (
-        <span key={d.id} className={`rounded-md px-1.5 py-0.5 font-mono ${d.status === "available" ? "bg-ok-soft text-ok" : d.status === "taken" ? "bg-ink/5 text-danger line-through" : "bg-ink/5 text-muted"}`} title={d.status === "available" ? "свободен" : d.status === "taken" ? "занят" : "не проверен"}>{d.domain}</span>
-      ))}
-      {!free && <span className="help ml-1">— все заняты, смотри вариации темы</span>}
+    <div className="max-h-[40rem] overflow-auto">
+      <div className="flex flex-wrap items-center gap-1 px-3 py-2">
+        <Chip active={filter === "all"} label="Вся выдача" n={all.length} onClick={() => setFilter("all")} />
+        <Chip active={filter === "key"} label="С ключом в домене" n={nKey} onClick={() => setFilter("key")} title={`Домен содержит не меньше ${matchPct}% слов ключа`} />
+        <Chip active={filter === "ms"} label="МС — малостраничники" n={nMs} onClick={() => setFilter("ms")} title="Не крупный сайт и не агрегатор (в выдаче не больше 2 кластеров подбора), в зоне, где таблица видит маленькие сайты по этому ключу. Признак примерный" />
+        <span className="ml-auto flex gap-2 text-[12px]">
+          <button type="button" className="text-brand hover:underline" onClick={() => setOpen(new Set(withSerp.map((k) => k.phrase)))}>Раскрыть все</button>
+          <button type="button" className="text-brand hover:underline" onClick={() => setOpen(new Set())}>Свернуть</button>
+        </span>
+      </div>
+      {c.keywords.map((k) => {
+        const isOpen = open.has(k.phrase);
+        const list = (k.top10 ?? []).filter((e) => filter === "all" || (filter === "key" ? hit(e) : isMs(k, e.domain)));
+        const hits = (k.top10 ?? []).filter(hit).length;
+        const ms = (k.top10 ?? []).filter((e) => isMs(k, e.domain)).length;
+        return (
+          <div key={k.phrase} className="border-t border-line">
+            <button type="button" className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-ink/5 ${k.theme || k.volume >= minVolume ? "" : "opacity-60"}`} onClick={() => setOpen((p) => { const n = new Set(p); if (n.has(k.phrase)) n.delete(k.phrase); else n.add(k.phrase); return n; })} title={[k.ru, k.kd !== null ? `сложность ${k.kd}` : "", k.officialInTop ? "официальный сайт в топе" : ""].filter(Boolean).join(" · ")}>
+              <span className="w-3 shrink-0 text-muted">{k.top10 ? (isOpen ? "▾" : "▸") : ""}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">{k.phrase}{k.theme && <span className="ml-1.5 rounded bg-brand-soft px-1 text-[10.5px] text-brand">тема</span>}</span>
+              {k.top10 && <span className={`shrink-0 text-[11px] ${hits ? "font-semibold text-ok" : "text-muted"}`}>с ключом {hits}</span>}
+              {k.smallSites > 0 && <span className="shrink-0 text-[11px] text-brand" title={`Таблица: маленьких сайтов в топе ${k.smallSites}${k.smallTlds.length ? ` (${k.smallTlds.map(([t, n]) => `${t} ×${n}`).join(", ")})` : ""}`}>МС {ms}/{k.smallSites}</span>}
+              {k.serpError && <span className="shrink-0 text-[11px] text-danger" title={k.serpError}>выдача ✕</span>}
+              <span className="w-14 shrink-0 text-right tabular-nums">{fmt(k.volume)}</span>
+            </button>
+            {isOpen && k.top10 && (
+              <ol className="mx-3 mb-2 rounded-lg border border-line divide-y divide-line">
+                {list.map((e) => {
+                  const h = hit(e);
+                  const small = isMs(k, e.domain);
+                  return (
+                    <li key={e.domain} className={`flex items-center gap-2 px-2 py-1 text-[12.5px] ${h ? "bg-ok-soft/50" : small ? "bg-brand-soft/30" : ""}`}>
+                      <span className="w-5 shrink-0 text-right tabular-nums text-muted">{e.pos}</span>
+                      <a href={`https://${e.domain}`} target="_blank" rel="noreferrer" className={`w-[38%] shrink-0 truncate font-mono hover:underline ${h ? "font-semibold" : ""}`}>{e.domain}</a>
+                      <span className="min-w-0 flex-1 truncate text-muted" title={e.title}>{e.title}</span>
+                      {small && <span className="shrink-0 rounded bg-brand-soft px-1 text-[10.5px] text-brand" title="Похоже на малостраничник">МС</span>}
+                      {h && <span className="shrink-0 rounded bg-ok-soft px-1 text-[10.5px] font-semibold text-ok" title="Слов ключа в домене">ключ {e.match}%</span>}
+                      {(freq.get(e.domain) ?? 0) > 2 && <span className="shrink-0 text-[10.5px] text-muted" title="В выдаче стольких кластеров подбора — портал или агрегатор">×{freq.get(e.domain)}</span>}
+                    </li>
+                  );
+                })}
+                {!list.length && <li className="help px-2 py-1">Под фильтр ничего нет</li>}
+              </ol>
+            )}
+          </div>
+        );
+      })}
+      <div className="border-t border-line px-3 py-2 text-[12.5px]">
+        <button type="button" className="text-brand hover:underline" onClick={() => setShowFound(!showFound)}>{showFound ? "▾" : "▸"} Найденные ключи темы · {found.length}</button>
+        {showFound && (
+          <ul className="mt-1 space-y-0.5">
+            {found.map((f) => (
+              <li key={f.phrase} className="flex items-center gap-2 px-1">
+                <span className="min-w-0 flex-1 truncate">{f.phrase}</span>
+                <span className="shrink-0 text-[11px] text-muted">{f.source === "keywords" ? "запросы" : f.source === "autocomplete" ? "подсказки" : "похожие"}</span>
+                <span className="w-14 shrink-0 text-right tabular-nums">{f.volume ? fmt(f.volume) : "—"}</span>
+              </li>
+            ))}
+            {!found.length && <li className="help px-1">Ничего сверх таблицы не нашлось</li>}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
