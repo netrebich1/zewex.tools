@@ -65,7 +65,7 @@ const pct = (a: number, b: number) => (b ? `'${Math.round((a / b) * 100)}%` : "�
 const delta = (cur: number, prev: number): { text: string; color: Color | null } => {
   if (prev < 20) return cur >= 20 ? { text: "новое", color: "g" } : { text: "—", color: null };
   const p = Math.round(((cur - prev) / prev) * 100);
-  return { text: `${p > 0 ? "▲" : p < 0 ? "▼" : ""}${Math.abs(p)}%`, color: p >= 15 ? "g" : p <= -15 ? "r" : null };
+  return { text: p ? `${p > 0 ? "▲" : "▼"}${Math.abs(p)}%` : "ровно", color: p >= 15 ? "g" : p <= -15 ? "r" : null };
 };
 const median = (a: number[]) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 
