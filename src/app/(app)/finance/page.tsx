@@ -79,7 +79,7 @@ export default async function FinanceHome({ searchParams }: { searchParams: Prom
                 <>
                   {debt.plan.map((t) => (
                     <p key={t.fromId + t.toId} className="mt-2 text-[22px] sm:text-[28px] font-bold tracking-tight leading-tight">
-                      {t.from} должен {t.to} <span className="text-warn whitespace-nowrap">{f(t.amount)}</span>
+                      {t.from} должен {dative(t.to)} <span className="text-warn whitespace-nowrap">{f(t.amount)}</span>
                     </p>
                   ))}
                   <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -162,7 +162,7 @@ export default async function FinanceHome({ searchParams }: { searchParams: Prom
             </div>
             {!dir && (
               <p className="mt-3 text-[14px]">
-                Итог только этого периода: <b>{periodPlan.length ? periodPlan.map((t) => `${t.from} должен ${t.to} ${f(t.amount)}`).join(", ") : "поровну, никто никому не должен"}</b>.{" "}
+                Итог только этого периода: <b>{periodPlan.length ? periodPlan.map((t) => `${t.from} должен ${dative(t.to)} ${f(t.amount, { digits: 2 })}`).join(", ") : "поровну, никто никому не должен"}</b>.{" "}
                 <span className="help">Это половина разницы между вкладами. Общий долг вверху страницы — сумма таких итогов за все месяцы минус возвраты.</span>
               </p>
             )}
@@ -232,65 +232,59 @@ function DebtDetail({ detail, f: f0 }: { detail: Awaited<ReturnType<typeof debtS
 
 const ruDate = (ymd: string) => ymd.split("-").reverse().join(".");
 const ruMonth = (ym: string) => new Date(`${ym}-01T00:00:00Z`).toLocaleString("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" }).replace(" г.", "");
-const owes = (plan: Transfer[], f: Fmt) => (plan.length ? plan.map((t) => `${t.from} → ${t.to} ${f(t.amount)}`).join(", ") : "в расчёте");
+/** «Никита» → «Никите», «Ярослав» → «Ярославу»: имена партнёров в дательном падеже. */
+const dative = (n: string) => (/[ая]$/i.test(n) ? n.slice(0, -1) + "е" : /[йь]$/i.test(n) ? n.slice(0, -1) + "ю" : /[бвгджзклмнпрстфхцчшщ]$/i.test(n) ? n + "у" : n);
+const owes = (plan: Transfer[], f: Fmt) => (plan.length ? plan.map((t) => `${t.from} должен ${dative(t.to)} ${f(t.amount)}`).join(", ") : "никто никому не должен");
 
-/** Долг по месяцам (итог месяца и нарастающим) и история возвратов с датой последнего закрытия. */
-function DebtLedger({ ledger, partners, f }: { ledger: Awaited<ReturnType<typeof debtState>>["ledger"]; partners: { id: string; name: string }[]; f: Fmt }) {
+/** История расчёта словами: возвраты (последний, закрывался ли долг) и по каждому месяцу — кто сколько оплатил и кто кому должен. */
+function DebtLedger({ ledger, partners, f: f0 }: { ledger: Awaited<ReturnType<typeof debtState>>["ledger"]; partners: { id: string; name: string }[]; f: Fmt }) {
+  const f: Fmt = (v, o = {}) => f0(v, { digits: 2, ...o });
   const { months, settlements, closedAt } = ledger;
   if (!months.length) return null;
-  const cell = "text-right tabular-nums whitespace-nowrap";
   const last = settlements.at(-1);
-  const anyIncome = months.some((m) => partners.some((p) => m.received[p.id]));
-  const anySettle = settlements.length > 0;
+  const ret = (t: Transfer) => `${t.from} вернул ${dative(t.to)} ${f(t.amount)}`;
   return (
     <div className="mt-4 border-t border-line pt-3 space-y-4">
       <div>
-        <p className="text-[13.5px] font-semibold">Как сложился долг: по месяцам</p>
-        <p className="help">«Долг за месяц» — половина разницы вкладов только этого месяца. «Долг на конец» — всё накопленное с начала учёта, с возвратами. Стрелка: кто должен → кому.</p>
-        <div className="table-wrap mt-2"><table className="table">
-          <thead><tr>
-            <th>Месяц</th>
-            {partners.map((p) => <th key={p.id} className="text-right">{p.name} оплатил</th>)}
-            {anyIncome && <th className="text-right">Доходы на счёт</th>}
-            <th className="text-right">Долг за месяц</th>
-            {anySettle && <th className="text-right">Возвраты</th>}
-            <th className="text-right">Долг на конец</th>
-          </tr></thead>
-          <tbody>
-            {[...months].reverse().map((m) => (
-              <tr key={m.month}>
-                <td className="font-medium whitespace-nowrap">{ruMonth(m.month)}</td>
-                {partners.map((p) => <td key={p.id} className={cell}>{f(m.paid[p.id] ?? 0)}</td>)}
-                {anyIncome && <td className={cell}>{partners.filter((p) => m.received[p.id]).map((p) => `${p.name} ${f(m.received[p.id])}`).join(", ") || "—"}</td>}
-                <td className={cell}>{owes(m.own, f)}</td>
-                {anySettle && <td className={cell}>{m.settled.length ? owes(m.settled, f) : "—"}</td>}
-                <td className={`${cell} font-semibold`}>{owes(m.end, f)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table></div>
-      </div>
-      <div>
         <p className="text-[13.5px] font-semibold">Возвраты долга</p>
         {!last ? (
-          <p className="help mt-1">Возвратов ещё не записано — долг копится с первой операции ({ruDate(ledger.firstDate ?? "")}). Если деньги друг другу уже переводили, запишите это кнопкой «Записать возврат», иначе расчёт их не видит.</p>
+          <p className="mt-1 text-[14px]">Возвратов ещё не было. Долг копится с первой операции ({ruDate(ledger.firstDate ?? "")}). Когда кто-то переведёт деньги другому — нажмите «Записать возврат», и он появится здесь.</p>
         ) : (
           <>
             <p className="mt-1 text-[14px]">
-              Последний возврат: <b>{ruDate(last.date)}</b>, {last.from} → {last.to} {f(last.amount)}.{" "}
-              {closedAt ? <>Долг полностью закрывался <b>{ruDate(closedAt)}</b>.</> : "Полностью долг ещё ни разу не закрывался."}
+              Последний возврат — <b>{ruDate(last.date)}</b>: {ret(last)}. {closedAt ? <>Долг был полностью закрыт <b>{ruDate(closedAt)}</b>.</> : "Полностью долг ещё ни разу не закрывался."}
             </p>
-            <div className="table-wrap mt-2"><table className="table">
-              <thead><tr><th>Дата</th><th>Кто → кому</th><th className="text-right">Сумма</th><th className="text-right">Долг после возврата</th></tr></thead>
-              <tbody>
-                {[...settlements].reverse().map((s, i) => (
-                  <tr key={`${s.date}-${i}`}><td className="whitespace-nowrap tabular-nums">{ruDate(s.date)}</td><td>{s.from} → {s.to}</td><td className={cell}>{f(s.amount)}</td><td className={cell}>{owes(s.after, f)}</td></tr>
-                ))}
-              </tbody>
-            </table></div>
-            <Link href="/finance/ops?type=SETTLEMENT" className="help underline hover:text-ink">Все возвраты в журнале</Link>
+            <ul className="mt-2 space-y-1 text-[14px]">
+              {[...settlements].reverse().map((s, i) => (
+                <li key={`${s.date}-${i}`} className="rounded-lg bg-ink/5 px-3 py-2">
+                  <b className="tabular-nums">{ruDate(s.date)}</b> — {ret(s)}. <span className="text-ink-2">После этого: {s.after.length ? owes(s.after, f) : "долг закрыт, никто никому не должен"}.</span>
+                </li>
+              ))}
+            </ul>
+            <Link href="/finance/ops?type=SETTLEMENT" className="help mt-1 inline-block underline hover:text-ink">Изменить или удалить возврат — в журнале</Link>
           </>
         )}
+      </div>
+      <div>
+        <p className="text-[13.5px] font-semibold">История по месяцам</p>
+        <ul className="mt-2 space-y-2">
+          {[...months].reverse().map((m, i) => {
+            const first = i === months.length - 1;
+            return (
+              <li key={m.month} className="rounded-xl border border-line p-3 text-[14px]">
+                <p className="font-semibold capitalize">{ruMonth(m.month)}</p>
+                <ul className="mt-1 space-y-0.5">
+                  {partners.map((p) => (
+                    <li key={p.id}>{p.name} оплатил расходов: <b className="tabular-nums">{f(m.paid[p.id] ?? 0)}</b>{m.received[p.id] ? <> и получил на свой счёт общий доход <b className="tabular-nums">{f(m.received[p.id])}</b></> : null}</li>
+                  ))}
+                  <li>Итог только этого месяца: <b>{owes(m.own, f)}</b></li>
+                  <li>Возвраты за месяц: {m.settled.length ? <b>{m.settled.map(ret).join("; ")}</b> : "не было"}</li>
+                  {!(first && !m.settled.length) && <li>{first ? "Долг на конец месяца" : "Долг на конец месяца, вместе с прошлыми месяцами и возвратами"}: <b>{owes(m.end, f)}</b></li>}
+                </ul>
+              </li>
+            );
+          })}
+        </ul>
       </div>
     </div>
   );
