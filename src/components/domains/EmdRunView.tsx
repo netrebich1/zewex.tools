@@ -11,10 +11,13 @@ import type { RunPayload } from "./DomainRunView";
 import { computeStats } from "@/lib/domains/selection";
 import { itemKey, RUN_STATUS_LABELS, type BrandItem } from "@/lib/domains/types";
 import type { RunDomainRow } from "@/lib/domains/runs";
-import { EMD_DEFAULTS, EMD_PATTERN_LABELS, eligibleKeywords, type EmdKeyword, type EmdPattern } from "@/lib/domains/emd";
+import { EMD_DEFAULTS, EMD_LEVEL_LABELS, EMD_MOD_SOURCE_LABELS, EMD_PATTERN_LABELS, eligibleKeywords, emdModifiers, emdSourceKeyword, isModPattern, type EmdKeyword, type EmdPattern } from "@/lib/domains/emd";
 import { tldOf } from "@/lib/domains/mining";
 
 const LIVE = new Set(["QUEUED", "RUNNING"]);
+type Group = "1" | "2" | "3" | "mod";
+const GROUPS: Array<[Group, string]> = [["1", EMD_LEVEL_LABELS[1]], ["2", EMD_LEVEL_LABELS[2]], ["3", EMD_LEVEL_LABELS[3]], ["mod", "С приписками"]];
+const groupOf = (d: RunDomainRow): Group => (isModPattern(d.pattern) ? "mod" : d.tier === 3 ? "3" : d.tier === 2 ? "2" : "1");
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
 /** Карточка подбора «EMD по ключам»: кластеры, их ключи с TOP-10 Google, домены по весу, выбор и выгрузка. */
@@ -22,6 +25,7 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
   const [data, setData] = useState(initial);
   const [view, setView] = useState<"available" | "selected" | "taken" | "all">("available");
   const [query, setQuery] = useState("");
+  const [group, setGroup] = useState<Group | "all">("all");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const keys = (items: BrandItem[]) => items.map((it) => itemKey(it.brand, it.country));
@@ -34,6 +38,11 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
   const live = LIVE.has(run.status);
   const s = run.settings;
   const emd = { ...EMD_DEFAULTS, ...s.emd };
+  const groupCounts = useMemo(() => {
+    const m: Record<Group, number> = { "1": 0, "2": 0, "3": 0, mod: 0 };
+    for (const d of domains) if (d.status === "available") m[groupOf(d)]++;
+    return m;
+  }, [domains]);
   const items = s.items;
 
   async function reload() {
@@ -134,7 +143,7 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
       {domains.length > 0 && (
         <Card
           title="Выгрузка"
-          description={`Домены в карточке кластера идут по весу: частота ключа × точность совпадения × зона × длина. ★ — лучшие свободные, столько, сколько «доменов на кластер» (${s.perBrand}).${serpCost ? ` Выдача Google: $${serpCost.toFixed(3)}.` : ""}`}
+          description={`В карточке кластера домены разбиты на группы: точный ключ, вариации ключа, из выдачи, с приписками; внутри — по весу (частота × точность × зона × длина). ★ — ${s.perBrand} лучших свободных кластера.${serpCost ? ` Выдача Google: $${serpCost.toFixed(3)}.` : ""}`}
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" className="btn-primary btn-sm" onClick={() => { for (const rows of byCluster.values()) setRows(bestOf(rows), true); }}>★ Выбрать лучшие во всех</button>
@@ -144,7 +153,7 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
             </div>
           }
         >
-          {copied ? <Alert tone={copied.startsWith("Нечего") ? "warn" : "ok"}>{copied}</Alert> : <p className="help">Выгрузка — выбранные домены; в колонке «Бренд» — тема кластера, в «Приставке» — ключ, из которого собран домен.</p>}
+          {copied ? <Alert tone={copied.startsWith("Нечего") ? "warn" : "ok"}>{copied}</Alert> : <p className="help">Выгрузка — выбранные домены; в колонке «Бренд» — тема кластера, в «Приставке» — ключ, из которого собран домен (и «+ приписка», если она есть).</p>}
         </Card>
       )}
 
@@ -155,6 +164,14 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
             <button key={v} type="button" className={`tab ${view === v ? "active" : ""}`} onClick={() => setView(v)}>{label}</button>
           ))}
         </div>
+        {view !== "selected" && (
+          <div className="flex flex-wrap gap-1.5">
+            <button type="button" className={`tab ${group === "all" ? "active" : ""}`} onClick={() => setGroup("all")}>Все варианты</button>
+            {GROUPS.map(([g, label]) => (
+              <button key={g} type="button" className={`tab ${group === g ? "active" : ""}`} onClick={() => setGroup(g)} title="Свободных в этой группе">{label} · {groupCounts[g]}</button>
+            ))}
+          </div>
+        )}
         {view !== "selected" && (
           <div className="ml-auto flex gap-2">
             <button type="button" className="btn-ghost btn-sm" onClick={() => setExpanded(new Set(keys(items)))}>Развернуть все</button>
@@ -174,7 +191,10 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
             const kwMatch = (k: EmdKeyword) => k.phrase.toLowerCase().includes(q);
             if (q && !item.brand.toLowerCase().includes(q) && !rows.some((d) => d.domain.includes(q)) && !c?.keywords.some(kwMatch)) return null;
             const stats = computeStats(rows);
-            const visible = rows.filter((d) => (view === "all" || (view === "available" ? d.status === "available" : d.status === "taken")) && (!q || d.domain.includes(q) || item.brand.toLowerCase().includes(q) || (d.suffix ?? "").toLowerCase().includes(q)));
+            const visible = rows.filter((d) => (view === "all" || (view === "available" ? d.status === "available" : d.status === "taken")) && (group === "all" || groupOf(d) === group) && (!q || d.domain.includes(q) || item.brand.toLowerCase().includes(q) || (d.suffix ?? "").toLowerCase().includes(q)));
+            const sections = GROUPS.map(([g, label]) => ({ g, label, rows: visible.filter((d) => groupOf(d) === g) })).filter((x) => x.rows.length);
+            const mods = c ? emdModifiers(c, item.country, emd) : [];
+            const volOf = (d: RunDomainRow) => c?.keywords.find((k) => k.phrase === emdSourceKeyword(d.suffix))?.volume;
             const best = new Set(bestOf(rows).map((d) => d.id));
             const open = expanded.has(key);
             const showSelected = selectedCards.has(key);
@@ -201,15 +221,30 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
                 {open && (
                   <div className="border-t border-line flex flex-col min-h-0">
                     {c && <KeywordsBlock keywords={c.keywords} minVolume={emd.minVolume} matchPct={emd.matchPct} serpDone={!!c.serpAt} serpOn={s.autoResearch} eligible={new Set(eligibleKeywords(c, emd.minVolume).map((k) => k.phrase))} />}
+                    {mods.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 py-2 text-[11.5px]">
+                        <span className="help mr-0.5">Приписки:</span>
+                        {mods.map((m) => <span key={`${m.pos}:${m.mod}`} className="rounded-md bg-ink/5 px-1.5 py-0.5 font-mono" title={`${EMD_MOD_SOURCE_LABELS[m.source]} · ${m.pos === "start" ? "в начале" : "в конце"}`}>{m.pos === "start" ? `${m.mod}+` : `+${m.mod}`}</span>)}
+                      </div>
+                    )}
                     {showSelected ? (
                       <BrandSelected rows={rows} onToggle={toggle} />
                     ) : rows.length === 0 ? (
                       <p className="help px-3 py-3">{live ? "Ещё не проверялся" : "Ни одного домена: ключи длиннее лимита или ниже порога частоты"}</p>
                     ) : (
-                      <ul className="max-h-80 overflow-auto divide-y divide-line">
-                        {visible.map((d) => <DomainLine key={d.id} d={d} best={best.has(d.id)} volume={c?.keywords.find((k) => k.phrase === d.suffix)?.volume} onToggle={toggle} />)}
-                        {!visible.length && <li className="help px-3 py-3">В этой вкладке доменов нет</li>}
-                      </ul>
+                      <div className="max-h-[30rem] overflow-auto">
+                        {sections.map((sec) => (
+                          <div key={sec.g}>
+                            <div className="sticky top-0 z-[1] flex items-center gap-2 border-b border-line bg-surface px-3 py-1 text-[11.5px] font-semibold uppercase tracking-wide text-muted">
+                              <span>{sec.label}</span><span className="tabular-nums font-normal normal-case">· {sec.rows.length}</span>
+                            </div>
+                            <ul className="divide-y divide-line">
+                              {sec.rows.map((d) => <DomainLine key={d.id} d={d} best={best.has(d.id)} volume={volOf(d)} onToggle={toggle} />)}
+                            </ul>
+                          </div>
+                        ))}
+                        {!visible.length && <p className="help px-3 py-3">В этой вкладке доменов нет</p>}
+                      </div>
                     )}
                     {!live && rows.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 px-3 py-2 border-t border-line">
@@ -235,7 +270,7 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
 
 function DomainLine({ d, best, volume, onToggle }: { d: RunDomainRow; best: boolean; volume?: number; onToggle: (id: string, selected: boolean) => void }) {
   return (
-    <li className={`flex items-center gap-2 px-3 py-1.5 text-[13.5px] ${d.selected ? "bg-brand-soft/40" : ""}`} title={`ключ «${d.suffix ?? ""}»${volume ? ` · ${volume}/мес` : ""}`}>
+    <li className={`flex items-center gap-2 px-3 py-1.5 text-[13.5px] ${d.selected ? "bg-brand-soft/40" : ""}`} title={`ключ «${emdSourceKeyword(d.suffix)}»${volume ? ` · ${volume}/мес` : ""}${d.suffix?.includes(" + ") ? ` · приписка ${d.suffix.split(" + ").pop()}` : ""}`}>
       {d.status === "available" ? (
         <input type="checkbox" className="h-4 w-4 shrink-0" checked={d.selected} onChange={(e) => onToggle(d.id, e.target.checked)} />
       ) : (
@@ -243,6 +278,7 @@ function DomainLine({ d, best, volume, onToggle }: { d: RunDomainRow; best: bool
       )}
       <span className={`font-mono min-w-0 flex-1 truncate ${d.status === "taken" ? "text-muted" : ""}`}>{d.domain}</span>
       {best && d.status === "available" && <span className="shrink-0 text-warn" title="Лучший по весу">★</span>}
+      {d.suffix?.includes(" + ") && <span className="shrink-0 font-mono text-[11px] text-brand">+{d.suffix.split(" + ").pop()}</span>}
       <span className="shrink-0 rounded-md bg-ink/5 px-1.5 text-[11px] text-muted">{EMD_PATTERN_LABELS[d.pattern as EmdPattern] ?? d.pattern}</span>
       {volume ? <span className="shrink-0 w-12 text-right text-[11.5px] tabular-nums text-muted">{volume >= 1000 ? `${Math.round(volume / 100) / 10}k` : volume}</span> : null}
     </li>

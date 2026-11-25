@@ -12,7 +12,7 @@ import { DEFAULT_SETTINGS, getCountry, itemKey, LIMITS, type BrandItem, type Bra
 import { rankDomainsWithAi, type AiPick } from "./ai";
 import { balancePicks } from "./selection";
 import { brandTop10, keywordTop10, researchBrand, type BrandResearch } from "./research";
-import { EMD_DEFAULTS, emdCandidates, normalizeEmdCluster, type EmdSettings } from "./emd";
+import { EMD_DEFAULTS, emdCandidates, normalizeEmdCluster, normalizeEmdSettings } from "./emd";
 import { keptModifiers, researchSummary } from "./researchSummary";
 import { domainsKeyTeamId } from "./keyTeam";
 import { domainsOfBrand } from "./mining";
@@ -89,10 +89,9 @@ export function parseSettings(json: unknown): DomainRunSettings {
     : brands.map((brand) => ({ brand, country: countryCode, modifiers: [] }));
   const presets: Record<string, CountryPreset> = {};
   if (s.countryPresets && typeof s.countryPresets === "object") for (const [k, v] of Object.entries(s.countryPresets)) presets[k] = normalizePreset(v);
-  const emdRaw = s.emd as Partial<EmdSettings> | undefined;
   return {
     mode: s.mode === "emd" ? "emd" : "brand",
-    ...(s.mode === "emd" && emdRaw ? { emd: { sourceUrl: String(emdRaw.sourceUrl ?? ""), fileName: String(emdRaw.fileName ?? ""), loadedAt: String(emdRaw.loadedAt ?? ""), minVolume: Number(emdRaw.minVolume) || EMD_DEFAULTS.minVolume, maxLen: Number(emdRaw.maxLen) || EMD_DEFAULTS.maxLen, matchPct: Number(emdRaw.matchPct) || EMD_DEFAULTS.matchPct } } : {}),
+    ...(s.mode === "emd" && s.emd ? { emd: normalizeEmdSettings(s.emd) } : {}),
     brands: items.map((it) => it.brand),
     items,
     countryPresets: presets,

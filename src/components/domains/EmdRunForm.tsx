@@ -6,9 +6,9 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { launchEmdRun, previewEmdTable, type EmdPreview } from "@/actions/domainsEmd";
 import { EMD_DEFAULTS } from "@/lib/domains/emd";
 
-export type EmdFormDefaults = { sourceUrl: string; name: string; minVolume: number; maxLen: number; matchPct: number; perCluster: number; tlds: string; allowHyphen: boolean; serp: boolean; autoZones: boolean };
+export type EmdFormDefaults = { sourceUrl: string; name: string; minVolume: number; maxLen: number; matchPct: number; perCluster: number; maxPerCluster: number; tlds: string; allowHyphen: boolean; serp: boolean; autoZones: boolean; variations: boolean; serpVariants: boolean; keywordMods: boolean; geoMods: boolean; suffixes: string; prefixes: string };
 
-export const EMD_FORM_DEFAULTS: EmdFormDefaults = { sourceUrl: "", name: "", ...EMD_DEFAULTS, perCluster: 5, tlds: "com", allowHyphen: true, serp: true, autoZones: true };
+export const EMD_FORM_DEFAULTS: EmdFormDefaults = { sourceUrl: "", name: "", ...EMD_DEFAULTS, perCluster: 5, tlds: "com", allowHyphen: true, serp: true, autoZones: true, suffixes: "", prefixes: "" };
 
 /** Форма подбора «EMD по ключам»: ссылка на выгрузку кластеров, порог частоты, домены на кластер, зоны и выдача. */
 export function EmdRunForm({ defaults }: { defaults: EmdFormDefaults }) {
@@ -73,12 +73,22 @@ export function EmdRunForm({ defaults }: { defaults: EmdFormDefaults }) {
           </div>
         </Card>
 
-        <Card title="Как строятся домены" description="Из темы кластера и ключей темы с частотой не ниже порога. Метка домена: ключ слитно (casinoszondercruks), без слов-связок online/met/mit (casinozondercruks), транслитом ä → ae для DE/AT/CH и через дефис. Отрицания (zonder, ohne, utan, non) не выкидываются: на них держится смысл. Порядок — по весу: частота ключа × точность совпадения × зона × длина.">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Мин. частота ключа" hint="Ключи темы ниже порога в домены не идут; тема кластера берётся всегда">
+        <Card title="Варианты доменов" description="Три уровня основы, в карточке кластера они идут отдельными группами. Каждая основа проверяется во всех зонах; лучшие основы — ещё и с приписками.">
+          <div className="space-y-3">
+            <div className="rounded-lg bg-ink/5 px-3 py-2 text-[13px]">
+              <b>1. Точный ключ</b> — ключ слитно, транслитом и через дефис: <span className="font-mono">casinozondercruks</span>, <span className="font-mono">casino-zonder-cruks</span>. Тема и ключи с частотой от порога.
+            </div>
+            {flag("variations", defaults.variations, "2. Вариации ключа", "Перестановки (zondercrukscasino), без связок online/met, без casino (zondercruks), ед./мн. число (casinoszondercruks) и ключи из таблицы ниже порога частоты.")}
+            {flag("serpVariants", defaults.serpVariants, "3. Вариации из выдачи", "Метки доменов из TOP-10, где ключа от порога подсветки: их основа в других зонах. Нужна выдача Google.")}
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <Field label="Мин. частота ключа" hint="Ключи ниже порога идут только в вариации (уровень 2); тема кластера — всегда точный ключ">
               <input name="minVolume" type="number" min={0} className="input" value={minVolume} onChange={(e) => { setMinVolume(Number(e.target.value) || 0); }} />
             </Field>
-            <Field label="Доменов на кластер" hint="Сколько свободных нужно; меньше — кластер помечается «мало». Рекомендуются лучшие по весу">
+            <Field label="Проверять вариантов на кластер, до" hint="Сколько доменов сгенерировать и проверить на кластер; из них выбираешь сам. ~60% без приписок, ~40% с приписками">
+              <input name="maxPerCluster" type="number" min={10} max={1000} className="input" defaultValue={defaults.maxPerCluster} />
+            </Field>
+            <Field label="Отметить ★ лучших на кластер" hint="Сколько обычно берёшь: столько лучших свободных по весу помечаются звёздочкой и выбираются кнопкой «★». Остальные — в списке на выбор">
               <input name="perCluster" type="number" min={1} max={100} className="input" defaultValue={defaults.perCluster} />
             </Field>
             <Field label="Зоны (кроме зоны страны)" hint="Через запятую. Зона страны (.nl, .de, .co.uk) добавляется всегда">
@@ -87,6 +97,21 @@ export function EmdRunForm({ defaults }: { defaults: EmdFormDefaults }) {
             <Field label="Макс. длина метки" hint="Символов до точки; длиннее — не берём">
               <input name="maxLen" type="number" min={8} max={63} className="input" defaultValue={defaults.maxLen} />
             </Field>
+          </div>
+        </Card>
+
+        <Card title="Приписки" description="Ставятся к 6 лучшим основам кластера, в 3 первые зоны: слитно и через дефис (если дефис включён). В карточке — отдельная группа «С приписками».">
+          <div className="space-y-3">
+            {flag("keywordMods", defaults.keywordMods, "Из ключей кластера", "Слова из ключей сверх темы: «beste casino zonder cruks» → приписка beste в начале, «casino zonder cruks nederland» → nederland в конце. До 12 самых частотных.")}
+            {flag("geoMods", defaults.geoMods, "Гео в конце", "Код страны и alpha-3: casinozondercruksnl, casinozondercruks-nld.")}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Свои приписки в конце" hint="Через запятую: online, top, bonus, 24">
+                <input name="suffixes" className="input" defaultValue={defaults.suffixes} placeholder="online, top, bonus" />
+              </Field>
+              <Field label="Свои приписки в начале" hint="Через запятую: best, top, mijn">
+                <input name="prefixes" className="input" defaultValue={defaults.prefixes} placeholder="best, top" />
+              </Field>
+            </div>
           </div>
         </Card>
       </div>
