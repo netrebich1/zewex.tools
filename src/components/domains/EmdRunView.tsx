@@ -11,13 +11,31 @@ import type { RunPayload } from "./DomainRunView";
 import { computeStats } from "@/lib/domains/selection";
 import { itemKey, RUN_STATUS_LABELS, type BrandItem } from "@/lib/domains/types";
 import type { RunDomainRow } from "@/lib/domains/runs";
-import { EMD_DEFAULTS, EMD_LEVEL_LABELS, EMD_MOD_SOURCE_LABELS, EMD_PATTERN_LABELS, eligibleKeywords, emdModifiers, emdSourceKeyword, isModPattern, type EmdKeyword, type EmdPattern } from "@/lib/domains/emd";
+import { EMD_DEFAULTS, EMD_LEVEL_LABELS, EMD_MOD_SOURCE_LABELS, EMD_PATTERN_LABELS, eligibleKeywords, emdGeo, emdModifiers, emdSourceKeyword, emdZoneSuggestions, isGeoPattern, isModPattern, phraseWords, type EmdFound, type EmdKeyword, type EmdPattern } from "@/lib/domains/emd";
+import { addEmdZonesAction } from "@/actions/domainsEmd";
 import { tldOf } from "@/lib/domains/mining";
 
 const LIVE = new Set(["QUEUED", "RUNNING"]);
-type Group = "1" | "2" | "3" | "mod";
-const GROUPS: Array<[Group, string]> = [["1", EMD_LEVEL_LABELS[1]], ["2", EMD_LEVEL_LABELS[2]], ["3", EMD_LEVEL_LABELS[3]], ["mod", "С приписками"]];
-const groupOf = (d: RunDomainRow): Group => (isModPattern(d.pattern) ? "mod" : d.tier === 3 ? "3" : d.tier === 2 ? "2" : "1");
+/** Вкладка «тип» в карточке кластера: группа основы, приписки, гео, вторая пачка зон */
+type Kind = "1" | "2" | "3" | "4" | "5" | "6" | "mod" | "geo" | "zones";
+const KINDS: Array<[Kind, string]> = [
+  ["1", EMD_LEVEL_LABELS[1]], ["2", EMD_LEVEL_LABELS[2]], ["3", EMD_LEVEL_LABELS[3]], ["4", EMD_LEVEL_LABELS[4]],
+  ["5", EMD_LEVEL_LABELS[5]], ["6", EMD_LEVEL_LABELS[6]], ["mod", "С приписками"], ["geo", "Гео"], ["zones", "Доп. зоны"],
+];
+const kindBy = (extra: Set<string>) => (d: RunDomainRow): Kind =>
+  extra.has(d.tld) ? "zones" : isGeoPattern(d.pattern) ? "geo" : isModPattern(d.pattern) ? "mod" : (String(Math.min(6, Math.max(1, d.tier))) as Kind);
+/** Приписка/гео домена: «ключ + beste» → beste */
+const modOf = (d: RunDomainRow) => (d.suffix?.includes(" + ") ? d.suffix.split(" + ").pop() ?? "" : "");
+type CardFilter = { kind: Kind | "all"; add: string; zone: string };
+const NO_FILTER: CardFilter = { kind: "all", add: "all", zone: "all" };
+
+function Chip({ active, label, n, onClick, title }: { active: boolean; label: string; n: number; onClick: () => void; title?: string }) {
+  return (
+    <button type="button" title={title} disabled={!n && !active} onClick={onClick} className={`rounded-md px-1.5 py-0.5 text-[11.5px] whitespace-nowrap ${active ? "bg-ink text-bg" : n ? "bg-ink/5 hover:bg-ink/10" : "bg-ink/5 opacity-40"}`}>
+      {label} <span className="opacity-70">{n}</span>
+    </button>
+  );
+}
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
 /** Карточка подбора «EMD по ключам»: кластеры, их ключи с TOP-10 Google, домены по весу, выбор и выгрузка. */
@@ -25,7 +43,7 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
   const [data, setData] = useState(initial);
   const [view, setView] = useState<"available" | "selected" | "taken" | "all">("available");
   const [query, setQuery] = useState("");
-  const [group, setGroup] = useState<Group | "all">("all");
+  const [filters, setFilters] = useState<Record<string, CardFilter>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const keys = (items: BrandItem[]) => items.map((it) => itemKey(it.brand, it.country));
@@ -38,12 +56,10 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
   const live = LIVE.has(run.status);
   const s = run.settings;
   const emd = { ...EMD_DEFAULTS, ...s.emd };
-  const groupCounts = useMemo(() => {
-    const m: Record<Group, number> = { "1": 0, "2": 0, "3": 0, mod: 0 };
-    for (const d of domains) if (d.status === "available") m[groupOf(d)]++;
-    return m;
-  }, [domains]);
   const items = s.items;
+  const extraZones = useMemo(() => new Set([...(s.emd?.extraZones ?? []), ...(s.emd?.pendingZones ?? [])]), [s.emd]);
+  const kindOf = kindBy(extraZones);
+  const zoneTips = useMemo(() => emdZoneSuggestions(items, { ...emd, tlds: s.tlds, autoZones: s.autoZones }), [items, emd, s.tlds, s.autoZones]);
 
   async function reload() {
     try {
@@ -157,6 +173,8 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
         </Card>
       )}
 
+      {!live && domains.length > 0 && <ZoneSuggestions runId={run.id} tips={zoneTips} done={[...extraZones]} onQueued={reload} />}
+
       <div className="flex flex-wrap items-center gap-3">
         <input className="input !w-auto min-w-[220px]" placeholder="Поиск по домену, теме или ключу" value={query} onChange={(e) => setQuery(e.target.value)} />
         <div className="flex flex-wrap gap-1.5">
@@ -164,14 +182,6 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
             <button key={v} type="button" className={`tab ${view === v ? "active" : ""}`} onClick={() => setView(v)}>{label}</button>
           ))}
         </div>
-        {view !== "selected" && (
-          <div className="flex flex-wrap gap-1.5">
-            <button type="button" className={`tab ${group === "all" ? "active" : ""}`} onClick={() => setGroup("all")}>Все варианты</button>
-            {GROUPS.map(([g, label]) => (
-              <button key={g} type="button" className={`tab ${group === g ? "active" : ""}`} onClick={() => setGroup(g)} title="Свободных в этой группе">{label} · {groupCounts[g]}</button>
-            ))}
-          </div>
-        )}
         {view !== "selected" && (
           <div className="ml-auto flex gap-2">
             <button type="button" className="btn-ghost btn-sm" onClick={() => setExpanded(new Set(keys(items)))}>Развернуть все</button>
@@ -191,9 +201,23 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
             const kwMatch = (k: EmdKeyword) => k.phrase.toLowerCase().includes(q);
             if (q && !item.brand.toLowerCase().includes(q) && !rows.some((d) => d.domain.includes(q)) && !c?.keywords.some(kwMatch)) return null;
             const stats = computeStats(rows);
-            const visible = rows.filter((d) => (view === "all" || (view === "available" ? d.status === "available" : d.status === "taken")) && (group === "all" || groupOf(d) === group) && (!q || d.domain.includes(q) || item.brand.toLowerCase().includes(q) || (d.suffix ?? "").toLowerCase().includes(q)));
-            const sections = GROUPS.map(([g, label]) => ({ g, label, rows: visible.filter((d) => groupOf(d) === g) })).filter((x) => x.rows.length);
+            const f = filters[key] ?? NO_FILTER;
+            const setF = (patch: Partial<CardFilter>) => setFilters((prev) => ({ ...prev, [key]: { ...(prev[key] ?? NO_FILTER), ...patch } }));
+            const base = rows.filter((d) => (view === "all" || (view === "available" ? d.status === "available" : d.status === "taken")) && (!q || d.domain.includes(q) || item.brand.toLowerCase().includes(q) || (d.suffix ?? "").toLowerCase().includes(q)));
+            const geoTier = new Map(emdGeo(item.country).map((g) => [g.mod, g.tier]));
+            const addOf = (d: RunDomainRow) => (isGeoPattern(d.pattern) ? `g${geoTier.get(modOf(d)) ?? 3}` : isModPattern(d.pattern) ? "mod" : "none");
+            const passAdd = (d: RunDomainRow, add: string) => add === "all" || (add.startsWith("w:") ? modOf(d) === add.slice(2) && (isModPattern(d.pattern) || isGeoPattern(d.pattern)) : addOf(d) === add);
+            const pass = (d: RunDomainRow, skip?: "kind" | "add" | "zone") =>
+              (skip === "kind" || f.kind === "all" || kindOf(d) === f.kind) && (skip === "add" || passAdd(d, f.add)) && (skip === "zone" || f.zone === "all" || d.tld === f.zone);
+            const visible = base.filter((d) => pass(d));
+            const count = (skip: "kind" | "add" | "zone", test: (d: RunDomainRow) => boolean) => base.filter((d) => pass(d, skip) && test(d)).length;
+            const sections = f.kind === "all"
+              ? KINDS.map(([g, label]) => ({ g, label, rows: visible.filter((d) => kindOf(d) === g) })).filter((x) => x.rows.length)
+              : [{ g: f.kind, label: KINDS.find(([g]) => g === f.kind)?.[1] ?? "", rows: visible }];
             const mods = c ? emdModifiers(c, item.country, emd) : [];
+            const modWords = Array.from(new Set([...mods.map((m) => m.mod), ...rows.filter((d) => isModPattern(d.pattern)).map(modOf)])).filter(Boolean);
+            const geoWords = emdGeo(item.country);
+            const zonesHere = Array.from(new Set(rows.map((d) => d.tld)));
             const volOf = (d: RunDomainRow) => c?.keywords.find((k) => k.phrase === emdSourceKeyword(d.suffix))?.volume;
             const best = new Set(bestOf(rows).map((d) => d.id));
             const open = expanded.has(key);
@@ -220,11 +244,28 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
                 </div>
                 {open && (
                   <div className="border-t border-line flex flex-col min-h-0">
-                    {c && <KeywordsBlock keywords={c.keywords} minVolume={emd.minVolume} matchPct={emd.matchPct} serpDone={!!c.serpAt} serpOn={s.autoResearch} eligible={new Set(eligibleKeywords(c, emd.minVolume).map((k) => k.phrase))} />}
-                    {mods.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 py-2 text-[11.5px]">
-                        <span className="help mr-0.5">Приписки:</span>
-                        {mods.map((m) => <span key={`${m.pos}:${m.mod}`} className="rounded-md bg-ink/5 px-1.5 py-0.5 font-mono" title={`${EMD_MOD_SOURCE_LABELS[m.source]} · ${m.pos === "start" ? "в начале" : "в конце"}`}>{m.pos === "start" ? `${m.mod}+` : `+${m.mod}`}</span>)}
+                    {c && <KeywordsBlock keywords={c.keywords} found={c.found} foundError={c.foundError} minVolume={emd.minVolume} matchPct={emd.matchPct} serpDone={!!c.serpAt} serpOn={s.autoResearch} eligible={new Set(eligibleKeywords(c, emd.minVolume).map((k) => k.phrase))} />}
+                    {c && <ThemeStatus theme={c.theme} rows={rows} />}
+                    {!showSelected && rows.length > 0 && (
+                      <div className="space-y-1.5 border-b border-line px-3 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          <Chip active={f.kind === "all"} label="Все" n={count("kind", () => true)} onClick={() => setF({ kind: "all" })} />
+                          {KINDS.map(([g, label]) => <Chip key={g} active={f.kind === g} label={label} n={count("kind", (d) => kindOf(d) === g)} onClick={() => setF({ kind: g })} />)}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <Chip active={f.add === "all"} label="С приписками и без" n={count("add", () => true)} onClick={() => setF({ add: "all" })} />
+                          <Chip active={f.add === "none"} label="Без приписок" n={count("add", (d) => addOf(d) === "none")} onClick={() => setF({ add: "none" })} />
+                          {(["g1", "g2", "g3"] as const).map((g) => <Chip key={g} active={f.add === g} label={`Гео ${g.slice(1)}`} n={count("add", (d) => addOf(d) === g)} onClick={() => setF({ add: g })} title={geoWords.filter((x) => `g${x.tier}` === g).map((x) => x.mod).join(", ")} />)}
+                          {geoWords.map((g) => <Chip key={`g:${g.mod}`} active={f.add === `w:${g.mod}`} label={`+${g.mod}`} n={count("add", (d) => isGeoPattern(d.pattern) && modOf(d) === g.mod)} onClick={() => setF({ add: `w:${g.mod}` })} title={`гео, уровень ${g.tier}`} />)}
+                          {modWords.map((m) => {
+                            const src = mods.find((x) => x.mod === m);
+                            return <Chip key={`m:${m}`} active={f.add === `w:${m}`} label={src?.pos === "start" ? `${m}+` : `+${m}`} n={count("add", (d) => isModPattern(d.pattern) && modOf(d) === m)} onClick={() => setF({ add: `w:${m}` })} title={src ? `${EMD_MOD_SOURCE_LABELS[src.source]}${src.example ? ` · «${src.example}»` : ""}` : "приписка"} />;
+                          })}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <Chip active={f.zone === "all"} label="Все зоны" n={count("zone", () => true)} onClick={() => setF({ zone: "all" })} />
+                          {zonesHere.map((z) => <Chip key={z} active={f.zone === z} label={`.${z}`} n={count("zone", (d) => d.tld === z)} onClick={() => setF({ zone: z })} title={extraZones.has(z) ? "вторая пачка" : undefined} />)}
+                        </div>
                       </div>
                     )}
                     {showSelected ? (
@@ -243,7 +284,7 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
                             </ul>
                           </div>
                         ))}
-                        {!visible.length && <p className="help px-3 py-3">В этой вкладке доменов нет</p>}
+                        {!visible.length && <p className="help px-3 py-3">Нет доменов под фильтр</p>}
                       </div>
                     )}
                     {!live && rows.length > 0 && (
@@ -286,9 +327,10 @@ function DomainLine({ d, best, volume, onToggle }: { d: RunDomainRow; best: bool
 }
 
 /** Ключи кластера: частота, маленькие сайты в топе и TOP-10 Google с подсветкой доменов, где есть ключ. */
-function KeywordsBlock({ keywords, minVolume, matchPct, serpDone, serpOn, eligible }: { keywords: EmdKeyword[]; minVolume: number; matchPct: number; serpDone: boolean; serpOn: boolean; eligible: Set<string> }) {
+function KeywordsBlock({ keywords, found, foundError, minVolume, matchPct, serpDone, serpOn, eligible }: { keywords: EmdKeyword[]; found?: EmdFound[]; foundError?: string; minVolume: number; matchPct: number; serpDone: boolean; serpOn: boolean; eligible: Set<string> }) {
   const [openKw, setOpenKw] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [showFound, setShowFound] = useState(false);
   // Сводка по кластеру: домены с ключом во всех TOP-10 и их зоны
   const matched = new Map<string, { domain: string; match: number; pos: number; kw: string }>();
   for (const k of keywords) for (const e of k.top10 ?? []) if ((e.match ?? 0) >= matchPct) {
@@ -337,6 +379,26 @@ function KeywordsBlock({ keywords, minVolume, matchPct, serpDone, serpOn, eligib
           );
         })}
       </ul>
+      {found && (
+        <div className="text-[12.5px]">
+          <button type="button" className="text-brand hover:underline" onClick={() => setShowFound(!showFound)}>
+            {showFound ? "▾" : "▸"} Найденные ключи темы · {found.length}
+          </button>
+          {foundError && <span className="ml-2 text-[11px] text-danger" title={foundError}>частично: {foundError.slice(0, 60)}</span>}
+          {showFound && (
+            <ul className="mt-1 space-y-0.5">
+              {found.map((f) => (
+                <li key={f.phrase} className="flex items-center gap-2 px-1">
+                  <span className="min-w-0 flex-1 truncate">{f.phrase}</span>
+                  <span className="shrink-0 text-[11px] text-muted">{f.source === "keywords" ? "запросы" : f.source === "autocomplete" ? "подсказки" : "похожие"}</span>
+                  <span className="w-14 shrink-0 text-right tabular-nums">{f.volume ? fmt(f.volume) : "—"}</span>
+                </li>
+              ))}
+              {!found.length && <li className="help px-1">Ничего сверх таблицы не нашлось</li>}
+            </ul>
+          )}
+        </div>
+      )}
       {serpDone ? (
         <div className="space-y-1 text-[11.5px]">
           <div className="flex flex-wrap items-center gap-1">
@@ -356,5 +418,71 @@ function KeywordsBlock({ keywords, minVolume, matchPct, serpDone, serpOn, eligib
         <p className="help text-[11.5px]">{serpOn ? "Выдача Google по ключам ещё снимается" : "Выдачу Google в этом подборе не снимали"}</p>
       )}
     </div>
+  );
+}
+
+/** Точная тема во всех зонах — с занятыми: видно, что тема проверена, даже если всё занято. */
+function ThemeStatus({ theme, rows }: { theme: string; rows: RunDomainRow[] }) {
+  const words = phraseWords(theme);
+  const labels = new Set([words.join(""), words.join("-")]);
+  const list = rows.filter((d) => labels.has(d.domain.slice(0, d.domain.length - d.tld.length - 1)) && !isModPattern(d.pattern));
+  if (!list.length) return null;
+  const free = list.filter((d) => d.status === "available").length;
+  return (
+    <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 py-2 text-[11.5px]">
+      <span className="help mr-0.5">Тема точно:</span>
+      {list.map((d) => (
+        <span key={d.id} className={`rounded-md px-1.5 py-0.5 font-mono ${d.status === "available" ? "bg-ok-soft text-ok" : d.status === "taken" ? "bg-ink/5 text-danger line-through" : "bg-ink/5 text-muted"}`} title={d.status === "available" ? "свободен" : d.status === "taken" ? "занят" : "не проверен"}>{d.domain}</span>
+      ))}
+      {!free && <span className="help ml-1">— все заняты, смотри вариации темы</span>}
+    </div>
+  );
+}
+
+/** Зоны из выдачи, которые ещё не проверялись: отметить и проверить второй пачкой в этом же подборе. */
+function ZoneSuggestions({ runId, tips, done, onQueued }: { runId: string; tips: Array<{ tld: string; all: number; hits: number; small: number; clusters: number }>; done: string[]; onQueued: () => void }) {
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(tips.filter((t) => t.hits > 0).map((t) => t.tld)));
+  const [own, setOwn] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok?: string; error?: string } | null>(null);
+  const zones = [...picked, ...own.split(/[\s,;]+/).map((z) => z.trim().replace(/^\./, "").toLowerCase()).filter(Boolean)];
+  async function go() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await addEmdZonesAction(runId, zones);
+      setMsg(r);
+      if (r.ok) onQueued();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card title="Другие зоны из выдачи" description="Зоны, которые встречаются в TOP-10 по ключам и у маленьких сайтов таблицы, но в этом подборе не проверялись. Отметь нужные — те же основы и приписки проверятся в них второй пачкой, результаты появятся во вкладке «Доп. зоны».">
+      <div className="space-y-3">
+        {tips.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {tips.map((t) => {
+              const on = picked.has(t.tld);
+              return (
+                <button key={t.tld} type="button" onClick={() => setPicked((prev) => { const n = new Set(prev); if (n.has(t.tld)) n.delete(t.tld); else n.add(t.tld); return n; })}
+                  className={`rounded-lg border px-2 py-1 text-[12.5px] ${on ? "border-ink bg-ink text-bg" : "border-line hover:border-ink/40"}`}
+                  title={`доменов в TOP-10: ${t.all}; с ключом: ${t.hits}; маленьких сайтов в таблице: ${t.small}; кластеров: ${t.clusters}`}>
+                  <span className="font-mono">.{t.tld}</span>
+                  <span className={`ml-1.5 text-[11px] ${on ? "opacity-80" : "text-muted"}`}>{t.hits ? `с ключом ${t.hits} · ` : ""}в выдаче {t.all}{t.small ? ` · мал. ${t.small}` : ""}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : <p className="help">Новых зон в выдаче нет — можно вписать свои.</p>}
+        <div className="flex flex-wrap items-center gap-2">
+          <input className="input !w-auto min-w-[220px]" placeholder="Свои зоны: app, io, bet" value={own} onChange={(e) => setOwn(e.target.value)} />
+          <button type="button" className="btn-primary" disabled={busy || !zones.length} onClick={go}>{busy ? "Ставлю в очередь…" : `Проверить ${zones.length ? zones.map((z) => `.${z}`).join(", ") : "зоны"}`}</button>
+        </div>
+        {done.length > 0 && <p className="help">Уже добавлены второй пачкой: {done.map((z) => `.${z}`).join(", ")}</p>}
+        {msg?.ok && <Alert tone="ok">{msg.ok}. Страница обновится сама.</Alert>}
+        {msg?.error && <Alert tone="danger">{msg.error}</Alert>}
+      </div>
+    </Card>
   );
 }

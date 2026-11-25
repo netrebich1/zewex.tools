@@ -8,8 +8,8 @@
  *
  * Модуль без серверных зависимостей: им пользуются и воркер, и карточка подбора.
  */
-import { countryTld } from "./geo";
-import { casinoGeoCodes, normalizeTld } from "./generator";
+import { countryTld, geoTiers } from "./geo";
+import { normalizeTld } from "./generator";
 import { tldOf } from "./mining";
 import type { Top10Entry } from "./types";
 
@@ -43,7 +43,14 @@ export type EmdCluster = {
   keywords: EmdKeyword[];
   serpAt?: string;
   serpCostUsd?: number;
+  /** Дополнительные ключи темы: запросы с частотой, подсказки и «похожие запросы» Google (как в основной версии) */
+  found?: EmdFound[];
+  foundAt?: string;
+  foundCostUsd?: number;
+  foundError?: string;
 };
+
+export type EmdFound = { phrase: string; volume: number; source: "keywords" | "autocomplete" | "related" };
 
 export type EmdSettings = {
   /** Ссылка на таблицу Google Диска */
@@ -64,16 +71,23 @@ export type EmdSettings = {
   serpVariants: boolean;
   /** Приписки из дополнительных слов ключей кластера (beste, online, nieuwe…) */
   keywordMods: boolean;
-  /** Гео-приписка: код страны и alpha-3 (nl, nld) */
+  /** Гео в конце основы: уровни 1–3 страны, как в подборе под бренды (nl, nederland / netherlands / nld, holland…) */
   geoMods: boolean;
   /** Свои приписки: в конце и в начале основы */
   suffixes: string[];
   prefixes: string[];
+  /** Искать дополнительные ключи темы (DataForSEO: запросы с частотой и подсказки) */
+  findKeywords: boolean;
+  /** Зоны, добавленные второй пачкой из карточки подбора */
+  extraZones: string[];
+  /** Зоны, которые воркер сейчас проверяет второй пачкой */
+  pendingZones: string[];
 };
 
 export const EMD_DEFAULTS: Omit<EmdSettings, "sourceUrl" | "fileName" | "loadedAt"> = {
-  minVolume: 300, maxLen: 30, matchPct: 60, maxPerCluster: 300,
+  minVolume: 300, maxLen: 30, matchPct: 60, maxPerCluster: 600,
   variations: true, serpVariants: true, keywordMods: true, geoMods: true, suffixes: [], prefixes: [],
+  findKeywords: true, extraZones: [], pendingZones: [],
 };
 
 /** Настройки EMD из JSON подбора: старые подборы без новых полей получают умолчания. */
@@ -96,14 +110,18 @@ export function normalizeEmdSettings(raw: unknown): EmdSettings {
     geoMods: bool(e.geoMods, true),
     suffixes: list(e.suffixes),
     prefixes: list(e.prefixes),
+    findKeywords: bool(e.findKeywords, false),
+    extraZones: list(e.extraZones),
+    pendingZones: list(e.pendingZones),
   };
 }
 
 export type EmdPattern =
   | "emd" | "emd-translit" | "emd-hyphen"
-  | "emd-short" | "emd-perm" | "emd-plural" | "emd-core" | "emd-list"
+  | "emd-short" | "emd-perm" | "emd-plural" | "emd-core" | "emd-swap" | "emd-list" | "emd-found"
   | "emd-serp"
-  | "emd-mod" | "emd-mod-hyphen";
+  | "emd-mod" | "emd-mod-hyphen"
+  | "emd-geo" | "emd-geo-hyphen";
 
 export const EMD_PATTERN_LABELS: Record<EmdPattern, string> = {
   emd: "точный",
@@ -113,20 +131,37 @@ export const EMD_PATTERN_LABELS: Record<EmdPattern, string> = {
   "emd-perm": "перестановка",
   "emd-plural": "ед./мн. число",
   "emd-core": "без casino",
+  "emd-swap": "casino ↔ kasino",
   "emd-list": "ключ ниже порога",
+  "emd-found": "найденный ключ",
   "emd-serp": "из выдачи",
   "emd-mod": "приписка",
   "emd-mod-hyphen": "приписка, дефис",
+  "emd-geo": "гео",
+  "emd-geo-hyphen": "гео, дефис",
 };
 const PATTERN_WEIGHT: Record<EmdPattern, number> = {
-  emd: 1, "emd-translit": 0.95, "emd-short": 0.85, "emd-list": 0.8, "emd-plural": 0.75, "emd-perm": 0.7, "emd-core": 0.7,
-  "emd-serp": 0.65, "emd-hyphen": 0.6, "emd-mod": 0.45, "emd-mod-hyphen": 0.3,
+  emd: 1, "emd-translit": 0.95, "emd-short": 0.85, "emd-list": 0.8, "emd-found": 0.75, "emd-plural": 0.75, "emd-perm": 0.7, "emd-core": 0.7, "emd-swap": 0.65,
+  "emd-serp": 0.65, "emd-hyphen": 0.6, "emd-mod": 0.45, "emd-mod-hyphen": 0.3, "emd-geo": 0.45, "emd-geo-hyphen": 0.3,
 };
 
-/** Уровни вариантов: 1 — точный ключ, 2 — вариации ключа из таблицы, 3 — основы, найденные в выдаче. */
-export type EmdLevel = 1 | 2 | 3;
-export const EMD_LEVEL_LABELS: Record<EmdLevel, string> = { 1: "Точный ключ", 2: "Вариации ключа", 3: "Из выдачи" };
+/**
+ * Группа основы (колонка tier): 1 — тема точно, 2 — вариации темы, 3 — ключи таблицы точно (и ниже порога),
+ * 4 — вариации ключей таблицы, 5 — найденные ключи (DataForSEO, подсказки, похожие запросы), 6 — основы из выдачи.
+ * Приписки и гео — отдельные вкладки по шаблону (emd-mod*, emd-geo*), tier у них — группа основы.
+ */
+export type EmdLevel = 1 | 2 | 3 | 4 | 5 | 6;
+export const EMD_LEVEL_LABELS: Record<EmdLevel, string> = { 1: "Тема точно", 2: "Вариации темы", 3: "Ключи таблицы", 4: "Вариации ключей", 5: "Найденные ключи", 6: "Из выдачи" };
 export const isModPattern = (p: string) => p.startsWith("emd-mod");
+export const isGeoPattern = (p: string) => p.startsWith("emd-geo");
+
+/** Гео страны по уровням (как в подборе под бренды): [[nl, nederland], [netherlands], [nld, holland, dutch…]] */
+export function emdGeo(country: string): Array<{ mod: string; tier: 1 | 2 | 3 }> {
+  const t = geoTiers(country);
+  const out: Array<{ mod: string; tier: 1 | 2 | 3 }> = [];
+  t.forEach((list, i) => { for (const m of list) if (!out.some((x) => x.mod === m)) out.push({ mod: m, tier: (i + 1) as 1 | 2 | 3 }); });
+  return out;
+}
 
 /** Слова-связки: в домене их можно опустить, смысл запроса не меняется. Отрицания (zonder, ohne, utan, non…) сюда не входят. */
 export const FILLER = new Set(["online", "met", "med", "mit", "with", "con", "for", "the", "and", "och", "og", "und", "in", "im", "i", "a", "of"]);
@@ -236,6 +271,10 @@ export function normalizeEmdCluster(raw: unknown): EmdCluster | undefined {
     })),
     ...(c.serpAt ? { serpAt: String(c.serpAt) } : {}),
     ...(c.serpCostUsd ? { serpCostUsd: Number(c.serpCostUsd) } : {}),
+    ...(Array.isArray(c.found) ? { found: (c.found as EmdFound[]).filter((f) => f && typeof f.phrase === "string").map((f) => ({ phrase: f.phrase, volume: Number(f.volume) || 0, source: f.source })) } : {}),
+    ...(c.foundAt ? { foundAt: String(c.foundAt) } : {}),
+    ...(c.foundCostUsd ? { foundCostUsd: Number(c.foundCostUsd) } : {}),
+    ...(c.foundError ? { foundError: String(c.foundError) } : {}),
   };
 }
 
@@ -269,12 +308,10 @@ export type EmdZoneKind = "cctld" | "com" | "common" | "table" | "serp";
 export const EMD_ZONE_LABELS: Record<EmdZoneKind, string> = { cctld: "зона страны", com: ".com", common: "общая", table: "маленькие сайты в топе", serp: "EMD в выдаче" };
 const ZONE_WEIGHT: Record<EmdZoneKind, number> = { cctld: 1, com: 1, table: 0.8, serp: 0.8, common: 0.6 };
 const SERP_ZONES_MAX = 6;
-/** Приписки ставим к стольким лучшим основам и в столько первых зон */
+/** Приписки и гео ставим к стольким лучшим основам и в столько первых зон */
 const MOD_CORES = 6;
 const MOD_ZONES = 3;
 const KEYWORD_MODS_MAX = 12;
-/** Доля вариантов без приписок в лимите кластера; остаток — приписки (недобор одной части отдаётся другой) */
-const PLAIN_SHARE = 0.6;
 
 /** Ключи кластера, из которых строим домены: тема всегда, остальные — от порога частоты. */
 export function eligibleKeywords(c: EmdCluster, minVolume: number): EmdKeyword[] {
@@ -282,7 +319,7 @@ export function eligibleKeywords(c: EmdCluster, minVolume: number): EmdKeyword[]
 }
 
 /** Зоны кластера с источником: общие зоны формы, зона страны, зоны маленьких сайтов из выдачи и зоны EMD-доменов TOP-10. */
-export function emdZones(c: EmdCluster, country: string, s: { tlds: string[]; autoZones: boolean; matchPct: number }): Array<{ tld: string; kind: EmdZoneKind; detail: string }> {
+export function emdZones(c: EmdCluster, country: string, s: { tlds: string[]; autoZones: boolean; matchPct: number; extraZones?: string[] }): Array<{ tld: string; kind: EmdZoneKind; detail: string }> {
   const out: Array<{ tld: string; kind: EmdZoneKind; detail: string }> = [];
   const add = (raw: string, kind: EmdZoneKind, detail: string) => {
     const tld = normalizeTld(raw);
@@ -300,7 +337,37 @@ export function emdZones(c: EmdCluster, country: string, s: { tlds: string[]; au
     for (const k of c.keywords) for (const e of k.top10 ?? []) if ((e.match ?? 0) >= s.matchPct) serp.set(tldOf(e.domain), (serp.get(tldOf(e.domain)) ?? 0) + 1);
     for (const [t, n] of [...serp.entries()].sort((a, b) => b[1] - a[1]).slice(0, SERP_ZONES_MAX)) add(t, "serp", `доменов с ключом в TOP-10: ${n}`);
   }
+  for (const t of s.extraZones ?? []) add(t, "common", "добавлена второй пачкой");
   return out;
+}
+
+/**
+ * Зоны, которые есть в выдаче и у маленьких сайтов таблицы, но ещё не проверялись: подсказка для второй пачки.
+ * hits — доменов с ключом от порога в этой зоне (сильный сигнал), all — всех доменов TOP-10 в зоне.
+ */
+export function emdZoneSuggestions(items: Array<{ country: string; emd?: EmdCluster }>, s: { tlds: string[]; autoZones: boolean; matchPct: number; extraZones?: string[]; pendingZones?: string[] }): Array<{ tld: string; all: number; hits: number; small: number; clusters: number }> {
+  const used = new Set<string>([...(s.pendingZones ?? [])]);
+  const stat = new Map<string, { tld: string; all: number; hits: number; small: number; clusters: Set<string> }>();
+  for (const it of items) {
+    const c = it.emd;
+    if (!c) continue;
+    for (const z of emdZones(c, it.country, s)) used.add(z.tld);
+    const bump = (tld: string, f: "all" | "hits" | "small", n = 1) => {
+      const e = stat.get(tld) ?? { tld, all: 0, hits: 0, small: 0, clusters: new Set<string>() };
+      e[f] += n;
+      e.clusters.add(c.id + it.country);
+      stat.set(tld, e);
+    };
+    for (const k of c.keywords) {
+      for (const e of k.top10 ?? []) { const t = tldOf(e.domain); bump(t, "all"); if ((e.match ?? 0) >= s.matchPct) bump(t, "hits"); }
+      for (const [t, n] of k.smallTlds) bump(normalizeTld(t), "small", n);
+    }
+  }
+  return [...stat.values()]
+    .filter((e) => e.tld && !used.has(e.tld))
+    .map((e) => ({ tld: e.tld, all: e.all, hits: e.hits, small: e.small, clusters: e.clusters.size }))
+    .sort((a, b) => b.hits - a.hits || b.small - a.small || b.all - a.all)
+    .slice(0, 30);
 }
 
 export type EmdCandidate = {
@@ -316,105 +383,165 @@ export type EmdCandidate = {
 /** Основа домена (метка без зоны) с уровнем и ключом-источником. */
 export type EmdCore = { label: string; pattern: EmdPattern; level: EmdLevel; keyword: string; volume: number; weight: number };
 
-/** Ед./мн. число: casino ↔ casinos и т. п. */
-const PLURAL: Record<string, string> = {
-  casino: "casinos", kasino: "kasinos", slot: "slots", game: "games", bet: "bets", bonus: "bonuses", spin: "spins",
-  site: "sites", bookmaker: "bookmakers", casinos: "casino", kasinos: "kasino", slots: "slot", games: "game", bets: "bet",
-  bonuses: "bonus", spins: "spin", sites: "site", bookmakers: "bookmaker", casinot: "casino", kasinot: "kasino",
+/** Ед./мн. число общих слов; у некоторых стран своя форма (SE casinon, FI kasinot, DK/NO casinoer). */
+const PLURAL: Record<string, string[]> = {
+  casino: ["casinos"], casinos: ["casino"], kasino: ["kasinos"], kasinos: ["kasino"], slot: ["slots"], slots: ["slot"],
+  game: ["games"], games: ["game"], bet: ["bets"], bets: ["bet"], bonus: ["bonuses"], bonuses: ["bonus"], spin: ["spins"], spins: ["spin"],
+  site: ["sites"], sites: ["site"], bookmaker: ["bookmakers"], bookmakers: ["bookmaker"],
 };
+const PLURAL_BY_COUNTRY: Record<string, Record<string, string[]>> = {
+  se: { casino: ["casinon"], casinon: ["casino"], kasino: ["kasinon"], kasinon: ["kasino"], spelbolag: ["spelbolagen"] },
+  fi: { kasino: ["kasinot"], kasinot: ["kasino"], casino: ["casinot"], casinot: ["casino"] },
+  dk: { casino: ["casinoer"], casinoer: ["casino"] },
+  no: { casino: ["casinoer"], casinoer: ["casino"] },
+  de: { spielothek: ["spielotheken"], spielotheken: ["spielothek"] },
+};
+function pluralForms(w: string, country: string): string[] {
+  return Array.from(new Set([...(PLURAL_BY_COUNTRY[country]?.[w] ?? []), ...(PLURAL[w] ?? [])]));
+}
+/** Страны, где рядом с casino в запросах встречается kasino */
+const KASINO_COUNTRIES = new Set(["se", "fi", "no", "dk", "de", "at", "ch", "pl", "cz", "sk", "ee", "lt", "lv", "hr", "si", "hu", "rs", "ba"]);
 /** Общие слова, без которых основа остаётся осмысленной: «casino zonder cruks» → zondercruks */
-const GENERIC = new Set(["casino", "casinos", "kasino", "kasinos", "kasinot", "casinot", "online", "onlinecasino", "spielothek"]);
+const GENERIC = new Set(["casino", "casinos", "casinon", "casinot", "casinoer", "kasino", "kasinos", "kasinon", "kasinot", "online", "onlinecasino", "spielothek", "spielotheken"]);
 const YEAR = /^(19|20)\d\d$/;
+/** Слова, которые не годятся в приписку */
+const JUNK = new Set(["reddit", "flashback", "forum", "wiki", "wikipedia", "youtube", "facebook", "twitter", "instagram", "pdf", "apk"]);
+export const MOD_STOP = new Set([
+  "the", "a", "an", "for", "in", "on", "and", "with", "to", "is", "how", "what", "of", "my", "me", "at", "or", "vs", "com", "www",
+  "de", "het", "een", "van", "voor", "op", "en", "met", "bij", "te", "wat", "hoe", "la", "el", "los", "las", "y", "para", "con", "que", "como", "del", "por",
+  "der", "die", "das", "und", "mit", "fur", "ist", "wie", "im", "zu", "von", "le", "les", "des", "du", "et", "pour", "avec", "au", "aux", "sur",
+  "il", "di", "da", "per", "lo", "gli", "e", "do", "dos", "em", "i", "w", "z", "na", "och", "med", "som", "pa", "ja", "ilman", "og", "pa", "uden", "uten",
+]);
 
-/** Основы кластера по уровням: точный ключ → вариации ключа → метки EMD-доменов из выдачи. */
+/**
+ * Вариации одного ключа: без связок, ед./мн. число, casino ↔ kasino, без casino, casino в другом конце.
+ * Смысловая часть (zonder cruks) не переставляется: crukszondercasino — не вариант.
+ */
+function keywordVariants(phrase: string, country: string): Array<{ label: string; pattern: EmdPattern; words: string[] }> {
+  const out: Array<{ label: string; pattern: EmdPattern; words: string[] }> = [];
+  const add = (words: string[], pattern: EmdPattern) => { const label = words.join(""); if (label && !out.some((x) => x.label === label)) out.push({ label, pattern, words }); };
+  const words = phraseWords(phrase);
+  const content = words.filter((w) => !FILLER.has(w) && !YEAR.test(w));
+  if (!content.length) return out;
+  if (content.length < words.length) add(content, "emd-short");
+  // Ед./мн. число: каждое слово по очереди и все сразу
+  content.forEach((w, i) => { for (const f of pluralForms(w, country)) add(content.map((x, j) => (j === i ? f : x)), "emd-plural"); });
+  // casino ↔ kasino
+  if (KASINO_COUNTRIES.has(country)) {
+    const swapped = content.map((w) => (w.startsWith("casino") ? `k${w.slice(1)}` : w.startsWith("kasino") ? `c${w.slice(1)}` : w));
+    if (swapped.join("") !== content.join("")) add(swapped, "emd-swap");
+  }
+  const core = content.filter((w) => !GENERIC.has(w));
+  const gen = content.filter((w) => GENERIC.has(w));
+  if (core.length && gen.length && core.join("").length >= 6) add(core, "emd-core");
+  if (core.length && gen.length) {
+    const forms = [gen, ...gen.flatMap((g, i) => pluralForms(g, country).map((f) => gen.map((x, j) => (j === i ? f : x))))];
+    for (const g of forms) { add([...core, ...g], "emd-perm"); add([...g, ...core], "emd-perm"); }
+  }
+  return out;
+}
+
+/** Основы кластера по группам: точный ключ → вариации темы → вариации ключей (+ найденные) → метки EMD-доменов из выдачи. */
 export function emdCores(c: EmdCluster, country: string, s: { allowHyphen: boolean; minVolume: number; maxLen: number; matchPct: number; variations: boolean; serpVariants: boolean }): EmdCore[] {
   const out = new Map<string, EmdCore>();
-  const add = (label: string, pattern: EmdPattern, level: EmdLevel, k: EmdKeyword) => {
+  const add = (label: string, pattern: EmdPattern, level: EmdLevel, phrase: string, volume: number) => {
     if (!validLabel(label, s.maxLen) || out.has(label)) return;
-    out.set(label, { label, pattern, level, keyword: k.phrase, volume: k.volume, weight: Math.round(Math.max(k.volume, 10) * PATTERN_WEIGHT[pattern]) });
+    out.set(label, { label, pattern, level, keyword: phrase, volume, weight: Math.round(Math.max(volume, 10) * PATTERN_WEIGHT[pattern]) });
   };
   const eligible = eligibleKeywords(c, s.minVolume);
-  // 1. Точный ключ
-  for (const k of eligible) {
-    const words = phraseWords(k.phrase);
-    if (!words.length) continue;
-    add(words.join(""), "emd", 1, k);
-    if (UMLAUT_AE.has(country) && /[äöü]/i.test(k.phrase)) add(phraseWords(k.phrase, true).join(""), "emd-translit", 1, k);
-    if (s.allowHyphen && words.length >= 2) add(words.join("-"), "emd-hyphen", 1, k);
+  const exact = (phrase: string, volume: number, level: EmdLevel, pattern: EmdPattern = "emd") => {
+    const words = phraseWords(phrase).filter((w) => !YEAR.test(w));
+    if (!words.length) return;
+    add(words.join(""), pattern, level, phrase, volume);
+    if (UMLAUT_AE.has(country) && /[äöü]/i.test(phrase)) add(phraseWords(phrase, true).filter((w) => !YEAR.test(w)).join(""), "emd-translit", level, phrase, volume);
+    if (s.allowHyphen && words.length >= 2) add(words.join("-"), "emd-hyphen", level, phrase, volume);
+  };
+  const themes = eligible.filter((x) => x.theme);
+  const others = c.keywords.filter((x) => !x.theme);
+  // 1. Тема точно
+  for (const k of themes) exact(k.phrase, k.volume, 1);
+  // 2. Вариации темы (и через дефис)
+  if (s.variations) for (const k of themes) for (const v of keywordVariants(k.phrase, country)) {
+    add(v.label, v.pattern, 2, k.phrase, k.volume);
+    if (s.allowHyphen && v.words.length >= 2) add(v.words.join("-"), "emd-hyphen", 2, k.phrase, k.volume);
   }
-  // 2. Вариации ключа
-  if (s.variations) {
-    for (const k of eligible) {
-      const words = phraseWords(k.phrase);
-      const content = words.filter((w) => !FILLER.has(w) && !YEAR.test(w));
-      if (!content.length) continue;
-      if (content.length < words.length) add(content.join(""), "emd-short", 2, k);
-      const plural = content.map((w) => PLURAL[w] ?? w);
-      if (plural.join("") !== content.join("")) add(plural.join(""), "emd-plural", 2, k);
-      const core = content.filter((w) => !GENERIC.has(w));
-      if (core.length && core.length < content.length && core.join("").length >= 6) add(core.join(""), "emd-core", 2, k);
-      // Перестановка: общее слово (casino) переезжает в другой конец, смысловая часть остаётся в своём порядке —
-      // «casino zonder cruks» → zondercrukscasino, но не crukszondercasino
-      const gen = content.filter((w) => GENERIC.has(w));
-      if (core.length && gen.length) {
-        for (const g of [gen, gen.map((w) => PLURAL[w] ?? w)]) {
-          add([...core, ...g].join(""), "emd-perm", 2, k);
-          add([...g, ...core].join(""), "emd-perm", 2, k);
-        }
-      }
-    }
-    // Ключи из таблицы ниже порога частоты — тоже вариации ключа
-    for (const k of c.keywords) if (!eligible.includes(k)) {
-      const words = phraseWords(k.phrase).filter((w) => !YEAR.test(w));
-      if (words.length) add(words.join(""), "emd-list", 2, k);
-    }
-  }
-  // 3. Из выдачи: метки доменов TOP-10, где ключа не меньше порога
+  // 3. Ключи таблицы точно: от порога — как есть, ниже порога — «ключ ниже порога»
+  for (const k of others) exact(k.phrase, k.volume, 3, eligible.includes(k) ? "emd" : "emd-list");
+  // 4. Вариации ключей таблицы (от порога)
+  if (s.variations) for (const k of others.filter((x) => eligible.includes(x))) for (const v of keywordVariants(k.phrase, country)) add(v.label, v.pattern, 4, k.phrase, k.volume);
+  // 5. Найденные ключи точно
+  for (const f of c.found ?? []) exact(f.phrase, f.volume, 5, "emd-found");
+  // 6. Из выдачи: метки доменов TOP-10, где ключа не меньше порога
   if (s.serpVariants) {
     for (const k of c.keywords) for (const e of k.top10 ?? []) {
       if ((e.match ?? 0) < s.matchPct) continue;
       const host = e.domain.toLowerCase().replace(/^www\./, "");
       const zone = tldOf(host);
       const label = host.slice(0, Math.max(0, host.length - zone.length - 1)).split(".").pop() ?? "";
-      add(label, "emd-serp", 3, k);
+      add(label, "emd-serp", 6, k.phrase, k.volume);
     }
   }
   return Array.from(out.values()).sort((a, b) => a.level - b.level || b.weight - a.weight);
 }
 
-export type EmdModifier = { mod: string; pos: "end" | "start"; source: "keyword" | "geo" | "form"; score: number };
-export const EMD_MOD_SOURCE_LABELS: Record<EmdModifier["source"], string> = { keyword: "из ключей", geo: "гео", form: "свои" };
+/** Найденные ключи кластера: запросы, где есть смысловая часть темы (без casino и связок). */
+export function filterFound(theme: string, country: string, queries: EmdFound[], existing: string[], max = 25): EmdFound[] {
+  const words = phraseWords(theme).filter((w) => !FILLER.has(w) && !YEAR.test(w));
+  const core = words.filter((w) => !GENERIC.has(w));
+  const need = core.length ? core : words;
+  const has = (list: string[], w: string) => list.includes(w) || pluralForms(w, country).some((f) => list.includes(f));
+  const seen = new Set(existing.map((e) => phraseWords(e).join(" ")));
+  const out = new Map<string, EmdFound>();
+  for (const q of queries) {
+    const qw = phraseWords(q.phrase);
+    const key = qw.join(" ");
+    if (!qw.length || qw.length > 6 || seen.has(key) || !need.every((w) => has(qw, w))) continue;
+    if (qw.some((w) => JUNK.has(w))) continue;
+    const prev = out.get(key);
+    if (!prev || q.volume > prev.volume) out.set(key, { ...q, phrase: q.phrase.toLowerCase().trim() });
+  }
+  return [...out.values()].sort((a, b) => b.volume - a.volume).slice(0, max);
+}
+
+export type EmdModifier = { mod: string; pos: "end" | "start"; source: "keyword" | "found" | "form"; score: number; example?: string };
+export const EMD_MOD_SOURCE_LABELS: Record<EmdModifier["source"], string> = { keyword: "из ключей таблицы", found: "из найденных ключей", form: "свои" };
 
 /**
- * Приписки кластера. Из ключей: слова, которых нет в теме (beste casino zonder cruks → beste, в начале),
- * вес — сумма частот ключей. Гео — код страны и alpha-3 в конце. Свои — из формы.
+ * Приписки кластера. Из ключей таблицы и найденных ключей: слова сверх темы
+ * (beste casino zonder cruks → beste в начале), вес — сумма частот. Гео — код страны и alpha-3 в конце. Свои — из формы.
  */
-export function emdModifiers(c: EmdCluster, country: string, s: { keywordMods: boolean; geoMods: boolean; suffixes: string[]; prefixes: string[] }): EmdModifier[] {
+export function emdModifiers(c: EmdCluster, country: string, s: { keywordMods: boolean; suffixes: string[]; prefixes: string[] }): EmdModifier[] {
   const out: EmdModifier[] = [];
   const has = (mod: string, pos: string) => out.some((m) => m.mod === mod && m.pos === pos);
   const clean = (raw: string) => raw.toLowerCase().replace(/[^a-z0-9-]/g, "").replace(/^-+|-+$/g, "");
   for (const raw of s.suffixes) { const m = clean(raw); if (m && !has(m, "end")) out.push({ mod: m, pos: "end", source: "form", score: Infinity }); }
   for (const raw of s.prefixes) { const m = clean(raw); if (m && !has(m, "start")) out.push({ mod: m, pos: "start", source: "form", score: Infinity }); }
-  if (s.geoMods) for (const g of casinoGeoCodes(country)) if (!has(g, "end")) out.push({ mod: g, pos: "end", source: "geo", score: 0 });
   if (s.keywordMods) {
+    const themeAll = phraseWords(c.theme);
     const themeWords = new Set<string>();
-    for (const w of phraseWords(c.theme)) { themeWords.add(w); if (PLURAL[w]) themeWords.add(PLURAL[w]!); }
-    const must = phraseWords(c.theme).filter((w) => !FILLER.has(w) && !YEAR.test(w));
+    for (const w of themeAll) { themeWords.add(w); for (const f of pluralForms(w, country)) themeWords.add(f); }
+    if (KASINO_COUNTRIES.has(country)) for (const w of [...themeWords]) if (w.startsWith("casino")) themeWords.add(`k${w.slice(1)}`);
+    // В ключе должна быть вся смысловая часть темы; casino может быть заменено на kasino/множественное
+    const must = themeAll.filter((w) => !FILLER.has(w) && !YEAR.test(w) && !GENERIC.has(w));
+    const geoWords = new Set(emdGeo(country).map((g) => g.mod));
     const found = new Map<string, EmdModifier>();
-    for (const k of c.keywords) {
-      const words = phraseWords(k.phrase);
-      // Приписка — только из ключа, где тема целиком: «gokken zonder cruks» — это замена casino, а не приписка
-      if (!must.every((w) => words.includes(w) || (PLURAL[w] !== undefined && words.includes(PLURAL[w]!)))) continue;
+    const take = (phrase: string, volume: number, source: "keyword" | "found") => {
+      const words = phraseWords(phrase);
+      if (!must.every((w) => words.includes(w) || pluralForms(w, country).some((f) => words.includes(f)))) return;
       const first = words.findIndex((w) => themeWords.has(w));
-      if (first < 0) continue;
+      if (first < 0) return;
+      const extra = words.filter((w) => !themeWords.has(w) && !FILLER.has(w) && !MOD_STOP.has(w));
+      if (extra.length > 3) return;
       words.forEach((w, i) => {
-        if (themeWords.has(w) || FILLER.has(w) || YEAR.test(w) || w.length < 2 || w.length > 12) return;
+        if (themeWords.has(w) || geoWords.has(w) || FILLER.has(w) || MOD_STOP.has(w) || JUNK.has(w) || YEAR.test(w) || w.length < 2 || w.length > 14) return;
         const pos: "end" | "start" = i < first ? "start" : "end";
         const key = `${pos}:${w}`;
         const prev = found.get(key);
-        found.set(key, { mod: w, pos, source: "keyword", score: (prev?.score ?? 0) + Math.max(k.volume, 1) });
+        found.set(key, { mod: w, pos, source: prev?.source === "keyword" ? "keyword" : source, score: (prev?.score ?? 0) + Math.max(volume, 1), example: prev && prev.score >= volume ? prev.example : phrase });
       });
-    }
+    };
+    for (const k of c.keywords) take(k.phrase, k.volume, "keyword");
+    for (const f of c.found ?? []) take(f.phrase, f.volume, "found");
     for (const m of [...found.values()].sort((a, b) => b.score - a.score).slice(0, KEYWORD_MODS_MAX)) if (!has(m.mod, m.pos)) out.push(m);
   }
   return out;
@@ -432,8 +559,9 @@ export type EmdCandidateSettings = { tlds: string[]; autoZones: boolean; allowHy
  * Домены кластера: основы всех уровней во всех зонах + лучшие основы с приписками в первых зонах.
  * В лимит кластера идёт ~60% без приписок и ~40% с приписками; итог — по убыванию веса.
  */
-export function emdCandidates(c: EmdCluster, country: string, s: EmdCandidateSettings): EmdCandidate[] {
-  const zones = emdZones(c, country, s);
+export function emdCandidates(c: EmdCluster, country: string, s: EmdCandidateSettings, onlyZones?: string[]): EmdCandidate[] {
+  // Вторая пачка: те же основы и приписки, но только в новых зонах
+  const zones = onlyZones?.length ? onlyZones.map((tld) => ({ tld, kind: "common" as EmdZoneKind, detail: "вторая пачка" })) : emdZones(c, country, s);
   const cores = emdCores(c, country, s);
   const plain = new Map<string, EmdCandidate>();
   for (const core of cores) for (const z of zones) {
@@ -441,33 +569,38 @@ export function emdCandidates(c: EmdCluster, country: string, s: EmdCandidateSet
     if (!plain.has(domain)) plain.set(domain, { domain, tld: z.tld, label: core.label, keyword: core.keyword, volume: core.volume, pattern: core.pattern, zone: z.kind, weight: zoneLenWeight(core.weight, z.kind, core.label.length), tier: core.level });
   }
   const mods = emdModifiers(c, country, s);
+  const geo = s.geoMods ? emdGeo(country) : [];
   const withMod = new Map<string, EmdCandidate>();
-  const modBases = cores.filter((x) => !x.label.includes("-") && x.pattern !== "emd-list").slice(0, MOD_CORES);
-  for (const core of modBases) for (const m of mods) {
-    const srcW = m.source === "geo" ? 0.9 : 1;
-    const labels: Array<[string, EmdPattern]> = m.pos === "end"
-      ? [[`${core.label}${m.mod}`, "emd-mod"], ...(s.allowHyphen ? [[`${core.label}-${m.mod}`, "emd-mod-hyphen"] as [string, EmdPattern]] : [])]
-      : [[`${m.mod}${core.label}`, "emd-mod"], ...(s.allowHyphen ? [[`${m.mod}-${core.label}`, "emd-mod-hyphen"] as [string, EmdPattern]] : [])];
+  const withGeo = new Map<string, EmdCandidate>();
+  // Приписки и гео — к лучшим основам темы (точно и вариации), затем к лучшим ключам
+  const modBases = cores.filter((x) => !x.label.includes("-") && x.pattern !== "emd-list" && x.level !== 6).slice(0, MOD_CORES);
+  const push = (bucket: Map<string, EmdCandidate>, core: EmdCore, mod: string, pos: "end" | "start", joined: EmdPattern, hyphen: EmdPattern, factor: number, skipZone: (z: { tld: string; kind: EmdZoneKind }) => boolean) => {
+    const labels: Array<[string, EmdPattern]> = pos === "end"
+      ? [[`${core.label}${mod}`, joined], ...(s.allowHyphen ? [[`${core.label}-${mod}`, hyphen] as [string, EmdPattern]] : [])]
+      : [[`${mod}${core.label}`, joined], ...(s.allowHyphen ? [[`${mod}-${core.label}`, hyphen] as [string, EmdPattern]] : [])];
     for (const [label, pattern] of labels) {
       if (!validLabel(label, s.maxLen)) continue;
       for (const z of zones.slice(0, MOD_ZONES)) {
-        // zondercruksnl.nl — гео дважды, не берём
-        if (m.source === "geo" && z.kind === "cctld") continue;
+        if (skipZone(z)) continue;
         const domain = `${label}.${z.tld}`;
-        if (plain.has(domain) || withMod.has(domain)) continue;
-        const base = Math.max(core.volume, 10) * PATTERN_WEIGHT[pattern] * srcW;
-        withMod.set(domain, { domain, tld: z.tld, label, keyword: `${core.keyword} + ${m.mod}`, volume: core.volume, pattern, zone: z.kind, weight: zoneLenWeight(base, z.kind, label.length), tier: core.level, mod: m.mod });
+        if (plain.has(domain) || withMod.has(domain) || withGeo.has(domain)) continue;
+        const base = Math.max(core.volume, 10) * PATTERN_WEIGHT[pattern] * factor;
+        bucket.set(domain, { domain, tld: z.tld, label, keyword: `${core.keyword} + ${mod}`, volume: core.volume, pattern, zone: z.kind, weight: zoneLenWeight(base, z.kind, label.length), tier: core.level, mod });
       }
     }
-  }
+  };
+  for (const core of modBases) for (const m of mods) push(withMod, core, m.mod, m.pos, "emd-mod", "emd-mod-hyphen", 1, () => false);
+  // Гео: уровень 1 весит больше; короткий код страны в зоне страны (zondercruksnl.nl) не берём
+  for (const core of modBases) for (const g of geo) push(withGeo, core, g.mod, "end", "emd-geo", "emd-geo-hyphen", g.tier === 1 ? 1 : g.tier === 2 ? 0.85 : 0.7, (z) => z.tld === g.mod || (z.kind === "cctld" && g.mod.length <= 3));
   const byWeight = (a: EmdCandidate, b: EmdCandidate) => b.weight - a.weight;
-  const a = Array.from(plain.values()).sort(byWeight);
-  const b = Array.from(withMod.values()).sort(byWeight);
+  // Лимит кластера: половина — без приписок, по четверти — приписки и гео; недобор одной корзины отдаётся другим
+  const buckets = [Array.from(plain.values()).sort(byWeight), Array.from(withMod.values()).sort(byWeight), Array.from(withGeo.values()).sort(byWeight)];
   const cap = Math.max(1, s.maxPerCluster);
-  let takeA = Math.min(a.length, Math.ceil(cap * PLAIN_SHARE));
-  const takeB = Math.min(b.length, cap - takeA);
-  takeA = Math.min(a.length, cap - takeB);
-  return [...a.slice(0, takeA), ...b.slice(0, takeB)].sort(byWeight);
+  const quota = [Math.ceil(cap * 0.5), Math.floor(cap * 0.25), Math.floor(cap * 0.25)];
+  const take = buckets.map((b, i) => Math.min(b.length, quota[i]!));
+  let left = cap - take.reduce((x, y) => x + y, 0);
+  for (let i = 0; i < 3 && left > 0; i++) { const more = Math.min(left, buckets[i]!.length - take[i]!); take[i]! += more; left -= more; }
+  return buckets.flatMap((b, i) => b.slice(0, take[i])).sort(byWeight);
 }
 
 /** Ключ-источник из колонки suffix: «casino zonder cruks + beste» → «casino zonder cruks». */

@@ -178,6 +178,8 @@ export type DomainRunProgress = {
   updatedAt: string;
   /** Допроверка: воркер перепроверяет только домены «не проверен», ничего не стирая */
   recheck?: boolean;
+  /** EMD: вторая пачка — проверяются только новые зоны (settings.emd.pendingZones), ничего не стирая */
+  zones?: boolean;
 };
 
 export const DEFAULT_SETTINGS: DomainRunSettings = {

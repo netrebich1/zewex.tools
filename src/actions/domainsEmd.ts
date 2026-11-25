@@ -1,7 +1,7 @@
 "use server";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { createDomainRun } from "@/lib/domains/runs";
+import { addEmdZones, createDomainRun } from "@/lib/domains/runs";
 import { loadEmdTable } from "@/lib/domains/drive";
 import { EMD_DEFAULTS, eligibleKeywords } from "@/lib/domains/emd";
 import { normalizeTld, parseList } from "@/lib/domains/generator";
@@ -52,6 +52,17 @@ export async function previewEmdTable(url: string, minVolume: number): Promise<E
   }
 }
 
+/** Вторая пачка подбора EMD: проверить новые зоны из подсказок выдачи (или свои). */
+export async function addEmdZonesAction(runId: string, zones: string[]): Promise<{ ok?: string; error?: string }> {
+  const me = await requireUser();
+  try {
+    const fresh = await addEmdZones(me, runId, zones);
+    return { ok: `Вторая пачка в очереди: ${fresh.map((z) => `.${z}`).join(", ")}` };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** Запуск подбора EMD: таблица скачивается заново (могла измениться), кластеры выбранных проектов становятся «брендами» подбора. */
 export async function launchEmdRun(_p: FormState, f: FormData): Promise<FormState> {
   const me = await requireUser();
@@ -83,6 +94,9 @@ export async function launchEmdRun(_p: FormState, f: FormData): Promise<FormStat
         geoMods: f.get("geoMods") === "on",
         suffixes: parseList(str("suffixes")).slice(0, 50),
         prefixes: parseList(str("prefixes")).slice(0, 50),
+        findKeywords: f.get("findKeywords") === "on",
+        extraZones: [],
+        pendingZones: [],
       },
       brands: items.map((it) => it.brand),
       items,

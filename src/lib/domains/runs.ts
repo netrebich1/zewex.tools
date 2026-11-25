@@ -11,8 +11,8 @@ import { checkDomains } from "./availability";
 import { DEFAULT_SETTINGS, getCountry, itemKey, LIMITS, type BrandItem, type BrandModifier, type BrandResearchSummary, RESEARCH_SOURCE_LABELS, type ResearchSourceKind, type CountryPreset, type DomainRunProgress, type DomainRunSettings, type LetterMode, type MinedSuffix, type SerpSnapshot } from "./types";
 import { rankDomainsWithAi, type AiPick } from "./ai";
 import { balancePicks } from "./selection";
-import { brandTop10, keywordTop10, researchBrand, type BrandResearch } from "./research";
-import { EMD_DEFAULTS, emdCandidates, normalizeEmdCluster, normalizeEmdSettings } from "./emd";
+import { brandTop10, keywordTop10, researchBrand, themeQueries, type BrandResearch } from "./research";
+import { EMD_DEFAULTS, emdCandidates, filterFound, normalizeEmdCluster, normalizeEmdSettings, type EmdFound } from "./emd";
 import { keptModifiers, researchSummary } from "./researchSummary";
 import { domainsKeyTeamId } from "./keyTeam";
 import { domainsOfBrand } from "./mining";
@@ -263,6 +263,25 @@ export async function restartDomainRun(me: CurrentUser, id: string): Promise<voi
   ]);
 }
 
+/** EMD: вторая пачка — проверить те же основы и приписки в новых зонах; готовые домены и выбор не меняются. */
+export async function addEmdZones(me: CurrentUser, id: string, rawZones: string[]): Promise<string[]> {
+  const run = await requireRun(me, id);
+  if (run.status === "RUNNING" || run.status === "QUEUED") throw new Error("Подбор ещё идёт — дождитесь окончания");
+  const settings = parseSettings(run.settings);
+  if (settings.mode !== "emd" || !settings.emd) throw new Error("Доп. зоны — только для подбора EMD");
+  const zones = Array.from(new Set(rawZones.map(normalizeTld).filter((z) => /^[a-z0-9-]+(\.[a-z0-9-]+)?$/.test(z)))).slice(0, 20);
+  const fresh = zones.filter((z) => !settings.emd!.extraZones.includes(z));
+  if (!fresh.length) throw new Error("Эти зоны уже проверены");
+  settings.emd.pendingZones = fresh;
+  const progress: DomainRunProgress = { brand: "", brandIndex: 0, brandsTotal: settings.items.length, checked: run.totalChecked, available: run.totalAvailable, updatedAt: new Date().toISOString(), zones: true };
+  const n = await prisma.domainRun.updateMany({
+    where: { id, status: { in: ["DONE", "STOPPED", "FAILED"] } },
+    data: { status: "QUEUED", stopRequested: false, settings: settings as unknown as Prisma.InputJsonValue, progress: progress as unknown as Prisma.InputJsonValue, error: null, workerId: null, leaseUntil: null, finishedAt: null },
+  });
+  if (n.count !== 1) throw new Error("Подбор уже запущен");
+  return fresh;
+}
+
 /** Поставить в очередь допроверку доменов «не проверен» завершённого подбора; свободные, занятые и выбор не меняются. */
 export async function recheckUnknownDomains(me: CurrentUser, id: string): Promise<number> {
   const run = await requireRun(me, id);
@@ -350,8 +369,10 @@ async function processDomainRunInner(run: DomainRun, workerId: string, shouldSto
   const prev = (run.progress ?? null) as DomainRunProgress | null;
   const startAt = prev && prev.brandIndex > 0 && prev.brandIndex <= items.length ? prev.brandIndex : 0;
   const recheckMode = prev?.recheck === true;
+  // Вторая пачка EMD: только новые зоны, готовые домены не трогаем
+  const zoneMode = prev?.zones === true && settings.mode === "emd" && !!settings.emd?.pendingZones.length;
   // Бренд, на котором прервались: его частичные результаты стираем и проверяем заново.
-  if (!recheckMode && startAt < items.length) await prisma.domainCandidate.deleteMany({ where: { runId: run.id, brand: items[startAt]!.brand, country: items[startAt]!.country } });
+  if (!recheckMode && !zoneMode && startAt < items.length) await prisma.domainCandidate.deleteMany({ where: { runId: run.id, brand: items[startAt]!.brand, country: items[startAt]!.country } });
   const agg = await prisma.domainCandidate.groupBy({ by: ["status"], where: { runId: run.id }, _count: { _all: true } });
   let totalChecked = agg.reduce((a, g) => a + g._count._all, 0);
   let totalAvailable = agg.find((g) => g.status === "available")?._count._all ?? 0;
@@ -368,7 +389,7 @@ async function processDomainRunInner(run: DomainRun, workerId: string, shouldSto
     const rows = await prisma.$queryRaw<Array<{ stopRequested: number | boolean; workerId: string | null }>>`SELECT stopRequested, workerId FROM DomainRun WHERE id = ${run.id}`;
     const r = rows[0];
     if (!r || r.workerId !== workerId) return "lost";
-    const progress: DomainRunProgress = { brand, brandIndex, brandsTotal: items.length, checked: totalChecked, available: totalAvailable, updatedAt: new Date().toISOString(), ...(recheckMode ? { recheck: true } : {}) };
+    const progress: DomainRunProgress = { brand, brandIndex, brandsTotal: items.length, checked: totalChecked, available: totalAvailable, updatedAt: new Date().toISOString(), ...(recheckMode ? { recheck: true } : {}), ...(zoneMode ? { zones: true } : {}) };
     await prisma.$executeRaw`UPDATE DomainRun SET leaseUntil = DATE_ADD(NOW(3), INTERVAL ${RUN_LEASE_SECONDS} SECOND), progress = ${JSON.stringify(progress)}, totalChecked = ${totalChecked}, totalAvailable = ${totalAvailable} WHERE id = ${run.id}`;
     lastLease = Date.now();
     if (Boolean(r.stopRequested)) return "stop";
@@ -448,7 +469,7 @@ async function processDomainRunInner(run: DomainRun, workerId: string, shouldSto
     return;
   }
 
-  if (settings.mode === "emd" ? settings.autoResearch : settings.autoResearch || settings.useKeywords) {
+  if (!zoneMode && (settings.mode === "emd" ? settings.autoResearch || settings.emd?.findKeywords : settings.autoResearch || settings.useKeywords)) {
     const r = settings.mode === "emd" ? await emdResearchStage(run, settings, touch) : await researchStage(run, settings, touch);
     if (r === "lost") return;
     if (r === "stop") { await stopped(); return; }
@@ -464,7 +485,7 @@ async function processDomainRunInner(run: DomainRun, workerId: string, shouldSto
     if (state === "stop") { await stopped(); return; }
     if (state === "release") { await released(); return; }
     const all = settings.mode === "emd" && item.emd
-      ? emdCandidates(item.emd, item.country, { ...EMD_DEFAULTS, ...settings.emd, tlds: settings.tlds, autoZones: settings.autoZones, allowHyphen: settings.allowHyphen }).map((c) => ({ domain: c.domain, tld: c.tld, suffix: c.keyword.slice(0, 190), tier: c.tier, pattern: c.pattern }))
+      ? emdCandidates(item.emd, item.country, { ...EMD_DEFAULTS, ...settings.emd, tlds: settings.tlds, autoZones: settings.autoZones, allowHyphen: settings.allowHyphen }, zoneMode ? settings.emd!.pendingZones : undefined).map((c) => ({ domain: c.domain, tld: c.tld, suffix: c.keyword.slice(0, 190), tier: c.tier, pattern: c.pattern as string }))
       : buildCandidatesForBrand(item.brand, brandTiers(item, settings, pool), brandTlds(item, settings), { allowHyphen: settings.allowHyphen, letterMode: settings.letterMode, country: item.country });
     const candidates = (settings.checkAll ? all.slice(0, LIMITS.checkAllMax) : all).filter((c) => !known.has(c.domain));
     // «Все варианты» — проверяем всё; иначе останавливаемся, когда набралось perBrand + запас свободных
@@ -472,7 +493,8 @@ async function processDomainRunInner(run: DomainRun, workerId: string, shouldSto
     // Пачка не больше 60: прогресс виден чаще, а аренда продлевается изнутри пачки (реестры .nl отвечают ~1 раз в секунду).
     const batchSize = settings.checkAll ? 60 : Math.min(60, Math.max(12, target * 2));
     let found = 0;
-    let order = 0;
+    // Вторая пачка идёт в списке после первой
+    let order = zoneMode ? 100_000 : 0;
     for (let i = 0; i < candidates.length && !enough(found); i += batchSize) {
       const batch = candidates.slice(i, i + batchSize);
       let renewing: Promise<unknown> | null = null;
@@ -509,14 +531,19 @@ async function processDomainRunInner(run: DomainRun, workerId: string, shouldSto
     if (retried.state === "lost") return;
     if (retried.state === "stop") { await stopped(); return; }
     if (retried.state === "release") { await released(); return; }
-    if (found < settings.perBrand && !incomplete.includes(label)) incomplete.push(label);
+    if (!zoneMode && found < settings.perBrand && !incomplete.includes(label)) incomplete.push(label);
     await prisma.domainRun.update({ where: { id: run.id }, data: { incompleteBrands: incomplete, totalGenerated: { increment: candidates.length } } });
   }
 
   const progress: DomainRunProgress = { brand: "", brandIndex: items.length, brandsTotal: items.length, checked: totalChecked, available: totalAvailable, updatedAt: new Date().toISOString() };
+  // Вторая пачка проверена: её зоны переходят в «добавленные»
+  if (zoneMode && settings.emd) {
+    settings.emd.extraZones = Array.from(new Set([...settings.emd.extraZones, ...settings.emd.pendingZones]));
+    settings.emd.pendingZones = [];
+  }
   await prisma.domainRun.update({
     where: { id: run.id },
-    data: { status: "DONE", finishedAt: new Date(), workerId: null, leaseUntil: null, stopRequested: false, progress: progress as unknown as Prisma.InputJsonValue, totalChecked, totalAvailable, incompleteBrands: incomplete },
+    data: { status: "DONE", finishedAt: new Date(), workerId: null, leaseUntil: null, stopRequested: false, progress: progress as unknown as Prisma.InputJsonValue, totalChecked, totalAvailable, incompleteBrands: incomplete, ...(zoneMode ? { settings: settings as unknown as Prisma.InputJsonValue } : {}) },
   });
 }
 
@@ -580,24 +607,39 @@ const EMD_SERP_PARALLEL = 5;
 async function emdResearchStage(run: DomainRun, settings: DomainRunSettings, touch: (label: string, index: number) => Promise<"go" | "stop" | "release" | "lost">): Promise<"go" | "stop" | "release" | "lost"> {
   const items = settings.items;
   const matchPct = settings.emd?.matchPct ?? EMD_DEFAULTS.matchPct;
-  const todo = items.map((it, i) => (it.emd && !it.emd.serpAt ? i : -1)).filter((i) => i >= 0);
+  const wantSerp = settings.autoResearch;
+  const wantFound = !!settings.emd?.findKeywords;
+  const todo = items.map((it, i) => (it.emd && ((wantSerp && !it.emd.serpAt) || (wantFound && !it.emd.foundAt)) ? i : -1)).filter((i) => i >= 0);
   const ctx = { userId: run.createdById, teamId: await domainsKeyTeamId() };
   for (let k = 0; k < todo.length; k++) {
     const item = items[todo[k]!]!;
     const c = item.emd!;
-    const st = await touch(`выдача по ключам: ${itemLabel(item)} (${k + 1} из ${todo.length})`, 0);
+    const st = await touch(`выдача и ключи темы: ${itemLabel(item)} (${k + 1} из ${todo.length})`, 0);
     if (st !== "go") return st;
-    let cost = 0;
-    for (let j = 0; j < c.keywords.length; j += EMD_SERP_PARALLEL) {
-      await Promise.all(c.keywords.slice(j, j + EMD_SERP_PARALLEL).map(async (kw) => {
-        const r = await keywordTop10(ctx, kw.phrase, item.country, matchPct).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e), top10: [], cost: 0 }));
-        cost += r.cost;
-        if (r.ok) { kw.top10 = r.top10; delete kw.serpError; }
-        else kw.serpError = r.error ?? "выдача не снялась";
-      }));
+    const related: EmdFound[] = [];
+    if (wantSerp && !c.serpAt) {
+      let cost = 0;
+      for (let j = 0; j < c.keywords.length; j += EMD_SERP_PARALLEL) {
+        await Promise.all(c.keywords.slice(j, j + EMD_SERP_PARALLEL).map(async (kw) => {
+          const r = await keywordTop10(ctx, kw.phrase, item.country, matchPct).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e), top10: [], cost: 0, related: [] as string[] }));
+          cost += r.cost;
+          if (r.ok) { kw.top10 = r.top10; delete kw.serpError; }
+          else kw.serpError = r.error ?? "выдача не снялась";
+          for (const q of r.related ?? []) related.push({ phrase: q, volume: 0, source: "related" });
+        }));
+      }
+      c.serpAt = new Date().toISOString();
+      c.serpCostUsd = Math.round(((c.serpCostUsd ?? 0) + cost) * 10000) / 10000;
     }
-    c.serpAt = new Date().toISOString();
-    c.serpCostUsd = Math.round(((c.serpCostUsd ?? 0) + cost) * 10000) / 10000;
+    if (wantFound && !c.foundAt) {
+      // Ключи темы: запросы с частотой и подсказки по теме + «похожие запросы» из выдачи по всем ключам кластера
+      const r = await themeQueries(ctx, c.theme, item.country).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e), queries: [], cost: 0 }));
+      c.found = filterFound(c.theme, item.country, [...r.queries, ...related], c.keywords.map((x) => x.phrase));
+      c.foundAt = new Date().toISOString();
+      c.foundCostUsd = Math.round(r.cost * 10000) / 10000;
+      if (r.error) c.foundError = r.error;
+      else delete c.foundError;
+    }
     await prisma.domainRun.update({ where: { id: run.id }, data: { settings: settings as unknown as Prisma.InputJsonValue } });
   }
   return "go";

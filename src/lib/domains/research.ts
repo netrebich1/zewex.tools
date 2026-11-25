@@ -137,7 +137,7 @@ export async function brandTop10(ctx: Ctx, brand: string, country: string): Prom
 }
 
 /** TOP-10 по ключу (режим EMD): у каждого домена — процент ключа в адресе; brand — не меньше порога. */
-export async function keywordTop10(ctx: Ctx, keyword: string, country: string, matchPct: number): Promise<{ ok: boolean; error?: string; top10: Top10Entry[]; cost: number }> {
+export async function keywordTop10(ctx: Ctx, keyword: string, country: string, matchPct: number): Promise<{ ok: boolean; error?: string; top10: Top10Entry[]; cost: number; related?: string[] }> {
   const c = getCountry(country);
   if (!c) return { ok: false, error: `Страна «${country}» не найдена`, top10: [], cost: 0 };
   const pre = await resolveDomainsSlot(ctx.userId, SLOT_SERP_DFS);
@@ -148,7 +148,25 @@ export async function keywordTop10(ctx: Ctx, keyword: string, country: string, m
     const match = emdMatch(t.domain, keyword, country);
     return { ...t, match, brand: match >= matchPct };
   });
-  return { ok: true, top10, cost: sp.cost };
+  return { ok: true, top10, cost: sp.cost, related: sp.queries.map((q) => q.q) };
+}
+
+/** Дополнительные ключи темы (режим EMD): запросы с частотой (Labs) и подсказки Google — как ключи бренда в основной версии. */
+export async function themeQueries(ctx: Ctx, theme: string, country: string): Promise<{ ok: boolean; error?: string; queries: Array<{ phrase: string; volume: number; source: "keywords" | "autocomplete" }>; cost: number }> {
+  const c = getCountry(country);
+  if (!c) return { ok: false, error: `Страна «${country}» не найдена`, queries: [], cost: 0 };
+  const pre = await resolveDomainsSlot(ctx.userId, SLOT_SERP_DFS);
+  if (!pre.ok) return { ok: false, error: "DataForSEO не подключён к «Подбору доменов»", queries: [], cost: 0 };
+  const [kw, ac] = await Promise.all([
+    keywordSuggestions(ctx, pre.value, theme, c.locationCode, c.languageCode),
+    autocomplete(ctx, pre.value, theme, c.locationCode, c.languageCode),
+  ]);
+  const queries = [
+    ...kw.queries.map((q) => ({ phrase: q.q, volume: q.volume, source: "keywords" as const })),
+    ...ac.queries.map((q) => ({ phrase: q.q, volume: 0, source: "autocomplete" as const })),
+  ].filter((q) => q.phrase);
+  const errors = [kw.ok ? "" : `запросы: ${kw.error}`, ac.ok ? "" : `подсказки: ${ac.error}`].filter(Boolean);
+  return { ok: kw.ok || ac.ok, ...(errors.length ? { error: errors.join("; ") } : {}), queries, cost: kw.cost + ac.cost };
 }
 
 function countTlds(domains: string[]): Array<{ value: string; count: number }> {
