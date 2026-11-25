@@ -210,7 +210,7 @@ export type Tab = { title: string; values: (string | number)[][]; colors: [numbe
 /** Клетка «трафик, 7 дн» кластера: визиты людей на статьи кластера за 7 дней и изменение к предыдущим 7 (Метрика, страницы входа). */
 function trafficCell(t: Traffic | null | undefined): { text: string; color: Color | null } {
   if (!t) return { text: "—", color: "x" };
-  if (!t.n) return { text: t.young ? `ждём (${t.young} нов.)` : "—", color: "x" };
+  if (!t.n) return { text: t.young ? `ждём (${t.young})` : "—", color: "x" };
   const c = cmp(t.v7, t.p7);
   return { text: t.young ? `${c.text} · ${t.young} нов.` : c.text, color: c.color ?? (t.v7 === 0 && t.p7 === 0 ? "x" : null) };
 }

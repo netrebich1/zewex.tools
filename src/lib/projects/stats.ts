@@ -119,20 +119,22 @@ export const urlPath = (u: string): string => {
  * Визиты людей по страницам входа за период: /stat/v1/data с ym:s:startURL (до 10 000 строк, по убыванию визитов).
  * На больших счётчиках при 400 «Query is too complicated» точность снижается (выборка).
  */
-async function byLanding(token: string, id: number, date1: string, date2: string, accuracy = "full"): Promise<Map<string, number>> {
+async function byLanding(token: string, id: number, date1: string, date2: string, accuracy = "full", robots = false): Promise<Map<string, number>> {
   try {
     const j = await mGet<{ data?: Array<{ dimensions?: Array<{ name?: string }>; metrics?: number[] }> }>(token, "/stat/v1/data", {
-      ids: String(id), metrics: "ym:s:visits", dimensions: "ym:s:startURL", date1, date2, filters: HUMAN, limit: "10000", sort: "-ym:s:visits", accuracy,
+      ids: String(id), metrics: "ym:s:visits", dimensions: "ym:s:startURL", date1, date2, ...(robots ? {} : { filters: HUMAN }), limit: "10000", sort: "-ym:s:visits", accuracy,
     });
     const out = new Map<string, number>();
     for (const r of j.data ?? []) {
       const p = urlPath(String(r.dimensions?.[0]?.name ?? "")); const v = Math.round(Number(r.metrics?.[0]) || 0);
       if (p && v) out.set(p, (out.get(p) ?? 0) + v);
     }
+    // У части счётчиков фильтр «без роботов» вместе с разбивкой по страницам входа отдаёт пустой ответ (проверено 25.11.2026) — тогда берём все визиты.
+    if (!out.size && !robots) return byLanding(token, id, date1, date2, accuracy, true);
     return out;
   } catch (e) {
     const err = e as Error & { status?: number };
-    if (err.status === 400 && /complicated|reduce the date/i.test(err.message) && accuracy !== "low") return byLanding(token, id, date1, date2, accuracy === "full" ? "medium" : "low");
+    if (err.status === 400 && /complicated|reduce the date/i.test(err.message) && accuracy !== "low") return byLanding(token, id, date1, date2, accuracy === "full" ? "medium" : "low", robots);
     throw e;
   }
 }

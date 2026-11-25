@@ -70,7 +70,8 @@ export async function buildUploadsTab(teamSlug: string, sites: Array<{ domain: s
 
   const order = [...sites.map((s) => s.domain), ...[...byDom.keys()].filter((d) => !sites.some((s) => s.domain === d)).sort()];
   const kindOf = new Map(sites.map((s) => [s.domain, s.kind]));
-  const h1 = ["САЙТ", "НИША", ...days.map((d) => `${wd(d)} ${dm(d)}`), "ЗАЛИТО ЗА 7 ДН", "ЧТО СДЕЛАТЬ"];
+  // Апостроф впереди — иначе Google Таблицы превращают «ср 19.11» в число-дату.
+  const h1 = ["САЙТ", "НИША", ...days.map((d) => `'${wd(d)} ${dm(d)}`), "ЗАЛИТО ЗА 7 ДН", "ЧТО СДЕЛАТЬ"];
   const h2 = ["", "", ...days.map((d) => (d === today ? "сегодня" : d === addDays(today, -1) ? "вчера" : "")), "дней / пинов", ""];
   const values: (string | number)[][] = [h1, h2];
   const colors: [number, number, Color][] = [];
@@ -104,7 +105,8 @@ export async function buildUploadsTab(teamSlug: string, sites: Array<{ domain: s
       else { text = "пинов нет"; color = "x"; }
       row.push(text); colors.push([r, c, color]);
     });
-    row.push(`${okDays} / ${okPins}`); colors.push([r, row.length - 1, okDays >= 5 ? "g" : okDays >= 2 ? "y" : pids.length ? "r" : "x"]);
+    const anyPins = days.some((d) => pinsBy.get(`${domain}|${d}`)?.total);
+    row.push(`${okDays} / ${okPins}`); colors.push([r, row.length - 1, okDays >= 5 ? "g" : okDays >= 2 ? "y" : pids.length && anyPins ? "r" : "x"]);
     // Что сделать — по последнему сбою; если за 7 дней ни разу не залито, а пины были — отдельно.
     const todo: string[] = [];
     const lf = lastFail as { day: string; kind: ErrorKind | null; text: string } | null;
