@@ -65,6 +65,9 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
  */
 export function OpForm({ refs, initial, myPartnerId, onDone, lockDirection, canRecur = true, recurDefault = false }: { refs: OpFormRefs; initial?: Partial<OpValues>; myPartnerId?: string; onDone?: string; lockDirection?: string; canRecur?: boolean; recurDefault?: boolean }) {
   const [recur, setRecur] = useState(recurDefault);
+  // Расход без комментария не принимается (сервер проверяет то же самое).
+  const [noteErr, setNoteErr] = useState(false);
+  const noteRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const editing = !!initial?.id;
   const [v, setV] = useState<OpValues>(() => ({
@@ -235,7 +238,12 @@ export function OpForm({ refs, initial, myPartnerId, onDone, lockDirection, canR
         <input type="date" className="input w-auto py-1.5" value={v.date} max={todayYmd()} onChange={(e) => e.target.value && set("date", e.target.value)} aria-label="Другая дата" />
       </Row>
 
-      <input name="note" className="input" placeholder="Комментарий: за что" value={v.note} onChange={(e) => set("note", e.target.value)} />
+      <div>
+        <input ref={noteRef} name="note" className={`input ${noteErr ? "!border-danger" : ""}`} placeholder={v.type === "EXPENSE" ? "Комментарий: за что платили — обязательно" : "Комментарий: за что"} value={v.note} onChange={(e) => { set("note", e.target.value); if (e.target.value.trim()) setNoteErr(false); }} aria-invalid={noteErr} />
+        {v.type === "EXPENSE" && (noteErr
+          ? <p className="mt-1 text-[13px] font-medium text-danger">Без комментария расход не записывается. Напишите, за что платили — например «Claude: рерайты текстов для укр. сайтов».</p>
+          : <p className="help mt-1">Обязательно для расхода: что это и для чего, чтобы потом не гадать.</p>)}
+      </div>
       <input name="account" className="input" list="fin-accounts" placeholder={v.type === "INCOME" ? "На какой кошелёк (необязательно)" : "Карта / кошелёк (необязательно)"} value={v.account} onChange={(e) => set("account", e.target.value)} />
       <datalist id="fin-accounts">{refs.accounts.map((a) => <option key={a} value={a} />)}</datalist>
       {canRecur && v.type !== "SETTLEMENT" && (
@@ -249,6 +257,7 @@ export function OpForm({ refs, initial, myPartnerId, onDone, lockDirection, canR
       )}
 
       <button type="submit" className="btn-brand w-full" disabled={pending || !refs.partners.length} onClick={(e) => {
+        if (v.type === "EXPENSE" && v.note.trim().length < 3) { e.preventDefault(); setNoteErr(true); noteRef.current?.focus(); return; }
         if (cpRef.current) cpRef.current.value = "0";
         // Контрагент: новый — добавляем только с согласия; известный в новой категории — спрашиваем, привязать ли.
         if (v.type !== "SETTLEMENT" && cpName) {

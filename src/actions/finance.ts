@@ -25,6 +25,8 @@ export async function saveOp(_p: FinState, f: FormData): Promise<FinState> {
     if (!TYPES.includes(type)) throw new Error("Выберите тип операции");
     const amount = num(str(f, "amount"));
     if (!(amount > 0)) throw new Error("Сумма должна быть больше нуля");
+    // Решение владельца (2026-11-25): расход без комментария не допускается — нужно написать, что это и для чего.
+    if (type === "EXPENSE" && str(f, "note").length < 3) throw new Error("Без комментария расход не записывается. Напишите, за что платили — например «Claude: рерайты текстов для укр. сайтов».");
     const currency = normCur(str(f, "currency")) || BASE;
     const date = str(f, "date") || todayYmd();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Неверная дата");
