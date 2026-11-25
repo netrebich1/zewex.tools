@@ -341,7 +341,8 @@ function MonthMath({ m, prev, partners, f }: { m: Awaited<ReturnType<typeof debt
   const c = (p: { id: string }) => paid(p) - got(p);
   const [hi, lo] = c(partners[0]) >= c(partners[1]) ? partners : [partners[1], partners[0]];
   const gap = c(hi) - c(lo);
-  const own = gap / 2;
+  // Итог месяца берём тот же, что в тексте и в строке «Долг на конец» (m.own): половина с полкопейкой иначе округляется в другую сторону.
+  const own = m.own[0]?.amount ?? 0;
   const anyIncome = partners.some((p) => got(p));
   const E = paid(hi) + paid(lo), I = got(hi) + got(lo);
   // Способ 2. Всё со знаком «lo должен hi»: по расходам hi переплатил свою половину на e; из дохода у hi лежит лишних i.
