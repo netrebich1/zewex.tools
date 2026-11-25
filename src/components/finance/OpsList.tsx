@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import type { FinOp } from "@prisma/client";
 import { Badge } from "@/components/ui";
 import { fmtAmount, rateLabel } from "@/lib/finance/currency";
@@ -33,15 +34,15 @@ export function OpsList({ ops, refs, cur, factor, compact, names, back }: { ops:
           const date = o.date.toISOString().slice(0, 10).split("-").reverse().join(".");
           const payer = `${who.get(o.partnerId)}${o.toPartnerId ? ` → ${who.get(o.toPartnerId)}` : ""}`;
           const actions = <OpActions id={o.id} back={back} label={`${fmtAmount(amount, o.currency, { digits: 2 })}, ${title}`} />;
+          // Комментарий — отдельной строкой во всю ширину таблицы под операцией; у расхода без него — пометка.
+          const noteRow = !!o.note || o.type === "EXPENSE";
           return (
-            <tr key={o.id}>
+            <Fragment key={o.id}>
+            <tr className={noteRow ? "[&>td]:!border-b-0 [&>td]:!pb-1" : ""}>
               <td className="col-sm whitespace-nowrap tabular-nums text-ink-2">{date}</td>
               <td className="min-w-[180px]">
                 <div className="flex items-center gap-1.5"><Badge tone={t.tone}>{t.label}</Badge><span className="font-medium">{title}</span>{o.recurringId && <span title="Регулярная операция: повторяется каждый месяц"><Badge>↻ регулярная</Badge></span>}</div>
                 {sub && <div className="help mt-0.5 [overflow-wrap:anywhere]">{sub}</div>}
-                {/* Комментарий — отдельной строкой: за что платили. */}
-                {o.note ? <div className="mt-0.5 text-[13px] text-ink-2 [overflow-wrap:anywhere]"><span className="text-muted">За что:</span> {o.note}</div>
-                  : o.type === "EXPENSE" ? <div className="mt-0.5 text-[12.5px] text-warn">без комментария</div> : null}
                 {/* На телефоне дата, кто платил и кнопки — под названием: их колонки скрыты. */}
                 <div className="help mt-0.5 tabular-nums sm:hidden">{date} · {payer}</div>
                 <div className="mt-1.5 flex justify-start sm:hidden">{actions}</div>
@@ -63,6 +64,17 @@ export function OpsList({ ops, refs, cur, factor, compact, names, back }: { ops:
               )}
               <td className="col-sm">{actions}</td>
             </tr>
+            {noteRow && (
+              <tr>
+                <td colSpan={compact ? 5 : 6} className="!pt-0">
+                  {/* w-0 min-w-full: длинный комментарий переносится по ширине таблицы и не растягивает её. */}
+                  <div className="w-0 min-w-full rounded-md bg-ink/5 px-2.5 py-1 text-[13px] [overflow-wrap:anywhere]">
+                    {o.note ? <><span className="text-muted">За что:</span> {o.note}</> : <span className="text-warn">Без комментария — не указано, за что платили</span>}
+                  </div>
+                </td>
+              </tr>
+            )}
+            </Fragment>
           );
         })}
       </tbody>
