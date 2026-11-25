@@ -48,13 +48,20 @@ export default async function FinanceExpenses({ searchParams }: { searchParams: 
     [NONE, BY.find((b) => b.key === by)!.empty],
   ]);
 
-  type Group = { id: string; name: string; total: number; count: number; per: Record<string, number>; last: Date };
+  // notes — комментарии операций строки (без повторов, свежие первыми; inPeriod уже отсортирован по дате).
+  type Group = { id: string; name: string; total: number; count: number; per: Record<string, number>; last: Date; notes: { text: string; sum: number; n: number }[]; noNote: number };
   const groups = new Map<string, Group>();
   let total = 0;
   for (const o of inPeriod) {
     const v = Number(o.amountEur), k = keyOf(o);
-    const g = groups.get(k) ?? { id: k, name: nameOf.get(k) ?? "?", total: 0, count: 0, per: {}, last: o.date };
+    const g: Group = groups.get(k) ?? { id: k, name: nameOf.get(k) ?? "?", total: 0, count: 0, per: {}, last: o.date, notes: [], noNote: 0 };
     g.total += v; g.count++; g.per[o.partnerId] = (g.per[o.partnerId] ?? 0) + v;
+    const text = o.note?.replace(/\s+/g, " ").trim();
+    if (!text) g.noNote++;
+    else {
+      const same = g.notes.find((x) => x.text.toLowerCase() === text.toLowerCase());
+      if (same) { same.sum += v; same.n++; } else g.notes.push({ text, sum: v, n: 1 });
+    }
     if (o.date > g.last) g.last = o.date;
     groups.set(k, g);
     total += v;
@@ -142,6 +149,17 @@ export default async function FinanceExpenses({ searchParams }: { searchParams: 
                         <span>{total ? Math.round((r.total / total) * 100) : 0}% · операций: {r.count} · последняя {r.last.toISOString().slice(0, 10).split("-").reverse().join(".")}</span>
                         {by !== "who" && <span>{split(r.per)}</span>}
                       </div>
+                      {/* За что платили: комментарии операций этой строки с суммой по каждому. */}
+                      {(r.notes.length > 0 || r.noNote > 0) && (
+                        <div className="mt-1.5 flex flex-wrap gap-1 border-t border-line/60 pt-1.5 text-[12.5px]">
+                          <span className="text-muted">За что:</span>
+                          {r.notes.slice(0, 8).map((n) => (
+                            <span key={n.text} className="rounded-md bg-ink/5 px-1.5 py-0.5 [overflow-wrap:anywhere]">{n.text} <span className="tabular-nums text-muted">· {f(n.sum)}{n.n > 1 ? ` · ${n.n}×` : ""}</span></span>
+                          ))}
+                          {r.notes.length > 8 && <span className="text-muted">и ещё {r.notes.length - 8}</span>}
+                          {r.noNote > 0 && <span className="rounded-md bg-warn/10 px-1.5 py-0.5 text-warn">без комментария: {r.noNote}</span>}
+                        </div>
+                      )}
                     </Link>
                   </li>
                 );

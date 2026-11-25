@@ -28,7 +28,7 @@ export function OpsList({ ops, refs, cur, factor, compact, names, back }: { ops:
           // Главное — кому платили (контрагент), под ним направление, категория, комментарий, кошелёк.
           const where = o.type === "SETTLEMENT" ? "" : [o.directionId ? dir.get(o.directionId) : "Без направления", o.categoryId ? cat.get(o.categoryId) : null].filter(Boolean).join(" · ");
           const title = o.type === "SETTLEMENT" ? "Возврат долга" : o.counterparty?.name ?? (o.categoryId ? cat.get(o.categoryId) : null) ?? where;
-          const sub = [o.type !== "SETTLEMENT" && o.counterparty ? where : o.type !== "SETTLEMENT" && o.categoryId ? (o.directionId ? dir.get(o.directionId) : "Без направления") : null, o.note, o.account].filter(Boolean).join(" · ");
+          const sub = [o.type !== "SETTLEMENT" && o.counterparty ? where : o.type !== "SETTLEMENT" && o.categoryId ? (o.directionId ? dir.get(o.directionId) : "Без направления") : null, o.account].filter(Boolean).join(" · ");
           const sign = o.type === "INCOME" ? 1 : o.type === "EXPENSE" ? -1 : 0;
           const date = o.date.toISOString().slice(0, 10).split("-").reverse().join(".");
           const payer = `${who.get(o.partnerId)}${o.toPartnerId ? ` → ${who.get(o.toPartnerId)}` : ""}`;
@@ -39,6 +39,9 @@ export function OpsList({ ops, refs, cur, factor, compact, names, back }: { ops:
               <td className="min-w-[180px]">
                 <div className="flex items-center gap-1.5"><Badge tone={t.tone}>{t.label}</Badge><span className="font-medium">{title}</span>{o.recurringId && <span title="Регулярная операция: повторяется каждый месяц"><Badge>↻ регулярная</Badge></span>}</div>
                 {sub && <div className="help mt-0.5 [overflow-wrap:anywhere]">{sub}</div>}
+                {/* Комментарий — отдельной строкой: за что платили. */}
+                {o.note ? <div className="mt-0.5 text-[13px] text-ink-2 [overflow-wrap:anywhere]"><span className="text-muted">За что:</span> {o.note}</div>
+                  : o.type === "EXPENSE" ? <div className="mt-0.5 text-[12.5px] text-warn">без комментария</div> : null}
                 {/* На телефоне дата, кто платил и кнопки — под названием: их колонки скрыты. */}
                 <div className="help mt-0.5 tabular-nums sm:hidden">{date} · {payer}</div>
                 <div className="mt-1.5 flex justify-start sm:hidden">{actions}</div>
