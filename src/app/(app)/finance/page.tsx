@@ -9,6 +9,7 @@ import { FinanceNav } from "@/components/finance/FinanceNav";
 import { DirTabs } from "@/components/finance/DirTabs";
 import { OpForm } from "@/components/finance/OpForm";
 import { OpsList } from "@/components/finance/OpsList";
+import { MiniTabs } from "@/components/finance/MiniTabs";
 import { Card, Empty, sp, type SearchParams } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -323,58 +324,152 @@ function Hint({ tip, strong, children }: { tip: string; strong?: boolean; childr
   );
 }
 
+/** Слагаемые со знаком: «a − b + c», у каждого числа подсказка. */
+function Terms({ terms, f }: { terms: { tip: string; v: number }[]; f: Fmt }) {
+  return <>{[...terms].sort((x, y) => y.v - x.v).map((t, i) => <span key={i} className="inline-flex items-baseline gap-x-1.5">{i ? (t.v < 0 ? "−" : "+") : t.v < 0 ? "−" : ""}<Hint tip={t.tip}>{f(Math.abs(t.v))}</Hint></span>)}</>;
+}
+
 /**
- * Расчёт месяца формулами, у каждого числа — подсказка. Только для двух партнёров с равными долями
- * (там долг = половина разницы вкладов): вклад каждого, разница, пополам, долг на конец.
+ * Расчёт месяца формулами, у каждого числа — подсказка. Только для двух партнёров с равными долями.
+ * Два способа на вкладках дают один итог: 1) через вклады (оплатил − доход у него, половина разницы);
+ * 2) по частям — отдельно расходы (кто переплатил свою половину) и отдельно доход (у кого лежит чужая половина).
  */
 function MonthMath({ m, prev, partners, f }: { m: Awaited<ReturnType<typeof debtState>>["ledger"]["months"][number]; prev: Transfer[]; partners: { id: string; name: string; sharePct: number }[]; f: Fmt }) {
   if (partners.length !== 2 || partners[0].sharePct !== partners[1].sharePct) return null;
   const month = ruMonth(m.month);
-  const c = (p: { id: string }) => (m.paid[p.id] ?? 0) - (m.received[p.id] ?? 0);
+  const paid = (p: { id: string }) => m.paid[p.id] ?? 0, got = (p: { id: string }) => m.received[p.id] ?? 0;
+  const c = (p: { id: string }) => paid(p) - got(p);
   const [hi, lo] = c(partners[0]) >= c(partners[1]) ? partners : [partners[1], partners[0]];
   const gap = c(hi) - c(lo);
-  const anyIncome = partners.some((p) => m.received[p.id]);
-  // Долг на конец: слагаемые со знаком относительно того, кто должен в итоге.
+  const own = gap / 2;
+  const anyIncome = partners.some((p) => got(p));
+  const E = paid(hi) + paid(lo), I = got(hi) + got(lo);
+  // Способ 2. Всё со знаком «lo должен hi»: по расходам hi переплатил свою половину на e; из дохода у hi лежит лишних i.
+  const e = paid(hi) - E / 2, i = got(hi) - I / 2;
+  const who = (v: number) => (Math.abs(v) < 0.005 ? "никто никому не должен" : v > 0 ? `${lo.name} должен ${dative(hi.name)}` : `${hi.name} должен ${dative(lo.name)}`);
+  const row = "flex flex-wrap items-baseline gap-x-1.5";
+  const lbl = "w-[150px] shrink-0 text-ink-2";
+  const head = "mt-1.5 text-[12px] font-semibold uppercase tracking-wider text-muted";
+
+  const way1 = (
+    <div className="space-y-1">
+      <p className="help">Вклад — сколько своих денег человек вложил: оплатил расходов минус общий доход, который лежит у него. Кто вложил меньше, отдаёт половину разницы.</p>
+      {partners.map((p) => (
+        <div key={p.id} className={row}>
+          <span className={lbl}>Вклад: {p.name}</span>
+          <Hint tip={`Расходы, которые ${p.name} оплатил со своих денег за ${month}. Операций: ${m.paidN[p.id] ?? 0}.`}>{f(paid(p))}</Hint>
+          {anyIncome && <>−<Hint tip={got(p) ? `Общий доход, который за ${month} пришёл на счёт: ${p.name} (операций: ${m.receivedN[p.id] ?? 0}). Вычитается целиком, но ниже разница делится на 2 — поэтому на долг влияет только чужая половина этого дохода (${f(got(p) / 2)}), своя половина остаётся у него.` : `${p.name} за ${month} общих доходов на свой счёт не получал.`}>{f(got(p))}</Hint></>}
+          =<Hint strong tip={`Сколько своих денег ${p.name} вложил в общее дело за ${month}.`}>{f(c(p))}</Hint>
+        </div>
+      ))}
+      <div className={row}>
+        <span className={lbl}>Разница вкладов</span>
+        <Hint tip={`Вклад: ${hi.name} — у кого он больше.`}>{f(c(hi))}</Hint>−<Hint tip={`Вклад: ${lo.name} — у кого он меньше.`}>{f(c(lo))}</Hint>
+        =<Hint strong tip={`На столько ${hi.name} вложил своих денег больше, чем ${lo.name}.`}>{f(gap)}</Hint>
+      </div>
+      <div className={row}>
+        <span className={lbl}>Долг за месяц</span>
+        <Hint tip="Разница вкладов из строки выше.">{f(gap)}</Hint>÷<Hint tip={`Доли ${partners[0].sharePct}/${partners[1].sharePct}. Чтобы вклады сравнялись, отстающий отдаёт половину разницы, а не всю: тогда у одного станет на половину меньше, у другого на половину больше.`}>2</Hint>
+        =<Hint strong tip={`Долг только за ${month}, без прошлых месяцев и возвратов.`}>{f(own)}</Hint>
+        <span className="text-ink-2">→ {who(own)}</span>
+      </div>
+    </div>
+  );
+
+  const way2 = (
+    <div className="space-y-1">
+      <p className="help">Отдельно расходы и отдельно доходы: каждый несёт половину расходов и имеет право на половину доходов.</p>
+      <p className={head}>Расходы</p>
+      <div className={row}>
+        <span className={lbl}>Всего расходов</span>
+        <Hint tip={`Оплатил ${hi.name} за ${month}. Операций: ${m.paidN[hi.id] ?? 0}.`}>{f(paid(hi))}</Hint>+<Hint tip={`Оплатил ${lo.name} за ${month}. Операций: ${m.paidN[lo.id] ?? 0}.`}>{f(paid(lo))}</Hint>
+        =<Hint strong tip={`Все общие расходы за ${month}.`}>{f(E)}</Hint>
+      </div>
+      <div className={row}>
+        <span className={lbl}>Половина каждого</span>
+        <Hint tip="Все расходы месяца.">{f(E)}</Hint>÷<Hint tip={`Доли ${partners[0].sharePct}/${partners[1].sharePct}: расходы несём пополам.`}>2</Hint>
+        =<Hint strong tip="Столько расходов должен был оплатить каждый.">{f(E / 2)}</Hint>
+      </div>
+      {[hi, lo].map((p) => {
+        const d = paid(p) - E / 2;
+        return (
+          <div key={p.id} className={row}>
+            <span className={lbl}>{p.name}</span>
+            <Hint tip={`Оплатил ${p.name}.`}>{f(paid(p))}</Hint>−<Hint tip="Его половина расходов.">{f(E / 2)}</Hint>
+            =<Hint strong tip={d >= 0 ? `${p.name} оплатил больше своей половины — эту сумму ему должен партнёр.` : `${p.name} оплатил меньше своей половины — эту сумму он должен партнёру.`}>{f(d, { sign: true })}</Hint>
+            <span className="text-ink-2">{Math.abs(d) < 0.005 ? "ровно половина" : d > 0 ? "переплатил" : "недоплатил"}</span>
+          </div>
+        );
+      })}
+      <div className={row}><span className={lbl}>По расходам</span><b className="tabular-nums">{f(Math.abs(e))}</b><span className="text-ink-2">→ {who(e)}</span></div>
+
+      <p className={head}>Доходы</p>
+      {!anyIncome ? <p>Общих доходов за месяц не было — делить нечего.</p> : (
+        <>
+          <div className={row}>
+            <span className={lbl}>Всего доходов</span>
+            <Hint tip={`Пришло на счёт: ${hi.name}. Операций: ${m.receivedN[hi.id] ?? 0}.`}>{f(got(hi))}</Hint>+<Hint tip={`Пришло на счёт: ${lo.name}. Операций: ${m.receivedN[lo.id] ?? 0}.`}>{f(got(lo))}</Hint>
+            =<Hint strong tip={`Весь общий доход за ${month}.`}>{f(I)}</Hint>
+          </div>
+          <div className={row}>
+            <span className={lbl}>Половина каждого</span>
+            <Hint tip="Весь доход месяца.">{f(I)}</Hint>÷<Hint tip="Доход делится пополам, на чей бы счёт он ни пришёл.">2</Hint>
+            =<Hint strong tip="Столько дохода принадлежит каждому.">{f(I / 2)}</Hint>
+          </div>
+          {[hi, lo].map((p) => {
+            const d = got(p) - I / 2;
+            return (
+              <div key={p.id} className={row}>
+                <span className={lbl}>{p.name}</span>
+                <Hint tip={`Получил на свой счёт ${p.name}.`}>{f(got(p))}</Hint>−<Hint tip="Его половина дохода — она остаётся у него.">{f(I / 2)}</Hint>
+                =<Hint strong tip={d > 0 ? `У него на руках лежит чужая половина дохода — её он должен партнёру.` : `Свою половину дохода он ещё не получил — её ему должен партнёр.`}>{f(d, { sign: true })}</Hint>
+                <span className="text-ink-2">{Math.abs(d) < 0.005 ? "ровно своя половина" : d > 0 ? "держит чужую половину" : "ждёт свою половину"}</span>
+              </div>
+            );
+          })}
+          <div className={row}><span className={lbl}>По доходам</span><b className="tabular-nums">{f(Math.abs(i))}</b><span className="text-ink-2">→ {who(-i)}</span></div>
+        </>
+      )}
+
+      <p className={head}>Итог</p>
+      <div className={row}>
+        <span className={lbl}>Долг за месяц</span>
+        <Terms f={f} terms={[{ tip: `По расходам: ${who(e)}.`, v: e }, ...(anyIncome ? [{ tip: `По доходам: ${who(-i)}.`, v: -i }] : [])]} />
+        =<Hint strong tip={`Долг только за ${month}. Совпадает со способом 1: ${f(gap)} ÷ 2.`}>{f(own)}</Hint>
+        <span className="text-ink-2">→ {who(own)}</span>
+      </div>
+    </div>
+  );
+
+  // Долг на конец: слагаемые со знаком относительно того, кто должен в итоге. Одинаков для обоих способов.
   const debtor = (m.end[0] ?? m.own[0] ?? prev[0])?.fromId;
   const terms = [
-    ...m.own.map((t) => ({ tip: `Долг за ${month}: ${t.from} должен ${dative(t.to)} — результат строки «Долг за месяц».`, v: t.fromId === debtor ? t.amount : -t.amount })),
+    ...m.own.map((t) => ({ tip: `Долг за ${month}: ${t.from} должен ${dative(t.to)} — строка «Долг за месяц».`, v: t.fromId === debtor ? t.amount : -t.amount })),
     ...prev.map((t) => ({ tip: `Долг, который остался с прошлых месяцев: ${t.from} должен ${dative(t.to)}. Его не возвращали деньгами, поэтому он ${t.fromId === debtor ? "прибавляется" : "вычитается (взаимозачёт)"}.`, v: t.fromId === debtor ? t.amount : -t.amount })),
     ...m.settled.map((t) => ({ tip: `Возврат долга за ${month}: ${t.from} перевёл ${dative(t.to)} деньги.`, v: t.fromId === debtor ? -t.amount : t.amount })),
-  ].sort((x, y) => y.v - x.v);
-  const row = "flex flex-wrap items-baseline gap-x-1.5";
-  const lbl = "w-[112px] shrink-0 text-ink-2";
+  ];
+  // Операции месяца в журнале: проверить каждую сумму.
+  const [y, mo] = m.month.split("-").map(Number);
+  const span = `from=${m.month}-01&to=${m.month}-${String(new Date(Date.UTC(y, mo, 0)).getUTCDate()).padStart(2, "0")}`;
+  const opsLink = "underline hover:text-ink";
   return (
     <div className="mt-2 rounded-lg border border-dashed border-line px-3 py-2 text-[14px]">
-      <p className="font-semibold">Расчёт <span className="help font-normal">· наведите или нажмите на число, чтобы увидеть, что это</span></p>
-      <div className="mt-1 space-y-1">
-        {partners.map((p) => (
-          <div key={p.id} className={row}>
-            <span className={lbl}>{p.name}:</span>
-            <Hint tip={`Расходы, которые ${p.name} оплатил со своих денег за ${month}. Операций: ${m.paidN[p.id] ?? 0}.`}>{f(m.paid[p.id] ?? 0)}</Hint>
-            {anyIncome && <>−<Hint tip={m.received[p.id] ? `Общий доход, который за ${month} пришёл на счёт: ${p.name} (операций: ${m.receivedN[p.id] ?? 0}). Это деньги компании у него на руках, поэтому они вычитаются из его вклада.` : `${p.name} за ${month} общих доходов на свой счёт не получал.`}>{f(m.received[p.id] ?? 0)}</Hint></>}
-            =<Hint strong tip={`Вклад: сколько своих денег ${p.name} вложил в общее дело за ${month} (оплаченные расходы минус общий доход у него на счету).`}>{f(c(p))}</Hint>
-          </div>
-        ))}
-        <div className={row}>
-          <span className={lbl}>Разница:</span>
-          <Hint tip={`Вклад: ${hi.name} — у кого он больше.`}>{f(c(hi))}</Hint>−<Hint tip={`Вклад: ${lo.name} — у кого он меньше.`}>{f(c(lo))}</Hint>
-          =<Hint strong tip={`На столько ${hi.name} вложил своих денег больше, чем ${lo.name}, за ${month}.`}>{f(gap)}</Hint>
+      <p className="mb-1.5 font-semibold">Расчёт <span className="help font-normal">· наведите или нажмите на число, чтобы увидеть, что это</span></p>
+      <MiniTabs tabs={[{ label: "Способ 1: через вклады", node: way1 }, { label: "Способ 2: расходы и доходы отдельно", node: way2 }]} />
+      {(prev.length > 0 || m.settled.length > 0) && terms.length > 0 && (
+        <div className={`${row} mt-2 border-t border-line pt-2`}>
+          <span className={lbl}>Долг на конец</span>
+          <Terms f={f} terms={terms} />
+          =<Hint strong tip={`Общий долг на конец месяца (${month}): все месяцы с начала учёта и все возвраты.`}>{f(m.end[0]?.amount ?? 0)}</Hint>
+          <span className="text-ink-2">→ {m.end.length ? `${m.end[0].from} должен ${dative(m.end[0].to)}` : "долг закрыт"}</span>
         </div>
-        <div className={row}>
-          <span className={lbl}>Долг за месяц:</span>
-          <Hint tip="Разница вкладов из строки выше.">{f(gap)}</Hint>÷<Hint tip={`Доли ${partners[0].sharePct}/${partners[1].sharePct}: расходы и доходы делятся пополам. Чтобы вклады сравнялись, отстающий отдаёт половину разницы, а не всю.`}>2</Hint>
-          =<Hint strong tip={gap / 2 >= 0.01 ? `Столько ${lo.name} должен ${dative(hi.name)} только за ${month}, без прошлых месяцев и возвратов.` : `За ${month} вклады равны.`}>{f(gap / 2)}</Hint>
-          <span className="text-ink-2">{gap / 2 >= 0.01 ? `→ ${lo.name} должен ${dative(hi.name)}` : "→ никто никому не должен"}</span>
-        </div>
-        {(prev.length > 0 || m.settled.length > 0) && terms.length > 0 && (
-          <div className={row}>
-            <span className={lbl}>Долг на конец:</span>
-            {terms.map((t, i) => <span key={i} className="inline-flex items-baseline gap-x-1.5">{i ? (t.v < 0 ? "−" : "+") : t.v < 0 ? "−" : ""}<Hint tip={t.tip}>{f(Math.abs(t.v))}</Hint></span>)}
-            =<Hint strong tip={`Общий долг на конец месяца (${month}): все месяцы с начала учёта и все возвраты.`}>{f(m.end[0]?.amount ?? 0)}</Hint>
-            <span className="text-ink-2">→ {m.end.length ? `${m.end[0].from} должен ${dative(m.end[0].to)}` : "долг закрыт"}</span>
-          </div>
-        )}
-      </div>
+      )}
+      <p className="help mt-2">
+        Операции за месяц в журнале:{" "}
+        {partners.map((p) => <span key={p.id}><Link href={`/finance/ops?${span}&type=EXPENSE&who=${p.id}`} className={opsLink}>расходы — {p.name} ({m.paidN[p.id] ?? 0})</Link> · </span>)}
+        <Link href={`/finance/ops?${span}&type=INCOME`} className={opsLink}>доходы ({partners.reduce((n, p) => n + (m.receivedN[p.id] ?? 0), 0)})</Link> ·{" "}
+        <Link href={`/finance/ops?${span}&type=SETTLEMENT`} className={opsLink}>возвраты ({m.settled.length})</Link>
+      </p>
     </div>
   );
 }
