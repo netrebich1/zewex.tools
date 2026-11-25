@@ -196,7 +196,9 @@ export async function readAnalytics(page: Page, h: UplHumanize, onStep: (s: stri
     await onStep("читаю статистику по дням");
     const q = JSON.parse(cap.body) as { queryHash?: string; variables?: Record<string, unknown> };
     const v: Record<string, unknown> = { ...(q.variables ?? {}) };
-    const end = typeof v.endDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.endDate) ? v.endDate : new Date().toISOString().slice(0, 10);
+    // Страница сама ставит endDate на последний «закрытый» день Pinterest (бывает и 5 дней назад); просим до сегодня —
+    // Pinterest отдаст, что есть, а незакрытые дни придут с dataStatus ≠ READY и лягут как оценка.
+    const end = new Date().toISOString().slice(0, 10);
     const startMs = Date.parse(`${end}T00:00:00Z`) - 89 * 86_400_000;
     Object.assign(v, { startDate: new Date(startMs).toISOString().slice(0, 10), endDate: end, startTimestamp: Math.round(startMs / 1000), metricTypes: S.analyticsMetrics, useDailyBuckets: true, useHourlyBuckets: false, splitField: "NO_SPLIT" });
     const headers: Record<string, string> = { "content-type": "application/json" };

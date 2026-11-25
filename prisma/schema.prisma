@@ -3011,6 +3011,21 @@ model PrjStatDay {
   @@index([teamId, day])
 }
 
+/// Визиты людей на страницы входа за последние 7 дней и предыдущие 7 (Яндекс Метрика, ym:s:startURL) — трафик кластеров статей в сетке «Проектов».
+/// Сайт = домен, path = путь страницы без домена и query, без завершающего слеша. Перезаписывается при ночном сборе Метрики.
+model PrjUrlWeek {
+  id      String @id @default(uuid()) @db.Char(36)
+  teamId  String @db.VarChar(191)
+  site    String @db.VarChar(190)
+  path    String @db.VarChar(700)
+  visits7 Int    @default(0)
+  prev7   Int    @default(0)
+  /// Последний день окна «7 дней» (YYYY-MM-DD)
+  asOf    String @db.VarChar(10)
+
+  @@index([teamId, site])
+}
+
 /// Токен OAuth Яндекс Метрики команды (metrika:read): ночной сбор визитов по счётчикам сайтов команды
 model PrjMetrikaToken {
   teamId      String    @id @db.VarChar(191)

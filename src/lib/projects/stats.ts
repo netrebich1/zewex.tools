@@ -108,6 +108,60 @@ async function byTimeRaw(token: string, id: number, date1: string, date2: string
   return out;
 }
 
+/** Путь страницы без домена, query и завершающего слеша — так же сравниваются адреса статей в сетке. */
+export const urlPath = (u: string): string => {
+  const s = (u || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/[?#].*$/, "");
+  const i = s.indexOf("/");
+  return (i < 0 ? "" : s.slice(i)).replace(/\/+$/, "") || "/";
+};
+
+/**
+ * Визиты людей по страницам входа за период: /stat/v1/data с ym:s:startURL (до 10 000 строк, по убыванию визитов).
+ * На больших счётчиках при 400 «Query is too complicated» точность снижается (выборка).
+ */
+async function byLanding(token: string, id: number, date1: string, date2: string, accuracy = "full"): Promise<Map<string, number>> {
+  try {
+    const j = await mGet<{ data?: Array<{ dimensions?: Array<{ name?: string }>; metrics?: number[] }> }>(token, "/stat/v1/data", {
+      ids: String(id), metrics: "ym:s:visits", dimensions: "ym:s:startURL", date1, date2, filters: HUMAN, limit: "10000", sort: "-ym:s:visits", accuracy,
+    });
+    const out = new Map<string, number>();
+    for (const r of j.data ?? []) {
+      const p = urlPath(String(r.dimensions?.[0]?.name ?? "")); const v = Math.round(Number(r.metrics?.[0]) || 0);
+      if (p && v) out.set(p, (out.get(p) ?? 0) + v);
+    }
+    return out;
+  } catch (e) {
+    const err = e as Error & { status?: number };
+    if (err.status === 400 && /complicated|reduce the date/i.test(err.message) && accuracy !== "low") return byLanding(token, id, date1, date2, accuracy === "full" ? "medium" : "low");
+    throw e;
+  }
+}
+
+/** Трафик страниц сайта за 7 дней и предыдущие 7 → PrjUrlWeek (перезапись по сайту). */
+async function syncUrlWeeks(token: string, id: number, teamId: string, domain: string, date2: string): Promise<number> {
+  const cur = await byLanding(token, id, addDays(date2, -6), date2);
+  const prev = await byLanding(token, id, addDays(date2, -13), addDays(date2, -7));
+  const paths = new Set([...cur.keys(), ...prev.keys()]);
+  const rows = [...paths].map((path) => ({ teamId, site: domain, path: path.slice(0, 700), visits7: cur.get(path) ?? 0, prev7: prev.get(path) ?? 0, asOf: date2 }));
+  await prisma.$transaction([
+    prisma.prjUrlWeek.deleteMany({ where: { site: domain } }),
+    ...(rows.length ? [prisma.prjUrlWeek.createMany({ data: rows })] : []),
+  ]);
+  return rows.length;
+}
+
+export type UrlWeek = { visits7: number; prev7: number; asOf: string };
+/** Трафик страниц сайтов команды: домен → путь → визиты за 7 дней и предыдущие 7. */
+export async function urlWeeks(teamSlug: string): Promise<Map<string, Map<string, UrlWeek>>> {
+  const out = new Map<string, Map<string, UrlWeek>>();
+  const team = await prisma.team.findUnique({ where: { slug: teamSlug }, select: { id: true } });
+  if (!team) return out;
+  for (const r of await prisma.prjUrlWeek.findMany({ where: { teamId: team.id }, select: { site: true, path: true, visits7: true, prev7: true, asOf: true } })) {
+    (out.get(r.site) ?? out.set(r.site, new Map()).get(r.site)!).set(r.path, { visits7: r.visits7, prev7: r.prev7, asOf: r.asOf });
+  }
+  return out;
+}
+
 /** Домены сайтов команды (как в сетке): доступы, сайты статей, блога и пинов. */
 async function teamDomains(teamId: string): Promise<Set<string>> {
   const [access, art, blog, pin] = await Promise.all([
@@ -143,6 +197,8 @@ export async function metrikaSync(teamId: string, only?: string): Promise<Metrik
         catch (e) { if ((e as { status?: number }).status !== 400 || i === PIN_FILTERS.length - 1) throw e; }
       }
       const robots = await byTime(token, id, date1, date2, "ym:s:isRobot=='Yes'").catch(() => new Map<string, number>());
+      // Трафик по страницам (кластеры статей в сетке): сбой здесь не отменяет дневной ряд сайта.
+      await syncUrlWeeks(token, id, teamId, domain, date2).catch((e) => console.warn(`[metrika] ${domain}: страницы не собраны: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`));
       const rows = [...human.keys()].map((d) => ({ source: "metrika", site: domain, teamId, day: d, visits: human.get(d) ?? 0, pinVisits: pins?.get(d) ?? 0, robotVisits: robots.get(d) ?? 0 }));
       if (rows.length) {
         await prisma.$transaction([
@@ -197,7 +253,7 @@ const fmt = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g
 const pct = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(a / b < 0.1 ? 1 : 0)}%` : "—");
 
 /** Клетка «значение ▲/▼ процент» и её цвет: рост от 5% — зелёный, падение от 5% — красный. */
-function cmp(cur: number, prev: number): { text: string; color: Color | null } {
+export function cmp(cur: number, prev: number): { text: string; color: Color | null } {
   if (cur === 0 && prev === 0) return { text: "0", color: "x" };
   if (prev === 0) return { text: `${fmt(cur)} ▲ с нуля`, color: "g" };
   const d = Math.round(((cur - prev) / prev) * 100);
@@ -207,6 +263,13 @@ function cmp(cur: number, prev: number): { text: string; color: Color | null } {
 }
 
 export type WeekCell = { text: string; color: Color | null };
+/** До какого закрытого дня Pinterest отдал аналитику хотя бы по одному сайту команды (сам Pinterest задерживает данные на несколько дней). */
+export async function pinReadyDay(teamSlug: string): Promise<string | null> {
+  const team = await prisma.team.findUnique({ where: { slug: teamSlug }, select: { id: true } });
+  if (!team) return null;
+  const r = await prisma.prjStatDay.aggregate({ where: { teamId: team.id, source: "pinterest", estimate: false }, _max: { day: true } });
+  return r._max.day ?? null;
+}
 /**
  * Клики на сайт из Pinterest за 7 дней и их изменение к предыдущим 7 — короткая клетка слева от сайта на вкладках ниш.
  * Считается до последнего закрытого дня аккаунта; резкий рост (как на «Трафике»: от +30% и не меньше 20 кликов) — ярко-зелёным.
