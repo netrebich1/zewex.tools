@@ -139,10 +139,45 @@ async function byLanding(token: string, id: number, date1: string, date2: string
   }
 }
 
+/**
+ * То же, но с хвостом: с фильтром «без роботов» Метрика отдаёт только страницы с 10+ визитами за период (проверено 25.11.2026:
+ * zentrosy.com — 185 страниц с фильтром против 2807 без). Страницы, которых нет в ответе с фильтром, берём из ответа без фильтра,
+ * но не больше 9 визитов: у них заведомо меньше 10 визитов людей, остальное — роботы.
+ */
+async function byLandingFull(token: string, id: number, date1: string, date2: string): Promise<Map<string, number>> {
+  const human = await byLanding(token, id, date1, date2);
+  const all = await byLanding(token, id, date1, date2, "full", true).catch(() => new Map<string, number>());
+  for (const [p, v] of all) if (!human.has(p)) human.set(p, Math.min(v, 9));
+  return human;
+}
+
+export const HIST_WEEKS = 10;
+/** Понедельник недели, в которую попадает день. */
+export const weekOf = (d: string) => addDays(d, -((new Date(Date.parse(`${d}T00:00:00Z`)).getUTCDay() + 6) % 7));
+/** Понедельники последних n полных недель (по возрастанию), считая, что данные есть до date2 включительно. */
+export const fullWeeks = (date2: string, n = HIST_WEEKS) => { const last = weekOf(addDays(date2, -6)); return Array.from({ length: n }, (_, i) => addDays(last, (i - n + 1) * 7)); };
+
+/** Недельная история страниц сайта → PrjUrlHist: досбор недель, которых ещё нет (до HIST_WEEKS полных недель назад). */
+async function syncUrlHist(token: string, id: number, teamId: string, domain: string, date2: string): Promise<number> {
+  const weeks = fullWeeks(date2);
+  const have = new Set((await prisma.prjUrlHist.findMany({ where: { site: domain, path: "*", week: { in: weeks } }, select: { week: true } })).map((r) => r.week));
+  let n = 0;
+  for (const w of weeks) {
+    if (have.has(w)) continue;
+    const m = await byLanding(token, id, w, addDays(w, 6));
+    const rows = [...m].map(([path, visits]) => ({ teamId, site: domain, path: path.slice(0, 700), week: w, visits }));
+    rows.push({ teamId, site: domain, path: "*", week: w, visits: rows.reduce((s, r) => s + r.visits, 0) });
+    await prisma.$transaction([prisma.prjUrlHist.deleteMany({ where: { site: domain, week: w } }), prisma.prjUrlHist.createMany({ data: rows })]);
+    n += rows.length;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return n;
+}
+
 /** Трафик страниц сайта за 7 дней и предыдущие 7 → PrjUrlWeek (перезапись по сайту). */
 async function syncUrlWeeks(token: string, id: number, teamId: string, domain: string, date2: string): Promise<number> {
-  const cur = await byLanding(token, id, addDays(date2, -6), date2);
-  const prev = await byLanding(token, id, addDays(date2, -13), addDays(date2, -7));
+  const cur = await byLandingFull(token, id, addDays(date2, -6), date2);
+  const prev = await byLandingFull(token, id, addDays(date2, -13), addDays(date2, -7));
   const paths = new Set([...cur.keys(), ...prev.keys()]);
   const rows = [...paths].map((path) => ({ teamId, site: domain, path: path.slice(0, 700), visits7: cur.get(path) ?? 0, prev7: prev.get(path) ?? 0, asOf: date2 }));
   await prisma.$transaction([
@@ -201,6 +236,7 @@ export async function metrikaSync(teamId: string, only?: string): Promise<Metrik
       const robots = await byTime(token, id, date1, date2, "ym:s:isRobot=='Yes'").catch(() => new Map<string, number>());
       // Трафик по страницам (кластеры статей в сетке): сбой здесь не отменяет дневной ряд сайта.
       await syncUrlWeeks(token, id, teamId, domain, date2).catch((e) => console.warn(`[metrika] ${domain}: страницы не собраны: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`));
+      await syncUrlHist(token, id, teamId, domain, date2).catch((e) => console.warn(`[metrika] ${domain}: история страниц не собрана: ${e instanceof Error ? e.message.slice(0, 120) : String(e)}`));
       const rows = [...human.keys()].map((d) => ({ source: "metrika", site: domain, teamId, day: d, visits: human.get(d) ?? 0, pinVisits: pins?.get(d) ?? 0, robotVisits: robots.get(d) ?? 0 }));
       if (rows.length) {
         await prisma.$transaction([

@@ -4347,3 +4347,44 @@ model StLookItem {
   @@index([itemId])
   @@index([parentId])
 }
+
+/// Недельная история трафика страниц (Метрика, визиты людей по страницам входа; неделя = понедельник YYYY-MM-DD, только полные недели).
+/// Метрика с фильтром «без роботов» отдаёт только страницы с 10+ визитами за период — хвост сюда не попадает.
+/// Строка path="*" — сумма по сайту за неделю (и отметка, что неделя собрана). Основа таблицы «Старые URL» (src/lib/projects/oldurls.ts).
+model PrjUrlHist {
+  id     String @id @default(uuid()) @db.Char(36)
+  teamId String @db.VarChar(191)
+  site   String @db.VarChar(190)
+  path   String @db.VarChar(700)
+  week   String @db.VarChar(10)
+  visits Int    @default(0)
+
+  @@index([site, week])
+  @@index([teamId, week])
+}
+
+/// Пачка старых страниц, на которые делаем новые пины («Старые URL · декабрь 2026 · пачка 1»); у каждой пачки своя вкладка в таблице.
+model PrjOldBatch {
+  id        String       @id @default(uuid()) @db.Char(36)
+  teamId    String       @db.VarChar(191)
+  name      String       @db.VarChar(120)
+  createdAt DateTime     @default(now())
+  pages     PrjOldPage[]
+
+  @@index([teamId])
+}
+
+/// Страница пачки: role = test (делаем пины) | control (не трогаем, для сравнения); base — визиты за 4 полные недели до создания пачки.
+model PrjOldPage {
+  id      String      @id @default(uuid()) @db.Char(36)
+  batchId String      @db.Char(36)
+  batch   PrjOldBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  site    String      @db.VarChar(190)
+  path    String      @db.VarChar(700)
+  niche   String      @db.VarChar(40)
+  role    String      @db.VarChar(10)
+  base    Int         @default(0)
+
+  @@index([batchId])
+  @@index([site])
+}

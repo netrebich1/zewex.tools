@@ -24,6 +24,7 @@ import { copyBatchTick } from "@/lib/copy/batch";
 import { copySheetTick } from "@/lib/copy/sheet";
 import { prjGridTick } from "@/lib/projects/grid";
 import { metrikaTick } from "@/lib/projects/stats";
+import { oldUrlsTick } from "@/lib/projects/oldurls";
 import { recurringTick } from "@/lib/finance/recurring";
 
 /** Периодические задачи воркера: сторож зависших задач, уборка (позже). */
@@ -109,6 +110,9 @@ ${r.note}`); }).catch((e) => log.warn("copy auto failed", e)), 60_000));
   // так статистика, которую агент заливки снимает с аккаунтов, появляется в таблице в течение четверти часа, а не через час).
   const grid = () => prjGridTick().then((r) => { if (r.written) log.info(`projects grid: sheets rewritten, ${r.sites} sites`); if (r.errors.length) log.warn(`projects grid errors: ${r.errors.join("; ")}`); }).catch((e) => log.warn("projects grid failed", e));
   timers.push(setTimeout(grid, 3 * 60_000), setInterval(grid, 15 * 60_000));
+  // Проекты: таблица «Старые URL» (ниши, кандидаты, пачки старых страниц под новые пины) — через 6 мин после старта и раз в 30 минут, только при изменениях.
+  const oldUrls = () => oldUrlsTick().then((r) => { if (r.written) log.info(`old urls sheet rewritten, ${r.tabs} tabs`); if (r.error) log.warn(`old urls sheet failed: ${r.error}`); }).catch((e) => log.warn("old urls failed", e));
+  timers.push(setTimeout(oldUrls, 6 * 60_000), setInterval(oldUrls, 30 * 60_000));
   // Проекты, вкладка «Трафик»: Яндекс Метрика по токенам команд — новый токен сразу, дальше раз в сутки после 03:00 по Киеву.
   const metrika = () => metrikaTick().then((r) => { if (r.synced.length) log.info(`metrika synced: ${r.synced.join("; ")}`); if (r.errors.length) log.warn(`metrika errors: ${r.errors.join("; ")}`); }).catch((e) => log.warn("metrika tick failed", e));
   timers.push(setTimeout(metrika, 5 * 60_000), setInterval(metrika, 10 * 60_000));
