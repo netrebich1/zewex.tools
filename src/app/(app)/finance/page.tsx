@@ -237,7 +237,7 @@ const dative = (n: string) => (/[ая]$/i.test(n) ? n.slice(0, -1) + "е" : /[й
 const owes = (plan: Transfer[], f: Fmt) => (plan.length ? plan.map((t) => `${t.from} должен ${dative(t.to)} ${f(t.amount)}`).join(", ") : "никто никому не должен");
 
 /** История расчёта словами: возвраты (последний, закрывался ли долг) и по каждому месяцу — кто сколько оплатил и кто кому должен. */
-function DebtLedger({ ledger, partners, f: f0 }: { ledger: Awaited<ReturnType<typeof debtState>>["ledger"]; partners: { id: string; name: string }[]; f: Fmt }) {
+function DebtLedger({ ledger, partners, f: f0 }: { ledger: Awaited<ReturnType<typeof debtState>>["ledger"]; partners: { id: string; name: string; sharePct: number }[]; f: Fmt }) {
   const f: Fmt = (v, o = {}) => f0(v, { digits: 2, ...o });
   const { months, settlements, closedAt } = ledger;
   if (!months.length) return null;
@@ -275,8 +275,30 @@ function DebtLedger({ ledger, partners, f: f0 }: { ledger: Awaited<ReturnType<ty
                 <p className="font-semibold capitalize">{ruMonth(m.month)}</p>
                 <ul className="mt-1 space-y-0.5">
                   {partners.map((p) => (
-                    <li key={p.id}>{p.name} оплатил расходов: <b className="tabular-nums">{f(m.paid[p.id] ?? 0)}</b>{m.received[p.id] ? <> и получил на свой счёт общий доход <b className="tabular-nums">{f(m.received[p.id])}</b></> : null}</li>
+                    <li key={p.id}>{p.name} оплатил расходов: <b className="tabular-nums">{f(m.paid[p.id] ?? 0)}</b></li>
                   ))}
+                  {(() => {
+                    // Доход общий, кому бы он ни пришёл: показываем, кто получил и чья в нём какая доля.
+                    const income = partners.reduce((s, p) => s + (m.received[p.id] ?? 0), 0);
+                    if (!income) return <li>Общий доход за месяц: не было</li>;
+                    const shares = partners.reduce((s, p) => s + Math.max(0, p.sharePct), 0) || 1;
+                    return (
+                      <li className="my-1 rounded-lg bg-ink/5 px-3 py-2">
+                        Общий доход за месяц: <b className="tabular-nums">{f(income)}</b> — делится по долям и уже учтён в итоге месяца.
+                        <ul className="mt-1 space-y-0.5">
+                          {partners.map((p) => {
+                            const got = m.received[p.id] ?? 0, own = (income * Math.max(0, p.sharePct)) / shares, extra = got - own;
+                            return (
+                              <li key={p.id}>
+                                {p.name}: получил на свой счёт <b className="tabular-nums">{f(got)}</b>, его доля ({p.sharePct}%) — <b className="tabular-nums">{f(own)}</b>.{" "}
+                                {Math.abs(extra) < 0.005 ? "Ровно своя доля." : extra > 0 ? <>Из полученного <b className="tabular-nums">{f(extra)}</b> — чужая доля, она засчитана как его долг.</> : <>Ему причитается ещё <b className="tabular-nums">{f(-extra)}</b> из дохода, который лежит у партнёра, — засчитано в его пользу.</>}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </li>
+                    );
+                  })()}
                   <li>Итог только этого месяца: <b>{owes(m.own, f)}</b></li>
                   <li>Возвраты за месяц: {m.settled.length ? <b>{m.settled.map(ret).join("; ")}</b> : "не было"}</li>
                   {!(first && !m.settled.length) && <li>{first ? "Долг на конец месяца" : "Долг на конец месяца, вместе с прошлыми месяцами и возвратами"}: <b>{owes(m.end, f)}</b></li>}
