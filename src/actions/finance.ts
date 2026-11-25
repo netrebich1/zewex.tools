@@ -6,6 +6,7 @@ import { rateToEur } from "@/lib/finance/rates";
 import { BASE, normCur, todayYmd } from "@/lib/finance/currency";
 import { MAX_PARTNERS } from "@/lib/finance/limits";
 import { isPnlLine, pnlLine } from "@/lib/finance/pnl";
+import { nextMonthly, recurringTick } from "@/lib/finance/recurring";
 
 export type FinState = { error?: string; ok?: string; at?: number };
 
@@ -58,14 +59,25 @@ export async function saveOp(_p: FinState, f: FormData): Promise<FinState> {
       account: str(f, "account").slice(0, 120) || null,
       note: str(f, "note").slice(0, 2000) || null,
     };
+    // Галочка «повторять каждый месяц»: заводим правило, дальше операции вносит воркер (lib/finance/recurring.ts).
+    const recur = type !== "SETTLEMENT" && f.get("recurring") === "1";
+    const day = Number(date.slice(8, 10));
+    const rule = () => prisma.finRecurring.create({
+      data: { type, amount, currency, directionId: data.directionId, categoryId, counterpartyId, partnerId, account: data.account, note: data.note, day, nextDate: new Date(`${nextMonthly(date, day)}T00:00:00Z`), lastDate: data.date, createdById: me.id },
+    });
+    const recurNote = ` Будет вноситься сама каждый месяц ${day}-го числа.`;
     if (id) {
-      const old = await prisma.finOp.findUnique({ where: { id }, select: { deletedAt: true } });
+      const old = await prisma.finOp.findUnique({ where: { id }, select: { deletedAt: true, recurringId: true } });
       if (!old || old.deletedAt) throw new Error("Операция удалена или не найдена");
-      await prisma.finOp.update({ where: { id }, data: { ...data, updatedById: me.id } });
-      return done("Операция сохранена");
+      const recurringId = recur && !old.recurringId ? (await rule()).id : undefined;
+      await prisma.finOp.update({ where: { id }, data: { ...data, updatedById: me.id, ...(recurringId ? { recurringId } : {}) } });
+      if (recurringId) await recurringTick().catch(() => null); // дата в прошлом — сразу довносим пропущенные месяцы
+      return done(`Операция сохранена.${recurringId ? recurNote : ""}`);
     }
-    await prisma.finOp.create({ data: { ...data, createdById: me.id } });
-    return done("Записано");
+    const recurringId = recur ? (await rule()).id : null;
+    await prisma.finOp.create({ data: { ...data, createdById: me.id, recurringId } });
+    if (recurringId) await recurringTick().catch(() => null);
+    return done(`Записано.${recurringId ? recurNote : ""}`);
   } catch (e) {
     return fail(e);
   }
@@ -116,8 +128,43 @@ export async function repeatOp(_p: FinState, f: FormData): Promise<FinState> {
       rate = r.rate;
     }
     const { id: _id, createdAt: _c, updatedAt: _u, updatedById: _ub, deletedAt: _d, deletedById: _db, ...rest } = o;
-    await prisma.finOp.create({ data: { ...rest, date: new Date(`${date}T00:00:00Z`), rate, amountEur: Math.round(Number(o.amount) * rate * 100) / 100, createdById: me.id } });
+    await prisma.finOp.create({ data: { ...rest, recurringId: null, date: new Date(`${date}T00:00:00Z`), rate, amountEur: Math.round(Number(o.amount) * rate * 100) / 100, createdById: me.id } });
     return done("Повторено сегодняшней датой");
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/* ---------- Регулярные операции ---------- */
+
+/** Правило: изменить сумму и день (id + amount + day), поставить на паузу / вернуть (id + active), удалить (id + delete). Уже внесённые операции не трогаются. */
+export async function saveRecurring(_p: FinState, f: FormData): Promise<FinState> {
+  await requireFinance();
+  try {
+    const id = str(f, "id");
+    const r = await prisma.finRecurring.findUnique({ where: { id } });
+    if (!r) throw new Error("Правило не найдено");
+    if (f.has("delete")) {
+      await prisma.finRecurring.delete({ where: { id } });
+      return done("Правило удалено. Внесённые операции остались.");
+    }
+    if (f.has("active")) {
+      const active = str(f, "active") === "1";
+      // После паузы не довносим пропущенное: следующая дата — ближайшая будущая.
+      const next = active ? nextMonthly(todayYmd() > r.nextDate.toISOString().slice(0, 10) ? todayYmd() : new Date(r.nextDate.getTime() - 86400000).toISOString().slice(0, 10), r.day) : null;
+      await prisma.finRecurring.update({ where: { id }, data: { active, ...(next ? { nextDate: new Date(`${next}T00:00:00Z`) } : {}) } });
+      return done(active ? `Включено, следующая операция ${next!.split("-").reverse().join(".")}` : "Поставлено на паузу");
+    }
+    const amount = num(str(f, "amount"));
+    if (!(amount > 0)) throw new Error("Сумма должна быть больше нуля");
+    const day = Math.round(num(str(f, "day")));
+    if (!(day >= 1 && day <= 31)) throw new Error("День месяца — от 1 до 31");
+    // Новый день: следующая дата — ближайший такой день после последней внесённой операции (или после сегодня).
+    const from = r.lastDate ? r.lastDate.toISOString().slice(0, 10) : todayYmd();
+    let next = nextMonthly(from, day);
+    if (r.lastDate && next.slice(0, 7) === from.slice(0, 7)) next = nextMonthly(`${from.slice(0, 8)}31`, day); // в месяце последней операции второй раз не вносим
+    await prisma.finRecurring.update({ where: { id }, data: { amount, day, ...(day !== r.day ? { nextDate: new Date(`${next}T00:00:00Z`) } : {}) } });
+    return done("Правило сохранено");
   } catch (e) {
     return fail(e);
   }

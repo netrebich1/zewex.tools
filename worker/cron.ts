@@ -24,6 +24,7 @@ import { copyBatchTick } from "@/lib/copy/batch";
 import { copySheetTick } from "@/lib/copy/sheet";
 import { prjGridTick } from "@/lib/projects/grid";
 import { metrikaTick } from "@/lib/projects/stats";
+import { recurringTick } from "@/lib/finance/recurring";
 
 /** Периодические задачи воркера: сторож зависших задач, уборка (позже). */
 export function startCron(): () => void {
@@ -111,5 +112,8 @@ ${r.note}`); }).catch((e) => log.warn("copy auto failed", e)), 60_000));
   // Проекты, вкладка «Трафик»: Яндекс Метрика по токенам команд — новый токен сразу, дальше раз в сутки после 03:00 по Киеву.
   const metrika = () => metrikaTick().then((r) => { if (r.synced.length) log.info(`metrika synced: ${r.synced.join("; ")}`); if (r.errors.length) log.warn(`metrika errors: ${r.errors.join("; ")}`); }).catch((e) => log.warn("metrika tick failed", e));
   timers.push(setTimeout(metrika, 5 * 60_000), setInterval(metrika, 10 * 60_000));
+  // Финансы: регулярные операции — раз в час проверяем, не пора ли внести (и через минуту после старта).
+  const finRecurring = () => recurringTick().then((r) => { if (r.created || r.skipped) log.info(`finance recurring: +${r.created}, skipped ${r.skipped}`); }).catch((e) => log.warn("finance recurring failed", e));
+  timers.push(setTimeout(finRecurring, 60_000), setInterval(finRecurring, 60 * 60_000));
   return () => timers.forEach(clearInterval);
 }

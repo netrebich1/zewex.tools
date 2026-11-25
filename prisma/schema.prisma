@@ -1546,6 +1546,9 @@ model FinOp {
   /// Удалённая операция не стирается: не входит в итоги, но остаётся для истории (кто и когда удалил).
   deletedAt      DateTime?
   deletedById    String?
+  /// Операцию внесла система по регулярному правилу (или с неё правило началось).
+  recurringId    String?
+  recurring      FinRecurring?    @relation(fields: [recurringId], references: [id], onDelete: SetNull)
   direction      FinDirection?    @relation(fields: [directionId], references: [id], onDelete: SetNull)
   category       FinCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   counterparty   FinCounterparty? @relation(fields: [counterpartyId], references: [id], onDelete: SetNull)
@@ -1556,6 +1559,33 @@ model FinOp {
   @@index([directionId])
   @@index([counterpartyId])
   @@index([deletedAt])
+  @@index([recurringId])
+}
+
+/// Регулярная операция: раз в месяц в день `day` воркер сам записывает FinOp с этими полями (курс — рыночный на дату).
+model FinRecurring {
+  id             String    @id @default(cuid())
+  active         Boolean   @default(true)
+  type           FinOpType
+  amount         Decimal   @db.Decimal(18, 4)
+  currency       String    @db.VarChar(10)
+  directionId    String?
+  categoryId     String?
+  counterpartyId String?
+  partnerId      String
+  account        String?   @db.VarChar(120)
+  note           String?   @db.Text
+  /// День месяца 1–31; в коротком месяце — последний день.
+  day            Int
+  /// Когда система внесёт следующую операцию.
+  nextDate       DateTime  @db.Date
+  /// Дата последней внесённой операции.
+  lastDate       DateTime? @db.Date
+  createdById    String
+  createdAt      DateTime  @default(now())
+  ops            FinOp[]
+
+  @@index([active, nextDate])
 }
 
 /// Курсы на дату: 1 EUR = rates[cur] единиц валюты (источник @fawazahmed0/currency-api, середина рынка как в Google).

@@ -61,8 +61,10 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
  * Одна форма для всех операций, всё выбирается кнопками. Курс подставляется сам по дате (середина рынка),
  * его можно переписать: «1 EUR = N валюты» — так же, как в Google. После записи сумма и комментарий очищаются, остальное остаётся.
  * `lockDirection` — форма во вкладке направления: само направление не выбирается, только его подраздел.
+ * `canRecur` — показывать галочку «повторять каждый месяц» (у операции, которая уже регулярная, её нет); `recurDefault` — галочка сразу стоит.
  */
-export function OpForm({ refs, initial, myPartnerId, onDone, lockDirection }: { refs: OpFormRefs; initial?: Partial<OpValues>; myPartnerId?: string; onDone?: string; lockDirection?: string }) {
+export function OpForm({ refs, initial, myPartnerId, onDone, lockDirection, canRecur = true, recurDefault = false }: { refs: OpFormRefs; initial?: Partial<OpValues>; myPartnerId?: string; onDone?: string; lockDirection?: string; canRecur?: boolean; recurDefault?: boolean }) {
+  const [recur, setRecur] = useState(recurDefault);
   const router = useRouter();
   const editing = !!initial?.id;
   const [v, setV] = useState<OpValues>(() => ({
@@ -86,6 +88,7 @@ export function OpForm({ refs, initial, myPartnerId, onDone, lockDirection }: { 
     if (editing) { if (onDone) router.push(onDone); return; }
     try { localStorage.setItem(LS, JSON.stringify({ currency: v.currency, account: v.account })); } catch { /* нет хранилища */ }
     setV((s) => ({ ...s, amount: "", note: "", manualRate: "", counterparty: "" }));
+    setRecur(recurDefault);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.at]);
 
@@ -235,6 +238,15 @@ export function OpForm({ refs, initial, myPartnerId, onDone, lockDirection }: { 
       <input name="note" className="input" placeholder="Комментарий: за что" value={v.note} onChange={(e) => set("note", e.target.value)} />
       <input name="account" className="input" list="fin-accounts" placeholder={v.type === "INCOME" ? "На какой кошелёк (необязательно)" : "Карта / кошелёк (необязательно)"} value={v.account} onChange={(e) => set("account", e.target.value)} />
       <datalist id="fin-accounts">{refs.accounts.map((a) => <option key={a} value={a} />)}</datalist>
+      {canRecur && v.type !== "SETTLEMENT" && (
+        <label className="flex items-start gap-2.5 rounded-xl border border-line px-3 py-2.5 cursor-pointer">
+          <input type="checkbox" name="recurring" value="1" checked={recur} onChange={(e) => setRecur(e.target.checked)} className="mt-0.5" />
+          <span className="text-[13.5px]">
+            <span className="font-medium">{v.type === "INCOME" ? "Регулярный доход" : "Регулярный расход"} — повторять каждый месяц</span>
+            <span className="help block">{recur ? `Система сама будет вносить его ${Number(v.date.slice(8, 10))}-го числа каждого месяца по курсу на этот день. Список и пауза — во вкладке «Регулярные».` : "Подписки, зарплаты, серверы: вносите один раз, дальше система записывает сама."}</span>
+          </span>
+        </label>
+      )}
 
       <button type="submit" className="btn-brand w-full" disabled={pending || !refs.partners.length} onClick={(e) => {
         if (cpRef.current) cpRef.current.value = "0";

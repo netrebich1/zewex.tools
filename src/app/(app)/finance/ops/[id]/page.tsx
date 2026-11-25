@@ -32,6 +32,7 @@ export default async function EditOp({ params, searchParams }: { params: Promise
           <OpForm
             refs={{ ...ctx.form, dirs, cats: ctx.refs.cats.filter((c) => !c.archived || c.id === o.categoryId).map((c) => ({ id: c.id, name: c.name, kind: c.kind, dirIds: c.dirIds })) }}
             onDone={back}
+            canRecur={!o.recurringId}
             initial={{
               id: o.id, type: o.type, amount: String(Number(o.amount)), currency: o.currency, date: o.date.toISOString().slice(0, 10),
               manualRate: o.rateManual ? String(+(1 / Number(o.rate)).toFixed(6)) : "",

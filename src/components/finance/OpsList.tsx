@@ -37,7 +37,7 @@ export function OpsList({ ops, refs, cur, factor, compact, names, back }: { ops:
             <tr key={o.id}>
               <td className="col-sm whitespace-nowrap tabular-nums text-ink-2">{date}</td>
               <td className="min-w-[180px]">
-                <div className="flex items-center gap-1.5"><Badge tone={t.tone}>{t.label}</Badge><span className="font-medium">{title}</span></div>
+                <div className="flex items-center gap-1.5"><Badge tone={t.tone}>{t.label}</Badge><span className="font-medium">{title}</span>{o.recurringId && <span title="Регулярная операция: повторяется каждый месяц"><Badge>↻ регулярная</Badge></span>}</div>
                 {sub && <div className="help mt-0.5 [overflow-wrap:anywhere]">{sub}</div>}
                 {/* На телефоне дата, кто платил и кнопки — под названием: их колонки скрыты. */}
                 <div className="help mt-0.5 tabular-nums sm:hidden">{date} · {payer}</div>
