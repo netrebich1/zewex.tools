@@ -6,9 +6,9 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { launchEmdRun, previewEmdTable, type EmdPreview } from "@/actions/domainsEmd";
 import { EMD_DEFAULTS } from "@/lib/domains/emd";
 
-export type EmdFormDefaults = { sourceUrl: string; name: string; minVolume: number; maxLen: number; matchPct: number; perCluster: number; maxPerCluster: number; tlds: string; allowHyphen: boolean; serp: boolean; autoZones: boolean; variations: boolean; serpVariants: boolean; keywordMods: boolean; geoMods: boolean; suffixes: string; prefixes: string; findKeywords: boolean };
+export type EmdFormDefaults = { sourceUrl: string; name: string; minVolume: number; maxLen: number; matchPct: number; perCluster: number; maxPerCluster: number; tlds: string; allowHyphen: boolean; serp: boolean; autoZones: boolean; variations: boolean; serpVariants: boolean; keywordMods: boolean; geoMods: boolean; suffixes: string; prefixes: string; findKeywords: boolean; regional: boolean; exactZones: string };
 
-export const EMD_FORM_DEFAULTS: EmdFormDefaults = { sourceUrl: "", name: "", ...EMD_DEFAULTS, perCluster: 5, tlds: "com", allowHyphen: true, serp: true, autoZones: true, suffixes: "", prefixes: "" };
+export const EMD_FORM_DEFAULTS: EmdFormDefaults = { sourceUrl: "", name: "", ...EMD_DEFAULTS, perCluster: 5, tlds: "com", allowHyphen: true, serp: true, autoZones: true, suffixes: "", prefixes: "", exactZones: EMD_DEFAULTS.exactZones.join(", ") };
 
 /** Форма подбора «EMD по ключам»: ссылка на выгрузку кластеров, порог частоты, домены на кластер, зоны и выдача. */
 export function EmdRunForm({ defaults }: { defaults: EmdFormDefaults }) {
@@ -81,6 +81,10 @@ export function EmdRunForm({ defaults }: { defaults: EmdFormDefaults }) {
             {flag("variations", defaults.variations, "Вариации темы и вариации ключей", "Ед./мн. число (utlandskacasino), casino ↔ kasino, без casino (utlandska), casino в другом конце (casinonutlandska), без связок; у темы — ещё и через дефис. В «Вариации ключей» — ключи таблицы ниже порога и найденные ключи.")}
             {flag("findKeywords", defaults.findKeywords, "Искать дополнительные ключи темы", "Как в основной версии: запросы с частотой и подсказки Google по теме + «похожие запросы» из выдачи. Из них — вариации ключей и приписки. ~$0.01 на кластер.")}
             {flag("serpVariants", defaults.serpVariants, "Из выдачи", "Основы доменов TOP-10, где ключа от порога подсветки, — в других зонах. Нужна выдача Google.")}
+            {flag("regional", defaults.regional, "Прямое вхождение в региональных зонах", "Тема, ключи таблицы и найденные ключи точно — в зонах страны: своя (.se, .nl), вторые уровни (.co.uk, .com.au) и .eu для стран ЕС. Сверх лимита на кластер, отдельная вкладка «Регион. зоны». .fr не проверяем — купить нельзя.")}
+            <Field label="Прямое вхождение ещё в зонах" hint="Те же точные ключи сверх лимита, вкладка «Прямое .io/.co». Через запятую">
+              <input name="exactZones" className="input" defaultValue={defaults.exactZones} placeholder="io, co" />
+            </Field>
           </div>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <Field label="Мин. частота ключа" hint="Ключи ниже порога идут только в вариации (уровень 2); тема кластера — всегда точный ключ">

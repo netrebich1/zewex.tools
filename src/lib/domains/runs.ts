@@ -6,13 +6,13 @@ import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import { Prisma } from "@prisma/client";
 import type { DomainCandidate, DomainRun } from "@prisma/client";
-import { brandTiers, brandTlds, buildCandidatesForBrand, cleanSuffix, dedupeTiers, modifierPool, normalizeTld, parseBrandLines, parseList } from "./generator";
+import { brandTiers, brandTlds, buildCandidatesForBrand, buyableTld, cleanSuffix, dedupeTiers, modifierPool, normalizeTld, parseBrandLines, parseList } from "./generator";
 import { checkDomains } from "./availability";
 import { DEFAULT_SETTINGS, getCountry, itemKey, LIMITS, type BrandItem, type BrandModifier, type BrandResearchSummary, RESEARCH_SOURCE_LABELS, type ResearchSourceKind, type CountryPreset, type DomainRunProgress, type DomainRunSettings, type LetterMode, type MinedSuffix, type SerpSnapshot } from "./types";
 import { rankDomainsWithAi, type AiPick } from "./ai";
 import { balancePicks } from "./selection";
 import { brandTop10, keywordTop10, researchBrand, themeQueries, type BrandResearch } from "./research";
-import { EMD_DEFAULTS, emdCandidates, filterFound, normalizeEmdCluster, normalizeEmdSettings, type EmdFound } from "./emd";
+import { EMD_DEFAULTS, emdCandidates, emdExactCandidates, filterFound, normalizeEmdCluster, normalizeEmdSettings, type EmdFound } from "./emd";
 import { keptModifiers, researchSummary } from "./researchSummary";
 import { domainsKeyTeamId } from "./keyTeam";
 import { domainsOfBrand } from "./mining";
@@ -264,15 +264,17 @@ export async function restartDomainRun(me: CurrentUser, id: string): Promise<voi
 }
 
 /** EMD: вторая пачка — проверить те же основы и приписки в новых зонах; готовые домены и выбор не меняются. */
-export async function addEmdZones(me: CurrentUser, id: string, rawZones: string[]): Promise<string[]> {
+export async function addEmdZones(me: CurrentUser, id: string, rawZones: string[], exact = false): Promise<string[]> {
   const run = await requireRun(me, id);
   if (run.status === "RUNNING" || run.status === "QUEUED") throw new Error("Подбор ещё идёт — дождитесь окончания");
   const settings = parseSettings(run.settings);
   if (settings.mode !== "emd" || !settings.emd) throw new Error("Доп. зоны — только для подбора EMD");
-  const zones = Array.from(new Set(rawZones.map(normalizeTld).filter((z) => /^[a-z0-9-]+(\.[a-z0-9-]+)?$/.test(z)))).slice(0, 20);
+  const zones = Array.from(new Set(rawZones.map(normalizeTld).filter((z) => /^[a-z0-9-]+(\.[a-z0-9-]+)?$/.test(z) && buyableTld(z)))).slice(0, 20);
   const fresh = zones.filter((z) => !settings.emd!.extraZones.includes(z));
-  if (!fresh.length) throw new Error("Эти зоны уже проверены");
-  settings.emd.pendingZones = fresh;
+  if (!fresh.length && !exact) throw new Error("Эти зоны уже проверены");
+  settings.emd.pendingZones = exact ? [] : fresh;
+  settings.emd.pendingExact = exact;
+  if (exact) settings.emd.exactZones = Array.from(new Set([...settings.emd.exactZones, ...zones]));
   const progress: DomainRunProgress = { brand: "", brandIndex: 0, brandsTotal: settings.items.length, checked: run.totalChecked, available: run.totalAvailable, updatedAt: new Date().toISOString(), zones: true };
   const n = await prisma.domainRun.updateMany({
     where: { id, status: { in: ["DONE", "STOPPED", "FAILED"] } },
@@ -370,7 +372,8 @@ async function processDomainRunInner(run: DomainRun, workerId: string, shouldSto
   const startAt = prev && prev.brandIndex > 0 && prev.brandIndex <= items.length ? prev.brandIndex : 0;
   const recheckMode = prev?.recheck === true;
   // Вторая пачка EMD: только новые зоны, готовые домены не трогаем
-  const zoneMode = prev?.zones === true && settings.mode === "emd" && !!settings.emd?.pendingZones.length;
+  const exactMode = prev?.zones === true && settings.mode === "emd" && settings.emd?.pendingExact === true;
+  const zoneMode = exactMode || (prev?.zones === true && settings.mode === "emd" && !!settings.emd?.pendingZones.length);
   // Бренд, на котором прервались: его частичные результаты стираем и проверяем заново.
   if (!recheckMode && !zoneMode && startAt < items.length) await prisma.domainCandidate.deleteMany({ where: { runId: run.id, brand: items[startAt]!.brand, country: items[startAt]!.country } });
   const agg = await prisma.domainCandidate.groupBy({ by: ["status"], where: { runId: run.id }, _count: { _all: true } });
@@ -485,7 +488,9 @@ async function processDomainRunInner(run: DomainRun, workerId: string, shouldSto
     if (state === "stop") { await stopped(); return; }
     if (state === "release") { await released(); return; }
     const all = settings.mode === "emd" && item.emd
-      ? emdCandidates(item.emd, item.country, { ...EMD_DEFAULTS, ...settings.emd, tlds: settings.tlds, autoZones: settings.autoZones, allowHyphen: settings.allowHyphen }, zoneMode ? settings.emd!.pendingZones : undefined).map((c) => ({ domain: c.domain, tld: c.tld, suffix: c.keyword.slice(0, 190), tier: c.tier, pattern: c.pattern as string }))
+      ? (exactMode
+        ? emdExactCandidates(item.emd, item.country, { ...EMD_DEFAULTS, ...settings.emd!, tlds: settings.tlds, autoZones: settings.autoZones, allowHyphen: settings.allowHyphen })
+        : emdCandidates(item.emd, item.country, { ...EMD_DEFAULTS, ...settings.emd, tlds: settings.tlds, autoZones: settings.autoZones, allowHyphen: settings.allowHyphen }, zoneMode ? settings.emd!.pendingZones : undefined)).map((c) => ({ domain: c.domain, tld: c.tld, suffix: c.keyword.slice(0, 190), tier: c.tier, pattern: c.pattern as string }))
       : buildCandidatesForBrand(item.brand, brandTiers(item, settings, pool), brandTlds(item, settings), { allowHyphen: settings.allowHyphen, letterMode: settings.letterMode, country: item.country });
     const candidates = (settings.checkAll ? all.slice(0, LIMITS.checkAllMax) : all).filter((c) => !known.has(c.domain));
     // «Все варианты» — проверяем всё; иначе останавливаемся, когда набралось perBrand + запас свободных
@@ -540,6 +545,7 @@ async function processDomainRunInner(run: DomainRun, workerId: string, shouldSto
   if (zoneMode && settings.emd) {
     settings.emd.extraZones = Array.from(new Set([...settings.emd.extraZones, ...settings.emd.pendingZones]));
     settings.emd.pendingZones = [];
+    settings.emd.pendingExact = false;
   }
   await prisma.domainRun.update({
     where: { id: run.id },

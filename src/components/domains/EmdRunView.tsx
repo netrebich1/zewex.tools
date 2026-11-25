@@ -11,19 +11,28 @@ import type { RunPayload } from "./DomainRunView";
 import { computeStats } from "@/lib/domains/selection";
 import { itemKey, RUN_STATUS_LABELS, type BrandItem } from "@/lib/domains/types";
 import type { RunDomainRow } from "@/lib/domains/runs";
-import { EMD_DEFAULTS, EMD_LEVEL_LABELS, EMD_MOD_SOURCE_LABELS, EMD_PATTERN_LABELS, eligibleKeywords, emdGeo, emdModifiers, emdSourceKeyword, emdZoneSuggestions, isGeoPattern, usableFound, isModPattern, phraseWords, type EmdFound, type EmdKeyword, type EmdPattern } from "@/lib/domains/emd";
+import { EMD_DEFAULTS, EMD_LEVEL_LABELS, EMD_MOD_SOURCE_LABELS, EMD_PATTERN_LABELS, eligibleKeywords, emdGeo, emdModifiers, emdSourceKeyword, emdZoneSuggestions, emdRegionalZones, isGeoPattern, usableFound, isModPattern, phraseWords, type EmdFound, type EmdKeyword, type EmdPattern } from "@/lib/domains/emd";
 import { addEmdZonesAction } from "@/actions/domainsEmd";
+import { buyableTld } from "@/lib/domains/generator";
 import { tldOf } from "@/lib/domains/mining";
 
 const LIVE = new Set(["QUEUED", "RUNNING"]);
 /** Вкладка «тип» в карточке кластера: группа основы, приписки, гео, вторая пачка зон */
-type Kind = "1" | "2" | "3" | "4" | "5" | "6" | "mod" | "geo" | "zones";
+type Kind = "1" | "2" | "3" | "4" | "5" | "6" | "region" | "exact" | "mod" | "geo" | "zones";
 const KINDS: Array<[Kind, string]> = [
   ["1", EMD_LEVEL_LABELS[1]], ["2", EMD_LEVEL_LABELS[2]], ["3", EMD_LEVEL_LABELS[3]], ["4", EMD_LEVEL_LABELS[4]],
-  ["5", EMD_LEVEL_LABELS[5]], ["6", EMD_LEVEL_LABELS[6]], ["mod", "С приписками"], ["geo", "Гео"], ["zones", "Доп. зоны"],
+  ["5", EMD_LEVEL_LABELS[5]], ["6", EMD_LEVEL_LABELS[6]], ["region", "Регион. зоны"], ["exact", "Прямое .io/.co"], ["mod", "С приписками"], ["geo", "Гео"], ["zones", "Доп. зоны"],
 ];
-const kindBy = (extra: Set<string>) => (d: RunDomainRow): Kind =>
-  extra.has(d.tld) ? "zones" : isGeoPattern(d.pattern) ? "geo" : isModPattern(d.pattern) ? "mod" : (String(Math.min(6, Math.max(1, d.tier))) as Kind);
+/** Региональные зоны и io/co — только для точных ключей без приписок: прямое вхождение отдельной вкладкой */
+const kindBy = (extra: Set<string>, exactZones: Set<string>) => (d: RunDomainRow): Kind => {
+  if (isGeoPattern(d.pattern)) return "geo";
+  if (isModPattern(d.pattern)) return "mod";
+  const exactCore = d.tier === 1 || d.tier === 3 || d.tier === 5;
+  if (exactCore && emdRegionalZones(d.country).includes(d.tld)) return "region";
+  if (exactCore && exactZones.has(d.tld)) return "exact";
+  if (extra.has(d.tld)) return "zones";
+  return String(Math.min(6, Math.max(1, d.tier))) as Kind;
+};
 /** Приписка/гео домена: «ключ + beste» → beste */
 const modOf = (d: RunDomainRow) => (d.suffix?.includes(" + ") ? d.suffix.split(" + ").pop() ?? "" : "");
 type CardFilter = { kind: Kind | "all"; add: string; zone: string };
@@ -52,13 +61,16 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
   const pending = useRef(new Map<string, boolean>());
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { run, domains } = data;
+  const { run } = data;
+  // .fr не покупаем — в карточке не показываем и старые проверенные
+  const domains = useMemo(() => data.domains.filter((d) => buyableTld(d.tld)), [data.domains]);
   const live = LIVE.has(run.status);
   const s = run.settings;
   const emd = { ...EMD_DEFAULTS, ...s.emd };
   const items = s.items;
   const extraZones = useMemo(() => new Set([...(s.emd?.extraZones ?? []), ...(s.emd?.pendingZones ?? [])]), [s.emd]);
-  const kindOf = kindBy(extraZones);
+  const exactZones = useMemo(() => new Set(s.emd?.exactZones ?? EMD_DEFAULTS.exactZones), [s.emd]);
+  const kindOf = kindBy(extraZones, exactZones);
   const zoneTips = useMemo(() => emdZoneSuggestions(items, { ...emd, tlds: s.tlds, autoZones: s.autoZones }), [items, emd, s.tlds, s.autoZones]);
 
   async function reload() {
@@ -173,7 +185,7 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
         </Card>
       )}
 
-      {!live && domains.length > 0 && <ZoneSuggestions runId={run.id} tips={zoneTips} done={[...extraZones]} onQueued={reload} />}
+      {!live && domains.length > 0 && <ZoneSuggestions runId={run.id} tips={zoneTips} done={[...extraZones]} exactZones={[...exactZones]} onQueued={reload} />}
 
       <div className="flex flex-wrap items-center gap-3">
         <input className="input !w-auto min-w-[220px]" placeholder="Поиск по домену, теме или ключу" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -440,17 +452,18 @@ function ThemeStatus({ theme, rows }: { theme: string; rows: RunDomainRow[] }) {
 }
 
 /** Зоны из выдачи, которые ещё не проверялись: отметить и проверить второй пачкой в этом же подборе. */
-function ZoneSuggestions({ runId, tips, done, onQueued }: { runId: string; tips: Array<{ tld: string; all: number; hits: number; small: number; clusters: number }>; done: string[]; onQueued: () => void }) {
+function ZoneSuggestions({ runId, tips, done, exactZones, onQueued }: { runId: string; tips: Array<{ tld: string; all: number; hits: number; small: number; clusters: number }>; done: string[]; exactZones: string[]; onQueued: () => void }) {
+  const [exactOwn, setExactOwn] = useState(exactZones.join(", "));
   const [picked, setPicked] = useState<Set<string>>(() => new Set(tips.filter((t) => t.hits > 0).map((t) => t.tld)));
   const [own, setOwn] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok?: string; error?: string } | null>(null);
   const zones = [...picked, ...own.split(/[\s,;]+/).map((z) => z.trim().replace(/^\./, "").toLowerCase()).filter(Boolean)];
-  async function go() {
+  async function go(exact = false) {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await addEmdZonesAction(runId, zones);
+      const r = await addEmdZonesAction(runId, exact ? exactOwn.split(/[\s,;]+/).map((z) => z.trim().replace(/^\./, "").toLowerCase()).filter(Boolean) : zones, exact);
       setMsg(r);
       if (r.ok) onQueued();
     } finally {
@@ -477,7 +490,13 @@ function ZoneSuggestions({ runId, tips, done, onQueued }: { runId: string; tips:
         ) : <p className="help">Новых зон в выдаче нет — можно вписать свои.</p>}
         <div className="flex flex-wrap items-center gap-2">
           <input className="input !w-auto min-w-[220px]" placeholder="Свои зоны: app, io, bet" value={own} onChange={(e) => setOwn(e.target.value)} />
-          <button type="button" className="btn-primary" disabled={busy || !zones.length} onClick={go}>{busy ? "Ставлю в очередь…" : `Проверить ${zones.length ? zones.map((z) => `.${z}`).join(", ") : "зоны"}`}</button>
+          <button type="button" className="btn-primary" disabled={busy || !zones.length} onClick={() => go()}>{busy ? "Ставлю в очередь…" : `Проверить ${zones.length ? zones.map((z) => `.${z}`).join(", ") : "зоны"}`}</button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+          <span className="text-[13px]">Прямое вхождение: тема, ключи таблицы и найденные ключи точно — в региональных зонах страны и в</span>
+          <input className="input !w-auto min-w-[120px]" value={exactOwn} onChange={(e) => setExactOwn(e.target.value)} placeholder="io, co" />
+          <button type="button" className="btn-secondary" disabled={busy} onClick={() => go(true)}>Дополнить</button>
+          <span className="help w-full">Уже проверенные домены не повторяются; новые — во вкладках «Регион. зоны» и «Прямое .io/.co». .fr не проверяем.</span>
         </div>
         {done.length > 0 && <p className="help">Уже добавлены второй пачкой: {done.map((z) => `.${z}`).join(", ")}</p>}
         {msg?.ok && <Alert tone="ok">{msg.ok}. Страница обновится сама.</Alert>}

@@ -18,7 +18,7 @@ export default async function NewEmdRunPage({ searchParams }: { searchParams: Pr
     if (run && canAccessDomainRun(me, run)) {
       const s = parseSettings(run.settings);
       if (s.mode === "emd" && s.emd) {
-        defaults = { sourceUrl: s.emd.sourceUrl, name: `${run.name} (повтор)`, minVolume: s.emd.minVolume, maxLen: s.emd.maxLen, matchPct: s.emd.matchPct, perCluster: s.perBrand, maxPerCluster: s.emd.maxPerCluster, tlds: [...s.tlds, ...s.emd.extraZones].join(", "), allowHyphen: s.allowHyphen, serp: s.autoResearch, autoZones: s.autoZones, variations: s.emd.variations, serpVariants: s.emd.serpVariants, keywordMods: s.emd.keywordMods, geoMods: s.emd.geoMods, suffixes: s.emd.suffixes.join(", "), prefixes: s.emd.prefixes.join(", "), findKeywords: s.emd.findKeywords };
+        defaults = { sourceUrl: s.emd.sourceUrl, name: `${run.name} (повтор)`, minVolume: s.emd.minVolume, maxLen: s.emd.maxLen, matchPct: s.emd.matchPct, perCluster: s.perBrand, maxPerCluster: s.emd.maxPerCluster, tlds: [...s.tlds, ...s.emd.extraZones].join(", "), allowHyphen: s.allowHyphen, serp: s.autoResearch, autoZones: s.autoZones, variations: s.emd.variations, serpVariants: s.emd.serpVariants, keywordMods: s.emd.keywordMods, geoMods: s.emd.geoMods, suffixes: s.emd.suffixes.join(", "), prefixes: s.emd.prefixes.join(", "), findKeywords: s.emd.findKeywords, regional: s.emd.regional, exactZones: s.emd.exactZones.join(", ") };
       }
     }
   }

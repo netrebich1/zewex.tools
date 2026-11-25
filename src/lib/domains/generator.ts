@@ -361,11 +361,15 @@ export function brandTlds(item: BrandItem, s: PlanSettings): string[] {
 const SERP_ZONES_MAX = 6;
 
 /** Зоны бренда с источником: общая → своя зона бренда из списка → набор страны → домен страны (.fr) → зоны доменов конкурентов в TOP-10. */
+/** Зоны, где мы не можем купить домен (.fr) — не проверяем ни в одном подборе */
+export const UNBUYABLE_TLDS = new Set(["fr"]);
+export const buyableTld = (tld: string) => !!tld && !UNBUYABLE_TLDS.has(tld);
+
 export function brandTldEntries(item: BrandItem, s: PlanSettings): Array<{ tld: string; source: TldSource }> {
   const out: Array<{ tld: string; source: TldSource }> = [];
   const add = (raw: string, source: TldSource) => {
     const tld = normalizeTld(raw);
-    if (tld && !out.some((e) => e.tld === tld)) out.push({ tld, source });
+    if (buyableTld(tld) && !out.some((e) => e.tld === tld)) out.push({ tld, source });
   };
   const cc = item.country.toUpperCase();
   for (const t of s.tlds) add(t, { kind: "common", detail: "общие зоны формы" });

@@ -9,7 +9,7 @@
  * Модуль без серверных зависимостей: им пользуются и воркер, и карточка подбора.
  */
 import { countryTld, geoTiers } from "./geo";
-import { normalizeTld } from "./generator";
+import { buyableTld, normalizeTld } from "./generator";
 import { tldOf } from "./mining";
 import type { Top10Entry } from "./types";
 
@@ -82,12 +82,19 @@ export type EmdSettings = {
   extraZones: string[];
   /** Зоны, которые воркер сейчас проверяет второй пачкой */
   pendingZones: string[];
+  /** Прямое вхождение: точные ключи (тема, ключи таблицы, найденные) в региональных зонах страны — вне лимита кластера */
+  regional: boolean;
+  /** Прямое вхождение: те же точные ключи ещё и в этих зонах (io, co) */
+  exactZones: string[];
+  /** Воркер сейчас дозапускает прямое вхождение второй пачкой */
+  pendingExact: boolean;
 };
 
 export const EMD_DEFAULTS: Omit<EmdSettings, "sourceUrl" | "fileName" | "loadedAt"> = {
   minVolume: 300, maxLen: 30, matchPct: 60, maxPerCluster: 600,
   variations: true, serpVariants: true, keywordMods: true, geoMods: true, suffixes: [], prefixes: [],
   findKeywords: true, extraZones: [], pendingZones: [],
+  regional: true, exactZones: ["io", "co"], pendingExact: false,
 };
 
 /** Настройки EMD из JSON подбора: старые подборы без новых полей получают умолчания. */
@@ -113,6 +120,9 @@ export function normalizeEmdSettings(raw: unknown): EmdSettings {
     findKeywords: bool(e.findKeywords, false),
     extraZones: list(e.extraZones),
     pendingZones: list(e.pendingZones),
+    regional: bool(e.regional, true),
+    exactZones: Array.isArray(e.exactZones) ? list(e.exactZones).map(normalizeTld).filter(buyableTld) : [...EMD_DEFAULTS.exactZones],
+    pendingExact: bool(e.pendingExact, false),
   };
 }
 
@@ -323,7 +333,7 @@ export function emdZones(c: EmdCluster, country: string, s: { tlds: string[]; au
   const out: Array<{ tld: string; kind: EmdZoneKind; detail: string }> = [];
   const add = (raw: string, kind: EmdZoneKind, detail: string) => {
     const tld = normalizeTld(raw);
-    if (tld && !out.some((z) => z.tld === tld)) out.push({ tld, kind, detail });
+    if (buyableTld(tld) && !out.some((z) => z.tld === tld)) out.push({ tld, kind, detail });
   };
   const own = countryTld(country);
   if (own) add(own, "cctld", `зона страны ${country.toUpperCase()}`);
@@ -364,7 +374,7 @@ export function emdZoneSuggestions(items: Array<{ country: string; emd?: EmdClus
     }
   }
   return [...stat.values()]
-    .filter((e) => e.tld && !used.has(e.tld))
+    .filter((e) => buyableTld(e.tld) && !used.has(e.tld))
     .map((e) => ({ tld: e.tld, all: e.all, hits: e.hits, small: e.small, clusters: e.clusters.size }))
     .sort((a, b) => b.hits - a.hits || b.small - a.small || b.all - a.all)
     .slice(0, 30);
@@ -628,7 +638,42 @@ export function emdCandidates(c: EmdCluster, country: string, s: EmdCandidateSet
   const take = buckets.map((b, i) => Math.min(b.length, quota[i]!));
   let left = cap - take.reduce((x, y) => x + y, 0);
   for (let i = 0; i < 3 && left > 0; i++) { const more = Math.min(left, buckets[i]!.length - take[i]!); take[i]! += more; left -= more; }
-  return buckets.flatMap((b, i) => b.slice(0, take[i])).sort(byWeight);
+  const capped = buckets.flatMap((b, i) => b.slice(0, take[i])).sort(byWeight);
+  if (onlyZones?.length) return capped;
+  // Прямое вхождение в региональных и io/co — всегда, сверх лимита
+  const have = new Set(capped.map((x) => x.domain));
+  return [...capped, ...emdExactCandidates(c, country, s).filter((x) => !have.has(x.domain) && (have.add(x.domain), true))];
+}
+
+const EU = new Set(["at", "be", "bg", "hr", "cy", "cz", "dk", "ee", "fi", "fr", "de", "gr", "hu", "ie", "it", "lv", "lt", "lu", "mt", "nl", "pl", "pt", "ro", "sk", "si", "es", "se"]);
+/** Вторые уровни зоны страны, где их покупают как основную (co.uk, com.au…) */
+const SECOND_LEVEL: Record<string, string[]> = {
+  gb: ["co.uk", "org.uk"], au: ["com.au"], nz: ["co.nz"], za: ["co.za"], in: ["co.in"], br: ["com.br"], mx: ["com.mx"], ar: ["com.ar"],
+  pl: ["com.pl"], tr: ["com.tr"], jp: ["co.jp"], kr: ["co.kr"], ua: ["com.ua"], ph: ["com.ph"], my: ["com.my"], sg: ["com.sg"], co: ["com.co"], pe: ["com.pe"], cl: [], gr: ["com.gr"], cy: ["com.cy"], mt: ["com.mt"],
+};
+/** Региональные зоны страны: своя, её вторые уровни и .eu для стран ЕС; зоны, которые не купить (.fr), — без них. */
+export function emdRegionalZones(country: string): string[] {
+  const c = country.toLowerCase();
+  const own = countryTld(c);
+  return Array.from(new Set([...(own ? [own] : []), ...(SECOND_LEVEL[c] ?? []), ...(EU.has(c) ? ["eu"] : [])])).filter(buyableTld);
+}
+/** Точные основы для прямого вхождения: тема точно, ключи таблицы точно, найденные ключи точно */
+const EXACT_CORES_MAX = 60;
+
+/** Прямое вхождение: точные ключи кластера в региональных зонах и в зонах exactZones (io, co) — сверх лимита кластера. */
+export function emdExactCandidates(c: EmdCluster, country: string, s: EmdCandidateSettings): EmdCandidate[] {
+  const zones: Array<{ tld: string; kind: EmdZoneKind }> = [
+    ...(s.regional ? emdRegionalZones(country).map((tld) => ({ tld, kind: "cctld" as EmdZoneKind })) : []),
+    ...s.exactZones.map((tld) => ({ tld: normalizeTld(tld), kind: "common" as EmdZoneKind })),
+  ].filter((z, i, a) => buyableTld(z.tld) && a.findIndex((x) => x.tld === z.tld) === i);
+  if (!zones.length) return [];
+  const cores = emdCores(c, country, s).filter((x) => x.level === 1 || x.level === 3 || x.level === 5)
+    .sort((a, b) => a.level - b.level || b.volume - a.volume).slice(0, EXACT_CORES_MAX);
+  const out: EmdCandidate[] = [];
+  for (const core of cores) for (const z of zones) {
+    out.push({ domain: `${core.label}.${z.tld}`, tld: z.tld, label: core.label, keyword: core.keyword, volume: core.volume, pattern: core.pattern, zone: z.kind, weight: zoneLenWeight(core.weight, z.kind, core.label.length), tier: core.level });
+  }
+  return out;
 }
 
 /** Ключ-источник из колонки suffix: «casino zonder cruks + beste» → «casino zonder cruks». */

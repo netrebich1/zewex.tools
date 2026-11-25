@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { addEmdZones, createDomainRun } from "@/lib/domains/runs";
 import { loadEmdTable } from "@/lib/domains/drive";
 import { EMD_DEFAULTS, eligibleKeywords } from "@/lib/domains/emd";
-import { normalizeTld, parseList } from "@/lib/domains/generator";
+import { buyableTld, normalizeTld, parseList } from "@/lib/domains/generator";
 import { DEFAULT_SETTINGS, LIMITS, type BrandItem, type DomainRunSettings } from "@/lib/domains/types";
 import type { FormState } from "./domains";
 
@@ -53,11 +53,11 @@ export async function previewEmdTable(url: string, minVolume: number): Promise<E
 }
 
 /** Вторая пачка подбора EMD: проверить новые зоны из подсказок выдачи (или свои). */
-export async function addEmdZonesAction(runId: string, zones: string[]): Promise<{ ok?: string; error?: string }> {
+export async function addEmdZonesAction(runId: string, zones: string[], exact = false): Promise<{ ok?: string; error?: string }> {
   const me = await requireUser();
   try {
-    const fresh = await addEmdZones(me, runId, zones);
-    return { ok: `Вторая пачка в очереди: ${fresh.map((z) => `.${z}`).join(", ")}` };
+    const fresh = await addEmdZones(me, runId, zones, exact);
+    return { ok: exact ? `Прямое вхождение в очереди: региональные зоны${zones.length ? ` + ${zones.map((z) => `.${z}`).join(", ")}` : ""}` : `Вторая пачка в очереди: ${fresh.map((z) => `.${z}`).join(", ")}` };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -97,6 +97,9 @@ export async function launchEmdRun(_p: FormState, f: FormData): Promise<FormStat
         findKeywords: f.get("findKeywords") === "on",
         extraZones: [],
         pendingZones: [],
+        regional: f.get("regional") === "on",
+        exactZones: Array.from(new Set(parseList(str("exactZones")).map(normalizeTld).filter(buyableTld))).slice(0, 10),
+        pendingExact: false,
       },
       brands: items.map((it) => it.brand),
       items,
