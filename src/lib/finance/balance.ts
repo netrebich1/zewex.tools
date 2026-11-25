@@ -53,6 +53,8 @@ export type DatedOp = BalOp & { date: string; at?: number };
 export type MonthLine = {
   month: string; // 2026-11
   paid: Record<string, number>; received: Record<string, number>;
+  /** Сколько операций стоит за суммами paid / received. */
+  paidN: Record<string, number>; receivedN: Record<string, number>;
   settled: Transfer[];
   /** Кто кому должен только за операции этого месяца (возвраты не считаются). */
   own: Transfer[];
@@ -84,7 +86,7 @@ export function ledger(partners: BalPartner[], ops: DatedOp[]): { months: MonthL
     const m = o.date.slice(0, 7);
     if (!cur || cur.month !== m) {
       close();
-      cur = { month: m, paid: Object.fromEntries(partners.map((p) => [p.id, 0])), received: Object.fromEntries(partners.map((p) => [p.id, 0])), settled: [], own: [], end: [] };
+      cur = { month: m, paid: Object.fromEntries(partners.map((p) => [p.id, 0])), received: Object.fromEntries(partners.map((p) => [p.id, 0])), paidN: Object.fromEntries(partners.map((p) => [p.id, 0])), receivedN: Object.fromEntries(partners.map((p) => [p.id, 0])), settled: [], own: [], end: [] };
       own = [];
       months.push(cur);
     }
@@ -97,7 +99,7 @@ export function ledger(partners: BalPartner[], ops: DatedOp[]): { months: MonthL
       if (!after.length) closedAt = o.date;
     } else {
       own.push(o);
-      if (o.partnerId in cur.paid) cur[o.type === "EXPENSE" ? "paid" : "received"][o.partnerId] += o.amountEur;
+      if (o.partnerId in cur.paid) { cur[o.type === "EXPENSE" ? "paid" : "received"][o.partnerId] += o.amountEur; cur[o.type === "EXPENSE" ? "paidN" : "receivedN"][o.partnerId]++; }
     }
   }
   close();
