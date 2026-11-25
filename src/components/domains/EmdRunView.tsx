@@ -11,7 +11,7 @@ import type { RunPayload } from "./DomainRunView";
 import { computeStats } from "@/lib/domains/selection";
 import { itemKey, RUN_STATUS_LABELS, type BrandItem } from "@/lib/domains/types";
 import type { RunDomainRow } from "@/lib/domains/runs";
-import { EMD_DEFAULTS, EMD_LEVEL_LABELS, EMD_MOD_SOURCE_LABELS, EMD_PATTERN_LABELS, eligibleKeywords, emdGeo, emdModifiers, emdSourceKeyword, emdZoneSuggestions, isGeoPattern, isModPattern, phraseWords, type EmdFound, type EmdKeyword, type EmdPattern } from "@/lib/domains/emd";
+import { EMD_DEFAULTS, EMD_LEVEL_LABELS, EMD_MOD_SOURCE_LABELS, EMD_PATTERN_LABELS, eligibleKeywords, emdGeo, emdModifiers, emdSourceKeyword, emdZoneSuggestions, isGeoPattern, usableFound, isModPattern, phraseWords, type EmdFound, type EmdKeyword, type EmdPattern } from "@/lib/domains/emd";
 import { addEmdZonesAction } from "@/actions/domainsEmd";
 import { tldOf } from "@/lib/domains/mining";
 
@@ -244,7 +244,7 @@ export function EmdRunView({ initial }: { initial: RunPayload }) {
                 </div>
                 {open && (
                   <div className="border-t border-line flex flex-col min-h-0">
-                    {c && <KeywordsBlock keywords={c.keywords} found={c.found} foundError={c.foundError} minVolume={emd.minVolume} matchPct={emd.matchPct} serpDone={!!c.serpAt} serpOn={s.autoResearch} eligible={new Set(eligibleKeywords(c, emd.minVolume).map((k) => k.phrase))} />}
+                    {c && <KeywordsBlock keywords={c.keywords} found={c.found ? usableFound(c, item.country) : undefined} foundError={c.foundError} minVolume={emd.minVolume} matchPct={emd.matchPct} serpDone={!!c.serpAt} serpOn={s.autoResearch} eligible={new Set(eligibleKeywords(c, emd.minVolume).map((k) => k.phrase))} />}
                     {c && <ThemeStatus theme={c.theme} rows={rows} />}
                     {!showSelected && rows.length > 0 && (
                       <div className="space-y-1.5 border-b border-line px-3 py-2">
@@ -384,7 +384,7 @@ function KeywordsBlock({ keywords, found, foundError, minVolume, matchPct, serpD
           <button type="button" className="text-brand hover:underline" onClick={() => setShowFound(!showFound)}>
             {showFound ? "▾" : "▸"} Найденные ключи темы · {found.length}
           </button>
-          {foundError && <span className="ml-2 text-[11px] text-danger" title={foundError}>частично: {foundError.slice(0, 60)}</span>}
+          {foundError && !/no search results/i.test(foundError) && <span className="ml-2 text-[11px] text-danger" title={foundError}>частично: {foundError.slice(0, 60)}</span>}
           {showFound && (
             <ul className="mt-1 space-y-0.5">
               {found.map((f) => (

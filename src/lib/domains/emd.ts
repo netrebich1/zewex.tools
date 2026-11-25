@@ -405,7 +405,31 @@ const KASINO_COUNTRIES = new Set(["se", "fi", "no", "dk", "de", "at", "ch", "pl"
 const GENERIC = new Set(["casino", "casinos", "casinon", "casinot", "casinoer", "kasino", "kasinos", "kasinon", "kasinot", "online", "onlinecasino", "spielothek", "spielotheken"]);
 const YEAR = /^(19|20)\d\d$/;
 /** Слова, которые не годятся в приписку */
-const JUNK = new Set(["reddit", "flashback", "forum", "wiki", "wikipedia", "youtube", "facebook", "twitter", "instagram", "pdf", "apk"]);
+const JUNK = new Set(["reddit", "flashback", "forum", "wiki", "wikipedia", "youtube", "facebook", "twitter", "instagram", "pdf", "apk", "yahoo", "google", "bing", "trustpilot", "quora", "that", "take", "takes", "which", "who", "where", "when", "why", "are", "can", "does", "list", "ten", "zijn", "toekomst", "omtrent"]);
+const MONTHS = new Set([
+  "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december",
+  "januari", "februari", "maart", "mei", "juni", "juli", "augustus", "oktober",
+  "mars", "augusti", "januar", "februar", "marz", "dezember", "oktober", "tammikuu", "joulukuu",
+]);
+/** Слова-адреса: запрос с ними — навигационный (www antoncasinos com), в ключи и приписки не берём */
+const WEB = new Set(["www", "com", "net", "org", "http", "https", "html"]);
+/** Слово похоже на бренд/сайт: casino внутри чужого слова (antoncasinos, casinonisse) */
+const brandish = (w: string, own: Set<string>) => /casino|kasino/.test(w) && !GENERIC.has(w) && !own.has(w);
+
+/** Найденный запрос годится: без адресов, брендов-сайтов, мусора, не длиннее 5 слов. */
+function usableQuery(words: string[], own: Set<string>): boolean {
+  return words.length > 0 && words.length <= 5 && !words.some((w) => WEB.has(w) || JUNK.has(w) || brandish(w, own));
+}
+function themeOwnWords(theme: string, country: string): Set<string> {
+  const own = new Set<string>();
+  for (const w of phraseWords(theme)) { own.add(w); for (const f of pluralForms(w, country)) own.add(f); }
+  return own;
+}
+/** Найденные ключи после фильтра (фильтр применяется и к уже собранным в старых подборах). */
+export function usableFound(c: EmdCluster, country: string): EmdFound[] {
+  const own = themeOwnWords(c.theme, country);
+  return (c.found ?? []).filter((f) => usableQuery(phraseWords(f.phrase), own));
+}
 export const MOD_STOP = new Set([
   "the", "a", "an", "for", "in", "on", "and", "with", "to", "is", "how", "what", "of", "my", "me", "at", "or", "vs", "com", "www",
   "de", "het", "een", "van", "voor", "op", "en", "met", "bij", "te", "wat", "hoe", "la", "el", "los", "las", "y", "para", "con", "que", "como", "del", "por",
@@ -470,7 +494,7 @@ export function emdCores(c: EmdCluster, country: string, s: { allowHyphen: boole
   // 4. Вариации ключей таблицы (от порога)
   if (s.variations) for (const k of others.filter((x) => eligible.includes(x))) for (const v of keywordVariants(k.phrase, country)) add(v.label, v.pattern, 4, k.phrase, k.volume);
   // 5. Найденные ключи точно
-  for (const f of c.found ?? []) exact(f.phrase, f.volume, 5, "emd-found");
+  for (const f of usableFound(c, country)) exact(f.phrase, f.volume, 5, "emd-found");
   // 6. Из выдачи: метки доменов TOP-10, где ключа не меньше порога
   if (s.serpVariants) {
     for (const k of c.keywords) for (const e of k.top10 ?? []) {
@@ -491,12 +515,12 @@ export function filterFound(theme: string, country: string, queries: EmdFound[],
   const need = core.length ? core : words;
   const has = (list: string[], w: string) => list.includes(w) || pluralForms(w, country).some((f) => list.includes(f));
   const seen = new Set(existing.map((e) => phraseWords(e).join(" ")));
+  const own = themeOwnWords(theme, country);
   const out = new Map<string, EmdFound>();
   for (const q of queries) {
     const qw = phraseWords(q.phrase);
     const key = qw.join(" ");
-    if (!qw.length || qw.length > 6 || seen.has(key) || !need.every((w) => has(qw, w))) continue;
-    if (qw.some((w) => JUNK.has(w))) continue;
+    if (!usableQuery(qw, own) || seen.has(key) || !need.every((w) => has(qw, w))) continue;
     const prev = out.get(key);
     if (!prev || q.volume > prev.volume) out.set(key, { ...q, phrase: q.phrase.toLowerCase().trim() });
   }
@@ -530,18 +554,22 @@ export function emdModifiers(c: EmdCluster, country: string, s: { keywordMods: b
       if (!must.every((w) => words.includes(w) || pluralForms(w, country).some((f) => words.includes(f)))) return;
       const first = words.findIndex((w) => themeWords.has(w));
       if (first < 0) return;
-      const extra = words.filter((w) => !themeWords.has(w) && !FILLER.has(w) && !MOD_STOP.has(w));
-      if (extra.length > 3) return;
-      words.forEach((w, i) => {
-        if (themeWords.has(w) || geoWords.has(w) || FILLER.has(w) || MOD_STOP.has(w) || JUNK.has(w) || YEAR.test(w) || w.length < 2 || w.length > 14) return;
+      if (!usableQuery(words, themeWords)) return;
+      const extraIdx = words.map((w, i) => (themeWords.has(w) || FILLER.has(w) || MOD_STOP.has(w) || YEAR.test(w) ? -1 : i)).filter((i) => i >= 0);
+      if (!extraIdx.length || extraIdx.length > 2) return;
+      const put = (mod: string, i: number) => {
+        if (mod.length < 3 || mod.length > 16 || /^\d+$/.test(mod) || geoWords.has(mod) || MONTHS.has(mod) || JUNK.has(mod)) return;
         const pos: "end" | "start" = i < first ? "start" : "end";
-        const key = `${pos}:${w}`;
+        const key = `${pos}:${mod}`;
         const prev = found.get(key);
-        found.set(key, { mod: w, pos, source: prev?.source === "keyword" ? "keyword" : source, score: (prev?.score ?? 0) + Math.max(volume, 1), example: prev && prev.score >= volume ? prev.example : phrase });
-      });
+        found.set(key, { mod, pos, source: prev?.source === "keyword" ? "keyword" : source, score: (prev?.score ?? 0) + Math.max(volume, 1), example: prev && prev.score >= volume ? prev.example : phrase });
+      };
+      // Два слова рядом — одна приписка: no deposit → nodeposit, snabba uttag → snabbauttag
+      if (extraIdx.length === 2 && extraIdx[1]! === extraIdx[0]! + 1) put(words[extraIdx[0]!]! + words[extraIdx[1]!]!, extraIdx[0]!);
+      for (const i of extraIdx) if (words[i]!.length >= 3) put(words[i]!, i);
     };
     for (const k of c.keywords) take(k.phrase, k.volume, "keyword");
-    for (const f of c.found ?? []) take(f.phrase, f.volume, "found");
+    for (const f of usableFound(c, country)) take(f.phrase, f.volume, "found");
     for (const m of [...found.values()].sort((a, b) => b.score - a.score).slice(0, KEYWORD_MODS_MAX)) if (!has(m.mod, m.pos)) out.push(m);
   }
   return out;

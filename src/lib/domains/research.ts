@@ -165,7 +165,8 @@ export async function themeQueries(ctx: Ctx, theme: string, country: string): Pr
     ...kw.queries.map((q) => ({ phrase: q.q, volume: q.volume, source: "keywords" as const })),
     ...ac.queries.map((q) => ({ phrase: q.q, volume: 0, source: "autocomplete" as const })),
   ].filter((q) => q.phrase);
-  const errors = [kw.ok ? "" : `запросы: ${kw.error}`, ac.ok ? "" : `подсказки: ${ac.error}`].filter(Boolean);
+  const noResults = (e?: string) => /no search results/i.test(e ?? "");
+  const errors = [kw.ok || noResults(kw.error) ? "" : `запросы: ${kw.error}`, ac.ok || noResults(ac.error) ? "" : `подсказки: ${ac.error}`].filter(Boolean);
   return { ok: kw.ok || ac.ok, ...(errors.length ? { error: errors.join("; ") } : {}), queries, cost: kw.cost + ac.cost };
 }
 
