@@ -1,7 +1,8 @@
 /**
  * Визиты агента только за аналитикой Pinterest (фаза `stats`): для сайтов с сопоставленным профилем, по которым статистика
- * не снималась дольше 20 часов. Сайты, которые заливаются в этот день, отдают аналитику в том же визите (AgentTask.stats),
- * отдельный визит им не нужен. Окна по Киеву: ночь 03:00–07:00 (если ПК с агентом включён) и «догоняющее» после 15:00.
+ * не снималась дольше 20 часов. Сайты, которые заливаются в этот день, отдают аналитику в том же визите — заливки или проверки
+ * (AgentTask.stats), отдельный визит им не нужен. Когда: сразу после закрытия запуска заливки (с 26.11), ночь 03:00–07:00
+ * по Киеву (если ПК с агентом включён) и «догоняющее» после 15:00.
  * В одном окне — один запуск на агента, даже если часть визитов упала. Сохранение — `savePinStats` (src/lib/projects/stats.ts).
  */
 import { prisma } from "@/lib/db";
@@ -23,12 +24,16 @@ export async function statsRunsTick(now = new Date()): Promise<number> {
   const k = now.toLocaleString("sv-SE", { timeZone: "Europe/Kyiv" });
   const hour = Number(k.slice(11, 13)), minute = Number(k.slice(14, 16));
   const from = hour >= 3 && hour < 7 ? 3 : hour >= 15 ? 15 : null;
-  if (from == null) return 0;
-  const since = new Date(now.getTime() - ((hour - from) * 60 + minute) * 60_000);
+  const windowSince = from == null ? null : new Date(now.getTime() - ((hour - from) * 60 + minute) * 60_000);
   let created = 0;
   const agents = await prisma.uplAgent.findMany({ where: { revokedAt: null, status: { not: "offline" } } });
   for (const a of agents) {
     if (!versionGte(a.version, STATS_AGENT_VERSION)) continue;
+    // Сразу после заливки (запуск закрыт за последние 3 часа): агент в работе и ПК включён — обходим остальные сайты команды,
+    // по которым сегодня не заливали (владелец 26.11: «заходим проверять заливку — тогда же собираем статистику, и по всем сайтам»).
+    const afterUpload = await prisma.uplRun.findFirst({ where: { agentId: a.id, source: { not: "stats" }, status: "DONE", finishedAt: { gte: new Date(now.getTime() - 3 * 3600_000) } }, orderBy: { finishedAt: "desc" }, select: { finishedAt: true } });
+    const since = afterUpload?.finishedAt && (!windowSince || afterUpload.finishedAt > windowSince) ? afterUpload.finishedAt : windowSince;
+    if (!since) continue;
     const blocked = await prisma.uplRun.count({ where: { agentId: a.id, OR: [{ status: { in: ["QUEUED", "RUNNING", "VERIFYING"] } }, { source: "stats", createdAt: { gte: since } }] } });
     if (blocked) continue;
     const teamId = await agentTeamId(a);

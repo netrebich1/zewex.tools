@@ -102,7 +102,7 @@ async function toAgentTask(t: UplTask): Promise<AgentTask> {
   ]);
   return {
     id: t.id, runId: t.runId, phase: t.phase as "upload" | "verify" | "stats",
-    stats: t.phase === "upload" && (!acc?.statsAt || Date.now() - acc.statsAt.getTime() > STATS_WITH_UPLOAD_MS), steps: (t.steps as Step[]) ?? [],
+    stats: (t.phase === "upload" || t.phase === "verify") && (!acc?.statsAt || Date.now() - acc.statsAt.getTime() > STATS_WITH_UPLOAD_MS), steps: (t.steps as Step[]) ?? [],
     site: { id: t.pinSiteId, name: site?.name ?? "сайт" }, profileId: t.profileId, profileName: acc?.profileName ?? null, day: t.day,
     fileName: t.fileName, rows: t.rows, fileUrl: t.phase === "upload" ? `/api/uploader/file?task=${t.id}` : null,
     pinUsername: acc?.pinUsername ?? null, expectFileName: t.fileName,

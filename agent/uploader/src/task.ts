@@ -79,6 +79,14 @@ export async function runTask(task: AgentTask, env: TaskEnv): Promise<void> {
       timings.total = Date.now() - t0;
       await api.finishVerify(task.id, v, shot);
       log.info(`${label}: в расписании ${v.scheduled ?? "?"} пинов`);
+      // Проверка заливки — тот же заход в профиль: сразу снимаем и аналитику (если при заливке не сняли).
+      if (task.stats && !env.stopped()) {
+        try {
+          const st = await readAnalytics(page, h, async (s) => { log.setState(`${task.site.name}: ${s}`); });
+          await api.stats(task.id, st);
+          log.info(`${label}: аналитика — ${st.ok ? `${st.days.length} дней` : st.note}`);
+        } catch (e) { log.warn(`${label}: аналитика не снята`, e); }
+      }
     }
   } catch (e) {
     const err = toAgentError(e);
