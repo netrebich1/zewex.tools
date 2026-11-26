@@ -4,10 +4,12 @@
  *   GET  /v1.0/browser_profiles?limit=&page=           — список профилей (Bearer токен)
  *   GET  /v1.0/browser_profiles/{id}/start?automation=1 — запуск профиля → {automation:{port, wsEndpoint}}
  *   GET  /v1.0/browser_profiles/{id}/stop               — закрыть профиль
- * Список профилей при недоступности локального списка берётся с https://dolphin-anty-api.com (тот же токен).
+ * Список профилей — из облака https://dolphin-anty-api.com/browser_profiles/list-cursor по токену команды (с 20.11.2026).
  */
 import { AgentError } from "./errors";
 import { log } from "./log";
+
+const CLOUD = "https://dolphin-anty-api.com";
 
 export type DolphinProfile = { id: string; name: string; tags?: unknown; platform?: string | null };
 
@@ -56,13 +58,17 @@ export class Dolphin {
     return { status: res.status, json };
   }
 
-  /** Все профили, постранично. Сначала локальный API, при 401 — вход по токену и повтор; если локальный список недоступен — облачный API. */
+  /**
+   * Все профили аккаунта команды. С 20.11.2026 Dolphin отключил `GET /browser_profiles` (облако отвечает 410
+   * E_BROWSER_PROFILE_LIST_GONE, локальный API — 401): список берём из облака `GET /browser_profiles/list-cursor`
+   * по токену команды, страницы — по `next_page_url`. Это и есть профили аккаунта токена, а не того, в который вошло окно Dolphin.
+   * Облако недоступно — пробуем старый локальный список (старые версии Dolphin) и сверяем аккаунт.
+   */
   async profiles(): Promise<DolphinProfile[]> {
-    const out: DolphinProfile[] = [];
-    const parse = (j: unknown): { items: DolphinProfile[]; total: number | null } => {
-      const o = (j && typeof j === "object" ? j : {}) as { data?: unknown; total?: unknown };
+    const parse = (j: unknown): DolphinProfile[] => {
+      const o = (j && typeof j === "object" ? j : {}) as { data?: unknown };
       const arr = Array.isArray(o.data) ? o.data : [];
-      const items = arr.map((p) => {
+      return arr.map((p) => {
         const r = (p ?? {}) as Record<string, unknown>;
         // Теги + заметка профиля (Dolphin: notes.content или строка) — портал ищет в них домен сайта для автосопоставления.
         const tags = Array.isArray(r.tags) ? r.tags.map((t) => (typeof t === "string" ? t : typeof t === "object" && t ? String((t as { name?: unknown }).name ?? "") : "")).filter(Boolean) : [];
@@ -70,33 +76,42 @@ export class Dolphin {
         const note = typeof notesRaw === "string" ? notesRaw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300) : "";
         return { id: String(r.id ?? ""), name: String(r.name ?? ""), tags: note ? [...tags, `note:${note}`] : tags, platform: typeof r.platform === "string" ? r.platform : null };
       }).filter((p) => p.id && p.name);
-      return { items, total: typeof o.total === "number" ? o.total : null };
     };
-    const fetchAll = async (get: (page: number) => Promise<{ status: number; json: unknown }>) => {
-      for (let page = 1; page <= 200; page++) {
-        const { status, json } = await get(page);
-        if (status === 401 || status === 403) throw new AgentError("dolphin_auth", "Dolphin: нет доступа к списку профилей (токен)");
-        if (status >= 400) throw new Error(`Dolphin: HTTP ${status} при чтении профилей`);
-        const { items, total } = parse(json);
-        out.push(...items);
-        if (!items.length || items.length < 50 || (total != null && out.length >= total)) break;
-      }
-    };
+    if (!this.token) throw new AgentError("dolphin_auth", "в настройках портала не задан токен Dolphin API команды");
     try {
-      if (!this.authed) await this.login();
-      await fetchAll((page) => this.get(`/v1.0/browser_profiles?limit=50&page=${page}`));
-      if (out.length) { await this.checkAccount(out); return out; }
+      return await this.cloudList(parse);
     } catch (e) {
-      if (e instanceof AgentError && e.kind === "dolphin_auth" && this.wrongAccount) throw e;
-      if (e instanceof AgentError && e.kind === "dolphin_offline") throw e;
-      log.warn("локальный список профилей не прочитан, пробую облачный API", e);
+      if (e instanceof AgentError && e.kind === "dolphin_auth") throw e;
+      log.warn("облачный список профилей Dolphin не прочитан, пробую локальный", e);
     }
-    if (!this.token) return out;
-    await fetchAll(async (page) => {
-      const res = await fetch(`https://dolphin-anty-api.com/browser_profiles?limit=50&page=${page}`, { headers: { Authorization: `Bearer ${this.token}` }, signal: AbortSignal.timeout(30000) });
-      return { status: res.status, json: await res.json().catch(() => ({})) };
-    });
+    const out: DolphinProfile[] = [];
+    if (!this.authed) await this.login();
+    for (let page = 1; page <= 200; page++) {
+      const { status, json } = await this.get(`/v1.0/browser_profiles?limit=50&page=${page}`);
+      if (status >= 400) throw new Error(`Dolphin: HTTP ${status} при чтении профилей (локально)`);
+      const items = parse(json);
+      out.push(...items);
+      if (items.length < 50) break;
+    }
+    if (out.length) await this.checkAccount(out);
     return out;
+  }
+
+  private async cloudList(parse: (j: unknown) => DolphinProfile[]): Promise<DolphinProfile[]> {
+    const byId = new Map<string, DolphinProfile>();
+    let url: string | null = `${CLOUD}/browser_profiles/list-cursor?limit=50`;
+    for (let i = 0; url && i < 200; i++) {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${this.token}` }, signal: AbortSignal.timeout(30000) });
+      if (res.status === 401 || res.status === 403) throw new AgentError("dolphin_auth", `Dolphin не принял токен API команды (HTTP ${res.status}) — проверьте токен в настройках портала`);
+      if (!res.ok) throw new Error(`Dolphin: HTTP ${res.status} при чтении списка профилей`);
+      const j = (await res.json().catch(() => ({}))) as { next_page_url?: unknown };
+      const before = byId.size;
+      for (const p of parse(j)) byId.set(p.id, p);
+      const next = typeof j.next_page_url === "string" && j.next_page_url ? j.next_page_url : null;
+      // Страница не дала новых профилей — дальше не идём (защита от зацикливания курсора).
+      url = next && byId.size > before ? (/[?&]limit=/.test(next) ? next : `${next}${next.includes("?") ? "&" : "?"}limit=50`) : null;
+    }
+    return [...byId.values()];
   }
 
   /**
@@ -108,7 +123,7 @@ export class Dolphin {
     if (!this.token) return;
     let cloud: string[];
     try {
-      const res = await fetch("https://dolphin-anty-api.com/browser_profiles?limit=50&page=1", { headers: { Authorization: `Bearer ${this.token}` }, signal: AbortSignal.timeout(30000) });
+      const res = await fetch(`${CLOUD}/browser_profiles/list-cursor?limit=50`, { headers: { Authorization: `Bearer ${this.token}` }, signal: AbortSignal.timeout(30000) });
       if (!res.ok) return;
       const j = (await res.json().catch(() => ({}))) as { data?: Array<{ id?: unknown }> };
       cloud = (Array.isArray(j.data) ? j.data : []).map((p) => String(p?.id ?? "")).filter(Boolean);

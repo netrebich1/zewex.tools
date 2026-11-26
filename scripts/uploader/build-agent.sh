@@ -10,6 +10,12 @@ STORAGE=${PINS_STORAGE_DIR:-/var/www/zewex_tools_usr/data/storage}
 NODE_VER=${AGENT_NODE_VERSION:-22.12.0}
 cd "$APP/agent/uploader"
 VERSION=$(node -p "require('./package.json').version")
+# Версия в package.json (её портал раздаёт как latest) и AGENT_VERSION в коде обязаны совпадать: 25.11 подняли только package.json
+# до 0.1.9, агент после обновления снова называл себя 0.1.8 и качал «обновление» по кругу.
+CODE_VERSION=$(grep -oP 'AGENT_VERSION = "\K[^"]+' src/protocol.ts)
+if [ "$VERSION" != "$CODE_VERSION" ]; then
+  echo "ERROR: agent/uploader/package.json version $VERSION != AGENT_VERSION $CODE_VERSION in src/protocol.ts — поднимите обе" >&2; exit 1
+fi
 SRC_SHA=$(find src package.json -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)
 OUT="$STORAGE/uploader/agent"
 mkdir -p "$OUT" "$STORAGE/uploader/cache"
@@ -35,7 +41,14 @@ cd /d "%~dp0"
 title Zewex Uploader
 :loop
 node.exe dist\index.js
-if not "%errorlevel%"=="75" goto done
+set "CODE=%errorlevel%"
+if "%CODE%"=="75" goto update
+rem 0 = остановлен намеренно (второе окно, Ctrl+C) — выходим; любой другой код = сбой: перезапуск через 15 с, а не «нажмите клавишу».
+if "%CODE%"=="0" goto done
+echo Agent stopped with code %CODE%, restarting in 15 s (close this window to quit)...
+timeout /t 15 /nobreak >nul
+goto loop
+:update
 rem Без скобок: внутри ( ) %UPD% раскрывался до set /p и был пуст (xcopy "\*" = корень диска) — так было до 0.1.6.
 set "UPD="
 if exist "%LOCALAPPDATA%\ZewexUploader\update\pending.txt" set /p UPD=<"%LOCALAPPDATA%\ZewexUploader\update\pending.txt"

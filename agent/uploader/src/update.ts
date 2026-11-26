@@ -7,7 +7,7 @@
  * если после перезапуска версия всё та же — 6 часов не пробует снова.
  * Работает только в собранной версии на Windows (dist/*.js); в режиме разработки (tsx) и на других системах — пропуск.
  */
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { log } from "./log";
@@ -25,6 +25,19 @@ function olderVersion(a: string, b: string): boolean {
 
 export function updatesSupported(): boolean {
   return process.platform === "win32" && __filename.endsWith(".js") && !process.env.ZEWEX_NO_UPDATE;
+}
+
+/**
+ * Распаковка ZIP: сначала tar.exe из Windows 10+ (bsdtar читает zip), иначе PowerShell. Дочерний процесс — в отдельной
+ * скрытой консоли (`detached`) и без общих потоков: 26.11 на Expand-Archive в общей консоли агент молча закрывался.
+ */
+function unzip(zip: string, out: string): void {
+  mkdirSync(out, { recursive: true });
+  const opts = { windowsHide: true, detached: true, stdio: "ignore" as const, timeout: 5 * 60_000 };
+  const tar = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+  if (existsSync(tar) && spawnSync(tar, ["-xf", zip, "-C", out], opts).status === 0) return;
+  const ps = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", `Expand-Archive -LiteralPath '${zip}' -DestinationPath '${out}' -Force`], opts);
+  if (ps.status !== 0) throw new Error(`не удалось распаковать ZIP (tar и PowerShell), код ${ps.status ?? ps.error?.message}`);
 }
 
 /** Есть версия новее — скачать, распаковать, завершить процесс кодом 75 (перезапуск делает .cmd). */
@@ -54,7 +67,8 @@ export async function maybeUpdate(latest: string | undefined, latestUrl: string 
     writeFileSync(zip, buf);
     rmSync(out, { recursive: true, force: true });
     log.setState(`обновление до ${latest}: распаковываю`);
-    execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", `Expand-Archive -LiteralPath '${zip}' -DestinationPath '${out}' -Force`], { windowsHide: true, timeout: 5 * 60_000 });
+    unzip(zip, out);
+    log.info(`обновление до ${latest}: распаковано`);
     const root = existsSync(join(out, "zewex-uploader", "dist", "index.js")) ? join(out, "zewex-uploader") : out;
     if (!existsSync(join(root, "dist", "index.js")) || !existsSync(join(root, "node.exe"))) throw new Error("в архиве нет dist/index.js или node.exe");
     // Сам запускатель не перезаписываем: он выполняется в этот момент (cmd читает файл по ходу).

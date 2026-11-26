@@ -68,8 +68,10 @@ async function main() {
       if (Date.now() - lastHelloAt > (dolphinToken ? 10 : 2) * 60_000) await hello();
       if (Date.now() - lastProfilesAt > 60 * 60_000) await syncProfiles().catch((e) => {
         log.warn("список профилей не отправлен", e);
-        // Dolphin в чужом аккаунте: показываем в окне и на портале, повтор через 5 минут, а не на каждом опросе.
-        if (e instanceof AgentError && e.kind === "dolphin_auth") { log.setState(e.message); lastProfilesAt = Date.now() - 55 * 60_000; }
+        // Повтор через 10 минут, а не на каждом опросе (20.11–25.11 при отключённом API Dolphin лог рос на 4000 строк в день).
+        // Чужой аккаунт или токен: показываем причину в окне и на портале.
+        lastProfilesAt = Date.now() - 50 * 60_000;
+        if (e instanceof AgentError && e.kind === "dolphin_auth") log.setState(e.message);
       });
       const r = await api.next(running.size, log.state());
       await maybeUpdate(r.latest, r.latestUrl, running.size);
@@ -119,5 +121,11 @@ async function main() {
   log.info("агент остановлен");
   process.exit(0);
 }
+
+// Почему процесс завершился — в лог на диске (26.11 агент молча закрывался на распаковке обновления).
+process.on("exit", (code) => log.info(`процесс завершается, код ${code}`));
+process.on("uncaughtException", (e) => { log.error("необработанная ошибка", e); process.exit(1); });
+process.on("unhandledRejection", (e) => log.error("необработанный отказ промиса", e));
+for (const sig of ["SIGBREAK", "SIGHUP"] as const) process.on(sig, () => { log.warn(`получен сигнал ${sig}`); process.exit(1); });
 
 main().catch((e) => { log.error("агент не запустился", e); process.exit(1); });
