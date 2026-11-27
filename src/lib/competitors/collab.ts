@@ -5,6 +5,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { GeoAcc, geoWindows, type GeoBlock } from "./geo";
 import { KEEP_DAYS, packList, type SiteData, type SyncStats } from "./types";
 
 const BASE = process.env.COLLABORATOR_API_URL || "https://collaborator.pro/api/v2/public";
@@ -114,9 +115,11 @@ function toRow(c: Creator) {
  * Сбор: каталог за 3 месяца → площадки с кликами GSC и открытым доменом в базу (новые создаются, известные обновляют цифры).
  * Площадки, выпавшие из окна 3 месяцев и так и не разобранные, удаляются; разобранные остаются как архив.
  */
-export async function syncCatalog(shouldStop: () => boolean = () => false): Promise<SyncStats> {
+export async function syncCatalog(shouldStop: () => boolean = () => false): Promise<{ stats: SyncStats; windows: Record<string, GeoBlock> }> {
   const started = Date.now();
   const all = await fetchNewCreators(shouldStop);
+  // Гео считаем по всем новым площадкам, а не только по тем, что с кликами GSC: заказы есть и без GSC.
+  const windows = geoWindows(all);
   const good = all.filter((c) => c.is_domain_visible && c.name.includes(".") && (c.gsc?.clicks?.last_month ?? 0) > 0);
   const known = new Map((await prisma.compSite.findMany({ select: { collabId: true, id: true } })).map((s) => [s.collabId, s.id]));
   const now = new Date();
@@ -132,5 +135,23 @@ export async function syncCatalog(shouldStop: () => boolean = () => false): Prom
   }
   const border = new Date(Date.now() - (KEEP_DAYS + 7) * 86_400_000);
   const removed = await prisma.compSite.deleteMany({ where: { status: { in: ["none", "error", "empty"] }, lastSeenAt: { lt: border } } });
-  return { total: all.length, kept: good.length, fresh, removed: removed.count, seconds: Math.round((Date.now() - started) / 1000) };
+  return { stats: { total: all.length, kept: good.length, fresh, removed: removed.count, seconds: Math.round((Date.now() - started) / 1000) }, windows };
+}
+
+/**
+ * Гео по всему каталогу (≈46 тысяч площадок, 460+ запросов, 5–6 минут при лимите 100 в минуту).
+ * Площадки идут страницами прямо в накопитель и в памяти не держатся.
+ */
+export async function geoWholeCatalog(shouldStop: () => boolean = () => false): Promise<{ block: GeoBlock; total: number }> {
+  const acc = new GeoAcc();
+  let total = 0;
+  // Ограничение API: page × per_page ≤ 100 000.
+  for (let page = 1; page <= 1000; page++) {
+    if (shouldStop()) throw new Error("остановлено");
+    const d = await get<{ items: Creator[]; pagination: { page_count: number } }>(`/creator/list?per_page=100&page=${page}&language=ru&sort=-first_moderation_at`);
+    for (const c of d.items) acc.add(c);
+    total += d.items.length;
+    if (!d.items.length || page >= d.pagination.page_count) break;
+  }
+  return { block: acc.block(), total };
 }

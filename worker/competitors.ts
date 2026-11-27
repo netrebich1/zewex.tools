@@ -1,5 +1,5 @@
 import { analyzeSite } from "@/lib/competitors/analyze";
-import { claimSite, loadState, queueByRules, requeueStale, runSync, syncDue } from "@/lib/competitors/sites";
+import { claimSite, geoAllDue, loadState, queueByRules, requeueStale, runGeoAll, runSync, syncDue } from "@/lib/competitors/sites";
 import { assignThemes } from "@/lib/competitors/themes";
 import { log } from "./log";
 
@@ -35,6 +35,13 @@ export async function competitorsLoop(workerId: string, shouldStop: () => boolea
             const t = await assignThemes();
             if (t.error) log.warn(`competitors: themes failed: ${t.error}`);
             else if (t.assigned) log.info(`competitors: themes for ${t.assigned} cluster(s), $${t.costUsd.toFixed(4)}`);
+          }
+          // Раз в неделю — гео по всему каталогу (страница «Гео»): 460+ запросов, 5–6 минут.
+          if (await geoAllDue()) {
+            const started = Date.now();
+            const g = await runGeoAll(shouldStop);
+            if (g.error) log.warn(`competitors: whole-catalog geo failed: ${g.error}`);
+            else log.info(`competitors: whole-catalog geo, ${g.total} site(s), ${Math.round((Date.now() - started) / 1000)}s`);
           }
         }
       }

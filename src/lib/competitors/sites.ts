@@ -7,7 +7,8 @@ import { prisma } from "@/lib/db";
 import type { CurrentUser } from "@/lib/auth";
 import type { Sheet } from "@/lib/xlsx";
 import { compKeyTeamId } from "./analyze";
-import { syncCatalog } from "./collab";
+import { geoWholeCatalog, syncCatalog } from "./collab";
+import type { GeoData } from "./geo";
 import { DEFAULT_SETTINGS, LEASE_SECONDS, parseSettings, splitList, STATUS_LABELS, type ClusterTop, type CompSettings, type SyncStats } from "./types";
 
 /* ---------- Доступ ---------- */
@@ -165,15 +166,55 @@ export async function syncDue(): Promise<boolean> {
 export async function runSync(shouldStop: () => boolean = () => false): Promise<SyncStats> {
   const { settings } = await loadState();
   let stats: SyncStats;
+  let geo: GeoData | null = null;
   try {
-    stats = await syncCatalog(shouldStop);
+    const r = await syncCatalog(shouldStop);
+    stats = r.stats;
+    // Срезы по новым площадкам обновляются каждый сбор; срез «весь каталог» сохраняется как был.
+    geo = { ...((await loadGeo()) ?? {}), at: new Date().toISOString(), windows: r.windows };
     stats.queued = await queueByRules(settings);
   } catch (e) {
     stats = { error: e instanceof Error ? e.message : String(e) };
   }
   const json = settings as unknown as Prisma.InputJsonValue;
-  await prisma.compState.upsert({ where: { id: "main" }, update: { lastSyncAt: new Date(), lastSync: stats as Prisma.InputJsonValue, syncAsked: null }, create: { id: "main", settings: json, lastSyncAt: new Date(), lastSync: stats as Prisma.InputJsonValue } });
+  const geoPatch = geo ? { geo: geo as unknown as Prisma.InputJsonValue } : {};
+  await prisma.compState.upsert({ where: { id: "main" }, update: { lastSyncAt: new Date(), lastSync: stats as Prisma.InputJsonValue, syncAsked: null, ...geoPatch }, create: { id: "main", settings: json, lastSyncAt: new Date(), lastSync: stats as Prisma.InputJsonValue, ...geoPatch } });
   return stats;
+}
+
+/* ---------- Гео ---------- */
+
+/** Срез по всему каталогу пересчитывается раз в неделю: это 460+ запросов к Collaborator. */
+const GEO_ALL_DAYS = 7;
+
+export async function loadGeo(): Promise<GeoData | null> {
+  const s = await prisma.compState.findUnique({ where: { id: "main" }, select: { geo: true } });
+  return (s?.geo as GeoData | null) ?? null;
+}
+
+export async function geoAllDue(): Promise<boolean> {
+  const s = await loadState();
+  if (!s.settings.enabled || !s.lastSyncAt) return false;
+  const geo = await loadGeo();
+  return !geo?.allAt || Date.now() - new Date(geo.allAt).getTime() > GEO_ALL_DAYS * 86_400_000;
+}
+
+/** Пересчёт среза «весь каталог». При ошибке время всё равно сдвигается на сутки вперёд, чтобы не долбить API каждую минуту. */
+export async function runGeoAll(shouldStop: () => boolean = () => false): Promise<{ total?: number; error?: string }> {
+  let out: { total?: number; error?: string };
+  let all: GeoData["all"];
+  try {
+    const r = await geoWholeCatalog(shouldStop);
+    all = r.block;
+    out = { total: r.total };
+  } catch (e) {
+    out = { error: e instanceof Error ? e.message : String(e) };
+  }
+  const cur = (await loadGeo()) ?? { at: new Date().toISOString(), windows: {} };
+  const allAt = all ? new Date().toISOString() : new Date(Date.now() - (GEO_ALL_DAYS - 1) * 86_400_000).toISOString();
+  const next: GeoData = { ...cur, ...(all ? { all } : {}), allAt };
+  await prisma.compState.update({ where: { id: "main" }, data: { geo: next as unknown as Prisma.InputJsonValue } });
+  return out;
 }
 
 /* ---------- Выгрузка ---------- */

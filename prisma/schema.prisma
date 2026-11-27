@@ -4110,6 +4110,8 @@ model CompState {
   lastSync   Json?
   /// Кнопка «Обновить сейчас»: воркер запускает сбор вне расписания
   syncAsked  DateTime?
+  /// Гео: заказы по языкам и странам (GeoData, src/lib/competitors/geo.ts)
+  geo        Json?
   updatedAt  DateTime  @updatedAt
 }
 
