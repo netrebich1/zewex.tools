@@ -29,7 +29,9 @@ export async function pinSiteDomain(pinSiteId: string): Promise<{ domain: string
   return domain ? { domain, teamId: s.teamId } : null;
 }
 
-export type PinStatsSaved = { ok: boolean; saved: number; note: string | null };
+/** Сколько последних дней подряд с нулями по всем метрикам считаем «Pinterest ещё не посчитал», а не настоящим нулём. */
+const TAIL_ZERO_DAYS = 21;
+export type PinStatsSaved ={ ok: boolean; saved: number; note: string | null };
 
 /** Аналитика аккаунта от агента: {ok, days:[{d,e,im,en,pc,oc,sv}], note} → строки PrjStatDay и отметка на аккаунте. */
 export async function savePinStats(pinSiteId: string, raw: unknown): Promise<PinStatsSaved> {
@@ -48,9 +50,15 @@ export async function savePinStats(pinSiteId: string, raw: unknown): Promise<Pin
     await prisma.uplAccount.updateMany({ where: { pinSiteId }, data: { statsNote: why } });
     return { ok: false, saved: 0, note: why };
   }
-  const uniq = [...new Map(days.map((d) => [d.day, d])).values()];
+  const all = [...new Map(days.map((d) => [d.day, d])).values()].sort((a, b) => a.day.localeCompare(b.day));
+  // Pinterest бывает отдаёт последние дни нулями с пометкой «готово» (27.11.2026: все аккаунты, нули с 21.11) — это ещё не посчитанные дни,
+  // а не падение. Хвост из сплошных нулей (до TAIL_ZERO_DAYS) не пишем и стираем уже записанный; длиннее — аккаунт и правда без показов.
+  const empty = (d: (typeof all)[number]) => !d.impressions && !d.engagements && !d.pinClicks && !d.outboundClicks && !d.saves;
+  let cut = all.length;
+  while (cut > 0 && empty(all[cut - 1])) cut--;
+  const uniq = cut > 0 && all.length - cut <= TAIL_ZERO_DAYS ? all.slice(0, cut) : all;
   await prisma.$transaction([
-    prisma.prjStatDay.deleteMany({ where: { source: "pinterest", site: site.domain, day: { in: uniq.map((d) => d.day) } } }),
+    prisma.prjStatDay.deleteMany({ where: { source: "pinterest", site: site.domain, day: { in: all.map((d) => d.day) } } }),
     prisma.prjStatDay.createMany({ data: uniq.map((d) => ({ ...d, source: "pinterest", site: site.domain, teamId: site.teamId })) }),
   ]);
   await prisma.uplAccount.updateMany({ where: { pinSiteId }, data: { statsAt: new Date(), statsNote: null } });
@@ -405,6 +413,7 @@ export async function buildTrafficTab(teamSlug: string, sites: Array<{ domain: s
       put(cmp(sum(s.sv, e, 30), sum(s.sv, addDays(e, -30), 30))); row.push(pct(sum(s.sv, e, 30), im30));
       row.push(fmt(sum(s.pc, e, 30))); row.push(pct(sum(s.oc, e, 30), im30));
       fresh.push(`Pinterest ${dm(e)}`);
+      if (Date.parse(today) - Date.parse(e) > 4 * 86_400_000) notes.push(`Pinterest не отдал данные после ${dm(e)}`);
       // Резкий рост кликов на сайт: за 7 дней от +30% (и не меньше 20 кликов) или за день вдвое к тому же дню недели (не меньше 10 и без падения за неделю).
       const c7 = sum(s.oc, e, 7), p7 = sum(s.oc, addDays(e, -7), 7), c1 = s.oc.get(e) ?? 0, p1 = s.oc.get(addDays(e, -7)) ?? 0;
       const up7 = c7 >= 20 && c7 >= p7 * 1.3, up1 = c1 >= 10 && c1 >= p1 * 2 && c7 >= p7 * 0.9;
