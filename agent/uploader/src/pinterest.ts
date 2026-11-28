@@ -195,17 +195,13 @@ export async function readAnalytics(page: Page, h: UplHumanize, onStep: (s: stri
     }
     await onStep("читаю статистику по дням");
     const q = JSON.parse(cap.body) as { queryHash?: string; variables?: Record<string, unknown> };
-    const v: Record<string, unknown> = { ...(q.variables ?? {}) };
-    // До какого дня страница аналитики сама просит данные — это «последний готовый день» по мнению Pinterest (0.1.12+, для диагностики задержек).
-    const pageEnd = typeof v.endDate === "string" && /^d{4}-d{2}-d{2}$/.test(v.endDate) ? v.endDate : null;
-    // Страница сама ставит endDate на последний «закрытый» день Pinterest (бывает и 5 дней назад); просим до сегодня —
-    // Pinterest отдаст, что есть, а незакрытые дни придут с dataStatus ≠ READY и лягут как оценка.
-    const end = new Date().toISOString().slice(0, 10);
-    const startMs = Date.parse(`${end}T00:00:00Z`) - 89 * 86_400_000;
-    Object.assign(v, { startDate: new Date(startMs).toISOString().slice(0, 10), endDate: end, startTimestamp: Math.round(startMs / 1000), metricTypes: S.analyticsMetrics, useDailyBuckets: true, useHourlyBuckets: false, splitField: "NO_SPLIT" });
+    const pv: Record<string, unknown> = { ...(q.variables ?? {}) };
+    const isDay = (x: unknown): x is string => typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x);
+    // До какого дня страница аналитики сама просит данные — «последний день» по мнению Pinterest (для разбора задержек на портале).
+    const pageEnd = isDay(pv.endDate) ? pv.endDate : null;
     const headers: Record<string, string> = { "content-type": "application/json" };
     for (const [k, val] of Object.entries(cap.headers)) if (/^(x-|accept$)/i.test(k)) headers[k] = val;
-    const res = await page.evaluate(async (a: { body: string; headers: Record<string, string> }) => {
+    const ask = (vars: Record<string, unknown>) => page.evaluate(async (a: { body: string; headers: Record<string, string> }) => {
       // Токен CSRF страница кладёт в заголовок сама; если в перехваченном запросе его не видно — берём из cookie этой же страницы.
       if (!Object.keys(a.headers).some((k) => k.toLowerCase() === "x-csrftoken")) {
         const m = /(?:^|;\s*)csrftoken=([^;]+)/.exec(document.cookie);
@@ -213,14 +209,27 @@ export async function readAnalytics(page: Page, h: UplHumanize, onStep: (s: stri
       }
       const r = await fetch("/_/graphql/", { method: "POST", credentials: "include", headers: a.headers, body: a.body });
       return { status: r.status, text: await r.text() };
-    }, { body: JSON.stringify({ ...q, variables: v }), headers });
-    const days = parseAnalytics(res.text);
-    // Сырые последние дни ответа (дата, статус, метрики) — чтобы на портале отличить «Pinterest ещё не посчитал» от смены формата.
-    const tail = rawTail(res.text);
+    }, { body: JSON.stringify({ ...q, variables: vars }), headers });
+    const all = { metricTypes: S.analyticsMetrics, useDailyBuckets: true, useHourlyBuckets: false, splitField: "NO_SPLIT" };
+    // 1) Как показывает сама страница (последние 30 дней с данными в реальном времени): даты страницы не трогаем, только метрики.
+    //    28.11.2026: запрос на 90 дней с endDate «сегодня» отдавал после 20.11 одни нули, а страница показывала дни до 27.11.
+    const live = await ask({ ...pv, ...all });
+    // 2) История за 90 дней — для дней раньше окна страницы.
+    const end = pageEnd ?? new Date().toISOString().slice(0, 10);
+    const startMs = Date.parse(`${end}T00:00:00Z`) - 89 * 86_400_000;
+    const hist = await ask({ ...pv, ...all, startDate: new Date(startMs).toISOString().slice(0, 10), endDate: end, startTimestamp: Math.round(startMs / 1000) });
+    const fresh = parseAnalytics(live.text), old = parseAnalytics(hist.text);
+    // Склейка: день из окна страницы важнее дня из 90-дневной выборки; пустой (все нули) день страницы не затирает непустой исторический.
+    const byDay = new Map(old.map((d) => [d.d, d]));
+    const empty = (d: PinStatDay) => !d.im && !d.en && !d.pc && !d.oc && !d.sv;
+    for (const d of fresh) { const o = byDay.get(d.d); if (!o || !empty(d) || empty(o)) byDay.set(d.d, d); }
+    const days = [...byDay.values()].sort((a, b) => a.d.localeCompare(b.d));
+    // Сырые последние дни ответа страницы (дата, статус, метрики) — чтобы на портале отличить «Pinterest ещё не посчитал» от смены формата.
+    const tail = rawTail(live.text);
     // Немного «почитать» страницу, как человек.
     await page.mouse.wheel(0, rand(300, 700)).catch(() => {});
     await sleep(rand(2000, 5000));
-    if (!days.length) return { ok: false, days: [], note: `ответ аналитики не разобран (HTTP ${res.status})`, url: page.url(), raw: res.text.slice(0, 20_000), pageEnd, tail };
+    if (!days.length) return { ok: false, days: [], note: `ответ аналитики не разобран (HTTP ${live.status}/${hist.status})`, url: page.url(), raw: (live.text || hist.text).slice(0, 20_000), pageEnd, tail };
     return { ok: true, days, note: null, url: page.url(), pageEnd, tail };
   } finally {
     page.off("request", onReq);

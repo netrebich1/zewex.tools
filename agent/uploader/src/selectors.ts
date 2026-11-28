@@ -37,7 +37,9 @@ export const PINTEREST = {
   profileLink: ['[data-test-id="header-profile"] a', 'a[data-test-id="header-profile"]', '[data-test-id="profile-avatar"] a'],
   /** Аналитика аккаунта (проверено 2026-11-16): страница сама шлёт POST /_/graphql/ с дневным рядом (variables.useDailyBuckets,
    *  metricTypes); агент повторяет этот же запрос со всеми метриками за 90 дней. Хэш запроса берётся из запроса страницы. */
-  analytics: "https://analytics.pinterest.com/overview/?aggregation=last90d",
+  /** 28.11.2026: открываем как сам Pinterest по умолчанию — 30 дней с данными в реальном времени (на last90d без include_realtime
+   *  агент получал дни после 20.11 нулями, хотя страница показывала их). 90 дней агент добирает отдельным запросом. */
+  analytics: "https://analytics.pinterest.com/overview/?aggregation=last30d&include_realtime=true&include_curated=created&recent_pins=true&content_type=all&device_type=all&source_type=all&pin_format=all&claimed_account_type=all&age=all&gender=all&selected_split=NO_SPLIT&primary_metric=OUTBOUND_CLICK",
   analyticsHost: /analytics\.pinterest\.com/i,
   analyticsMetrics: ["IMPRESSION", "ENGAGEMENT", "PIN_CLICK", "OUTBOUND_CLICK", "SAVE"],
   scheduledTitle: /scheduled pins?/i,
