@@ -42,6 +42,9 @@ export async function savePinStats(pinSiteId: string, raw: unknown): Promise<Pin
     .filter((x) => typeof x.d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.d as string))
     .map((x) => ({ day: x.d as string, estimate: x.e === true, impressions: int(x.im), engagements: int(x.en), pinClicks: int(x.pc), outboundClicks: int(x.oc), saves: int(x.sv) }));
   const note = typeof p.note === "string" ? p.note.slice(0, 250) : null;
+  const pageEnd = typeof p.pageEnd === "string" && /^d{4}-d{2}-d{2}$/.test(p.pageEnd) ? p.pageEnd : undefined;
+  const tail = typeof p.tail === "string" ? p.tail.slice(0, 8000) : undefined;
+  if (pageEnd !== undefined || tail !== undefined) await prisma.uplAccount.updateMany({ where: { pinSiteId }, data: { statsPageEnd: pageEnd ?? null, statsTail: tail ?? null } });
   const site = await pinSiteDomain(pinSiteId);
   if (!site) return { ok: false, saved: 0, note: "сайт не найден" };
   if (p.ok !== true || !days.length) {
@@ -75,12 +78,35 @@ const PIN_FILTERS = [
   "(ym:s:UTMSource=*'*interest*' OR ym:s:referer=*'*pinterest.*')",
 ];
 
+/**
+ * Квоты Метрики на пользователя токена (yandex.ru/dev/metrika/ru/intro/quotas): 5000 запросов в сутки (сброс в 00:00 GMT) и
+ * 200 запросов к отчётам (/stat/) за 5 минут — после превышения блок на 5 минут. Ночной сбор делает ~400 запросов отчётов, и до
+ * 28.11.2026 шёл без паузы: упирался в «200 за 5 минут» (429 «Quota exceeded for quantity of user requests»), повторял через 5–10 с
+ * и терял часть сайтов до следующей ночи. Теперь отчёты идут не чаще STAT_PER_WINDOW за 5 минут (запас под веб-интерфейс и
+ * чужие скрипты того же логина), а на 429 ждём снятия блока.
+ */
+const STAT_WINDOW_MS = 5 * 60_000;
+const STAT_PER_WINDOW = 120;
+const statSent: number[] = [];
+async function statSlot(): Promise<void> {
+  for (;;) {
+    const now = Date.now();
+    while (statSent.length && now - statSent[0] > STAT_WINDOW_MS) statSent.shift();
+    if (statSent.length < STAT_PER_WINDOW) { statSent.push(now); return; }
+    await new Promise((r) => setTimeout(r, statSent[0] + STAT_WINDOW_MS - now + 1000));
+  }
+}
+
 async function mGet<T>(token: string, path: string, params: Record<string, string>, attempt = 0): Promise<T> {
-  // Временные отказы Метрики (429, 5xx) — до двух повторов с паузой.
+  if (path.startsWith("/stat/")) await statSlot();
   const res = await fetch(`${METRIKA}${path}?${new URLSearchParams(params)}`, { headers: { Authorization: `OAuth ${token}` }, signal: AbortSignal.timeout(60_000) });
-  const j = (await res.json().catch(() => ({}))) as { message?: string; errors?: Array<{ message?: string }> };
-  if ((res.status === 429 || res.status >= 500) && attempt < 2) { await new Promise((r) => setTimeout(r, 5000 * (attempt + 1))); return mGet<T>(token, path, params, attempt + 1); }
-  if (!res.ok) { const e = new Error(`Метрика ${res.status}: ${j.message ?? j.errors?.[0]?.message ?? res.statusText}`) as Error & { status?: number }; e.status = res.status; throw e; }
+  const j = (await res.json().catch(() => ({}))) as { message?: string; errors?: Array<{ message?: string; error_type?: string }> };
+  const type = j.errors?.[0]?.error_type ?? "";
+  // Суточная квота логина — ждать до 00:00 GMT бессмысленно; остальные 429 (5-минутная, параллельные) — ждём снятия блока, до 5 раз.
+  const daily = res.status === 429 && type === "quota_requests_by_uid";
+  if (res.status === 429 && !daily && attempt < 5) { await new Promise((r) => setTimeout(r, 65_000 * (attempt < 2 ? 1 : 2))); return mGet<T>(token, path, params, attempt + 1); }
+  if (res.status >= 500 && attempt < 2) { await new Promise((r) => setTimeout(r, 5000 * (attempt + 1))); return mGet<T>(token, path, params, attempt + 1); }
+  if (!res.ok) { const e = new Error(`Метрика ${res.status}${type ? ` ${type}` : ""}: ${j.message ?? j.errors?.[0]?.message ?? res.statusText}`) as Error & { status?: number; daily?: boolean }; e.status = res.status; e.daily = daily; throw e; }
   return j as T;
 }
 
@@ -220,8 +246,12 @@ async function teamDomains(teamId: string): Promise<Set<string>> {
 
 export type MetrikaSync = { counters: number; matched: number; days: number; pinFilter: number };
 
-/** Сбор Метрики команды: счётчики по доменам её сайтов → визиты за 90 дней по дням (люди, с Pinterest, роботы). only — досбор одного домена. */
-export async function metrikaSync(teamId: string, only?: string): Promise<MetrikaSync> {
+/**
+ * Сбор Метрики команды: счётчики по доменам её сайтов → визиты за 90 дней по дням (люди, с Pinterest, роботы).
+ * only — досбор только этих доменов (не собравшихся ночью). Не собравшиеся помечаются `failed` в `counters` — их дособирает metrikaTick.
+ */
+export async function metrikaSync(teamId: string, only?: string | string[]): Promise<MetrikaSync> {
+  const onlySet = only === undefined ? null : new Set(Array.isArray(only) ? only : [only]);
   const row = await prisma.prjMetrikaToken.findUnique({ where: { teamId } });
   if (!row) throw new Error("токен Метрики не задан");
   await prisma.prjMetrikaToken.update({ where: { teamId }, data: { lastTryAt: new Date() } });
@@ -231,9 +261,11 @@ export async function metrikaSync(teamId: string, only?: string): Promise<Metrik
     const byDomain = new Map<string, number>();
     for (const c of counters) if (domains.has(c.domain) && !byDomain.has(c.domain)) byDomain.set(c.domain, c.id);
     const date2 = addDays(kyiv().slice(0, 10), -1), date1 = addDays(date2, -89);
-    let total = 0, pinFilter = 0; const failed: string[] = [];
+    let total = 0, pinFilter = 0, dailyQuota = false; const failed: string[] = [], failedDomains = new Set<string>();
     for (const [domain, id] of byDomain) {
-     if (only && domain !== only) continue;
+     if (onlySet && !onlySet.has(domain)) continue;
+     // Суточная квота логина кончилась — остальные сайты сегодня не собрать, просто помечаем на досбор.
+     if (dailyQuota) { failedDomains.add(domain); continue; }
      try {
       const human = await byTime(token, id, date1, date2, HUMAN);
       let pins: Map<string, number> | null = null;
@@ -256,13 +288,21 @@ export async function metrikaSync(teamId: string, only?: string): Promise<Metrik
      } catch (e) {
       // Один счётчик не должен срывать сбор остальных; без доступа (401/403) — сразу наружу.
       const st = (e as { status?: number }).status; if (st === 401 || st === 403) throw e;
+      if ((e as { daily?: boolean }).daily) dailyQuota = true;
       failed.push(`${domain}: ${e instanceof Error ? e.message.slice(0, 80) : String(e)}`);
+      failedDomains.add(domain);
+      console.warn(`[metrika] ${domain}: не собран: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`);
      }
       await new Promise((r) => setTimeout(r, 300));
     }
-    if (failed.length && failed.length === (only ? 1 : byDomain.size)) throw new Error(failed[0]);
-    const list = counters.map((c) => ({ id: c.id, site: c.domain, matched: byDomain.get(c.domain) === c.id })).slice(0, 500);
-    await prisma.prjMetrikaToken.update({ where: { teamId }, data: { lastSyncAt: new Date(), lastError: failed.length ? `не собраны (${failed.length}): ${failed.join("; ")}`.slice(0, 250) : null, counters: list } });
+    const tried = onlySet ? [...byDomain.keys()].filter((d) => onlySet.has(d)).length : byDomain.size;
+    if (failedDomains.size && failedDomains.size === tried && !onlySet) throw new Error(failed[0] ?? "суточная квота Метрики исчерпана");
+    // При досборе прежние пометки остальных сайтов сохраняются.
+    const before = new Set(((row.counters as Array<{ site?: string; failed?: boolean }> | null) ?? []).filter((c) => c.failed && c.site).map((c) => c.site!));
+    const isFailed = (d: string) => failedDomains.has(d) || (!!onlySet && !onlySet.has(d) && before.has(d));
+    const list = counters.map((c) => ({ id: c.id, site: c.domain, matched: byDomain.get(c.domain) === c.id, ...(byDomain.get(c.domain) === c.id && isFailed(c.domain) ? { failed: true } : {}) })).slice(0, 500);
+    const left = list.filter((c) => c.failed).map((c) => c.site);
+    await prisma.prjMetrikaToken.update({ where: { teamId }, data: { lastSyncAt: new Date(), lastError: left.length ? `не собраны (${left.length}): ${left.join(", ")}${failed.length ? ` — ${failed[0]}` : ""}`.slice(0, 250) : null, counters: list } });
     return { counters: counters.length, matched: byDomain.size, days: total, pinFilter };
   } catch (e) {
     await prisma.prjMetrikaToken.update({ where: { teamId }, data: { lastError: (e instanceof Error ? e.message : String(e)).slice(0, 250) } }).catch(() => null);
@@ -271,17 +311,21 @@ export async function metrikaSync(teamId: string, only?: string): Promise<Metrik
 }
 
 let metrikaBusy = false;
-/** Тик воркера (раз в 10 мин): новый токен — сразу; дальше раз в сутки после 03:00 по Киеву; после сбоя — повтор не чаще раза в час. */
+/**
+ * Тик воркера (раз в 10 мин): новый токен — сразу; дальше раз в сутки после 03:00 по Киеву; после сбоя — повтор не чаще раза в час.
+ * Сайты, не собравшиеся в ночном сборе (`failed` в counters), дособираются раз в час, только они.
+ */
 export async function metrikaTick(now = new Date()): Promise<{ synced: string[]; errors: string[] }> {
   if (metrikaBusy) return { synced: [], errors: [] };
   metrikaBusy = true;
   const synced: string[] = [], errors: string[] = [];
   try {
     const k = kyiv(now), today = k.slice(0, 10), hour = Number(k.slice(11, 13));
-    for (const t of await prisma.prjMetrikaToken.findMany({ select: { teamId: true, lastSyncAt: true, lastTryAt: true } })) {
+    for (const t of await prisma.prjMetrikaToken.findMany({ select: { teamId: true, lastSyncAt: true, lastTryAt: true, counters: true } })) {
       const due = !t.lastSyncAt || (hour >= 3 && kyiv(t.lastSyncAt).slice(0, 10) !== today);
-      if (!due || (t.lastTryAt && now.getTime() - t.lastTryAt.getTime() < 60 * 60_000)) continue;
-      try { const r = await metrikaSync(t.teamId); synced.push(`${t.teamId}: счётчиков ${r.matched}/${r.counters}, строк ${r.days}`); }
+      const retry = ((t.counters as Array<{ site?: string; failed?: boolean }> | null) ?? []).filter((c) => c.failed && c.site).map((c) => c.site!);
+      if ((!due && !retry.length) || (t.lastTryAt && now.getTime() - t.lastTryAt.getTime() < 60 * 60_000)) continue;
+      try { const r = await metrikaSync(t.teamId, due ? undefined : retry); synced.push(`${t.teamId}: ${due ? "" : `досбор ${retry.length}: `}счётчиков ${r.matched}/${r.counters}, строк ${r.days}`); }
       catch (e) { errors.push(`${t.teamId}: ${e instanceof Error ? e.message : String(e)}`); }
     }
   } finally {
@@ -356,7 +400,7 @@ export async function buildTrafficTab(teamSlug: string, sites: Array<{ domain: s
   ]);
   const [access, accounts] = await Promise.all([
     prisma.siteAccess.findMany({ where: { teamId }, select: { id: true, baseUrl: true, name: true } }),
-    prisma.uplAccount.findMany({ where: { pinSiteId: { in: pinSites.map((p) => p.id) } }, select: { pinSiteId: true, profileId: true, status: true, statsAt: true, statsNote: true } }),
+    prisma.uplAccount.findMany({ where: { pinSiteId: { in: pinSites.map((p) => p.id) } }, select: { pinSiteId: true, profileId: true, status: true, statsAt: true, statsNote: true, statsPageEnd: true } }),
   ]);
   const accDom = new Map(access.map((a) => [a.id, dom(a.baseUrl) || dom(a.name)]));
   const accBy = new Map(accounts.map((a) => [a.pinSiteId, a]));
@@ -413,7 +457,8 @@ export async function buildTrafficTab(teamSlug: string, sites: Array<{ domain: s
       put(cmp(sum(s.sv, e, 30), sum(s.sv, addDays(e, -30), 30))); row.push(pct(sum(s.sv, e, 30), im30));
       row.push(fmt(sum(s.pc, e, 30))); row.push(pct(sum(s.oc, e, 30), im30));
       fresh.push(`Pinterest ${dm(e)}`);
-      if (Date.parse(today) - Date.parse(e) > 4 * 86_400_000) notes.push(`Pinterest не отдал данные после ${dm(e)}`);
+      const pe = accOf.get(site.domain)?.statsPageEnd;
+      if (Date.parse(today) - Date.parse(e) > 4 * 86_400_000) notes.push(`Pinterest не отдал данные после ${dm(e)}${pe ? (pe <= e ? ` (сам Pinterest в аналитике показывает только до ${dm(pe)})` : ` (Pinterest показывает до ${dm(pe)}, но с нулями)`) : ""}`);
       // Резкий рост кликов на сайт: за 7 дней от +30% (и не меньше 20 кликов) или за день вдвое к тому же дню недели (не меньше 10 и без падения за неделю).
       const c7 = sum(s.oc, e, 7), p7 = sum(s.oc, addDays(e, -7), 7), c1 = s.oc.get(e) ?? 0, p1 = s.oc.get(addDays(e, -7)) ?? 0;
       const up7 = c7 >= 20 && c7 >= p7 * 1.3, up1 = c1 >= 10 && c1 >= p1 * 2 && c7 >= p7 * 0.9;

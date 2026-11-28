@@ -1,6 +1,6 @@
 /** Копия протокола портала (src/lib/uploader/types.ts) — ровно то, что нужно агенту. При изменении протокола править оба файла. */
 
-export const AGENT_VERSION = "0.1.11";
+export const AGENT_VERSION = "0.1.12";
 export const PROTOCOL = 1;
 
 export type StepKind = "upload_csv" | "check_history" | "analytics";
@@ -28,7 +28,8 @@ export type VerifyResult = { published: number | null; failed: number | null; pr
 /** День аналитики аккаунта Pinterest: e — день ещё не закрыт (оценка), показы, вовлечения, клики по пину, клики на сайт, сохранения. */
 export type PinStatDay = { d: string; e: boolean; im: number; en: number; pc: number; oc: number; sv: number };
 /** Аналитика аккаунта за ~90 дней. ok=false — прочитать не удалось (note — почему, raw — кусок ответа для разбора). */
-export type PinStats = { ok: boolean; days: PinStatDay[]; note: string | null; url: string | null; raw?: string | null };
+/** pageEnd — до какого дня страница аналитики Pinterest сама запрашивает данные; tail — сырые последние дни ответа (0.1.12+). */
+export type PinStats = { ok: boolean; days: PinStatDay[]; note: string | null; url: string | null; raw?: string | null; pageEnd?: string | null; tail?: string | null };
 
 export type AgentTask = {
   id: string;

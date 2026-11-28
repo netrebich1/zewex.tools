@@ -2982,6 +2982,9 @@ model UplAccount {
   /// Когда агент последний раз снял аналитику аккаунта (вкладка «Трафик») и почему не снял, если не вышло
   statsAt      DateTime?
   statsNote    String?   @db.VarChar(255)
+  /// Агент 0.1.12+: до какого дня страница аналитики Pinterest сама запрашивает данные, и сырые последние дни ответа — для разбора задержек
+  statsPageEnd String?   @db.VarChar(10)
+  statsTail    String?   @db.Text
   updatedAt    DateTime  @updatedAt
 }
 

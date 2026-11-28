@@ -196,6 +196,8 @@ export async function readAnalytics(page: Page, h: UplHumanize, onStep: (s: stri
     await onStep("читаю статистику по дням");
     const q = JSON.parse(cap.body) as { queryHash?: string; variables?: Record<string, unknown> };
     const v: Record<string, unknown> = { ...(q.variables ?? {}) };
+    // До какого дня страница аналитики сама просит данные — это «последний готовый день» по мнению Pinterest (0.1.12+, для диагностики задержек).
+    const pageEnd = typeof v.endDate === "string" && /^d{4}-d{2}-d{2}$/.test(v.endDate) ? v.endDate : null;
     // Страница сама ставит endDate на последний «закрытый» день Pinterest (бывает и 5 дней назад); просим до сегодня —
     // Pinterest отдаст, что есть, а незакрытые дни придут с dataStatus ≠ READY и лягут как оценка.
     const end = new Date().toISOString().slice(0, 10);
@@ -213,13 +215,29 @@ export async function readAnalytics(page: Page, h: UplHumanize, onStep: (s: stri
       return { status: r.status, text: await r.text() };
     }, { body: JSON.stringify({ ...q, variables: v }), headers });
     const days = parseAnalytics(res.text);
+    // Сырые последние дни ответа (дата, статус, метрики) — чтобы на портале отличить «Pinterest ещё не посчитал» от смены формата.
+    const tail = rawTail(res.text);
     // Немного «почитать» страницу, как человек.
     await page.mouse.wheel(0, rand(300, 700)).catch(() => {});
     await sleep(rand(2000, 5000));
-    if (!days.length) return { ok: false, days: [], note: `ответ аналитики не разобран (HTTP ${res.status})`, url: page.url(), raw: res.text.slice(0, 20_000) };
-    return { ok: true, days, note: null, url: page.url() };
+    if (!days.length) return { ok: false, days: [], note: `ответ аналитики не разобран (HTTP ${res.status})`, url: page.url(), raw: res.text.slice(0, 20_000), pageEnd, tail };
+    return { ok: true, days, note: null, url: page.url(), pageEnd, tail };
   } finally {
     page.off("request", onReq);
+  }
+}
+
+/** Последние 10 дней ответа аналитики как есть (обрезано до 4000 символов); не разобрали — начало ответа. */
+function rawTail(text: string): string {
+  try {
+    const j = JSON.parse(text) as { data?: Record<string, { data?: Array<{ key?: string; series?: { dailyMetrics?: unknown[] } }> } | null> };
+    const node = Object.values(j.data ?? {}).find((x) => Array.isArray(x?.data));
+    const list = node?.data ?? [];
+    const series = list.find((x) => x.key === "all") ?? list[0];
+    const dm = series?.series?.dailyMetrics ?? [];
+    return JSON.stringify({ keys: list.map((x) => x.key ?? null), days: dm.slice(-10) }).slice(0, 4000);
+  } catch {
+    return text.slice(0, 2000);
   }
 }
 
