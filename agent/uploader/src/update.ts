@@ -73,14 +73,17 @@ export async function maybeUpdate(latest: string | undefined, latestUrl: string 
     if (!existsSync(join(root, "dist", "index.js")) || !existsSync(join(root, "node.exe"))) throw new Error("в архиве нет dist/index.js или node.exe");
     // Сам запускатель не перезаписываем: он выполняется в этот момент (cmd читает файл по ходу).
     rmSync(join(root, "ZewexUploader.cmd"), { force: true });
+    // Отметку попытки и pending.txt пишем ДО копирования: 28.11.2026 агент 0.1.11 молча падал внутри cpSync, отметка не успевала
+    // записаться, и он с утра качал 35 МБ каждые 20 секунд по кругу. Теперь падение при копировании = одна попытка раз в 6 часов.
+    writeFileSync(mark, String(Date.now()), "utf8");
+    writeFileSync(join(dir, "pending.txt"), root, "utf8");
+    log.info(`обновление до ${latest}: копирую файлы`);
     // Копируем сами: dist и node_modules заменяются на ходу; node.exe занят этим процессом — его только если другой размер.
     const self = join(__dirname, "..");
     cpSync(root, self, {
       recursive: true, force: true,
       filter: (src) => basename(src) !== "node.exe" || !existsSync(join(self, "node.exe")) || statSync(src).size !== statSync(join(self, "node.exe")).size,
     });
-    writeFileSync(mark, String(Date.now()), "utf8");
-    writeFileSync(join(dir, "pending.txt"), root, "utf8");
     log.info(`обновление до ${latest} готово — перезапускаюсь`);
     process.exit(UPDATE_EXIT_CODE);
   } catch (e) {
